@@ -301,3 +301,198 @@
   font-size: var(--font-size-base);
 }
 
+/* ==========================================================================
+   4. LIQUID-GLASS FORM CONTROLS & FILE CHOOSER (SUBMISSION PORTAL)
+   ========================================================================== */
+
+.liquid-submission-portal {
+  position: relative;
+  border-radius: var(--radius-lg);
+  isolation: isolate;
+  border: 1.5px solid var(--icy-steel);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(234, 244, 255, 0.60) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    0 12px 36px -4px rgba(7, 22, 41, 0.08),
+    0 2px 8px rgba(7, 22, 41, 0.04),
+    inset 2px 2px 0.5px rgba(255, 255, 255, 0.95),
+    inset -2px -2px 0.5px rgba(157, 183, 213, 0.35);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.liquid-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.liquid-form-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--frost-navy);
+  letter-spacing: -0.15px;
+}
+
+.liquid-form-hint {
+  font-size: 11.5px;
+  color: var(--frost-navy-50);
+  margin-top: 1px;
+}
+
+/* Liquid glass input & dropdown control */
+.liquid-glass-control {
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--icy-steel-50);
+  background: rgba(255, 255, 255, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font-family: var(--font-family-base);
+  font-size: 13.5px;
+  color: var(--frost-navy);
+  outline: none;
+  box-shadow:
+    0 2px 6px rgba(7, 22, 41, 0.03),
+    inset 1px 1px 1px rgba(255, 255, 255, 0.85);
+  transition: all var(--transition-fast);
+}
+
+.liquid-glass-control:hover {
+  border-color: var(--icy-steel);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.liquid-glass-control:focus {
+  border-color: var(--deep-frozen-midnight);
+  background: var(--snow-white);
+  box-shadow:
+    0 0 0 3.5px rgba(23, 52, 92, 0.16),
+    0 2px 8px rgba(7, 22, 41, 0.06);
+}
+
+/* Liquid glass dropdown wrapper with full code.txt specular glass shader */
+.liquid-select-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-md);
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(234, 244, 255, 0.58) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1.5px solid var(--icy-steel);
+  box-shadow:
+    0 4px 20px -2px rgba(7, 22, 41, 0.07),
+    0 1px 3px rgba(7, 22, 41, 0.04),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 0.95),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.4),
+    inset 0 0 6px 4px rgba(234, 244, 255, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.liquid-select-wrapper:hover {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow:
+    0 6px 24px -2px rgba(7, 22, 41, 0.12),
+    0 2px 6px rgba(7, 22, 41, 0.06),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 1),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.5);
+}
+
+.liquid-select-wrapper:focus-within {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow:
+    0 0 0 3.5px rgba(23, 52, 92, 0.18),
+    0 6px 24px -2px rgba(7, 22, 41, 0.14),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 1),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.5);
+}
+
+.liquid-select-wrapper .liquid-glass-select {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  height: 44px;
+  width: 100%;
+}
+
+/* Custom styled liquid glass dropdown select */
+.liquid-glass-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2317345C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 42px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--frost-navy);
+}
+
+/* Dropdown option menu styling */
+.liquid-glass-select option {
+  background-color: #EAF4FF !important;
+  color: var(--frost-navy) !important;
+  font-family: var(--font-family-base);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 14px;
+}
+
+.liquid-glass-select option:checked {
+  background-color: var(--deep-frozen-midnight) !important;
+  color: var(--snow-white) !important;
+}
+
+/* Liquid glass file input & choose file button */
+.liquid-glass-file-input {
+  width: 100%;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px dashed var(--icy-steel);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  color: var(--frost-navy);
+  outline: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.8);
+}
+
+.liquid-glass-file-input:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: var(--deep-frozen-midnight);
+  border-style: solid;
+}
+
+/* Custom styling for the "Choose File" button inside the file input */
+.liquid-glass-file-input::file-selector-button {
+  margin-right: 14px;
+  padding: 6px 16px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--icy-steel);
+  background: linear-gradient(135deg, rgba(23, 52, 92, 0.08) 0%, rgba(157, 183, 213, 0.25) 100%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--deep-frozen-midnight);
+  font-family: var(--font-family-base);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(7, 22, 41, 0.05);
+  transition: all 180ms ease;
+}
+
+.liquid-glass-file-input::file-selector-button:hover {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 2px 8px rgba(23, 52, 92, 0.25);
+}
+

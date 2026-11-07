@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 STARAPP SHARED VIEW COMPONENTS
 Reusable UI templates for liquid-glass containers, marksheets, timelines, and navigation.
@@ -108,98 +109,174 @@ def render_standard_marksheet(
         tab_buttons = []
         for att in all_attempts:
             is_active = att.id == marksheet.id
-            active_style = "background:var(--deep-frozen-midnight); color:var(--snow-white);" if is_active else "background:rgba(234,244,255,0.7); color:var(--frost-navy);"
+            active_style = (
+                "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:700; border:1px solid var(--deep-frozen-midnight);"
+                if is_active else
+                "background:rgba(234,244,255,0.85); color:var(--frost-navy); border:1px solid var(--icy-steel-50);"
+            )
             payload = f'{{"marksheet_id": "{att.id}"}}'
             tab_buttons.append(
-                f'<button type="button" class="btn-secondary btn-sm" style="{active_style}" onclick="window.StarAppBridge.dispatchAction(\'view_marksheet\', \'{escape(payload)}\')">Attempt {att.attempt_number} ({att.total_marks}/50)</button>'
+                f'<button type="button" class="btn-secondary btn-sm" style="{active_style} padding:6px 14px; border-radius:var(--radius-xs);" '
+                f'onclick="window.StarAppBridge.dispatchAction(\'view_marksheet\', \'{escape(payload)}\')">'
+                f'Attempt #{att.attempt_number} &bull; {att.total_marks}/50.0 ({att.decision.replace("_", " ").title()})</button>'
             )
-        attempts_tabs_html = f'<div style="display:flex; gap:8px; margin-bottom:16px;">{"".join(tab_buttons)}</div>'
+        attempts_tabs_html = f'''
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px; padding:12px 16px; background:rgba(234,244,255,0.45); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
+            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Attempt History:</span>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">{"".join(tab_buttons)}</div>
+        </div>
+        '''
 
     decision_pill = render_status_pill(marksheet.decision)
 
-    return f"""
-    <div class="marksheet-view">
-        <div class="marksheet-header">
-            <div>
-                <div style="font-size:12px; font-weight:700; color:var(--icy-steel); letter-spacing:1px; text-transform:uppercase;">
-                    Standard Evaluation Rubric — Attempt #{marksheet.attempt_number}
+    criteria = [
+        {
+            "num": 1,
+            "name": "Business Understanding",
+            "scope": "Problem formulation, regulatory compliance boundaries (GDPR, HIPAA), and business value metrics.",
+            "score": marksheet.business_understanding,
+            "max": 10.0
+        },
+        {
+            "num": 2,
+            "name": "Architecture / Report",
+            "scope": "Modularity, system design rigor, architectural diagrams, schemas, and written documentation.",
+            "score": marksheet.architecture_report,
+            "max": 10.0
+        },
+        {
+            "num": 3,
+            "name": "Technical Knowledge",
+            "scope": "Code robustness, algorithm optimization, edge-case coverage, and execution efficiency.",
+            "score": marksheet.technical_knowledge,
+            "max": 10.0
+        },
+        {
+            "num": 4,
+            "name": "Presentation",
+            "scope": "Narrative coherence, clarity of demonstration, structured delivery, and verification packaging.",
+            "score": marksheet.presentation,
+            "max": 10.0
+        },
+        {
+            "num": 5,
+            "name": "Question & Answering",
+            "scope": "Defense of engineering trade-offs, conceptual agility, and domain comprehension under review.",
+            "score": marksheet.qa,
+            "max": 10.0
+        }
+    ]
+
+    criteria_rows = []
+    for c in criteria:
+        pct = min(100, max(0, int((c["score"] / c["max"]) * 100)))
+        criteria_rows.append(f"""
+        <tr style="transition:background 150ms ease;">
+            <td style="padding:14px 18px; border-bottom:1px solid var(--frost-mist);">
+                <div style="font-weight:700; color:var(--frost-navy); font-size:13.5px; margin-bottom:2px;">
+                    {c['num']}. {c['name']}
                 </div>
-                <h2 style="font-size:1.4rem; font-weight:800; margin-top:2px; color:var(--snow-white);">{escape(badge_code)}: {escape(badge_title)}</h2>
-                <div style="font-size:12px; color:var(--icy-steel); margin-top:4px;">
-                    Evaluated by <strong>{escape(marksheet.reviewer_name)}</strong> on {escape(marksheet.reviewed_at[:10])}
+                <div style="font-size:12px; color:var(--frost-navy-50); line-height:1.4;">
+                    {c['scope']}
+                </div>
+            </td>
+            <td style="padding:14px 18px; border-bottom:1px solid var(--frost-mist); width:180px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="flex:1; height:7px; border-radius:999px; background:rgba(157,183,213,0.3); overflow:hidden;">
+                        <div style="width:{pct}%; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
+                    </div>
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{pct}%</span>
+                </div>
+            </td>
+            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:13px; color:var(--frost-navy-50); border-bottom:1px solid var(--frost-mist);">
+                {c['max']:.1f}
+            </td>
+            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:14px; font-weight:800; color:var(--deep-frozen-midnight); border-bottom:1px solid var(--frost-mist);">
+                {c['score']:.1f}
+            </td>
+        </tr>
+        """)
+
+    return f"""
+    <div class="marksheet-view" style="border:1.5px solid var(--icy-steel); border-radius:var(--radius-lg); overflow:hidden; background:var(--snow-white); box-shadow:0 12px 36px rgba(7, 22, 41, 0.08);">
+        <!-- Executive Header -->
+        <div class="marksheet-header" style="background:linear-gradient(135deg, #071629 0%, #17345C 100%); color:var(--snow-white); padding:24px 32px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--icy-steel-50);">
+            <div>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--snow-white); background:rgba(157,183,213,0.22); padding:3px 10px; border-radius:var(--radius-xs); border:1px solid rgba(157,183,213,0.35);">{escape(badge_code)}</span>
+                    <span style="font-size:12px; font-weight:700; color:var(--icy-steel); letter-spacing:0.8px; text-transform:uppercase;">Official Evaluation Marksheet &bull; Attempt #{marksheet.attempt_number}</span>
+                </div>
+                <h2 style="font-size:1.6rem; font-weight:800; margin:0 0 6px 0; color:var(--snow-white); letter-spacing:-0.3px;">{escape(badge_title)}</h2>
+                <div style="font-size:12.5px; color:rgba(234,244,255,0.8); display:flex; align-items:center; gap:8px;">
+                    <span>Evaluated by: <strong>{escape(marksheet.reviewer_name)}</strong> (Guardian)</span>
+                    <span>&bull;</span>
+                    <span>Evaluation Date: <strong>{escape(marksheet.reviewed_at[:10])}</strong></span>
                 </div>
             </div>
-            <div class="marksheet-score-badge">
-                <div class="marksheet-score-num">{marksheet.total_marks} <span style="font-size:1rem; opacity:0.7;">/ 50</span></div>
-                <div class="marksheet-percent">{marksheet.percentage}% Standard Score</div>
-                <div style="margin-top:6px;">{decision_pill}</div>
+            <div class="marksheet-score-badge" style="text-align:right;">
+                <div class="marksheet-score-num" style="font-size:2.2rem; font-weight:800; line-height:1; color:var(--snow-white); font-family:var(--font-family-mono);">
+                    {marksheet.total_marks} <span style="font-size:1.1rem; color:var(--icy-steel); font-weight:600;">/ 50.0</span>
+                </div>
+                <div class="marksheet-percent" style="font-size:12.5px; color:var(--icy-steel); font-weight:700; margin-top:4px;">
+                    {marksheet.percentage}% Standard Score
+                </div>
+                <div style="margin-top:8px;">{decision_pill}</div>
             </div>
         </div>
 
-        <div class="marksheet-body">
+        <!-- Marksheet Body -->
+        <div class="marksheet-body" style="padding:28px 32px;">
             {attempts_tabs_html}
 
-            <table class="marksheet-rubric-table">
+            <!-- 5-Criterion Rubric Table -->
+            <table class="marksheet-rubric-table" style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); overflow:hidden;">
                 <thead>
-                    <tr>
-                        <th style="width:45%;">Assessment Criterion</th>
-                        <th style="width:35%;">Evaluation Scope</th>
-                        <th style="width:10%; text-align:center;">Max</th>
-                        <th style="width:10%; text-align:center;">Score</th>
+                    <tr style="background:var(--frost-mist); text-align:left;">
+                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Assessment Criterion & Scope</th>
+                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Mastery Index</th>
+                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Max</th>
+                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Score</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td><strong>1. Business Understanding</strong></td>
-                        <td style="font-size:12px; color:var(--frost-navy-50);">Problem formulation, compliance boundaries, and business impact</td>
-                        <td style="text-align:center;">10.0</td>
-                        <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{marksheet.business_understanding}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>2. Architecture / Report</strong></td>
-                        <td style="font-size:12px; color:var(--frost-navy-50);">Modularity, system design rigor, diagrams, and written documentation</td>
-                        <td style="text-align:center;">10.0</td>
-                        <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{marksheet.architecture_report}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>3. Technical Knowledge</strong></td>
-                        <td style="font-size:12px; color:var(--frost-navy-50);">Code robustness, algorithm optimization, edge-case handling</td>
-                        <td style="text-align:center;">10.0</td>
-                        <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{marksheet.technical_knowledge}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>4. Presentation</strong></td>
-                        <td style="font-size:12px; color:var(--frost-navy-50);">Narrative coherence, clarity of demonstration, structured delivery</td>
-                        <td style="text-align:center;">10.0</td>
-                        <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{marksheet.presentation}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>5. Question & Answering</strong></td>
-                        <td style="font-size:12px; color:var(--frost-navy-50);">Defense of engineering trade-offs and domain comprehension</td>
-                        <td style="text-align:center;">10.0</td>
-                        <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{marksheet.qa}</td>
-                    </tr>
-                    <tr style="background:var(--frost-mist); font-weight:800;">
-                        <td colspan="2" style="text-align:right; text-transform:uppercase; letter-spacing:0.5px;">Universal Assessment Total:</td>
-                        <td style="text-align:center;">50.0</td>
-                        <td style="text-align:center; font-size:1.15rem; color:var(--deep-frozen-midnight);">{marksheet.total_marks}</td>
+                    {"".join(criteria_rows)}
+                    <tr style="background:rgba(234,244,255,0.7); font-weight:800;">
+                        <td colspan="2" style="padding:14px 18px; text-align:right; text-transform:uppercase; font-size:12.5px; letter-spacing:0.6px; color:var(--deep-frozen-midnight);">
+                            Universal 5-Criterion Evaluation Total:
+                        </td>
+                        <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:13px; color:var(--frost-navy);">
+                            50.0
+                        </td>
+                        <td style="padding:14px 18px; text-align:center; font-size:1.2rem; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); font-weight:900;">
+                            {marksheet.total_marks:.1f}
+                        </td>
                     </tr>
                 </tbody>
             </table>
 
-            <div class="marksheet-feedback-section">
-                <div class="feedback-card">
-                    <div class="feedback-card-title">Identified Strengths</div>
-                    <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy);">{escape(marksheet.strength_areas or "No specific strengths highlighted.")}</p>
+            <!-- Two-Column Structured Feedback -->
+            <div class="marksheet-feedback-section" style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:22px;">
+                <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
+                    <div class="feedback-card-title" style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                        <span>&#10003;</span> Identified Strengths & Distinctions
+                    </div>
+                    <p style="font-size:13.5px; line-height:1.6; color:var(--frost-navy); margin:0;">
+                        {escape(marksheet.strength_areas or "No specific strengths highlighted.")}
+                    </p>
                 </div>
-                <div class="feedback-card">
-                    <div class="feedback-card-title">Areas for Improvement</div>
-                    <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy);">{escape(marksheet.improvement_areas or "No critical weaknesses noted.")}</p>
+                <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
+                    <div class="feedback-card-title" style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                        <span>&#9873;</span> Areas for Technical Growth & Optimization
+                    </div>
+                    <p style="font-size:13.5px; line-height:1.6; color:var(--frost-navy); margin:0;">
+                        {escape(marksheet.improvement_areas or "No critical weaknesses noted.")}
+                    </p>
                 </div>
             </div>
 
-            <div style="background:rgba(23,52,92,0.04); border-left:4px solid var(--deep-frozen-midnight); padding:16px; border-radius:var(--radius-sm);">
-                <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">
+            <!-- Guardian Synthesis & Recommendation -->
+            <div style="background:linear-gradient(135deg, rgba(234,244,255,0.7) 0%, rgba(255,255,255,0.95) 100%); border-left:4.5px solid var(--deep-frozen-midnight); padding:18px 22px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); border-left-width:4.5px; box-shadow:0 2px 8px rgba(7,22,41,0.03);">
+                <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:6px;">
                     Guardian Synthesis & Recommendation
                 </div>
                 <p style="font-size:14px; color:var(--frost-navy); line-height:1.6; margin:0;">
@@ -242,7 +319,7 @@ def render_9point_timeline(timeline: BadgeTimeline, badge: Optional[Badge] = Non
     return f"""
     <div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-            <h4 style="font-size:1.1rem; font-weight:700; color:var(--frost-navy); margin:0;">{escape(badge_title)} — Lifecycle Timeline</h4>
+            <h4 style="font-size:1.1rem; font-weight:700; color:var(--frost-navy); margin:0;">{escape(badge_title)} &mdash; Lifecycle Timeline</h4>
             {render_status_pill(timeline.status)}
         </div>
         <div class="timeline-flow">

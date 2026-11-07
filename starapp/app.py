@@ -56,6 +56,7 @@ class StarAppController:
         self.selected_guardian_cosmo_id: str = "all"
         self.guardian_review_filter: str = "all"
         self.cosmonaut_submission_badge_id: str = "badge_cur_102"
+        self.cosmonaut_results_badge_id: str = "badge_gov_101"
         self.active_modal: Optional[str] = None
         self.modal_payload: Dict[str, Any] = {}
         self.flash_message: Optional[str] = None
@@ -304,6 +305,10 @@ class StarAppController:
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
             self.cosmonaut_submission_badge_id = badge_id
 
+        elif action == "change_results_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
+            self.cosmonaut_results_badge_id = badge_id
+
         elif action == "toggle_submission_method_fields":
             method = payload if isinstance(payload, str) else payload.get("method")
             if IS_BROWSER:
@@ -453,8 +458,8 @@ class StarAppController:
         if not IS_BROWSER or not self.current_user:
             return
         try:
-            badge_id = str(js.document.getElementById("submission-badge-id").value)
-            sub_type = str(js.document.getElementById("submission-type").value)
+            badge_el = js.document.getElementById("submission-badge-id")
+            badge_id = str(badge_el.value) if badge_el else self.cosmonaut_submission_badge_id
             badge = store.get_badge(badge_id)
             if not badge:
                 self.set_flash("Invalid badge selection.", "error")
@@ -472,24 +477,44 @@ class StarAppController:
             existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, badge_id)
             attempt_num = len(existing_subs) + 1
 
+            # Read the 3 separate fields
+            pdf_inp = js.document.getElementById("submission-pdf-file")
+            code_inp = js.document.getElementById("submission-code-file")
+            gh_inp = js.document.getElementById("submission-github-url")
+
+            has_pdf = (pdf_inp and hasattr(pdf_inp, "files") and pdf_inp.files and pdf_inp.files.length > 0)
+            has_code = (code_inp and hasattr(code_inp, "files") and code_inp.files and code_inp.files.length > 0)
+            gh_url = str(gh_inp.value).strip() if (gh_inp and gh_inp.value) else ""
+            has_gh = bool(gh_url)
+
+            # Check legacy submission-file-input if neither of the new file inputs are present
+            legacy_file = js.document.getElementById("submission-file-input")
+            if not has_pdf and not has_code and legacy_file and hasattr(legacy_file, "files") and legacy_file.files and legacy_file.files.length > 0:
+                has_pdf = True
+                pdf_inp = legacy_file
+
+            if not has_pdf and not has_code and not has_gh:
+                self.set_flash("Please provide at least one deliverable: PDF document, Code file, or GitHub repository URL.", "error")
+                return
+
             payload_data = ""
             file_name = ""
+            sub_type = "pdf"
 
-            if sub_type == "github":
-                gh_inp = js.document.getElementById("submission-github-url")
-                payload_data = str(gh_inp.value).strip() if gh_inp else ""
-                file_name = payload_data.split("/")[-1] if "/" in payload_data else "github-repo"
-            else:
-                # File upload via bridge
-                file_inp = js.document.getElementById("submission-file-input")
-                if file_inp and file_inp.files and file_inp.files.length > 0:
-                    f = file_inp.files[0]
-                    file_name = f.name
-                    # Read file synchronously / base64
-                    payload_data = f"data:{f.type};base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag=="
-                else:
-                    self.set_flash("Please choose a file to upload.", "error")
-                    return
+            if has_pdf:
+                sub_type = "pdf"
+                f = pdf_inp.files[0]
+                file_name = f.name
+                payload_data = f"data:{getattr(f, 'type', 'application/pdf') or 'application/pdf'};base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag=="
+            elif has_code:
+                sub_type = "code"
+                f = code_inp.files[0]
+                file_name = f.name
+                payload_data = f"data:{getattr(f, 'type', 'text/plain') or 'text/plain'};base64,IyBTb3VyY2UgQ29kZSBGaWxl"
+            elif has_gh:
+                sub_type = "github"
+                payload_data = gh_url
+                file_name = gh_url.split("/")[-1] if "/" in gh_url else "github-repo"
 
             valid, err = validate_submission_input(badge_id, self.current_user.id, sub_type, payload_data)
             if not valid:
@@ -1330,7 +1355,12 @@ class StarAppController:
 
             elif self.current_view == "c_results":
                 page_title = "Official Evaluation Marksheets (50-Mark Rubric)"
-                main_content_html = render_cosmonaut_results(user_asms, badges_map)
+                main_content_html = render_cosmonaut_results(
+                    assessments=user_asms,
+                    badges_map=badges_map,
+                    selected_badge_id=self.cosmonaut_results_badge_id,
+                    available_badges=assigned_badges
+                )
 
             elif self.current_view == "c_materials":
                 page_title = "Course Documents & Video Lectures"
@@ -1355,7 +1385,6 @@ class StarAppController:
                 user_acts = store.get_activities(self.current_user.id)
                 main_content_html = render_cosmonaut_activity_stream(user_acts)
 
-        topbar_html = render_topbar(self.current_user, page_title, unread_notifs)
         modal_html = self.render_active_modal()
 
         flash_html = ""
@@ -1372,7 +1401,6 @@ class StarAppController:
         full_html = f"""
         {sidebar_html}
         <div class="app-main">
-            {topbar_html}
             <main class="page-container">
                 {flash_html}
                 {main_content_html}

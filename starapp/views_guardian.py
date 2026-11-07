@@ -63,12 +63,15 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
         </ul>
 
         <div class="sidebar-footer">
-            <div class="user-mini-card">
-                <div class="user-avatar">{escape(current_user.avatar)}</div>
-                <div class="user-details">
-                    <div class="user-name">{escape(current_user.name)}</div>
-                    <div class="user-role-text">Batch Orion-24 Lead</div>
+            <div class="user-mini-card" style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div class="user-avatar">{escape(current_user.avatar)}</div>
+                    <div class="user-details">
+                        <div class="user-name">{escape(current_user.name)}</div>
+                        <div class="user-role-text">Batch Orion-24 Lead</div>
+                    </div>
                 </div>
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Sign Out" style="padding:4px 8px; font-size:11px; font-weight:700;">Sign Out</button>
             </div>
         </div>
     </aside>
