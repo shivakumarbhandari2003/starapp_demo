@@ -1,0 +1,408 @@
+/* ==========================================================================
+   STARAPP LAYOUT & WORKSPACE STYLING
+   Sidebar, Navigation, Top Bar, Modal Overlays
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  color: var(--frost-navy);
+  background-color: var(--frost-mist);
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(157, 183, 213, 0.22) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(23, 52, 92, 0.10) 0%, transparent 45%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* App container */
+#app-root {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ==========================================================================
+   SIDEBAR NAVIGATION (Frost Navy theme)
+   ========================================================================== */
+
+.app-sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: var(--frost-navy);
+  color: var(--snow-white);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--midnight-50);
+  box-shadow: 4px 0 24px rgba(7, 22, 41, 0.35);
+  z-index: 100;
+  position: relative;
+  transition: width var(--transition-normal);
+}
+
+.sidebar-header {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid rgba(157, 183, 213, 0.15);
+  gap: var(--space-3);
+}
+
+.brand-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--icy-steel) 0%, var(--deep-frozen-midnight) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px rgba(157, 183, 213, 0.4);
+}
+
+.brand-badge svg {
+  width: 20px;
+  height: 20px;
+  fill: var(--snow-white);
+}
+
+.brand-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.5px;
+  color: var(--snow-white);
+  line-height: 1.1;
+}
+
+.brand-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--icy-steel);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Role pill in sidebar */
+.role-badge-pill {
+  margin: var(--space-4) var(--space-6) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(157, 183, 213, 0.12);
+  border: 1px solid rgba(157, 183, 213, 0.25);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.role-badge-label {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--icy-steel);
+  font-weight: var(--font-weight-bold);
+}
+
+.role-badge-val {
+  font-size: var(--font-size-xs);
+  color: var(--snow-white);
+  font-weight: var(--font-weight-semibold);
+  background: var(--deep-frozen-midnight);
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+
+/* Nav links list */
+.sidebar-nav {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  list-style: none;
+  overflow-y: auto;
+}
+
+.nav-item {
+  margin-bottom: var(--space-1);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 14px;
+  color: var(--icy-steel);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  position: relative;
+}
+
+.nav-link svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.nav-link:hover {
+  color: var(--snow-white);
+  background: rgba(157, 183, 213, 0.1);
+  transform: translateX(2px);
+}
+
+.nav-link.active {
+  color: var(--snow-white);
+  background: linear-gradient(90deg, rgba(23, 52, 92, 0.8) 0%, rgba(23, 52, 92, 0.4) 100%);
+  border-left: 3px solid var(--icy-steel);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: inset 0 0 12px rgba(157, 183, 213, 0.1);
+}
+
+.nav-badge {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border: 1px solid var(--icy-steel-50);
+}
+
+/* Sidebar footer */
+.sidebar-footer {
+  padding: var(--space-4);
+  border-top: 1px solid rgba(157, 183, 213, 0.15);
+  background: rgba(7, 22, 41, 0.5);
+}
+
+.user-mini-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--snow-white);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-sm);
+  border: 1.5px solid var(--icy-steel-50);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.user-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--snow-white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role-text {
+  font-size: var(--font-size-xs);
+  color: var(--icy-steel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   MAIN CONTENT VIEWPORT & TOPBAR
+   ========================================================================== */
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.app-topbar {
+  height: 72px;
+  padding: 0 var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--icy-steel-30);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.03);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.topbar-page-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--frost-navy);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Notification bell badge */
+.notif-btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid var(--icy-steel-50);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--deep-frozen-midnight);
+  transition: all var(--transition-fast);
+}
+
+.notif-btn:hover {
+  background: var(--frost-mist);
+  border-color: var(--deep-frozen-midnight);
+}
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--snow-white);
+}
+
+/* Page content wrapper */
+.page-container {
+  padding: var(--space-8);
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+  animation: fadeIn 200ms ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   MODAL OVERLAY & POPUP CONTAINER
+   ========================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 22, 41, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  animation: modalFadeIn 200ms ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-dialog {
+  max-width: 780px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--icy-steel-30);
+}
+
+.modal-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--frost-navy);
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--frost-navy-50);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.modal-close-btn:hover {
+  color: var(--frost-navy);
+}
+
+.modal-body {
+  padding: var(--space-6);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--icy-steel-30);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  background: rgba(234, 244, 255, 0.4);
+}
+

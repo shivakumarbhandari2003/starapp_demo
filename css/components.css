@@ -1,0 +1,720 @@
+/* ==========================================================================
+   STARAPP ENTERPRISE UI COMPONENTS
+   KPI Cards, Tables, Forms, 50-Mark Rubric, Candy Crush Roadmap, Timelines
+   ========================================================================== */
+
+/* ==========================================================================
+   1. KPI STATS CARDS
+   ========================================================================== */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.kpi-card {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.kpi-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--deep-frozen-midnight);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-icon-bubble {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgba(23, 52, 92, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--deep-frozen-midnight);
+}
+
+.kpi-icon-bubble svg {
+  width: 18px;
+  height: 18px;
+}
+
+.kpi-value {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--frost-navy);
+  line-height: 1.1;
+  margin-bottom: var(--space-1);
+}
+
+.kpi-subtext {
+  font-size: var(--font-size-xs);
+  color: var(--frost-navy-50);
+}
+
+/* ==========================================================================
+   2. DATA TABLES
+   ========================================================================== */
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--icy-steel-30);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.star-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--font-size-sm);
+}
+
+.star-table th {
+  background: rgba(234, 244, 255, 0.8);
+  color: var(--frost-navy);
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--icy-steel-50);
+  white-space: nowrap;
+}
+
+.star-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--icy-steel-15);
+  color: var(--frost-navy);
+  vertical-align: middle;
+}
+
+.star-table tbody tr:hover {
+  background: rgba(234, 244, 255, 0.45);
+}
+
+.star-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================================
+   3. STATUS PILLS & BADGES (Derived from the 5 approved colours)
+   ========================================================================== */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.status-approved,
+.status-completed {
+  background: rgba(23, 52, 92, 0.12);
+  color: var(--deep-frozen-midnight);
+  border: 1px solid rgba(23, 52, 92, 0.3);
+}
+
+.status-active,
+.status-in-progress {
+  background: rgba(7, 22, 41, 0.08);
+  color: var(--frost-navy);
+  border: 1px solid var(--icy-steel);
+}
+
+.status-pending,
+.status-awaiting-review {
+  background: rgba(157, 183, 213, 0.25);
+  color: var(--frost-navy);
+  border: 1px solid var(--icy-steel-80);
+}
+
+.status-resubmit,
+.status-rejected {
+  background: rgba(7, 22, 41, 0.15);
+  color: var(--frost-navy);
+  border: 1px solid var(--frost-navy-50);
+}
+
+.status-locked {
+  background: rgba(157, 183, 213, 0.15);
+  color: var(--frost-navy-50);
+  border: 1px solid var(--icy-steel-30);
+}
+
+/* ==========================================================================
+   4. FORM CONTROLS & RUBRIC INPUTS
+   ========================================================================== */
+
+.form-group {
+  margin-bottom: var(--space-4);
+}
+
+.form-label {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--frost-navy);
+  margin-bottom: var(--space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-control,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--icy-steel-50);
+  background: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-sm);
+  color: var(--frost-navy);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 0 0 3px rgba(23, 52, 92, 0.15);
+  background: var(--snow-white);
+}
+
+.form-textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* 50-Marks Rubric Input Grid */
+.rubric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: rgba(234, 244, 255, 0.6);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--icy-steel-30);
+}
+
+.rubric-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.rubric-item-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--frost-navy);
+  margin-bottom: var(--space-1);
+}
+
+.rubric-item-max {
+  font-size: 11px;
+  color: var(--frost-navy-50);
+}
+
+.rubric-input {
+  width: 100%;
+  padding: 8px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--deep-frozen-midnight);
+  text-align: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--icy-steel-50);
+  background: var(--snow-white);
+}
+
+.rubric-total-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  box-shadow: 0 4px 12px rgba(7, 22, 41, 0.15);
+}
+
+.rubric-total-val {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   5. CANDY CRUSH-INSPIRED GAMIFIED LEARNING ROADMAP
+   ========================================================================== */
+
+.roadmap-container {
+  position: relative;
+  padding: var(--space-8) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 700px;
+}
+
+.roadmap-path-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.roadmap-nodes-container {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.roadmap-row {
+  display: flex;
+  width: 100%;
+  position: relative;
+}
+
+.roadmap-row.pos-left { justify-content: flex-start; padding-left: 10%; }
+.roadmap-row.pos-center { justify-content: center; }
+.roadmap-row.pos-right { justify-content: flex-end; padding-right: 10%; }
+
+.roadmap-milestone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  cursor: pointer;
+  transition: transform var(--transition-normal);
+}
+
+.roadmap-milestone:hover {
+  transform: scale(1.05);
+}
+
+.milestone-stone {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 6px 16px rgba(7, 22, 41, 0.15);
+  transition: all var(--transition-normal);
+  border: 3px solid transparent;
+}
+
+/* Completed Milestone */
+.milestone-stone.completed {
+  background: linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%);
+  border-color: var(--icy-steel);
+  color: var(--snow-white);
+  box-shadow: 0 0 20px rgba(23, 52, 92, 0.4);
+}
+
+/* Active Milestone with Candy Crush Pulsing Halo */
+.milestone-stone.active {
+  background: linear-gradient(135deg, var(--frost-mist) 0%, var(--snow-white) 100%);
+  border-color: var(--deep-frozen-midnight);
+  color: var(--deep-frozen-midnight);
+  animation: pulseHalo 2s infinite;
+}
+
+@keyframes pulseHalo {
+  0% { box-shadow: 0 0 0 0 rgba(23, 52, 92, 0.4); }
+  70% { box-shadow: 0 0 0 16px rgba(23, 52, 92, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(23, 52, 92, 0); }
+}
+
+/* Locked Milestone */
+.milestone-stone.locked {
+  background: rgba(157, 183, 213, 0.3);
+  border-color: var(--icy-steel-50);
+  color: var(--frost-navy-50);
+  filter: grayscale(0.8);
+}
+
+.milestone-card-preview {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  min-width: 180px;
+  max-width: 240px;
+}
+
+.milestone-code {
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  color: var(--deep-frozen-midnight);
+  text-transform: uppercase;
+}
+
+.milestone-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--frost-navy);
+}
+
+/* ==========================================================================
+   6. BADGE 9-POINT TIMELINE COMPONENT
+   ========================================================================== */
+
+.timeline-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+  padding-left: var(--space-8);
+}
+
+.timeline-flow::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 11px;
+  width: 2px;
+  background: var(--icy-steel-50);
+}
+
+.timeline-node {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--icy-steel-30);
+}
+
+.timeline-node::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: -27px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--icy-steel);
+  border: 2px solid var(--snow-white);
+  box-shadow: 0 0 0 2px var(--deep-frozen-midnight);
+}
+
+.timeline-node.completed::before {
+  background: var(--deep-frozen-midnight);
+}
+
+.timeline-node.active::before {
+  background: var(--snow-white);
+  box-shadow: 0 0 0 3px var(--deep-frozen-midnight);
+}
+
+.timeline-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--frost-navy);
+}
+
+.timeline-date {
+  font-size: var(--font-size-xs);
+  color: var(--frost-navy-50);
+  font-family: var(--font-family-mono);
+}
+
+/* ==========================================================================
+   7. STANDARD 50-MARK MARKSHEET DISPLAY
+   ========================================================================== */
+
+.marksheet-view {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--icy-steel-50);
+  background: var(--snow-white);
+  box-shadow: 0 6px 20px rgba(7, 22, 41, 0.08);
+}
+
+.marksheet-header {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.marksheet-score-badge {
+  text-align: right;
+}
+
+.marksheet-score-num {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
+
+.marksheet-percent {
+  font-size: var(--font-size-sm);
+  color: var(--icy-steel);
+}
+
+.marksheet-body {
+  padding: var(--space-6);
+}
+
+.marksheet-rubric-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--space-5);
+}
+
+.marksheet-rubric-table th,
+.marksheet-rubric-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--frost-mist);
+  font-size: var(--font-size-sm);
+}
+
+.marksheet-rubric-table th {
+  background: var(--frost-mist);
+  color: var(--frost-navy);
+  font-weight: var(--font-weight-semibold);
+}
+
+.marksheet-feedback-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.feedback-card {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgba(234, 244, 255, 0.4);
+  border: 1px solid var(--icy-steel-30);
+}
+
+.feedback-card-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  color: var(--deep-frozen-midnight);
+  margin-bottom: var(--space-2);
+}
+
+/* ==========================================================================
+   8. EMBEDDED MEDIA & MATERIAL VIEWER
+   ========================================================================== */
+
+.media-embed-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+  height: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--frost-navy);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--icy-steel-30);
+}
+
+.media-embed-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.pdf-preview-box {
+  width: 100%;
+  height: 480px;
+  border: 1px solid var(--icy-steel-50);
+  border-radius: var(--radius-md);
+  background: var(--snow-white);
+}
+
+/* ==========================================================================
+   9. ANNOUNCEMENTS & NOTIFICATION ITEMS
+   ========================================================================== */
+
+.announcement-card {
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+  border-left: 4px solid var(--deep-frozen-midnight);
+}
+
+.announcement-card.unread {
+  background: rgba(234, 244, 255, 0.85);
+  border-left: 4px solid var(--frost-navy);
+}
+
+.announcement-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--frost-navy-50);
+  margin-bottom: var(--space-2);
+}
+
+/* ==========================================================================
+   10. PROFESSIONAL BADGE TIMELINE WINDOW
+   ========================================================================== */
+
+.badge-timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+  margin: var(--space-4) 0;
+  padding-left: 28px;
+}
+
+.badge-timeline-container::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 11px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--deep-frozen-midnight) 0%, var(--icy-steel-50) 100%);
+}
+
+.timeline-step-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--icy-steel-30);
+  transition: all var(--transition-fast);
+}
+
+.timeline-step-card:hover {
+  background: var(--snow-white);
+  box-shadow: 0 4px 12px rgba(7, 22, 41, 0.06);
+}
+
+.timeline-step-card::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: -23px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--snow-white);
+  border: 2px solid var(--icy-steel);
+  box-shadow: 0 0 0 2px var(--deep-frozen-midnight);
+}
+
+.timeline-step-card.completed {
+  border-left: 3px solid var(--deep-frozen-midnight);
+  background: rgba(234, 244, 255, 0.6);
+}
+
+.timeline-step-card.completed::before {
+  background: var(--deep-frozen-midnight);
+  border-color: var(--snow-white);
+  box-shadow: 0 0 0 2px var(--deep-frozen-midnight);
+}
+
+.timeline-step-card.active {
+  border-left: 3px solid var(--deep-frozen-midnight);
+  background: var(--snow-white);
+  box-shadow: 0 0 0 1px var(--deep-frozen-midnight), 0 4px 14px rgba(23, 52, 92, 0.12);
+}
+
+.timeline-step-card.active::before {
+  background: var(--deep-frozen-midnight);
+  box-shadow: 0 0 0 3px rgba(23, 52, 92, 0.35);
+  animation: pulse-ring 2s infinite;
+}
+
+.timeline-step-card.locked {
+  opacity: 0.7;
+  border-style: dashed;
+  background: rgba(234, 244, 255, 0.3);
+}
+
+.timeline-step-card.locked::before {
+  background: var(--icy-steel-50);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.timeline-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.timeline-step-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--frost-navy);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.timeline-step-date {
+  font-size: 11.5px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  color: var(--deep-frozen-midnight);
+  background: rgba(23, 52, 92, 0.08);
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--icy-steel-30);
+  white-space: nowrap;
+}
+
+.timeline-step-desc {
+  font-size: 12px;
+  color: var(--frost-navy-50);
+  line-height: 1.4;
+}
+
+

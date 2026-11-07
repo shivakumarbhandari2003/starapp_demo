@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StarApp — Autonomous Training & Badge Management Platform</title>
+
+  <!-- StarApp Design System & Liquid-Glass Styling -->
+  <link rel="stylesheet" href="css/design_tokens.css">
+  <link rel="stylesheet" href="css/liquid_glass.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/responsive.css">
+
+  <!-- Pyodide WebAssembly Python Runtime -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+
+  <!-- StarApp Bridges & Python Module Bundle -->
+  <script src="js/bridge.js"></script>
+  <script src="js/starapp_bundle.js"></script>
+</head>
+<body>
+
+  <!-- ========================================================================
+       SVG DEFINITION: LIQUID-GLASS DISPLACEMENT FILTER (from code.txt)
+       ======================================================================== -->
+  <svg class="glass-svg-defs" aria-hidden="true">
+    <defs>
+      <filter
+        id="container-glass"
+        x="0%"
+        y="0%"
+        width="100%"
+        height="100%"
+        color-interpolation-filters="sRGB"
+      >
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.05 0.05"
+          numOctaves="1"
+          seed="1"
+          result="turbulence"
+        />
+        <feGaussianBlur in="turbulence" stdDeviation="2" result="blurredNoise" />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="blurredNoise"
+          scale="70"
+          xChannelSelector="R"
+          yChannelSelector="B"
+          result="displaced"
+        />
+        <feGaussianBlur in="displaced" stdDeviation="4" result="finalBlur" />
+        <feComposite in="finalBlur" in2="finalBlur" operator="over" />
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- ========================================================================
+       ROOT APPLICATION MOUNT POINT
+       ======================================================================== -->
+  <div id="app-root">
+    <!-- Frosted Liquid Glass Loading State during Pyodide initialization -->
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; width: 100%; padding: 24px;">
+      <div class="liquid-glass-card" style="max-width: 480px; width: 100%; padding: 32px; text-align: center;">
+        <div class="brand-badge" style="width: 56px; height: 56px; margin: 0 auto 16px;">
+          <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; fill: var(--snow-white);"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--frost-navy); margin-bottom: 8px;">StarApp Academy</h2>
+        <p style="font-size: 13.5px; color: var(--frost-navy-50); margin-bottom: 24px;" id="loading-status-text">
+          Loading client-side Python Pyodide runtime...
+        </p>
+        <div style="height: 6px; border-radius: var(--radius-full); background: rgba(157, 183, 213, 0.3); overflow: hidden;">
+          <div id="loading-progress-bar" style="height: 100%; width: 35%; border-radius: var(--radius-full); background: linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%); transition: width 300ms ease;"></div>
+        </div>
+        <div style="font-size: 11px; color: var(--frost-navy-50); margin-top: 14px;">
+          Zero backend required • Browser-local execution & persistence
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PYODIDE BOOTSTRAPPER & PYTHON CONTROLLER INITIALIZATION
+       ======================================================================== -->
+  <script>
+    async function initializeStarApp() {
+      const statusText = document.getElementById("loading-status-text");
+      const progressBar = document.getElementById("loading-progress-bar");
+
+      try {
+        if (progressBar) progressBar.style.width = "40%";
+        if (statusText) statusText.innerText = "Initializing WebAssembly Python VM...";
+
+        // 1. Initialize Pyodide WebAssembly client-side runtime
+        const pyodide = await loadPyodide();
+
+        if (progressBar) progressBar.style.width = "70%";
+        if (statusText) statusText.innerText = "Mounting StarApp domain architecture in Pyodide virtual FS...";
+
+        // 2. Mount StarApp Python modules directly into Pyodide virtual filesystem
+        if (window.__STARAPP_PYTHON_MODULES__) {
+          try { pyodide.FS.mkdir("starapp"); } catch (e) {}
+
+          for (const [vpath, sourceCode] of Object.entries(window.__STARAPP_PYTHON_MODULES__)) {
+            pyodide.FS.writeFile(vpath, sourceCode);
+          }
+        }
+
+        if (progressBar) progressBar.style.width = "85%";
+        if (statusText) statusText.innerText = "Retrieving local state snapshot from IndexedDB...";
+
+        // 3. Retrieve persistent data and session from IndexedDB / localStorage
+        const storedDataJson = await window.StarAppBridge.getStore("data");
+        const sessionJson = await window.StarAppBridge.getStore("session");
+
+        window.__STORED_DATA_JSON__ = storedDataJson || "";
+        window.__SESSION_DATA_JSON__ = sessionJson || "";
+
+        if (progressBar) progressBar.style.width = "95%";
+        if (statusText) statusText.innerText = "Launching StarApp Controller...";
+
+        // 4. Run Python initialization code
+        await pyodide.runPythonAsync(`
+import js
+from starapp.app import controller
+
+# Bind controller to global window so the bridge can dispatch actions
+js.window.starAppController = controller
+
+# Initialize with persistent store snapshot
+stored_data = js.window.__STORED_DATA_JSON__
+session_data = js.window.__SESSION_DATA_JSON__
+controller.initialize(stored_data, session_data)
+        `);
+
+      } catch (err) {
+        console.error("[StarApp] Bootstrap Error:", err);
+        if (statusText) {
+          statusText.innerHTML = `<span style="color:red; font-weight:700;">Bootstrap failed:</span> ${err.message}<br><small>If network access is restricted in your browser, ensure Pyodide CDN is accessible or launch via <code>python -m http.server</code>.</small>`;
+        }
+      }
+    }
+
+    // Launch on DOM ready
+    window.addEventListener("DOMContentLoaded", initializeStarApp);
+  </script>
+</body>
+</html>
+

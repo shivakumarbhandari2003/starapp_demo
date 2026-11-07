@@ -1,0 +1,97 @@
+/* ==========================================================================
+   STARAPP DESIGN TOKENS
+   Strict 5-Colour Palette & Enterprise Typography System
+   ========================================================================== */
+
+:root {
+  /* --- The 5 Approved Colours --- */
+  --frost-navy: #071629;              /* Primary dark background, sidebar, high-contrast text */
+  --deep-frozen-midnight: #17345C;     /* Primary actions, active states, dark cards, headers */
+  --icy-steel: #9DB7D5;               /* Secondary accents, borders, subtle highlights, lines */
+  --frost-mist: #EAF4FF;              /* Light workspace background, soft surfaces, badge fills */
+  --snow-white: #FFFFFF;              /* Cards, modal content surfaces, light text on dark */
+
+  /* --- Alpha & Gradient Variations (Derived strictly from the 5 approved colours) --- */
+  --frost-navy-90: rgba(7, 22, 41, 0.90);
+  --frost-navy-75: rgba(7, 22, 41, 0.75);
+  --frost-navy-50: rgba(7, 22, 41, 0.50);
+  --frost-navy-20: rgba(7, 22, 41, 0.20);
+  --frost-navy-10: rgba(7, 22, 41, 0.10);
+
+  --midnight-90: rgba(23, 52, 92, 0.90);
+  --midnight-75: rgba(23, 52, 92, 0.75);
+  --midnight-50: rgba(23, 52, 92, 0.50);
+  --midnight-20: rgba(23, 52, 92, 0.20);
+  --midnight-10: rgba(23, 52, 92, 0.10);
+
+  --icy-steel-80: rgba(157, 183, 213, 0.80);
+  --icy-steel-50: rgba(157, 183, 213, 0.50);
+  --icy-steel-30: rgba(157, 183, 213, 0.30);
+  --icy-steel-15: rgba(157, 183, 213, 0.15);
+
+  --frost-mist-90: rgba(234, 244, 255, 0.90);
+  --frost-mist-70: rgba(234, 244, 255, 0.70);
+  --frost-mist-40: rgba(234, 244, 255, 0.40);
+  --frost-mist-20: rgba(234, 244, 255, 0.20);
+
+  --snow-white-90: rgba(255, 255, 255, 0.90);
+  --snow-white-75: rgba(255, 255, 255, 0.75);
+  --snow-white-50: rgba(255, 255, 255, 0.50);
+  --snow-white-25: rgba(255, 255, 255, 0.25);
+  --snow-white-10: rgba(255, 255, 255, 0.10);
+
+  /* --- Derived Restrained Status Tokens (Palette-Derived) --- */
+  --status-approved-bg: rgba(23, 52, 92, 0.12);
+  --status-approved-border: rgba(23, 52, 92, 0.35);
+  --status-approved-text: var(--deep-frozen-midnight);
+
+  --status-pending-bg: rgba(157, 183, 213, 0.22);
+  --status-pending-border: rgba(157, 183, 213, 0.6);
+  --status-pending-text: var(--frost-navy);
+
+  --status-resubmit-bg: rgba(7, 22, 41, 0.08);
+  --status-resubmit-border: var(--frost-navy-50);
+  --status-resubmit-text: var(--frost-navy);
+
+  /* --- Typography --- */
+  --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.84375rem; /* 13.5px */
+  --font-size-base: 0.9375rem;/* 15px */
+  --font-size-md: 1.0625rem;  /* 17px */
+  --font-size-lg: 1.25rem;    /* 20px */
+  --font-size-xl: 1.5rem;     /* 24px */
+  --font-size-2xl: 1.875rem;  /* 30px */
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* --- Spacing --- */
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+
+  /* --- Radii --- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* --- Transitions --- */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.1, 0.4, 0.2, 1);
+  --transition-smooth: 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+

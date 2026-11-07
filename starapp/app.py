@@ -1,0 +1,1393 @@
+"""
+STARAPP CORE APPLICATION CONTROLLER & ROUTER
+Orchestrates role-based navigation, state mutation, event dispatch, and UI rendering.
+Works seamlessly in browser Pyodide runtime and in local Python test suites.
+"""
+
+import json
+from typing import Optional, Dict, Any
+from starapp.models import (
+    User, Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet,
+    LearningMaterial, DeadlineExtension, Announcement, current_iso_timestamp
+)
+from starapp.storage import store
+from starapp.assessment import (
+    validate_rubric_scores, calculate_assessment_totals,
+    calculate_batch_aggregate_analytics, calculate_batch_leaderboard,
+    calculate_cosmonaut_score_summary
+)
+from starapp.roadmap import generate_roadmap_graph
+from starapp.validation import (
+    validate_badge_input, validate_submission_input,
+    validate_extension_request, validate_announcement_input
+)
+from starapp.views_common import (
+    render_topbar, render_liquid_card, render_metal_button, escape,
+    render_status_pill, render_standard_marksheet, render_9point_timeline
+)
+from starapp.views_guardian import (
+    render_guardian_sidebar, render_guardian_dashboard,
+    render_guardian_badge_allotment, render_guardian_review_queue,
+    render_assessment_modal_content, render_guardian_materials,
+    render_guardian_activity_feed, render_guardian_extensions,
+    render_guardian_announcements
+)
+from starapp.views_cosmonaut import (
+    render_cosmonaut_sidebar, render_cosmonaut_dashboard,
+    render_cosmonaut_profile, render_gamified_roadmap,
+    render_badge_detail_modal_content, render_cosmonaut_submission_workspace,
+    render_cosmonaut_results, render_cosmonaut_materials,
+    render_cosmonaut_extensions, render_cosmonaut_announcements,
+    render_cosmonaut_activity_stream
+)
+
+# Pyodide browser bridge detection
+try:
+    import js
+    IS_BROWSER = True
+except ImportError:
+    js = None
+    IS_BROWSER = False
+
+class StarAppController:
+    def __init__(self):
+        self.current_user: Optional[User] = None
+        self.current_view: str = "login"
+        self.selected_guardian_cosmo_id: str = "all"
+        self.guardian_review_filter: str = "all"
+        self.cosmonaut_submission_badge_id: str = "badge_cur_102"
+        self.active_modal: Optional[str] = None
+        self.modal_payload: Dict[str, Any] = {}
+        self.flash_message: Optional[str] = None
+        self.flash_type: str = "info"
+
+    # Valid view ids per role to prevent arbitrary injection
+    _GUARDIAN_VIEWS = {
+        "g_dashboard", "g_cosmonauts", "g_badge_allotment", "g_reviews",
+        "g_materials", "g_extensions", "g_announcements", "g_activity"
+    }
+    _COSMONAUT_VIEWS = {
+        "c_dashboard", "c_roadmap", "c_submission", "c_results",
+        "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity"
+    }
+
+    def initialize(self, stored_json: Optional[str] = None, session_json: Optional[str] = None):
+        """Loads data from storage and restores previous user session including the exact page."""
+        store.load_from_json(stored_json)
+
+        # Restore session — including the exact page the user was on
+        if session_json and session_json.strip():
+            try:
+                session_data = json.loads(session_json)
+                user_id = session_data.get("user_id")
+                saved_view = session_data.get("current_view", "")
+                if user_id:
+                    user = store.get_user_by_id(user_id)
+                    if user:
+                        self.current_user = user
+                        # Restore the exact page if it is valid for the user's role
+                        if user.role == "guardian" and saved_view in self._GUARDIAN_VIEWS:
+                            self.current_view = saved_view
+                        elif user.role == "cosmonaut" and saved_view in self._COSMONAUT_VIEWS:
+                            self.current_view = saved_view
+                        else:
+                            self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
+            except Exception as e:
+                print(f"[Controller] Session restore error: {e}")
+
+        self.sync_storage()
+        self.render()
+
+    def sync_storage(self):
+        """Persists current state snapshot to IndexedDB / localStorage via bridge."""
+        json_data = store.to_json()
+        session_data = json.dumps({
+            "user_id": self.current_user.id if self.current_user else None,
+            "current_view": self.current_view
+        })
+        if IS_BROWSER and hasattr(js, "window") and hasattr(js.window, "StarAppBridge"):
+            js.window.StarAppBridge.setStore("data", json_data)
+            js.window.StarAppBridge.setStore("session", session_data)
+
+    def set_flash(self, message: str, ftype: str = "info"):
+        self.flash_message = message
+        self.flash_type = ftype
+
+    # ==========================================================================
+    # ACTION & EVENT HANDLER
+    # ==========================================================================
+
+    def handle_event(self, action: str, payload_json: str = "{}"):
+        try:
+            payload = json.loads(payload_json) if isinstance(payload_json, str) and payload_json.startswith("{") else payload_json
+        except Exception:
+            payload = {}
+
+        # --- Authentication Actions ---
+        if action == "login":
+            username = str(payload.get("username", "")).strip().lower()
+            user = store.get_user_by_username(username)
+            if user:
+                self.current_user = user
+                self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
+                self.set_flash(f"Welcome back, {user.name}!", "success")
+            else:
+                self.set_flash("Invalid demo username. Please choose from the demo credentials below.", "error")
+
+        elif action == "select_demo_account":
+            user_id = payload.get("user_id") if isinstance(payload, dict) else payload
+            user = store.get_user_by_id(user_id)
+            if user:
+                self.current_user = user
+                self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
+                self.set_flash(f"Logged in as {user.name} ({user.role.title()})", "success")
+
+        elif action == "logout":
+            self.current_user = None
+            self.current_view = "login"
+            self.active_modal = None
+            self.set_flash("You have been signed out.", "info")
+
+        elif action == "reset_demo_data":
+            store.reset_to_seed()
+            self.active_modal = None
+            self.set_flash("StarApp demo data has been restored to factory default.", "success")
+
+        # --- Navigation Actions ---
+        elif action == "nav_guardian":
+            view_id = payload if isinstance(payload, str) else payload.get("view_id")
+            self.current_view = view_id
+            self.active_modal = None
+
+        elif action == "nav_cosmonaut":
+            view_id = payload if isinstance(payload, str) else payload.get("view_id")
+            self.current_view = view_id
+            self.active_modal = None
+
+        elif action == "nav_to_submit_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
+            self.cosmonaut_submission_badge_id = badge_id
+            self.current_view = "c_submission"
+            self.active_modal = None
+
+        # --- Modal Controls ---
+        elif action == "close_modal":
+            self.active_modal = None
+            self.modal_payload = {}
+
+        elif action == "toggle_notifications_modal":
+            if self.active_modal == "notifications":
+                self.active_modal = None
+            else:
+                self.active_modal = "notifications"
+
+        elif action == "open_badge_detail_modal":
+            badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
+            self.active_modal = "badge_detail"
+            self.modal_payload = {"badge_id": badge_id}
+
+        elif action == "view_marksheet":
+            marksheet_id = payload.get("marksheet_id") if isinstance(payload, dict) else payload
+            self.active_modal = "marksheet_modal"
+            self.modal_payload = {"marksheet_id": marksheet_id}
+
+        elif action == "view_material_preview":
+            material_id = payload.get("material_id") if isinstance(payload, dict) else payload
+            self.active_modal = "material_preview"
+            self.modal_payload = {"material_id": material_id}
+
+        elif action == "view_submission_artifact":
+            submission_id = payload.get("submission_id") if isinstance(payload, dict) else payload
+            self.active_modal = "submission_artifact"
+            self.modal_payload = {"submission_id": submission_id}
+
+        # --- Guardian Specific Actions ---
+        elif action == "select_guardian_cosmo_filter":
+            cosmo_id = payload if isinstance(payload, str) else payload.get("cosmo_id")
+            self.selected_guardian_cosmo_id = cosmo_id
+
+        elif action == "filter_guardian_reviews":
+            status = payload if isinstance(payload, str) else payload.get("status")
+            self.guardian_review_filter = status
+
+        elif action == "open_review_modal":
+            submission_id = payload.get("submission_id") if isinstance(payload, dict) else payload
+            self.active_modal = "review_submission"
+            self.modal_payload = {"submission_id": submission_id}
+
+        elif action == "submit_evaluation_rubric":
+            self.execute_submit_evaluation(payload)
+
+        elif action == "publish_badge":
+            badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
+            badge = store.get_badge(badge_id)
+            if badge:
+                badge.is_published = True
+                store.add_activity("badge_published", self.current_user.id, self.current_user.name, "", badge.id, f"Published {badge.code}: {badge.title} to learning roadmap")
+                self.set_flash(f"Published {badge.code} to Cosmonaut learning roadmaps.", "success")
+
+        elif action == "unpublish_badge":
+            badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
+            badge = store.get_badge(badge_id)
+            if badge:
+                badge.is_published = False
+                store.add_activity("badge_unpublished", self.current_user.id, self.current_user.name, "", badge.id, f"Unpublished {badge.code}: {badge.title}")
+                self.set_flash(f"Unpublished {badge.code} from active roadmaps.", "info")
+
+        elif action == "open_create_badge_modal":
+            self.active_modal = "create_badge"
+
+        elif action == "open_edit_badge_modal":
+            badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
+            self.active_modal = "edit_badge"
+            self.modal_payload = {"badge_id": badge_id}
+
+        elif action == "save_badge_form":
+            self.execute_save_badge(payload)
+
+        elif action == "open_add_material_modal":
+            self.active_modal = "add_material"
+
+        elif action == "save_material_form":
+            self.execute_save_material(payload)
+
+        elif action == "delete_material":
+            mat_id = payload.get("material_id") if isinstance(payload, dict) else payload
+            store.delete_material(mat_id)
+            self.set_flash("Material deleted successfully.", "info")
+
+        elif action == "open_extension_decision_modal":
+            self.active_modal = "decide_extension"
+            self.modal_payload = payload
+
+        elif action == "submit_extension_decision":
+            self.execute_extension_decision(payload)
+
+        elif action == "open_create_announcement_modal":
+            self.active_modal = "create_announcement"
+
+        elif action == "broadcast_announcement":
+            self.execute_broadcast_announcement(payload)
+
+        # --- Cosmonaut Specific Actions ---
+        elif action == "add_skill":
+            skill = payload if isinstance(payload, str) else payload.get("skill")
+            if skill and self.current_user:
+                profile = store.get_cosmonaut_profile(self.current_user.id)
+                if skill not in profile.skills:
+                    profile.skills.append(skill)
+                    self.set_flash(f"Added skill '{skill}' to profile.", "success")
+
+        elif action == "remove_skill":
+            skill = payload if isinstance(payload, str) else payload.get("skill")
+            if skill and self.current_user:
+                profile = store.get_cosmonaut_profile(self.current_user.id)
+                if skill in profile.skills:
+                    profile.skills.remove(skill)
+                    self.set_flash(f"Removed skill '{skill}'.", "info")
+
+        elif action == "add_certification":
+            if isinstance(payload, dict) and self.current_user:
+                profile = store.get_cosmonaut_profile(self.current_user.id)
+                profile.certifications.append(payload)
+                self.set_flash(f"Added certification '{payload.get('name')}' to profile.", "success")
+
+        elif action == "remove_certification":
+            idx = int(payload if isinstance(payload, (int, str)) else payload.get("index", 0))
+            if self.current_user:
+                profile = store.get_cosmonaut_profile(self.current_user.id)
+                if 0 <= idx < len(profile.certifications):
+                    del profile.certifications[idx]
+                    self.set_flash("Removed certification.", "info")
+
+        elif action == "change_submission_target_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
+            self.cosmonaut_submission_badge_id = badge_id
+
+        elif action == "toggle_submission_method_fields":
+            method = payload if isinstance(payload, str) else payload.get("method")
+            if IS_BROWSER:
+                gh_field = js.document.getElementById("field-github-container")
+                file_field = js.document.getElementById("field-file-container")
+                label = js.document.getElementById("file-input-label")
+                file_inp = js.document.getElementById("submission-file-input")
+                if gh_field and file_field and label and file_inp:
+                    if method == "github":
+                        gh_field.style.display = "block"
+                        file_field.style.display = "none"
+                    elif method == "code":
+                        gh_field.style.display = "none"
+                        file_field.style.display = "block"
+                        label.innerText = "Select Code / Script File (.py, .sql, .js, .json)"
+                        file_inp.accept = ".py,.sql,.js,.json,.txt"
+                    else:  # pdf
+                        gh_field.style.display = "none"
+                        file_field.style.display = "block"
+                        label.innerText = "Select PDF Document (.pdf)"
+                        file_inp.accept = ".pdf"
+            return  # Do not re-render full DOM on simple DOM field toggle
+
+        elif action == "submit_project_deliverable":
+            self.execute_submit_project()
+
+        elif action == "submit_deadline_extension_request":
+            self.execute_submit_extension_request(payload)
+
+        elif action == "mark_announcement_as_read":
+            ann_id = payload.get("announcement_id") if isinstance(payload, dict) else payload
+            if self.current_user:
+                store.mark_announcement_read(ann_id, self.current_user.id)
+                self.set_flash("Marked announcement as read.", "info")
+
+        elif action == "recalc_rubric_total":
+            if IS_BROWSER:
+                try:
+                    bu = float(js.document.getElementById("rubric-bu").value or 0)
+                    ar = float(js.document.getElementById("rubric-ar").value or 0)
+                    tk = float(js.document.getElementById("rubric-tk").value or 0)
+                    pr = float(js.document.getElementById("rubric-pr").value or 0)
+                    qa = float(js.document.getElementById("rubric-qa").value or 0)
+                    tot, pct = calculate_assessment_totals(bu, ar, tk, pr, qa)
+                    disp = js.document.getElementById("rubric-total-display")
+                    if disp:
+                        disp.innerText = f"{tot:.1f} / 50.0 ({pct:.1f}%)"
+                except Exception:
+                    pass
+            return
+
+        self.sync_storage()
+        self.render()
+
+    # ==========================================================================
+    # WORKFLOW EXECUTION HELPERS
+    # ==========================================================================
+
+    def execute_submit_evaluation(self, sub_id: str):
+        if not IS_BROWSER:
+            return
+        try:
+            sub = store.get_submission(sub_id)
+            if not sub:
+                self.set_flash("Submission record not found.", "error")
+                return
+
+            bu = float(js.document.getElementById("rubric-bu").value)
+            ar = float(js.document.getElementById("rubric-ar").value)
+            tk = float(js.document.getElementById("rubric-tk").value)
+            pr = float(js.document.getElementById("rubric-pr").value)
+            qa = float(js.document.getElementById("rubric-qa").value)
+            strengths = str(js.document.getElementById("rubric-strengths").value).strip()
+            improvements = str(js.document.getElementById("rubric-improvements").value).strip()
+            feedback = str(js.document.getElementById("rubric-feedback").value).strip()
+            decision = str(js.document.getElementById("rubric-decision").value).strip()
+
+            valid, err = validate_rubric_scores(bu, ar, tk, pr, qa)
+            if not valid:
+                self.set_flash(f"Scoring error: {err}", "error")
+                return
+
+            asm_id = f"asm_{sub.id}_{sub.attempt_number}"
+            marksheet = AssessmentMarksheet(
+                id=asm_id,
+                submission_id=sub.id,
+                attempt_number=sub.attempt_number,
+                badge_id=sub.badge_id,
+                cosmonaut_id=sub.cosmonaut_id,
+                reviewer_id=self.current_user.id,
+                reviewer_name=self.current_user.name,
+                reviewed_at=current_iso_timestamp(),
+                decision=decision,
+                business_understanding=bu,
+                architecture_report=ar,
+                technical_knowledge=tk,
+                presentation=pr,
+                qa=qa,
+                strength_areas=strengths,
+                improvement_areas=improvements,
+                overall_feedback=feedback
+            )
+            store.save_assessment(marksheet)
+
+            # Update submission status
+            sub.status = "approved" if decision == "approve" else ("resubmission_requested" if decision == "resubmission_requested" else "rejected")
+            store.save_submission(sub)
+
+            # Update timeline if approved
+            if decision == "approve":
+                tl = store.get_timeline(sub.badge_id, sub.cosmonaut_id)
+                if tl:
+                    tl.status = "completed"
+                    tl.actual_award_date = current_iso_timestamp()[:10]
+                    store.save_timeline(tl)
+
+            # Log activity
+            badge = store.get_badge(sub.badge_id)
+            b_name = badge.code if badge else sub.badge_id
+            cosmo = store.get_user_by_id(sub.cosmonaut_id)
+            cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
+
+            store.add_activity(
+                event_type="assessment_completed",
+                actor_id=self.current_user.id,
+                actor_name=self.current_user.name,
+                cosmonaut_id=sub.cosmonaut_id,
+                badge_id=sub.badge_id,
+                summary=f"Assessment Marksheet Published: {marksheet.total_marks}/50 ({marksheet.percentage}%) for {cosmo_name}",
+                details=f"Evaluated Attempt #{sub.attempt_number} with decision: {decision.replace('_', ' ').title()}"
+            )
+
+            # Notify Cosmonaut
+            store.add_notification(
+                recipient_id=sub.cosmonaut_id,
+                title=f"Assessment Completed: {b_name}",
+                message=f"Dr. Elena Vance completed evaluation for Attempt #{sub.attempt_number}. Score: {marksheet.total_marks}/50 ({marksheet.percentage}%). Decision: {decision.title()}.",
+                link_section="c_results"
+            )
+
+            self.active_modal = None
+            self.set_flash(f"Assessment marksheet for {cosmo_name} saved successfully.", "success")
+        except Exception as e:
+            self.set_flash(f"Assessment error: {e}", "error")
+
+    def execute_submit_project(self):
+        if not IS_BROWSER or not self.current_user:
+            return
+        try:
+            badge_id = str(js.document.getElementById("submission-badge-id").value)
+            sub_type = str(js.document.getElementById("submission-type").value)
+            badge = store.get_badge(badge_id)
+            if not badge:
+                self.set_flash("Invalid badge selection.", "error")
+                return
+
+            # Check prerequisites
+            approved_asms = store.get_assessments_for_cosmonaut(self.current_user.id)
+            approved_ids = {a.badge_id for a in approved_asms if a.decision == "approve"}
+            for p in badge.prerequisites:
+                if p not in approved_ids:
+                    self.set_flash(f"Cannot submit: Prerequisite milestone '{p}' is not yet completed and approved.", "error")
+                    return
+
+            # Determine attempt number
+            existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, badge_id)
+            attempt_num = len(existing_subs) + 1
+
+            payload_data = ""
+            file_name = ""
+
+            if sub_type == "github":
+                gh_inp = js.document.getElementById("submission-github-url")
+                payload_data = str(gh_inp.value).strip() if gh_inp else ""
+                file_name = payload_data.split("/")[-1] if "/" in payload_data else "github-repo"
+            else:
+                # File upload via bridge
+                file_inp = js.document.getElementById("submission-file-input")
+                if file_inp and file_inp.files and file_inp.files.length > 0:
+                    f = file_inp.files[0]
+                    file_name = f.name
+                    # Read file synchronously / base64
+                    payload_data = f"data:{f.type};base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag=="
+                else:
+                    self.set_flash("Please choose a file to upload.", "error")
+                    return
+
+            valid, err = validate_submission_input(badge_id, self.current_user.id, sub_type, payload_data)
+            if not valid:
+                self.set_flash(f"Submission error: {err}", "error")
+                return
+
+            sub_id = f"sub_{self.current_user.id}_{badge_id}_{attempt_num}"
+            sub = ProjectSubmission(
+                id=sub_id,
+                badge_id=badge_id,
+                cosmonaut_id=self.current_user.id,
+                attempt_number=attempt_num,
+                submission_type=sub_type,
+                payload=payload_data,
+                file_name=file_name,
+                submitted_at=current_iso_timestamp(),
+                status="pending"
+            )
+            store.save_submission(sub)
+
+            # Update timeline status
+            tl = store.get_timeline(badge_id, self.current_user.id)
+            if tl:
+                tl.status = "awaiting_review"
+                store.save_timeline(tl)
+
+            # Log activity & notify Guardian
+            store.add_activity(
+                event_type="project_submitted",
+                actor_id=self.current_user.id,
+                actor_name=self.current_user.name,
+                cosmonaut_id=self.current_user.id,
+                badge_id=badge_id,
+                summary=f"Project Deliverable Submitted (Attempt #{attempt_num})",
+                details=f"{self.current_user.name} submitted {badge.code}: {badge.title} deliverable."
+            )
+
+            store.add_notification(
+                recipient_id="guardian_1",
+                title=f"New Deliverable: {self.current_user.name}",
+                message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}.",
+                link_section="g_reviews"
+            )
+
+            self.set_flash(f"Deliverable for {badge.code} (Attempt #{attempt_num}) submitted successfully! Awaiting Guardian review.", "success")
+        except Exception as e:
+            self.set_flash(f"Submission failed: {e}", "error")
+
+    def execute_submit_extension_request(self, payload: Dict[str, Any]):
+        try:
+            badge_id = payload.get("badge_id")
+            prop_date = payload.get("proposed_deadline")
+            reason = payload.get("reason")
+
+            tl = store.get_timeline(badge_id, self.current_user.id)
+            curr_date = tl.submission_deadline if tl else "2026-11-20"
+
+            valid, err = validate_extension_request(curr_date, prop_date, reason)
+            if not valid:
+                self.set_flash(f"Request error: {err}", "error")
+                return
+
+            ext_id = f"ext_{self.current_user.id}_{badge_id}_{len(store.get_all_extensions()) + 1}"
+            ext = DeadlineExtension(
+                id=ext_id,
+                badge_id=badge_id,
+                cosmonaut_id=self.current_user.id,
+                current_deadline=curr_date,
+                proposed_deadline=prop_date,
+                reason=reason,
+                status="pending"
+            )
+            store.save_extension(ext)
+
+            badge = store.get_badge(badge_id)
+            b_name = badge.code if badge else badge_id
+
+            store.add_activity(
+                event_type="extension_requested",
+                actor_id=self.current_user.id,
+                actor_name=self.current_user.name,
+                cosmonaut_id=self.current_user.id,
+                badge_id=badge_id,
+                summary=f"Deadline Extension Requested for {b_name}",
+                details=f"Proposed deadline: {prop_date}. Reason: {reason}"
+            )
+
+            store.add_notification(
+                recipient_id="guardian_1",
+                title="Deadline Extension Request",
+                message=f"{self.current_user.name} requested an extension for {b_name} to {prop_date}.",
+                link_section="g_extensions"
+            )
+
+            self.set_flash("Extension request submitted to Guardian.", "success")
+        except Exception as e:
+            self.set_flash(f"Failed to submit extension request: {e}", "error")
+
+    def execute_extension_decision(self, payload: Dict[str, Any]):
+        ext_id = payload.get("extension_id")
+        decision = payload.get("decision")  # "approved" or "rejected"
+        response_note = payload.get("response_note", "")
+
+        ext = store.get_extension(ext_id)
+        if ext:
+            ext.status = decision
+            ext.guardian_response = response_note
+            ext.decided_at = current_iso_timestamp()
+            store.save_extension(ext)
+
+            # If approved, update badge timeline application-wide
+            if decision == "approved":
+                tl = store.get_timeline(ext.badge_id, ext.cosmonaut_id)
+                if tl:
+                    tl.submission_deadline = ext.proposed_deadline
+                    store.save_timeline(tl)
+
+            badge = store.get_badge(ext.badge_id)
+            b_name = badge.code if badge else ext.badge_id
+
+            store.add_activity(
+                event_type=f"extension_{decision}",
+                actor_id=self.current_user.id,
+                actor_name=self.current_user.name,
+                cosmonaut_id=ext.cosmonaut_id,
+                badge_id=ext.badge_id,
+                summary=f"Deadline Extension {decision.title()} for {b_name}",
+                details=f"New deadline: {ext.proposed_deadline if decision == 'approved' else ext.current_deadline}. Note: {response_note}"
+            )
+
+            store.add_notification(
+                recipient_id=ext.cosmonaut_id,
+                title=f"Extension Request {decision.title()}",
+                message=f"Dr. Elena Vance {decision} your deadline extension request for {b_name}. Note: {response_note}",
+                link_section="c_extensions"
+            )
+
+            self.active_modal = None
+            self.set_flash(f"Extension request marked as {decision}.", "success")
+
+    def execute_broadcast_announcement(self, payload: Dict[str, Any]):
+        title = payload.get("title", "").strip()
+        message = payload.get("message", "").strip()
+        target_type = payload.get("target_type", "all")
+        target_ids = payload.get("target_ids", [])
+        badge_id = payload.get("badge_id", "")
+
+        valid, err = validate_announcement_input(title, message, target_type, target_ids)
+        if not valid:
+            self.set_flash(f"Announcement error: {err}", "error")
+            return
+
+        ann_id = f"ann_{len(store.get_all_announcements()) + 1}"
+        ann = Announcement(
+            id=ann_id,
+            title=title,
+            message=message,
+            author_id=self.current_user.id,
+            author_name=self.current_user.name,
+            target_type=target_type,
+            target_cosmonaut_ids=target_ids if target_type == "selected" else [c.id for c in store.get_all_cosmonauts()],
+            badge_id=badge_id
+        )
+        store.save_announcement(ann)
+
+        # Notify recipients
+        recipients = target_ids if target_type == "selected" else [c.id for c in store.get_all_cosmonauts()]
+        for cid in recipients:
+            store.add_notification(
+                recipient_id=cid,
+                title="New Academy Announcement",
+                message=f"{title}: {message[:60]}...",
+                link_section="c_announcements"
+            )
+
+        store.add_activity(
+            event_type="announcement_published",
+            actor_id=self.current_user.id,
+            actor_name=self.current_user.name,
+            cosmonaut_id="",
+            badge_id=badge_id,
+            summary=f"Announcement Broadcasted: '{title}'",
+            details=f"Target: {'All 6 Cosmonauts' if target_type == 'all' else len(target_ids)}"
+        )
+
+        self.active_modal = None
+        self.set_flash("Announcement broadcasted successfully.", "success")
+
+    def execute_save_badge(self, payload: Dict[str, Any]):
+        badge_id = payload.get("badge_id", "")
+        code = payload.get("code", "").strip()
+        title = payload.get("title", "").strip()
+        desc = payload.get("description", "").strip()
+        reqs = payload.get("project_requirements", "").strip()
+        prereqs = payload.get("prerequisites", [])
+        assigned_ids = payload.get("assigned_cosmonaut_ids", [])
+
+        # Timeline milestones decided by Guardian
+        alloc_date = payload.get("assignment_date") or current_iso_timestamp()[:10]
+        learn_start = payload.get("learning_start_date") or alloc_date
+        learn_end = payload.get("learning_end_date") or "2026-12-01"
+        proj_start = payload.get("project_start_date") or "2026-12-02"
+        proj_end = payload.get("project_end_date") or "2026-12-14"
+        sub_deadline = payload.get("submission_deadline") or "2026-12-15"
+        review_date = payload.get("review_date") or "2026-12-18"
+        award_date = payload.get("expected_award_date") or "2026-12-20"
+
+        valid, err = validate_badge_input({"title": title, "code": code})
+        if not valid:
+            self.set_flash(f"Badge validation error: {err}", "error")
+            return
+
+        is_new = not badge_id
+        if is_new:
+            badge_id = f"badge_{code.lower().replace('-', '_')}"
+
+        all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
+        # Cohort requirement: When Guardian creates/updates a milestone, update for ALL Cosmonauts unless specific assignees provided
+        if not assigned_ids:
+            assigned_ids = all_cosmo_ids
+
+        default_tl = {
+            "assignment_date": alloc_date,
+            "publication_date": alloc_date,
+            "learning_start_date": learn_start,
+            "learning_end_date": learn_end,
+            "project_start_date": proj_start,
+            "project_end_date": proj_end,
+            "submission_deadline": sub_deadline,
+            "review_date": review_date,
+            "expected_award_date": award_date
+        }
+
+        badge = Badge(
+            id=badge_id,
+            code=code,
+            title=title,
+            category=payload.get("category", "Foundations"),
+            description=desc,
+            learning_outcomes=payload.get("learning_outcomes", ["Master core milestone concepts"]),
+            learning_topics=payload.get("learning_topics", ["Foundations", "Architecture"]),
+            prerequisites=prereqs,
+            project_requirements=reqs,
+            is_published=True,
+            assigned_cosmonaut_ids=assigned_ids,
+            default_timeline=default_tl
+        )
+        store.save_badge(badge)
+
+        # Ensure timelines exist and reflect Guardian's decisions for all assigned Cosmonauts
+        for cid in assigned_ids:
+            tl = store.get_timeline(badge.id, cid)
+            if not tl:
+                new_tl = BadgeTimeline(
+                    badge_id=badge.id,
+                    cosmonaut_id=cid,
+                    assignment_date=alloc_date,
+                    publication_date=alloc_date,
+                    learning_start_date=learn_start,
+                    learning_end_date=learn_end,
+                    project_start_date=proj_start,
+                    project_end_date=proj_end,
+                    submission_deadline=sub_deadline,
+                    review_date=review_date,
+                    expected_award_date=award_date,
+                    status="locked" if is_new else "active"
+                )
+                store.save_timeline(new_tl)
+            else:
+                tl.assignment_date = alloc_date
+                tl.learning_start_date = learn_start
+                tl.learning_end_date = learn_end
+                tl.project_start_date = proj_start
+                tl.project_end_date = proj_end
+                tl.submission_deadline = sub_deadline
+                tl.review_date = review_date
+                tl.expected_award_date = award_date
+                store.save_timeline(tl)
+
+            if is_new:
+                store.add_notification(
+                    recipient_id=cid,
+                    title=f"New Milestone Available: {code}",
+                    message=f"Dr. Elena Vance created new milestone {code}: {title}. The previous locked milestone is now unlocked!",
+                    link_section="c_roadmap"
+                )
+
+        store.add_activity(
+            event_type="badge_created" if is_new else "badge_updated",
+            actor_id=self.current_user.id,
+            actor_name=self.current_user.name,
+            cosmonaut_id="",
+            badge_id=badge.id,
+            summary=f"Badge {badge.code}: {badge.title} {'Created' if is_new else 'Updated'}",
+            details=f"Assigned to {len(assigned_ids)} Cosmonauts."
+        )
+
+        self.active_modal = None
+        self.set_flash(f"Badge {badge.code} saved successfully.", "success")
+
+    def execute_save_material(self, payload: Dict[str, Any]):
+        badge_id = payload.get("badge_id", "")
+        title = payload.get("title", "").strip()
+        desc = payload.get("description", "").strip()
+        mat_type = payload.get("material_type", "doc")
+        url_or_data = payload.get("url_or_data", "").strip()
+        topic = payload.get("topic", "General")
+
+        if not title or not url_or_data:
+            self.set_flash("Title and Resource URL/Data are required.", "error")
+            return
+
+        mat_id = f"mat_{len(store.get_materials()) + 1}"
+        mat = LearningMaterial(
+            id=mat_id,
+            badge_id=badge_id,
+            topic=topic,
+            title=title,
+            description=desc,
+            material_type=mat_type,
+            url_or_data=url_or_data,
+            upload_date=current_iso_timestamp()
+        )
+        store.save_material(mat)
+
+        badge = store.get_badge(badge_id)
+        b_name = badge.code if badge else badge_id
+
+        store.add_activity(
+            event_type="material_published",
+            actor_id=self.current_user.id,
+            actor_name=self.current_user.name,
+            cosmonaut_id="",
+            badge_id=badge_id,
+            summary=f"Learning Material Published for {b_name}",
+            details=f"Title: {title} ({mat_type.upper()})"
+        )
+
+        self.active_modal = None
+        self.set_flash(f"Resource '{title}' published for {b_name}.", "success")
+
+    # ==========================================================================
+    # MODAL DIALOG RENDERER
+    # ==========================================================================
+
+    def render_active_modal(self) -> str:
+        if not self.active_modal:
+            return ""
+
+        title = "StarApp Dialog"
+        body = ""
+
+        if self.active_modal == "notifications":
+            title = "Notifications & Alerts"
+            notifs = store.get_notifications(self.current_user.id) if self.current_user else []
+            items = []
+            for n in notifs:
+                items.append(f"""
+                <div style="padding:12px; border-radius:var(--radius-sm); background:rgba(234,244,255,0.7); margin-bottom:8px; border-left:4px solid var(--deep-frozen-midnight);">
+                    <div style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(n.title)}</div>
+                    <div style="font-size:12.5px; color:var(--frost-navy); margin-top:2px;">{escape(n.message)}</div>
+                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:4px;">{escape(n.created_at[:16].replace('T', ' '))}</div>
+                </div>
+                """)
+            body = "".join(items) if items else "<p style='padding:20px; text-align:center; color:var(--frost-navy-50);'>No notifications.</p>"
+
+        elif self.active_modal == "badge_detail":
+            badge_id = self.modal_payload.get("badge_id")
+            badge = store.get_badge(badge_id)
+            if badge and self.current_user:
+                title = f"{badge.code}: {badge.title} — Lifecycle Timeline"
+                is_guardian = (self.current_user.role == "guardian")
+                cosmo_id = (self.selected_guardian_cosmo_id if self.selected_guardian_cosmo_id != "all" else "cosmo_1") if is_guardian else self.current_user.id
+                tl = store.get_timeline(badge.id, cosmo_id)
+                mats = store.get_materials(badge.id)
+                approved_ids = {a.badge_id for a in store.get_assessments_for_cosmonaut(cosmo_id) if a.decision == "approve"}
+                state = "completed" if badge.id in approved_ids else ("locked" if any(p not in approved_ids for p in badge.prerequisites) else "active")
+                body = render_badge_detail_modal_content(badge, cosmo_id, tl, mats, state, is_guardian=is_guardian)
+
+        elif self.active_modal == "marksheet_modal":
+            asm_id = self.modal_payload.get("marksheet_id")
+            marksheet = store.get_assessment(asm_id)
+            if marksheet:
+                title = "Evaluated Marksheet"
+                badge = store.get_badge(marksheet.badge_id)
+                all_atts = [a for a in store.get_all_assessments() if a.badge_id == marksheet.badge_id and a.cosmonaut_id == marksheet.cosmonaut_id]
+                body = render_standard_marksheet(marksheet, badge, all_atts)
+
+        elif self.active_modal == "material_preview":
+            mat_id = self.modal_payload.get("material_id")
+            mat = store.get_material(mat_id)
+            if mat:
+                title = mat.title
+                if mat.material_type == "youtube":
+                    # Convert watch URL to embed URL
+                    embed_url = mat.url_or_data
+                    if "watch?v=" in embed_url:
+                        vid = embed_url.split("watch?v=")[1].split("&")[0]
+                        embed_url = f"https://www.youtube.com/embed/{vid}"
+                    body = f"""
+                    <div class="media-embed-container">
+                        <iframe src="{escape(embed_url)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    </div>
+                    <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy);">{escape(mat.description)}</p>
+                    <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:8px;">(If YouTube player displays playback restrictions, open directly via: <a href="{escape(mat.url_or_data)}" target="_blank" rel="noopener noreferrer">{escape(mat.url_or_data)}</a>)</div>
+                    """
+                elif mat.material_type == "pdf":
+                    body = f"""
+                    <iframe class="pdf-preview-box" src="{escape(mat.url_or_data)}"></iframe>
+                    <p style="font-size:13.5px; margin-top:10px; color:var(--frost-navy);">{escape(mat.description)}</p>
+                    """
+                else:
+                    body = f"""
+                    <pre style="background:var(--frost-navy); color:var(--snow-white); padding:16px; border-radius:var(--radius-md); max-height:400px; overflow:auto;"><code>{escape(mat.url_or_data)}</code></pre>
+                    <p style="font-size:13.5px; margin-top:10px; color:var(--frost-navy);">{escape(mat.description)}</p>
+                    """
+
+        elif self.active_modal == "review_submission":
+            sub_id = self.modal_payload.get("submission_id")
+            sub = store.get_submission(sub_id)
+            if sub:
+                badge = store.get_badge(sub.badge_id)
+                cosmo = store.get_user_by_id(sub.cosmonaut_id)
+                title = f"Project Assessment: {badge.code}"
+                existing_asm = store.get_assessment_for_submission(sub.id)
+                prev_asms = [a for a in store.get_assessments_for_cosmonaut(sub.cosmonaut_id, sub.badge_id) if a.attempt_number < sub.attempt_number]
+                body = render_assessment_modal_content(sub, badge, cosmo, existing_asm, prev_asms)
+
+        elif self.active_modal == "decide_extension":
+            ext_id = self.modal_payload.get("extension_id")
+            decision = self.modal_payload.get("decision", "approved")
+            ext = store.get_extension(ext_id)
+            title = f"{decision.title()} Extension Request"
+            body = f"""
+            <form onsubmit="event.preventDefault(); const n=document.getElementById('ext-decision-note').value; window.StarAppBridge.dispatchAction('submit_extension_decision', JSON.stringify({{extension_id:'{ext_id}', decision:'{decision}', response_note:n}}));">
+                <div style="font-size:13.5px; margin-bottom:12px;">
+                    Are you sure you want to <strong>{decision}</strong> the extension request for <strong>{escape(ext.badge_id)}</strong>?
+                </div>
+                <div style="background:rgba(234,244,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px;">
+                    <div><strong>Proposed Deadline:</strong> {escape(ext.proposed_deadline)}</div>
+                    <div><strong>Cosmonaut Reason:</strong> {escape(ext.reason)}</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mentor Feedback / Decision Note (Optional)</label>
+                    <textarea id="ext-decision-note" class="form-textarea" placeholder="Add guidance, milestones, or conditions..."></textarea>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                    <button type="submit" class="btn-metal">Confirm {decision.title()}</button>
+                </div>
+            </form>
+            """
+
+        elif self.active_modal == "create_announcement":
+            title = "Broadcast Academy Announcement"
+            cosmo_checks = []
+            for c in store.get_all_cosmonauts():
+                cosmo_checks.append(f"""
+                <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; margin-right:12px;">
+                    <input type="checkbox" name="ann-target-cosmo" value="{c.id}">
+                    <span>{escape(c.name)}</span>
+                </label>
+                """)
+
+            badge_opts = ['<option value="">None (Academy-Wide)</option>']
+            for b in store.get_all_badges():
+                badge_opts.append(f'<option value="{b.id}">{escape(b.code)}: {escape(b.title)}</option>')
+
+            body = f"""
+            <form onsubmit="event.preventDefault(); const t=document.getElementById('ann-title').value; const m=document.getElementById('ann-msg').value; const tt=document.getElementById('ann-target-type').value; const b=document.getElementById('ann-badge').value; const boxes=document.querySelectorAll('input[name=ann-target-cosmo]:checked'); const sel=[]; boxes.forEach(x=>sel.push(x.value)); window.StarAppBridge.dispatchAction('broadcast_announcement', JSON.stringify({{title:t, message:m, target_type:tt, target_ids:sel, badge_id:b}}));">
+                <div class="form-group">
+                    <label class="form-label">Announcement Title</label>
+                    <input type="text" id="ann-title" class="form-control" placeholder="e.g. Workshop Reschedule" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Message Body</label>
+                    <textarea id="ann-msg" class="form-textarea" placeholder="Enter broadcast details..." required></textarea>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Target Audience</label>
+                        <select id="ann-target-type" class="form-select" onchange="const c=document.getElementById('ann-cosmo-select-box'); if(this.value=='selected'){{c.style.display='block';}}else{{c.style.display='none';}}">
+                            <option value="all">All 6 Cosmonauts</option>
+                            <option value="selected">Selected Cosmonauts Only</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Associated Milestone (Optional)</label>
+                        <select id="ann-badge" class="form-select">
+                            {"".join(badge_opts)}
+                        </select>
+                    </div>
+                </div>
+
+                <div id="ann-cosmo-select-box" style="display:none; margin-bottom:16px; background:rgba(234,244,255,0.4); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                    <div style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">Select Individual Recipients:</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        {"".join(cosmo_checks)}
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                    <button type="submit" class="btn-metal">Broadcast Announcement</button>
+                </div>
+            </form>
+            """
+
+        elif self.active_modal in ["create_badge", "edit_badge"]:
+            is_edit = self.active_modal == "edit_badge"
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id) if is_edit else None
+
+            title = "Allot & Set Milestone Timeline" if is_edit else "Create & Allot New Badge Milestone"
+            code = badge.code if badge else ""
+            b_title = badge.title if badge else ""
+            desc = badge.description if badge else ""
+            reqs = badge.project_requirements if badge else ""
+            assigned = badge.assigned_cosmonaut_ids if badge else [c.id for c in store.get_all_cosmonauts()]
+
+            dt = badge.default_timeline if badge else {}
+            alloc_val = dt.get("assignment_date") or current_iso_timestamp()[:10]
+            learn_start_val = dt.get("learning_start_date") or alloc_val
+            learn_end_val = dt.get("learning_end_date") or "2026-12-01"
+            proj_start_val = dt.get("project_start_date") or "2026-12-02"
+            proj_end_val = dt.get("project_end_date") or "2026-12-14"
+            sub_deadline_val = dt.get("submission_deadline") or "2026-12-15"
+            review_date_val = dt.get("review_date") or "2026-12-18"
+            award_date_val = dt.get("expected_award_date") or "2026-12-20"
+
+            cosmo_checks = []
+            for c in store.get_all_cosmonauts():
+                chk = " checked" if c.id in assigned else ""
+                cosmo_checks.append(f"""
+                <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; margin-right:12px;">
+                    <input type="checkbox" name="badge-assignee" value="{c.id}"{chk}>
+                    <span>{escape(c.name)}</span>
+                </label>
+                """)
+
+            body = f"""
+            <form onsubmit="event.preventDefault(); const c=document.getElementById('badge-code').value; const t=document.getElementById('badge-title').value; const d=document.getElementById('badge-desc').value; const r=document.getElementById('badge-reqs').value; const al=document.getElementById('tl-alloc-date').value; const ls=document.getElementById('tl-learn-start').value; const le=document.getElementById('tl-learn-end').value; const ps=document.getElementById('tl-proj-start').value; const pe=document.getElementById('tl-proj-end').value; const sd=document.getElementById('tl-sub-deadline').value; const rd=document.getElementById('tl-review-date').value; const aw=document.getElementById('tl-award-date').value; const boxes=document.querySelectorAll('input[name=badge-assignee]:checked'); const sel=[]; boxes.forEach(x=>sel.push(x.value)); window.StarAppBridge.dispatchAction('save_badge_form', JSON.stringify({{badge_id:'{b_id}', code:c, title:t, description:d, project_requirements:r, assigned_cosmonaut_ids:sel, assignment_date:al, learning_start_date:ls, learning_end_date:le, project_start_date:ps, project_end_date:pe, submission_deadline:sd, review_date:rd, expected_award_date:aw}}));">
+                <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Badge Code</label>
+                        <input type="text" id="badge-code" class="form-control" value="{escape(code)}" placeholder="e.g. SQL-201" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Badge Title</label>
+                        <input type="text" id="badge-title" class="form-control" value="{escape(b_title)}" placeholder="e.g. Distributed Ingestion" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Milestone Description</label>
+                    <textarea id="badge-desc" class="form-textarea" rows="2" required>{escape(desc)}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Project Deliverable Requirements</label>
+                    <textarea id="badge-reqs" class="form-textarea" rows="2" required>{escape(reqs)}</textarea>
+                </div>
+
+                <!-- Guardian Milestone Timeline Decisions -->
+                <div style="background:rgba(234,244,255,0.45); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:16px;">
+                    <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:10px;">
+                        Guardian Timeline Decisions (Milestones for Roadmap):
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">1. Badge & Project Allocated Date</label>
+                            <input type="date" id="tl-alloc-date" class="form-control" value="{escape(alloc_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">4. Official Submission Date</label>
+                            <input type="date" id="tl-sub-deadline" class="form-control" value="{escape(sub_deadline_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">2. Learning Time (Start)</label>
+                            <input type="date" id="tl-learn-start" class="form-control" value="{escape(learn_start_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">2. Learning Time (End)</label>
+                            <input type="date" id="tl-learn-end" class="form-control" value="{escape(learn_end_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">3. Project Time (Start)</label>
+                            <input type="date" id="tl-proj-start" class="form-control" value="{escape(proj_start_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">3. Project Time (End)</label>
+                            <input type="date" id="tl-proj-end" class="form-control" value="{escape(proj_end_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">5. Review & Defense Date</label>
+                            <input type="date" id="tl-review-date" class="form-control" value="{escape(review_date_val)}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:11.5px;">6. Badge Earned Date (Target)</label>
+                            <input type="date" id="tl-award-date" class="form-control" value="{escape(award_date_val)}" required>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Assign To Cosmonauts</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; background:rgba(234,244,255,0.4); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                        {"".join(cosmo_checks)}
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                    <button type="submit" class="btn-metal">Save Allotment & Timeline</button>
+                </div>
+            </form>
+            """
+
+        elif self.active_modal == "add_material":
+            title = "Publish Learning Resource"
+            badge_opts = []
+            for b in store.get_all_badges():
+                badge_opts.append(f'<option value="{b.id}">{escape(b.code)}: {escape(b.title)}</option>')
+
+            body = f"""
+            <form onsubmit="event.preventDefault(); const b=document.getElementById('mat-badge').value; const t=document.getElementById('mat-title').value; const top=document.getElementById('mat-topic').value; const d=document.getElementById('mat-desc').value; const type=document.getElementById('mat-type').value; const u=document.getElementById('mat-url').value; window.StarAppBridge.dispatchAction('save_material_form', JSON.stringify({{badge_id:b, title:t, topic:top, description:d, material_type:type, url_or_data:u}}));">
+                <div class="form-group">
+                    <label class="form-label">Target Milestone Badge</label>
+                    <select id="mat-badge" class="form-select">
+                        {"".join(badge_opts)}
+                    </select>
+                </div>
+                <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Resource Title</label>
+                        <input type="text" id="mat-title" class="form-control" placeholder="e.g. Masterclass Lecture" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Topic Category</label>
+                        <input type="text" id="mat-topic" class="form-control" placeholder="e.g. Index Tuning" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Format / Type</label>
+                    <select id="mat-type" class="form-select">
+                        <option value="youtube">Embedded YouTube Video</option>
+                        <option value="pdf">PDF Handbook Document</option>
+                        <option value="code">Reference Code Script</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Resource URL or File Embed</label>
+                    <input type="text" id="mat-url" class="form-control" placeholder="https://www.youtube.com/watch?v=... or PDF URL" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description & Context</label>
+                    <textarea id="mat-desc" class="form-textarea" placeholder="Provide syllabus guidance..."></textarea>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                    <button type="submit" class="btn-metal">Publish Resource</button>
+                </div>
+            </form>
+            """
+
+        return f"""
+        <div class="modal-backdrop" onclick="if(event.target===this) window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
+            <div class="liquid-glass-modal modal-dialog">
+                <div class="modal-header">
+                    <h3 class="modal-title">{escape(title)}</h3>
+                    <button type="button" class="modal-close-btn" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    {body}
+                </div>
+            </div>
+        </div>
+        """
+
+    # ==========================================================================
+    # LOGIN VIEW
+    # ==========================================================================
+
+    def render_login_view(self) -> str:
+        demo_accounts = [
+            {"id": "guardian_1", "role": "Guardian", "name": "Dr. Elena Vance", "user": "guardian", "desc": "Training Mentor (Full curriculum management & rubric evaluations)"},
+            {"id": "cosmo_1", "role": "Cosmonaut", "name": "Astraea Nova", "user": "astraea", "desc": "Cosmonaut Learner (3 Badges completed, Ingestion active)"}
+        ]
+
+        account_buttons = []
+        for acc in demo_accounts:
+            badge_cls = "status-approved" if acc["role"] == "Guardian" else "status-active"
+            account_buttons.append(f"""
+            <div class="liquid-glass-card interactive" style="padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('select_demo_account', '{acc["id"]}')">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <strong style="color:var(--frost-navy); font-size:14px;">{escape(acc["name"])}</strong>
+                            <span class="status-pill {badge_cls}">{escape(acc["role"])}</span>
+                        </div>
+                        <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">{escape(acc["desc"])}</div>
+                    </div>
+                    <span style="font-weight:700; color:var(--deep-frozen-midnight); font-size:14px;">Sign In →</span>
+                </div>
+            </div>
+            """)
+
+        return f"""
+        <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; width:100%;">
+            <div style="max-width:680px; width:100%;">
+                <div style="text-align:center; margin-bottom:28px;">
+                    <div class="brand-badge" style="width:48px; height:48px; margin:0 auto 12px;">
+                        <svg viewBox="0 0 24 24" style="width:28px; height:28px; fill:var(--snow-white);"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </div>
+                    <h1 style="font-size:2rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px;">STARAPP</h1>
+                    <p style="font-size:14px; color:var(--frost-navy-50); margin-top:4px;">Autonomous Training & Gamified Badge Management Platform</p>
+                </div>
+
+                <div class="liquid-glass-card" style="padding:24px; margin-bottom:24px;">
+                    <h3 style="font-size:1.1rem; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:12px;">One-Click Demo Account Access:</h3>
+                    {"".join(account_buttons)}
+                </div>
+
+                <div style="text-align:center; font-size:12px; color:var(--frost-navy-50);">
+                    StarApp operates strictly browser-local using Pyodide and IndexedDB persistence.
+                </div>
+            </div>
+        </div>
+        """
+
+    # ==========================================================================
+    # MAIN APPLICATION RENDERER
+    # ==========================================================================
+
+    def render(self) -> str:
+        """Constructs the complete application view HTML."""
+        if not self.current_user or self.current_view == "login":
+            html_output = self.render_login_view()
+            if IS_BROWSER and hasattr(js, "document"):
+                root = js.document.getElementById("app-root")
+                if root:
+                    root.innerHTML = html_output
+            return html_output
+
+        # Common data calculations
+        badges = store.get_all_badges()
+        cosmonauts = store.get_all_cosmonauts()
+        all_subs = store.get_all_submissions()
+        all_asms = store.get_all_assessments()
+        badges_map = {b.id: b for b in badges}
+        cosmo_map = {c.id: c for c in cosmonauts}
+
+        # Unread notifications
+        user_notifs = store.get_notifications(self.current_user.id)
+        unread_notifs = len([n for n in user_notifs if not n.is_read])
+
+        sidebar_html = ""
+        main_content_html = ""
+        page_title = "StarApp Workspace"
+
+        if self.current_user.role == "guardian":
+            pending_reviews = len([s for s in all_subs if s.status == "pending"])
+            pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
+            sidebar_html = render_guardian_sidebar(self.current_view, self.current_user, pending_reviews, pending_exts)
+
+            if self.current_view == "g_dashboard":
+                page_title = "Training Batch Overview & Analytics"
+                analytics = calculate_batch_aggregate_analytics(cosmonauts, badges, all_subs, all_asms)
+                cosmo_data = None
+                if self.selected_guardian_cosmo_id != "all":
+                    cosmo = store.get_user_by_id(self.selected_guardian_cosmo_id)
+                    if cosmo:
+                        prof = store.get_cosmonaut_profile(cosmo.id)
+                        u_asms = store.get_assessments_for_cosmonaut(cosmo.id)
+                        u_subs = store.get_submissions_for_cosmonaut(cosmo.id)
+                        u_summary = calculate_cosmonaut_score_summary(u_asms)
+                        cosmo_data = {
+                            "cosmonaut": cosmo,
+                            "profile": prof,
+                            "assessments": u_asms,
+                            "submissions": u_subs,
+                            "score_summary": u_summary
+                        }
+                main_content_html = render_guardian_dashboard(analytics, cosmonauts, self.selected_guardian_cosmo_id, cosmo_data)
+
+            elif self.current_view == "g_allotment":
+                page_title = "Badge Allotment & Timeline Management"
+                main_content_html = render_guardian_badge_allotment(badges, cosmonauts)
+
+            elif self.current_view == "g_reviews":
+                page_title = "Project Deliverable Assessment Queue"
+                asms_by_sub = {a.submission_id: a for a in all_asms}
+                main_content_html = render_guardian_review_queue(all_subs, asms_by_sub, badges_map, cosmo_map, self.guardian_review_filter)
+
+            elif self.current_view == "g_materials":
+                page_title = "Learning Materials & Video Management"
+                main_content_html = render_guardian_materials(store.get_materials(), badges)
+
+            elif self.current_view == "g_extensions":
+                page_title = "Milestone Deadline Extensions"
+                main_content_html = render_guardian_extensions(store.get_all_extensions(), cosmo_map, badges_map)
+
+            elif self.current_view == "g_announcements":
+                page_title = "Academy Announcement Broadcaster"
+                main_content_html = render_guardian_announcements(store.get_all_announcements(), cosmonauts)
+
+            elif self.current_view == "g_activity":
+                page_title = "Academy Activity & Audit Stream"
+                main_content_html = render_guardian_activity_feed(store.get_activities(), cosmonauts)
+
+        else:  # Cosmonaut Portal
+            unread_anns = len([a for a in store.get_announcements_for_cosmonaut(self.current_user.id) if self.current_user.id not in a.read_by_cosmonaut_ids])
+            sidebar_html = render_cosmonaut_sidebar(self.current_view, self.current_user, unread_anns)
+
+            assigned_badges = store.get_badges_for_cosmonaut(self.current_user.id)
+            user_asms = store.get_assessments_for_cosmonaut(self.current_user.id)
+            user_subs = store.get_submissions_for_cosmonaut(self.current_user.id)
+            profile = store.get_cosmonaut_profile(self.current_user.id)
+            summary = calculate_cosmonaut_score_summary(user_asms)
+            leaderboard = calculate_batch_leaderboard(cosmonauts, all_asms)
+
+            if self.current_view == "c_dashboard":
+                page_title = f"Cosmonaut Dossier — {self.current_user.name}"
+                recent_anns = store.get_announcements_for_cosmonaut(self.current_user.id)[:3]
+                main_content_html = render_cosmonaut_dashboard(
+                    self.current_user, profile, assigned_badges, user_asms,
+                    leaderboard, summary, [], recent_anns
+                )
+
+            elif self.current_view == "c_roadmap":
+                page_title = "Interactive Gamified Learning Pathway"
+                nodes = generate_roadmap_graph(badges, self.current_user.id, user_asms, user_subs)
+                main_content_html = render_gamified_roadmap(self.current_user, nodes)
+
+            elif self.current_view == "c_submission":
+                page_title = "Project Deliverable Submission Portal"
+                main_content_html = render_cosmonaut_submission_workspace(assigned_badges, self.cosmonaut_submission_badge_id, user_subs)
+
+            elif self.current_view == "c_results":
+                page_title = "Official Evaluation Marksheets (50-Mark Rubric)"
+                main_content_html = render_cosmonaut_results(user_asms, badges_map)
+
+            elif self.current_view == "c_materials":
+                page_title = "Course Documents & Video Lectures"
+                user_mats = [m for m in store.get_materials() if any(b.id == m.badge_id for b in assigned_badges)]
+                main_content_html = render_cosmonaut_materials(user_mats, badges_map)
+
+            elif self.current_view == "c_profile":
+                page_title = "Cosmonaut Profile & Competency Matrix"
+                main_content_html = render_cosmonaut_profile(self.current_user, profile)
+
+            elif self.current_view == "c_announcements":
+                page_title = "Academy Announcement Center"
+                main_content_html = render_cosmonaut_announcements(store.get_announcements_for_cosmonaut(self.current_user.id), self.current_user.id)
+
+            elif self.current_view == "c_extensions":
+                page_title = "Deadline Extension Requests"
+                user_exts = store.get_extensions_for_cosmonaut(self.current_user.id)
+                main_content_html = render_cosmonaut_extensions(assigned_badges, user_exts, badges_map)
+
+            elif self.current_view == "c_activity":
+                page_title = "Personal Training Activity Stream"
+                user_acts = store.get_activities(self.current_user.id)
+                main_content_html = render_cosmonaut_activity_stream(user_acts)
+
+        topbar_html = render_topbar(self.current_user, page_title, unread_notifs)
+        modal_html = self.render_active_modal()
+
+        flash_html = ""
+        if self.flash_message:
+            flash_border = "var(--deep-frozen-midnight)" if self.flash_type == "success" else "var(--frost-navy)"
+            flash_html = f"""
+            <div style="margin-bottom:16px; padding:12px 18px; border-radius:var(--radius-md); background:rgba(234,244,255,0.9); border:1px solid {flash_border}; border-left:5px solid {flash_border}; font-size:13.5px; font-weight:600; color:var(--frost-navy); display:flex; justify-content:space-between; align-items:center;">
+                <span>{escape(self.flash_message)}</span>
+                <span style="cursor:pointer; font-size:18px;" onclick="this.parentElement.remove();">&times;</span>
+            </div>
+            """
+            self.flash_message = None  # Consume flash
+
+        full_html = f"""
+        {sidebar_html}
+        <div class="app-main">
+            {topbar_html}
+            <main class="page-container">
+                {flash_html}
+                {main_content_html}
+            </main>
+        </div>
+        {modal_html}
+        """
+
+        if IS_BROWSER and hasattr(js, "document"):
+            root = js.document.getElementById("app-root")
+            if root:
+                root.innerHTML = full_html
+
+        return full_html
+
+# Global controller instance
+controller = StarAppController()
+

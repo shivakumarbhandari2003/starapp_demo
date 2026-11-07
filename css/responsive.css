@@ -1,0 +1,97 @@
+/* ==========================================================================
+   STARAPP RESPONSIVE BREAKPOINTS
+   Desktop (1200px+), Laptop (992px-1199px), Tablet (768px-991px), Mobile (<768px)
+   ========================================================================== */
+
+/* Laptop & Tablet landscape */
+@media (max-width: 1199px) {
+  .app-sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .page-container {
+    padding: var(--space-6);
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+/* Tablet portrait & Mobile */
+@media (max-width: 768px) {
+  #app-root {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    min-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--midnight-50);
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .nav-item {
+    margin-bottom: 0;
+  }
+
+  .nav-link {
+    padding: 6px 10px;
+    font-size: var(--font-size-xs);
+  }
+
+  .app-topbar {
+    padding: 0 var(--space-4);
+    height: 60px;
+  }
+
+  .topbar-page-title {
+    font-size: var(--font-size-md);
+  }
+
+  .page-container {
+    padding: var(--space-4);
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marksheet-feedback-section {
+    grid-template-columns: 1fr;
+  }
+
+  .rubric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .modal-dialog {
+    max-width: 95vw;
+    margin: 10px;
+  }
+
+  .roadmap-row.pos-left,
+  .roadmap-row.pos-right {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .milestone-stone {
+    width: 60px;
+    height: 60px;
+  }
+
+  .milestone-card-preview {
+    min-width: 140px;
+  }
+}
+
