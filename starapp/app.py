@@ -57,6 +57,8 @@ class StarAppController:
         self.guardian_review_filter: str = "all"
         self.cosmonaut_submission_badge_id: str = "badge_cur_102"
         self.cosmonaut_results_badge_id: str = "badge_gov_101"
+        self.materials_badge_filter: str = "all"
+        self.materials_type_filter: str = "all"
         self.active_modal: Optional[str] = None
         self.modal_payload: Dict[str, Any] = {}
         self.flash_message: Optional[str] = None
@@ -196,6 +198,14 @@ class StarAppController:
             material_id = payload.get("material_id") if isinstance(payload, dict) else payload
             self.active_modal = "material_preview"
             self.modal_payload = {"material_id": material_id}
+
+        elif action == "filter_materials_badge":
+            badge_id = payload if isinstance(payload, str) else (payload.get("badge_id") if isinstance(payload, dict) else "all")
+            self.materials_badge_filter = badge_id or "all"
+
+        elif action == "filter_materials_type":
+            type_val = payload if isinstance(payload, str) else (payload.get("type") if isinstance(payload, dict) else "all")
+            self.materials_type_filter = type_val or "all"
 
         elif action == "view_submission_artifact":
             submission_id = payload.get("submission_id") if isinstance(payload, dict) else payload
@@ -907,29 +917,64 @@ class StarAppController:
             mat_id = self.modal_payload.get("material_id")
             mat = store.get_material(mat_id)
             if mat:
-                title = mat.title
+                badge = store.get_badge(mat.badge_id)
+                badge_label = f"{badge.code}: {badge.title}" if badge else mat.badge_id
+                title = f"{mat.title} ({badge_label})"
                 if mat.material_type == "youtube":
-                    # Convert watch URL to embed URL
+                    # Convert watch/share URL to clean embed URL
                     embed_url = mat.url_or_data
                     if "watch?v=" in embed_url:
                         vid = embed_url.split("watch?v=")[1].split("&")[0]
-                        embed_url = f"https://www.youtube.com/embed/{vid}"
+                        embed_url = f"https://www.youtube.com/embed/{vid}?autoplay=1&rel=0"
+                    elif "youtu.be/" in embed_url:
+                        vid = embed_url.split("youtu.be/")[1].split("?")[0]
+                        embed_url = f"https://www.youtube.com/embed/{vid}?autoplay=1&rel=0"
+                    elif "/embed/" in embed_url:
+                        if "?" not in embed_url:
+                            embed_url = f"{embed_url}?autoplay=1&rel=0"
+
                     body = f"""
-                    <div class="media-embed-container">
-                        <iframe src="{escape(embed_url)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; background:rgba(23,52,92,0.06); padding:8px 14px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">
+                        <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(badge_label)}</span>
+                        <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Topic: {escape(mat.topic)}</span>
                     </div>
-                    <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy);">{escape(mat.description)}</p>
-                    <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:8px;">(If YouTube player displays playback restrictions, open directly via: <a href="{escape(mat.url_or_data)}" target="_blank" rel="noopener noreferrer">{escape(mat.url_or_data)}</a>)</div>
+                    <div class="media-embed-container" style="box-shadow:0 8px 30px rgba(7,22,41,0.25); border-radius:var(--radius-md); overflow:hidden;">
+                        <iframe src="{escape(embed_url)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="border:0;"></iframe>
+                    </div>
+                    <div style="margin-top:14px; padding:12px 16px; background:#FFFFFF; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Lecture Overview & Study Objectives:</div>
+                        <p style="font-size:13.5px; line-height:1.55; color:var(--frost-navy); margin:0;">{escape(mat.description)}</p>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close Video Player</button>
+                    </div>
                     """
                 elif mat.material_type == "pdf":
                     body = f"""
-                    <iframe class="pdf-preview-box" src="{escape(mat.url_or_data)}"></iframe>
-                    <p style="font-size:13.5px; margin-top:10px; color:var(--frost-navy);">{escape(mat.description)}</p>
+                    <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; background:rgba(23,52,92,0.06); padding:8px 14px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">
+                        <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(badge_label)}</span>
+                        <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Topic: {escape(mat.topic)}</span>
+                    </div>
+                    <div style="background:#FFFFFF; border-radius:var(--radius-md); overflow:hidden; border:1.5px solid var(--icy-steel-50); box-shadow:0 6px 24px rgba(7,22,41,0.06); margin-bottom:12px;">
+                        <object data="{escape(mat.url_or_data.replace(' ', '%20') if (mat.url_or_data and not mat.url_or_data.startswith('http')) else (mat.url_or_data or 'data/Chemistry%20Syllabus.pdf'))}" type="application/pdf" style="width:100%; height:580px; border:none; display:block;">
+                            <iframe class="pdf-preview-box" src="{escape(mat.url_or_data.replace(' ', '%20') if (mat.url_or_data and not mat.url_or_data.startswith('http')) else (mat.url_or_data or 'data/Chemistry%20Syllabus.pdf'))}" style="width:100%; height:580px; border:none; display:block;" title="{escape(mat.title)}"></iframe>
+                        </object>
+                    </div>
+                    <div style="padding:12px 16px; background:#FFFFFF; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Document Syllabus & Engineering Context:</div>
+                        <p style="font-size:13.5px; line-height:1.55; color:var(--frost-navy); margin:0;">{escape(mat.description)}</p>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close Document Reader</button>
+                    </div>
                     """
                 else:
                     body = f"""
                     <pre style="background:var(--frost-navy); color:var(--snow-white); padding:16px; border-radius:var(--radius-md); max-height:400px; overflow:auto;"><code>{escape(mat.url_or_data)}</code></pre>
                     <p style="font-size:13.5px; margin-top:10px; color:var(--frost-navy);">{escape(mat.description)}</p>
+                    <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close Viewer</button>
+                    </div>
                     """
 
         elif self.active_modal == "review_submission":
@@ -1180,9 +1225,13 @@ class StarAppController:
             </form>
             """
 
+        modal_dialog_class = "liquid-glass-modal modal-dialog"
+        if self.active_modal in ["material_preview", "marksheet_modal"]:
+            modal_dialog_class += " modal-lg"
+
         return f"""
         <div class="modal-backdrop" onclick="if(event.target===this) window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
-            <div class="liquid-glass-modal modal-dialog">
+            <div class="{modal_dialog_class}">
                 <div class="modal-header">
                     <h3 class="modal-title">{escape(title)}</h3>
                     <button type="button" class="modal-close-btn" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">&times;</button>
@@ -1364,8 +1413,13 @@ class StarAppController:
 
             elif self.current_view == "c_materials":
                 page_title = "Course Documents & Video Lectures"
-                user_mats = [m for m in store.get_materials() if any(b.id == m.badge_id for b in assigned_badges)]
-                main_content_html = render_cosmonaut_materials(user_mats, badges_map)
+                main_content_html = render_cosmonaut_materials(
+                    materials=store.get_materials(),
+                    badges=assigned_badges,
+                    badges_map=badges_map,
+                    selected_badge_filter=self.materials_badge_filter,
+                    selected_type_filter=self.materials_type_filter
+                )
 
             elif self.current_view == "c_profile":
                 page_title = "Cosmonaut Profile & Competency Matrix"
@@ -1378,7 +1432,14 @@ class StarAppController:
             elif self.current_view == "c_extensions":
                 page_title = "Deadline Extension Requests"
                 user_exts = store.get_extensions_for_cosmonaut(self.current_user.id)
-                main_content_html = render_cosmonaut_extensions(assigned_badges, user_exts, badges_map)
+                approved_asms = store.get_assessments_for_cosmonaut(self.current_user.id)
+                completed_ids = {a.badge_id for a in approved_asms if a.decision == "approve"}
+                main_content_html = render_cosmonaut_extensions(
+                    assigned_badges=assigned_badges,
+                    extensions=user_exts,
+                    badges_map=badges_map,
+                    completed_badge_ids=completed_ids
+                )
 
             elif self.current_view == "c_activity":
                 page_title = "Personal Training Activity Stream"

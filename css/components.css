@@ -577,6 +577,87 @@
 }
 
 /* ==========================================================================
+   RESOURCE MEDIA CARDS & FIXED RATIO BOXES (Zero blur, fixed fit)
+   ========================================================================== */
+
+.badge-resource-section {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(234, 244, 255, 0.88) 100%) !important;
+  border: 1.5px solid var(--icy-steel) !important;
+  border-radius: var(--radius-lg) !important;
+  padding: 22px 24px !important;
+  margin-bottom: 24px !important;
+  box-shadow: 0 4px 18px rgba(7, 22, 41, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.resource-media-card {
+  background: #FFFFFF !important;
+  border: 1.5px solid var(--icy-steel-50) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 16px rgba(7, 22, 41, 0.05) !important;
+  padding: 16px 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+  /* Explicitly disable nested backdrop-filter to prevent browser rendering blur artifacts */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.resource-media-card:hover {
+  border-color: var(--deep-frozen-midnight) !important;
+  box-shadow: 0 6px 20px rgba(7, 22, 41, 0.10) !important;
+}
+
+.media-video-box {
+  position: relative !important;
+  width: 100% !important;
+  height: 200px !important;
+  border-radius: var(--radius-sm) !important;
+  overflow: hidden !important;
+  background: var(--frost-navy) !important;
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.14) !important;
+  margin: 10px 0 !important;
+}
+
+.media-video-box iframe {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  display: block !important;
+}
+
+.media-pdf-box {
+  position: relative !important;
+  width: 100% !important;
+  height: 200px !important;
+  border-radius: var(--radius-sm) !important;
+  overflow: hidden !important;
+  border: 1.5px solid var(--icy-steel-50) !important;
+  background: #FFFFFF !important;
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.06) !important;
+  margin: 10px 0 !important;
+}
+
+.media-pdf-box iframe,
+.media-pdf-box object {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0 !important;
+  display: block !important;
+}
+
+/* ==========================================================================
    9. ANNOUNCEMENTS & NOTIFICATION ITEMS
    ========================================================================== */
 

@@ -9,7 +9,7 @@
 
 (function () {
   const DB_NAME = "StarAppLocalDB";
-  const DB_VERSION = 5;
+  const DB_VERSION = 7;
   const STORE_NAME = "starapp_state";
 
   function openDatabase() {

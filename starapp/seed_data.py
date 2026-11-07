@@ -421,55 +421,160 @@ def get_initial_seed_data() -> Dict[str, Any]:
     ]
 
     materials = [
+        # GOV-101
         {
-            "id": "mat_1",
+            "id": "mat_gov_101_v1",
             "badge_id": "badge_gov_101",
-            "topic": "Data Stewardship",
-            "title": "Enterprise Data Governance & Compliance Manual",
-            "description": "Comprehensive reference handbook covering GDPR, CCPA, metadata cataloging, and access control models.",
-            "material_type": "pdf",
-            "url_or_data": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+            "topic": "Video Lecture 1",
+            "title": "GOV-101: Tactical Operations & Scenario Engineering (Video 1)",
+            "description": "Video lecture analyzing scenario orchestration, runtime mechanics, and foundational tactics.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90",
             "upload_date": "2026-10-02T10:00:00Z"
         },
         {
-            "id": "mat_2",
+            "id": "mat_gov_101_v2",
             "badge_id": "badge_gov_101",
-            "topic": "Access Architecture",
-            "title": "Role-Based Access Control Deep Dive",
-            "description": "Video lecture detailing least-privilege entitlements and automated role revocation pipelines.",
+            "topic": "Video Lecture 2",
+            "title": "GOV-101: Technical Analysis & Mechanics (Video 2)",
+            "description": "Video lecture covering core structural frameworks, operational diagnostics, and system workflows.",
             "material_type": "youtube",
-            "url_or_data": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "url_or_data": "https://www.youtube.com/watch?v=F0sqfPkCcyM&pp=ygUDYW90",
             "upload_date": "2026-10-05T14:00:00Z"
         },
         {
-            "id": "mat_3",
+            "id": "mat_gov_101_pdf",
+            "badge_id": "badge_gov_101",
+            "topic": "Curriculum Manual",
+            "title": "GOV-101: Chemistry & Technical Curriculum Syllabus",
+            "description": "Official specification manual from the data folder. Read and review directly inside the container.",
+            "material_type": "pdf",
+            "url_or_data": "data/Chemistry%20Syllabus.pdf",
+            "upload_date": "2026-10-10T12:00:00Z"
+        },
+        # CUR-102
+        {
+            "id": "mat_cur_102_v1",
             "badge_id": "badge_cur_102",
-            "topic": "Quality Heuristics",
-            "title": "Data Quality Profiling & Anomaly Detection Guide",
-            "description": "Whitepaper outlining statistical variance heuristics for detecting corrupted IoT sensor readings.",
-            "material_type": "pdf",
-            "url_or_data": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-            "upload_date": "2026-10-16T09:00:00Z"
-        },
-        {
-            "id": "mat_4",
-            "badge_id": "badge_dat_103",
-            "topic": "Dimensional Modeling",
-            "title": "Designing Star & Snowflake Data Warehouses",
-            "description": "Deep dive into fact-dimension grain alignment, surrogate keys, and slowly changing dimensions (SCD 2).",
+            "topic": "Video Lecture 1",
+            "title": "CUR-102: Tactical Operations & Scenario Engineering (Video 1)",
+            "description": "Video lecture analyzing scenario orchestration, runtime mechanics, and foundational tactics.",
             "material_type": "youtube",
-            "url_or_data": "https://www.youtube.com/watch?v=2ePf9rue1Ao",
-            "upload_date": "2026-11-02T11:00:00Z"
+            "url_or_data": "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90",
+            "upload_date": "2026-10-12T10:00:00Z"
         },
         {
-            "id": "mat_5",
-            "badge_id": "badge_sql_201",
-            "topic": "Query Optimization",
-            "title": "EXPLAIN Plan Internals and B-Tree Indexing",
-            "description": "Detailed walkthrough of Postgres optimizer cost estimations, buffer hits, and nested loop joins.",
+            "id": "mat_cur_102_v2",
+            "badge_id": "badge_cur_102",
+            "topic": "Video Lecture 2",
+            "title": "CUR-102: Technical Analysis & Mechanics (Video 2)",
+            "description": "Video lecture covering core structural frameworks, operational diagnostics, and system workflows.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=F0sqfPkCcyM&pp=ygUDYW90",
+            "upload_date": "2026-10-15T14:00:00Z"
+        },
+        {
+            "id": "mat_cur_102_pdf",
+            "badge_id": "badge_cur_102",
+            "topic": "Curriculum Manual",
+            "title": "CUR-102: Chemistry & Technical Curriculum Syllabus",
+            "description": "Official specification manual from the data folder. Read and review directly inside the container.",
             "material_type": "pdf",
-            "url_or_data": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-            "upload_date": "2026-11-10T13:00:00Z"
+            "url_or_data": "data/Chemistry%20Syllabus.pdf",
+            "upload_date": "2026-10-18T12:00:00Z"
+        },
+        # DAT-103
+        {
+            "id": "mat_dat_103_v1",
+            "badge_id": "badge_dat_103",
+            "topic": "Video Lecture 1",
+            "title": "DAT-103: Tactical Operations & Scenario Engineering (Video 1)",
+            "description": "Video lecture analyzing scenario orchestration, runtime mechanics, and foundational tactics.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90",
+            "upload_date": "2026-10-22T10:00:00Z"
+        },
+        {
+            "id": "mat_dat_103_v2",
+            "badge_id": "badge_dat_103",
+            "topic": "Video Lecture 2",
+            "title": "DAT-103: Technical Analysis & Mechanics (Video 2)",
+            "description": "Video lecture covering core structural frameworks, operational diagnostics, and system workflows.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=F0sqfPkCcyM&pp=ygUDYW90",
+            "upload_date": "2026-10-25T14:00:00Z"
+        },
+        {
+            "id": "mat_dat_103_pdf",
+            "badge_id": "badge_dat_103",
+            "topic": "Curriculum Manual",
+            "title": "DAT-103: Chemistry & Technical Curriculum Syllabus",
+            "description": "Official specification manual from the data folder. Read and review directly inside the container.",
+            "material_type": "pdf",
+            "url_or_data": "data/Chemistry%20Syllabus.pdf",
+            "upload_date": "2026-10-28T12:00:00Z"
+        },
+        # ING-104
+        {
+            "id": "mat_ing_104_v1",
+            "badge_id": "badge_ing_104",
+            "topic": "Video Lecture 1",
+            "title": "ING-104: Tactical Operations & Scenario Engineering (Video 1)",
+            "description": "Video lecture analyzing scenario orchestration, runtime mechanics, and foundational tactics.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90",
+            "upload_date": "2026-11-01T10:00:00Z"
+        },
+        {
+            "id": "mat_ing_104_v2",
+            "badge_id": "badge_ing_104",
+            "topic": "Video Lecture 2",
+            "title": "ING-104: Technical Analysis & Mechanics (Video 2)",
+            "description": "Video lecture covering core structural frameworks, operational diagnostics, and system workflows.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=F0sqfPkCcyM&pp=ygUDYW90",
+            "upload_date": "2026-11-03T14:00:00Z"
+        },
+        {
+            "id": "mat_ing_104_pdf",
+            "badge_id": "badge_ing_104",
+            "topic": "Curriculum Manual",
+            "title": "ING-104: Chemistry & Technical Curriculum Syllabus",
+            "description": "Official specification manual from the data folder. Read and review directly inside the container.",
+            "material_type": "pdf",
+            "url_or_data": "data/Chemistry%20Syllabus.pdf",
+            "upload_date": "2026-11-05T12:00:00Z"
+        },
+        # SQL-201
+        {
+            "id": "mat_sql_201_v1",
+            "badge_id": "badge_sql_201",
+            "topic": "Video Lecture 1",
+            "title": "SQL-201: Tactical Operations & Scenario Engineering (Video 1)",
+            "description": "Video lecture analyzing scenario orchestration, runtime mechanics, and foundational tactics.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90",
+            "upload_date": "2026-11-08T10:00:00Z"
+        },
+        {
+            "id": "mat_sql_201_v2",
+            "badge_id": "badge_sql_201",
+            "topic": "Video Lecture 2",
+            "title": "SQL-201: Technical Analysis & Mechanics (Video 2)",
+            "description": "Video lecture covering core structural frameworks, operational diagnostics, and system workflows.",
+            "material_type": "youtube",
+            "url_or_data": "https://www.youtube.com/watch?v=F0sqfPkCcyM&pp=ygUDYW90",
+            "upload_date": "2026-11-10T14:00:00Z"
+        },
+        {
+            "id": "mat_sql_201_pdf",
+            "badge_id": "badge_sql_201",
+            "topic": "Curriculum Manual",
+            "title": "SQL-201: Chemistry & Technical Curriculum Syllabus",
+            "description": "Official specification manual from the data folder. Read and review directly inside the container.",
+            "material_type": "pdf",
+            "url_or_data": "data/Chemistry%20Syllabus.pdf",
+            "upload_date": "2026-11-12T12:00:00Z"
         }
     ]
 

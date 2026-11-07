@@ -496,3 +496,111 @@
   box-shadow: 0 2px 8px rgba(23, 52, 92, 0.25);
 }
 
+/* ==========================================================================
+   LIQUID GLASS CALENDAR & DATEPICKER SUITE
+   ========================================================================== */
+
+.liquid-date-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(234, 244, 255, 0.58) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  border: 1.5px solid var(--icy-steel);
+  box-shadow:
+    0 4px 20px -2px rgba(7, 22, 41, 0.07),
+    0 1px 3px rgba(7, 22, 41, 0.04),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 0.95),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.4),
+    inset 0 0 6px 4px rgba(234, 244, 255, 0.3);
+  transition: all var(--transition-fast);
+  padding: 0 14px;
+}
+
+.liquid-date-wrapper:hover {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow:
+    0 6px 24px -2px rgba(7, 22, 41, 0.12),
+    0 2px 6px rgba(7, 22, 41, 0.06),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 1),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.5),
+    inset 0 0 8px 4px rgba(234, 244, 255, 0.4);
+}
+
+.liquid-date-wrapper:focus-within {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow:
+    0 0 0 3.5px rgba(23, 52, 92, 0.18),
+    0 6px 24px -2px rgba(7, 22, 41, 0.14),
+    inset 2.5px 2.5px 0.5px -2px rgba(255, 255, 255, 1),
+    inset -2.5px -2.5px 0.5px -2px rgba(157, 183, 213, 0.5);
+}
+
+.liquid-date-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--deep-frozen-midnight);
+  margin-right: 10px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.liquid-date-icon-box svg {
+  width: 17px;
+  height: 17px;
+}
+
+.liquid-glass-date {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  height: 44px;
+  width: 100%;
+  padding: 0 !important;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--deep-frozen-midnight);
+  cursor: pointer;
+  outline: none !important;
+}
+
+/* Liquid Glass Calendar Picker Indicator (Chrome / Edge / Safari) */
+.liquid-glass-date::-webkit-calendar-picker-indicator,
+input[type="date"].liquid-glass-control::-webkit-calendar-picker-indicator,
+.form-control[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  padding: 6px;
+  margin-right: 2px;
+  filter: invert(16%) sepia(45%) saturate(1500%) hue-rotate(185deg) brightness(85%) contrast(95%);
+  background-color: rgba(23, 52, 92, 0.08);
+  border: 1px solid var(--icy-steel-50);
+  transition: all var(--transition-fast);
+}
+
+.liquid-glass-date::-webkit-calendar-picker-indicator:hover,
+input[type="date"].liquid-glass-control::-webkit-calendar-picker-indicator:hover,
+.form-control[type="date"]::-webkit-calendar-picker-indicator:hover {
+  background-color: var(--deep-frozen-midnight);
+  filter: invert(100%) brightness(100%);
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(23, 52, 92, 0.25);
+}
+
+input[type="date"].liquid-glass-control {
+  font-family: var(--font-family-mono);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--deep-frozen-midnight);
+  cursor: pointer;
+}
+
+

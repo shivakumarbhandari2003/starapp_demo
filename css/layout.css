@@ -363,6 +363,11 @@ body {
   border-radius: var(--radius-lg);
 }
 
+.modal-dialog.modal-lg {
+  max-width: 920px;
+  width: 95vw;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

@@ -921,52 +921,220 @@ def render_cosmonaut_results(
 
 def render_cosmonaut_materials(
     materials: List[LearningMaterial],
+    badges: List[Badge],
     badges_map: Dict[str, Badge],
-    selected_badge_filter: str = "all"
+    selected_badge_filter: str = "all",
+    selected_type_filter: str = "all"
 ) -> str:
-    filtered = materials
-    if selected_badge_filter != "all":
-        filtered = [m for m in materials if m.badge_id == selected_badge_filter]
+    # 1. Determine badges to show
+    if selected_badge_filter == "all":
+        target_badges = badges
+    else:
+        target_badges = [b for b in badges if b.id == selected_badge_filter]
+        if not target_badges and selected_badge_filter in badges_map:
+            target_badges = [badges_map[selected_badge_filter]]
 
-    cards = []
-    for m in filtered:
-        badge = badges_map.get(m.badge_id)
-        badge_name = badge.title if badge else m.badge_id
-        type_pill = render_status_pill("active" if m.material_type == "youtube" else "completed")
+    # Compute overall counts in current scope
+    scope_materials = [m for m in materials if any(b.id == m.badge_id for b in target_badges)]
+    count_all = len(scope_materials)
+    count_pdf = sum(1 for m in scope_materials if m.material_type == "pdf")
+    count_yt = sum(1 for m in scope_materials if m.material_type == "youtube")
 
-        cards.append(f"""
-        <div class="liquid-glass-card" style="margin-bottom:14px;">
-            <div class="card-content" style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{escape(badge_name)}</span>
-                        {type_pill}
-                        <span style="font-size:11px; color:var(--frost-navy-50);">Topic: {escape(m.topic)}</span>
-                    </div>
-                    <h3 style="font-size:1.15rem; font-weight:700; color:var(--frost-navy);">{escape(m.title)}</h3>
-                    <p style="font-size:13px; color:var(--frost-navy-50); margin-top:2px;">{escape(m.description)}</p>
+    # Options for Badge Dropdown
+    badge_opts = []
+    for b in badges:
+        sel = " selected" if b.id == selected_badge_filter else ""
+        badge_opts.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
+
+    # Type Filter Buttons Styling
+    def get_btn_style(is_active: bool) -> str:
+        if is_active:
+            return "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; box-shadow:0 2px 8px rgba(23,52,92,0.3); display:inline-flex; align-items:center; gap:6px;"
+        return "background:transparent; color:var(--deep-frozen-midnight); font-weight:700; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; opacity:0.85;"
+
+    btn_all_style = get_btn_style(selected_type_filter == "all")
+    btn_pdf_style = get_btn_style(selected_type_filter == "pdf")
+    btn_yt_style = get_btn_style(selected_type_filter == "youtube")
+
+    # 2. Render Badge-by-Badge Sections
+    badge_sections = []
+    for b in target_badges:
+        b_mats = [m for m in materials if m.badge_id == b.id]
+        if selected_type_filter == "pdf":
+            b_mats = [m for m in b_mats if m.material_type == "pdf"]
+        elif selected_type_filter == "youtube":
+            b_mats = [m for m in b_mats if m.material_type == "youtube"]
+
+        # Only render badge container if it has materials matching current filter, or if specific badge is chosen
+        if not b_mats and selected_badge_filter == "all":
+            continue
+
+        mat_cards = []
+        for m in b_mats:
+            if m.material_type == "pdf":
+                type_badge = """
+                <span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--icy-steel-50); display:inline-flex; align-items:center; gap:5px;">
+                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    PDF DOCUMENT
+                </span>
+                """
+                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; In-Container PDF</span>'
+
+                # Use official PDF from data folder
+                pdf_src = "data/Chemistry%20Syllabus.pdf"
+                if m.url_or_data and not m.url_or_data.startswith("http"):
+                    pdf_src = m.url_or_data.replace(" ", "%20")
+
+                # Fixed-size in-container PDF viewer (200px height, crisp, zero blur)
+                media_viewer_html = f"""
+                <div class="media-pdf-box">
+                    <object data="{escape(pdf_src)}" type="application/pdf">
+                        <iframe src="{escape(pdf_src)}" title="{escape(m.title)}"></iframe>
+                    </object>
                 </div>
+                """
+            else:
+                type_badge = """
+                <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(23,52,92,0.2);">
+                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    YOUTUBE VIDEO
+                </span>
+                """
+                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&#9654; In-Container Player</span>'
+
+                # Extract YouTube Video ID (defaults to Video 1 or Video 2)
+                vid = "9ZGFF_bYenc"
+                if "F0sqfPkCcyM" in m.url_or_data:
+                    vid = "F0sqfPkCcyM"
+                elif "9ZGFF_bYenc" in m.url_or_data:
+                    vid = "9ZGFF_bYenc"
+                elif "watch?v=" in m.url_or_data:
+                    vid = m.url_or_data.split("watch?v=")[1].split("&")[0]
+                elif "youtu.be/" in m.url_or_data:
+                    vid = m.url_or_data.split("youtu.be/")[1].split("?")[0]
+                elif "/embed/" in m.url_or_data:
+                    vid = m.url_or_data.split("/embed/")[1].split("?")[0]
+
+                embed_src = f"https://www.youtube.com/embed/{vid}"
+
+                # Fixed-size in-container YouTube player (200px height, 16:9 contained, no clipping, zero blur)
+                media_viewer_html = f"""
+                <div class="media-video-box">
+                    <iframe src="{embed_src}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen title="{escape(m.title)}"></iframe>
+                </div>
+                """
+
+            mat_cards.append(f"""
+            <div class="resource-media-card">
                 <div>
-                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{\"material_id\": \"{m.id}\"}}')">
-                        Open In-App
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        {type_badge}
+                        <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">{escape(m.topic)}</span>
+                    </div>
+                    <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:4px 0 2px 0; line-height:1.35; height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">{escape(m.title)}</h4>
+                    <p style="font-size:11.5px; color:var(--frost-navy-75); line-height:1.4; margin:0 0 6px 0; height:32px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">{escape(m.description)}</p>
+
+                    <!-- In-Container Media Box (Fixed 200px height, crisp, zero blur) -->
+                    {media_viewer_html}
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-30); margin-top:4px;">
+                    {read_indicator}
+                    <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{"material_id": "{m.id}"}}')">
+                        Theater View &rarr;
                     </button>
                 </div>
             </div>
+            """)
+
+        mats_grid = f"""
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(310px, 1fr)); gap:18px; align-items:stretch;">
+            {"".join(mat_cards)}
+        </div>
+        """ if mat_cards else """
+        <div style="padding:20px; text-align:center; color:var(--frost-navy-50); font-style:italic; background:rgba(234,244,255,0.4); border-radius:var(--radius-sm); border:1px dashed var(--icy-steel-50);">
+            No learning resources of the selected format found for this milestone.
+        </div>
+        """
+
+        badge_sections.append(f"""
+        <!-- Badge Section: {escape(b.code)} (Zero blur, crisp styling) -->
+        <div class="badge-resource-section">
+            <!-- Badge Header -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs); letter-spacing:0.5px;">{escape(b.code)}</span>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(b.title)}</h3>
+                    <span style="font-size:11px; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{escape(b.category)}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:3px 10px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                        {len(b_mats)} Available {"Resource" if len(b_mats) == 1 else "Resources"}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Below: Its Documents and Video Lectures (Properly Sized & Structured) -->
+            {mats_grid}
         </div>
         """)
 
+    content_body = "".join(badge_sections) if badge_sections else """
+    <div class="badge-resource-section" style="padding:48px 24px; text-align:center; color:var(--frost-navy-50);">
+        <p style="font-size:15px; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">No learning resources matched your criteria.</p>
+        <p style="font-size:13px; margin:0;">Try selecting "All Badges" or toggling the format filter to All.</p>
+    </div>
+    """
+
     return f"""
     <div>
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Learning Resources & Study Hub</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Access documentation and video lectures without leaving StarApp.</p>
+        <!-- Page Title & Guidance -->
+        <div style="margin-bottom:24px; text-align:center;">
+            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Milestone Learning Resources & Study Hub</h2>
+            <p style="font-size:13.5px; color:var(--frost-navy-50);">Comprehensive engineering documentation and video lectures &mdash; read documents and watch videos directly inside StarApp.</p>
         </div>
 
+        <!-- Top Liquid Glass Filter Toolbar -->
+        <div class="liquid-glass-card" style="padding:16px 22px; margin-bottom:26px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.7) 100%); box-shadow:0 4px 18px rgba(7,22,41,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+                <!-- Left: Badge Selection Dropdown -->
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <label for="materials-badge-select" style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Badge:</label>
+                    <div class="liquid-select-wrapper" style="min-width:280px; width:auto;">
+                        <select id="materials-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value);">
+                            <option value="all"{' selected' if selected_badge_filter == 'all' else ''}>All Badges (Full Curriculum)</option>
+                            {"".join(badge_opts)}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Right: Selecting button to choose PDF or YouTube videos -->
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:12px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Format:</span>
+                    <div style="display:inline-flex; background:rgba(234,244,255,0.85); padding:3.5px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); box-shadow:inset 1px 1px 1px rgba(255,255,255,0.9);">
+                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'all')" style="{btn_all_style}">
+                            All ({count_all})
+                        </button>
+                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'pdf')" style="{btn_pdf_style}">
+                            <svg viewBox="0 0 24 24" style="width:14px; height:14px;" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            PDF Documents ({count_pdf})
+                        </button>
+                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'youtube')" style="{btn_yt_style}">
+                            <svg viewBox="0 0 24 24" style="width:14px; height:14px;" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            YouTube Videos ({count_yt})
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sequential Badge Sections: Badge Name, Below its Documents, Next Badge... -->
         <div>
-            {"".join(cards) if cards else "<p style='padding:30px; text-align:center; color:var(--frost-navy-50);'>No materials published for this selection.</p>"}
+            {content_body}
         </div>
     </div>
     """
+
 
 # ==============================================================================
 # 6.9 DEADLINE EXTENSION REQUESTS
@@ -975,82 +1143,186 @@ def render_cosmonaut_materials(
 def render_cosmonaut_extensions(
     assigned_badges: List[Badge],
     extensions: List[DeadlineExtension],
-    badges_map: Dict[str, Badge]
+    badges_map: Dict[str, Badge],
+    completed_badge_ids: Optional[Any] = None
 ) -> str:
-    badge_opts = "".join([f'<option value="{b.id}">{escape(b.code)}: {escape(b.title)}</option>' for b in assigned_badges])
+    completed_set = set(completed_badge_ids or [])
+    # Filter to only current available, non-completed milestones
+    available_badges = [b for b in assigned_badges if b.id not in completed_set]
+
+    if available_badges:
+        badge_opts = "".join([f'<option value="{b.id}">{escape(b.code)}: {escape(b.title)} (In-Progress)</option>' for b in available_badges])
+    else:
+        badge_opts = '<option disabled selected>All assigned badges are currently completed</option>'
 
     req_items = []
     for ext in extensions:
         badge = badges_map.get(ext.badge_id)
-        b_title = badge.title if badge else ext.badge_id
-        pill = render_status_pill(ext.status)
+        b_code = badge.code if badge else ext.badge_id
+        b_title = badge.title if badge else "Milestone Deliverable"
+        
+        # High-contrast action/status badge and current action footer
+        if ext.status == "approved":
+            status_pill = '<span class="status-pill status-approved" style="font-size:12px; font-weight:800; padding:5px 14px; background:var(--deep-frozen-midnight); color:var(--snow-white); border:1.5px solid var(--icy-steel); display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(23,52,92,0.25);">&#10003; Accepted &bull; Approved</span>'
+            current_action_html = f"""
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
+                    <span style="font-size:12.5px; color:var(--deep-frozen-midnight); font-weight:700;">Extension granted to {escape(ext.proposed_deadline)} &bull; Synchronized across roadmap</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{ext.badge_id}')">
+                        View Updated Timeline &rarr;
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+                        Submit Deliverable
+                    </button>
+                </div>
+            </div>
+            """
+        elif ext.status == "rejected":
+            status_pill = '<span class="status-pill status-rejected" style="font-size:12px; font-weight:800; padding:5px 14px; background:rgba(7,22,41,0.08); color:var(--frost-navy); border:1.5px solid var(--frost-navy-50); display:inline-flex; align-items:center; gap:6px;">&#10005; Rejected</span>'
+            current_action_html = f"""
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); background:rgba(7,22,41,0.10); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
+                    <span style="font-size:12.5px; color:var(--frost-navy); font-weight:600;">Original cutoff ({escape(ext.current_deadline)}) in effect &bull; Immediate deliverable required</span>
+                </div>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+                    Proceed to Submission &rarr;
+                </button>
+            </div>
+            """
+        else:
+            status_pill = '<span class="status-pill status-active" style="font-size:12px; font-weight:800; padding:5px 14px; background:rgba(234,244,255,0.95); color:var(--deep-frozen-midnight); border:1.5px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(23,52,92,0.12);"><span style="width:7px; height:7px; border-radius:50%; background:var(--deep-frozen-midnight); display:inline-block;"></span> Awaiting Review &bull; Pending</span>'
+            current_action_html = f"""
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
+                    <span style="font-size:12.5px; color:var(--frost-navy-75); font-weight:600;">Awaiting Guardian review by Dr. Elena Vance</span>
+                </div>
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{ext.badge_id}')">
+                    Inspect Milestone &rarr;
+                </button>
+            </div>
+            """
 
         guardian_note = ""
         if ext.guardian_response:
             guardian_note = f"""
-            <div style="margin-top:8px; font-size:12.5px; padding:8px 12px; background:rgba(23,52,92,0.06); border-radius:var(--radius-xs);">
-                <strong>Guardian Note:</strong> {escape(ext.guardian_response)}
+            <div style="margin-top:12px; font-size:13px; padding:12px 16px; background:linear-gradient(135deg, rgba(234,244,255,0.85) 0%, rgba(255,255,255,0.95) 100%); border-radius:var(--radius-sm); border-left:4px solid var(--deep-frozen-midnight); border:1px solid var(--icy-steel-50); border-left-width:4px;">
+                <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Guardian Review Feedback (Dr. Elena Vance):</div>
+                <div style="color:var(--frost-navy); line-height:1.5;">{escape(ext.guardian_response)}</div>
             </div>
             """
 
         req_items.append(f"""
-        <div class="liquid-glass-card" style="margin-bottom:12px;">
-            <div class="card-content">
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                    <h3 style="font-size:1.1rem; font-weight:700; color:var(--frost-navy);">{escape(b_title)}</h3>
-                    {pill}
+        <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 6px 20px rgba(7,22,41,0.06), inset 1px 1px 1px rgba(255,255,255,0.95);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:4px 10px; border-radius:var(--radius-xs); border:1px solid var(--deep-frozen-midnight); letter-spacing:0.5px;">{escape(b_code)}</span>
+                    <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(b_title)}</span>
                 </div>
-                <div style="font-size:12.5px; color:var(--frost-navy-50); margin-bottom:6px;">
-                    Original: <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline)}</span> → Proposed: <span style="font-family:var(--font-family-mono); font-weight:700; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</span>
-                </div>
-                <div style="font-size:13px; color:var(--frost-navy);">{escape(ext.reason)}</div>
-                {guardian_note}
+                {status_pill}
             </div>
+
+            <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-bottom:12px; padding:10px 16px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
+                <div>
+                    <div style="font-size:10.5px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:2px;">Original Cutoff</div>
+                    <div style="font-family:var(--font-family-mono); font-size:13px; font-weight:700; color:var(--frost-navy-75); text-decoration:line-through;">{escape(ext.current_deadline)}</div>
+                </div>
+                <div style="font-size:16px; font-weight:800; color:var(--deep-frozen-midnight); padding:0 4px;">&rarr;</div>
+                <div>
+                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:2px;">Requested Extension</div>
+                    <div style="font-family:var(--font-family-mono); font-size:14px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</div>
+                </div>
+            </div>
+
+            <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; background:#FFFFFF; padding:12px 16px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); box-shadow:0 1px 4px rgba(7,22,41,0.02);">
+                <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Cosmonaut Technical Rationale:</div>
+                {escape(ext.reason)}
+            </div>
+
+            {guardian_note}
+
+            {current_action_html}
         </div>
         """)
 
     return f"""
     <div>
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Milestone Deadline Extension Requests</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Request an adjustment to a submission deadline with an engineering justification.</p>
+        <div style="margin-bottom:24px; text-align:center;">
+            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Milestone Deadline Extension Portal</h2>
+            <p style="font-size:13.5px; color:var(--frost-navy-50);">Request scheduling adjustments for active milestones and track Guardian evaluations in real-time.</p>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-            {render_liquid_card(
-                title="Request Deadline Extension",
-                subtitle="Approved requests automatically recalculate your badge timeline",
-                content=f'''
-                <form onsubmit="event.preventDefault(); const b=document.getElementById('ext-badge'); const d=document.getElementById('ext-date'); const r=document.getElementById('ext-reason'); window.StarAppBridge.dispatchAction('submit_deadline_extension_request', JSON.stringify({{badge_id:b.value, proposed_deadline:d.value, reason:r.value}}));">
-                    <div class="form-group">
-                        <label class="form-label">Milestone Badge</label>
-                        <select id="ext-badge" class="form-select">
-                            {badge_opts}
-                        </select>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:24px; align-items:start;">
+            <!-- Container 1: Extension Request Form -->
+            <div class="liquid-submission-portal" style="padding:28px 32px;">
+                <div style="margin-bottom:20px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Request Deadline Extension</h3>
+                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Choose an in-progress milestone and specify a realistic engineering rationale.</div>
+                </div>
+
+                <form id="deadline-extension-form" onsubmit="event.preventDefault(); const b=document.getElementById('ext-badge'); const d=document.getElementById('ext-date'); const r=document.getElementById('ext-reason'); window.StarAppBridge.dispatchAction('submit_deadline_extension_request', JSON.stringify({{badge_id:b.value, proposed_deadline:d.value, reason:r.value}}));">
+                    <!-- 1. Dropdown of current available non-completed badges -->
+                    <div class="liquid-form-group" style="margin-bottom:20px;">
+                        <label class="liquid-form-label" for="ext-badge">Target Available Milestone (In-Progress)</label>
+                        <div class="liquid-select-wrapper">
+                            <select id="ext-badge" class="liquid-glass-control liquid-glass-select" required>
+                                {badge_opts}
+                            </select>
+                        </div>
+                        <span class="liquid-form-hint">Only current non-completed milestones are eligible for extension requests.</span>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Proposed New Deadline</label>
-                        <input type="date" id="ext-date" class="form-control" required>
+                    <!-- 2. Liquid Glass Calendar Datepicker -->
+                    <div class="liquid-form-group" style="margin-bottom:20px;">
+                        <label class="liquid-form-label" for="ext-date">Proposed New Submission Deadline</label>
+                        <div class="liquid-date-wrapper">
+                            <div class="liquid-date-icon-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                                </svg>
+                            </div>
+                            <input type="date" id="ext-date" class="liquid-glass-date" required>
+                        </div>
+                        <span class="liquid-form-hint">Choose a future cutoff date allowing adequate buffer beyond the milestone deadline.</span>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">Engineering Justification</label>
-                        <textarea id="ext-reason" class="form-textarea" placeholder="Detail the technical or operational bottleneck requiring extension..." required></textarea>
+                    <!-- 3. Reason Textarea -->
+                    <div class="liquid-form-group" style="margin-bottom:24px;">
+                        <label class="liquid-form-label" for="ext-reason">Technical Justification & Bottleneck Details</label>
+                        <textarea id="ext-reason" class="liquid-glass-control" style="min-height:105px; padding:12px 16px; resize:vertical; font-family:var(--font-family-base); line-height:1.5;" placeholder="Describe the unexpected complexity, data pipeline latency, or algorithmic research requiring additional engineering time..." required></textarea>
+                        <span class="liquid-form-hint">Provide at least 10 characters detailing the engineering rationale for your Guardian.</span>
                     </div>
 
-                    <div style="display:flex; justify-content:flex-end; margin-top:16px;">
-                        <button type="submit" class="btn-metal">Submit Extension Request</button>
+                    <!-- 4. Submit Button -->
+                    <div style="display:flex; justify-content:flex-end;">
+                        <div class="btn-metal-wrapper" style="width:100%;">
+                            <div class="btn-metal-inner"></div>
+                            <button type="submit" class="btn-metal" style="width:100%; height:46px; font-size:14px; font-weight:700; letter-spacing:0.3px;">
+                                Submit Extension Request for Guardian Review &rarr;
+                            </button>
+                        </div>
                     </div>
                 </form>
-                '''
-            )}
+            </div>
 
-            {render_liquid_card(
-                title="My Request History",
-                subtitle="Review past requests and mentor responses",
-                content="".join(req_items) if req_items else "<p style='font-size:13px; opacity:0.6;'>No extension requests submitted.</p>"
-            )}
+            <!-- Container 2: Submitted Requests & Status -->
+            <div class="liquid-submission-portal" style="padding:28px 32px;">
+                <div style="margin-bottom:20px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Submitted Requests & Actions</h3>
+                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Audit trail of all requested milestone extensions and mentor decisions.</div>
+                </div>
+
+                <div>
+                    {"".join(req_items) if req_items else "<div style='padding:36px 20px; text-align:center; color:var(--frost-navy-50); font-style:italic;'>No extension requests submitted yet. Select an available milestone on the left to request a schedule adjustment.</div>"}
+                </div>
+            </div>
         </div>
     </div>
     """
