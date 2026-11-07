@@ -586,16 +586,21 @@ def render_badge_detail_modal_content(
     ]
 
     steps_html = []
-    for s in steps:
+    fill_percent = 100 if state == "completed" else (50 if state == "active" else 0)
+
+    for idx, s in enumerate(steps):
+        delay = 0.08 + idx * 0.08
         steps_html.append(f"""
-        <div class="timeline-row-card {s['cls']}">
-            <div class="timeline-row-left">
-                <span class="timeline-step-badge">{s['num']}</span>
-                <span class="timeline-step-name">{escape(s['title'])}</span>
+        <div class="timeline-node-row {s['cls']}" style="animation-delay: {delay:.2f}s;">
+            <div class="node-anchor">
+                <div class="node-orb">{s['num']}</div>
             </div>
-            <div class="timeline-row-right">
-                <span class="timeline-date-pill">{escape(s['date'])}</span>
-                {render_status_pill(s['pill'])}
+            <div class="node-connector-strip">
+                <div class="node-label-title">{escape(s['title'])}</div>
+                <div class="node-meta-group">
+                    <span class="node-timestamp-pill">{escape(s['date'])}</span>
+                    {render_status_pill(s['pill'])}
+                </div>
             </div>
         </div>
         """)
@@ -621,9 +626,9 @@ def render_badge_detail_modal_content(
     """)
 
     return f"""
-    <div style="padding: 4px 0 0 0;">
+    <div style="padding: 2px 0 0 0;">
         <!-- Clean Subheader with Badge Code, Title and Status -->
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
             <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(badge.code)}</span>
                 <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(badge.title)}</span>
@@ -634,9 +639,16 @@ def render_badge_detail_modal_content(
             </div>
         </div>
 
-        <!-- Dashboard-Aligned 6-Stage Timeline List (Zero Scrolling) -->
-        <div class="timeline-table-wrapper">
-            {"".join(steps_html)}
+        <!-- High-Tech Animated Lifecycle Timeline Track (Zero Scrolling) -->
+        <div class="animated-timeline-container">
+            <div class="timeline-track-spine">
+                <div class="timeline-track-bg"></div>
+                <div class="timeline-track-fill" style="--fill-target: {fill_percent}%;"></div>
+                <div class="timeline-track-beam"></div>
+            </div>
+            <div class="timeline-nodes-sequence">
+                {"".join(steps_html)}
+            </div>
         </div>
 
         <!-- Footer Actions -->
