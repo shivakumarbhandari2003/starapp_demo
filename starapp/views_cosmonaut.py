@@ -545,83 +545,58 @@ def render_badge_detail_modal_content(
             "num": 1,
             "title": "Badge & Project Allocated",
             "date": alloc_date,
-            "date_label": "Allocated",
-            "status": "Completed" if state in ["completed", "active"] else "Locked",
-            "cls": "completed" if state in ["completed", "active"] else "locked",
-            "desc": "Badge curriculum and hands-on project deliverable commissioned by Guardian Dr. Elena Vance."
+            "pill": "completed" if state in ["completed", "active"] else "locked",
+            "cls": "completed" if state in ["completed", "active"] else "locked"
         },
         {
             "num": 2,
             "title": "Learning Time",
-            "date": f"{learn_start} to {learn_end}",
-            "date_label": "Learning Window",
-            "status": "Completed" if (state == "completed" or (state == "active" and today_str >= learn_end)) else ("Active" if state == "active" else "Locked"),
-            "cls": "completed" if (state == "completed" or (state == "active" and today_str >= learn_end)) else ("active" if state == "active" else "locked"),
-            "desc": "Study comprehensive documentation, architectural patterns, and embedded technical video lectures."
+            "date": f"{learn_start} → {learn_end}",
+            "pill": "completed" if (state == "completed" or (state == "active" and today_str >= learn_end)) else ("active" if state == "active" else "locked"),
+            "cls": "completed" if (state == "completed" or (state == "active" and today_str >= learn_end)) else ("active" if state == "active" else "locked")
         },
         {
             "num": 3,
             "title": "Project Time",
-            "date": f"{proj_start} to {proj_end}",
-            "date_label": "Project Window",
-            "status": "Completed" if state == "completed" else ("Active" if state == "active" else "Locked"),
-            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
-            "desc": "Hands-on engineering: repository code construction, automated testing, and deliverable packaging."
+            "date": f"{proj_start} → {proj_end}",
+            "pill": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
+            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked")
         },
         {
             "num": 4,
             "title": "Submission Date",
             "date": sub_deadline,
-            "date_label": "Deadline",
-            "status": "Submitted" if state == "completed" else ("Due Soon" if state == "active" else "Locked"),
-            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
-            "desc": "Hard deliverable intake cutoff. Project repository snapshot locked for formal review."
+            "pill": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
+            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked")
         },
         {
             "num": 5,
             "title": "Review Date",
             "date": review_date,
-            "date_label": "Evaluation",
-            "status": "Evaluated" if state == "completed" else ("Scheduled" if state == "active" else "Locked"),
-            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
-            "desc": "Guardian evaluation on universal 5-criterion rubric (50 marks total)."
+            "pill": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
+            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked")
         },
         {
             "num": 6,
             "title": "Badge Earned Date",
             "date": award_date,
-            "date_label": "Award Date",
-            "status": "Earned & Issued" if state == "completed" else ("Target Date" if state == "active" else "Locked"),
-            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
-            "desc": "Milestone credential officially awarded and permanently registered to Cosmonaut portfolio."
+            "pill": "completed" if state == "completed" else ("active" if state == "active" else "locked"),
+            "cls": "completed" if state == "completed" else ("active" if state == "active" else "locked")
         }
     ]
 
     steps_html = []
     for s in steps:
-        pill_status = "approved" if s["status"] in ["Completed", "Submitted", "Evaluated", "Earned & Issued"] else ("active" if "Active" in s["status"] or "Due" in s["status"] else "locked")
         steps_html.append(f"""
-        <div class="timeline-step-card {s['cls']}">
-            <div class="timeline-step-header">
-                <div class="timeline-step-title">
-                    <span style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:var(--radius-full); background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:11px; font-weight:800;">{s['num']}</span>
-                    <span>{escape(s['title'])}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="timeline-step-date"><strong>{s['date_label']}:</strong> {escape(s['date'])}</span>
-                    {render_status_pill(pill_status)}
-                </div>
+        <div class="timeline-row-card {s['cls']}">
+            <div class="timeline-row-left">
+                <span class="timeline-step-badge">{s['num']}</span>
+                <span class="timeline-step-name">{escape(s['title'])}</span>
             </div>
-            <div class="timeline-step-desc">{escape(s['desc'])}</div>
-        </div>
-        """)
-
-    materials_list = []
-    for m in materials:
-        materials_list.append(f"""
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(234,244,255,0.6); border-radius:var(--radius-sm); margin-bottom:4px; font-size:12.5px;">
-            <span><strong>{escape(m.title)}</strong> ({m.material_type.upper()})</span>
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{\"material_id\": \"{m.id}\"}}')">Study Now</button>
+            <div class="timeline-row-right">
+                <span class="timeline-date-pill">{escape(s['date'])}</span>
+                {render_status_pill(s['pill'])}
+            </div>
         </div>
         """)
 
@@ -629,64 +604,43 @@ def render_badge_detail_modal_content(
     actions = []
     if is_guardian:
         actions.append(f"""
-        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{{\"badge_id\": \"{badge.id}\"}}')">
+        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{badge.id}')">
             Decide / Edit Timelines
         </button>
         """)
     else:
         if state in ["active", "completed"]:
             actions.append(f"""
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{badge.id}')">
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{badge.id}')">
                 Proceed to Project Submission →
             </button>
             """)
-        else:
-            actions.append("""
-            <div style="font-size:12.5px; color:var(--frost-navy-50); font-style:italic; align-self:center;">
-                🔒 Milestone locked until prerequisite badges are successfully completed.
-            </div>
-            """)
 
     actions.append("""
-    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{}')">Close Window</button>
+    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('close_modal', '{}')">Close Window</button>
     """)
 
     return f"""
-    <div>
-        <!-- Window Header -->
-        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:12px; font-weight:800; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight);">{escape(badge.code)}</span>
-                    <span style="font-size:12px; color:var(--frost-navy-50);">• {escape(badge.category)}</span>
-                </div>
-                <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:4px 0 2px;">{escape(badge.title)}</h3>
-                <p style="font-size:13px; color:var(--frost-navy-50); margin:0;">{escape(badge.description)}</p>
+    <div style="padding: 4px 0 0 0;">
+        <!-- Clean Subheader with Badge Code, Title and Status -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(badge.code)}</span>
+                <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(badge.title)}</span>
             </div>
-            <div>{render_status_pill(state)}</div>
-        </div>
-
-        <!-- Project Deliverable Requirements Box -->
-        <div style="background:rgba(234,244,255,0.45); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:14px; font-size:12.5px; line-height:1.4;">
-            <strong style="color:var(--deep-frozen-midnight); text-transform:uppercase; font-size:11px;">Deliverable Requirements:</strong> {escape(badge.project_requirements)}
-        </div>
-
-        <!-- 6-Stage Professional Timeline Flow -->
-        <div style="margin-bottom:14px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-                <h4 style="font-size:1.05rem; font-weight:700; color:var(--frost-navy); margin:0;">Milestone Lifecycle Timeline</h4>
-                <span style="font-size:11px; font-weight:600; color:var(--deep-frozen-midnight);">Decided by Guardian Dr. Elena Vance</span>
-            </div>
-            <div class="badge-timeline-container">
-                {"".join(steps_html)}
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:11.5px; font-weight:600; color:var(--frost-navy-50);">Decided by Guardian Dr. Elena Vance</span>
+                {render_status_pill(state)}
             </div>
         </div>
 
-        <!-- Available Study Materials (if any) -->
-        {"<div style='margin-bottom:14px;'><div style='font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;'>Learning Materials for this Milestone:</div>" + "".join(materials_list) + "</div>" if materials_list else ""}
+        <!-- Dashboard-Aligned 6-Stage Timeline List (Zero Scrolling) -->
+        <div class="timeline-table-wrapper">
+            {"".join(steps_html)}
+        </div>
 
-        <!-- Modal Actions Footer -->
-        <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; padding-top:12px; border-top:1px solid var(--icy-steel-30);">
+        <!-- Footer Actions -->
+        <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-top:14px; padding-top:10px; border-top:1px solid var(--icy-steel-30);">
             {"".join(actions)}
         </div>
     </div>

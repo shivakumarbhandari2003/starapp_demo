@@ -134,36 +134,41 @@
 
 .status-approved,
 .status-completed {
-  background: rgba(23, 52, 92, 0.12);
-  color: var(--deep-frozen-midnight);
-  border: 1px solid rgba(23, 52, 92, 0.3);
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border: 1px solid var(--deep-frozen-midnight);
+  font-weight: 700;
 }
 
 .status-active,
 .status-in-progress {
-  background: rgba(7, 22, 41, 0.08);
-  color: var(--frost-navy);
-  border: 1px solid var(--icy-steel);
+  background: var(--frost-mist);
+  color: var(--deep-frozen-midnight);
+  border: 1.5px solid var(--deep-frozen-midnight);
+  font-weight: 700;
 }
 
 .status-pending,
 .status-awaiting-review {
-  background: rgba(157, 183, 213, 0.25);
+  background: rgba(157, 183, 213, 0.35);
   color: var(--frost-navy);
-  border: 1px solid var(--icy-steel-80);
+  border: 1px solid var(--icy-steel);
+  font-weight: 600;
 }
 
 .status-resubmit,
 .status-rejected {
   background: rgba(7, 22, 41, 0.15);
   color: var(--frost-navy);
-  border: 1px solid var(--frost-navy-50);
+  border: 1px solid var(--frost-navy);
+  font-weight: 700;
 }
 
 .status-locked {
-  background: rgba(157, 183, 213, 0.15);
+  background: rgba(157, 183, 213, 0.2);
   color: var(--frost-navy-50);
-  border: 1px solid var(--icy-steel-30);
+  border: 1px dashed var(--icy-steel);
+  font-weight: 600;
 }
 
 /* ==========================================================================
@@ -596,125 +601,100 @@
 }
 
 /* ==========================================================================
-   10. PROFESSIONAL BADGE TIMELINE WINDOW
+   10. PROFESSIONAL BADGE TIMELINE WINDOW (DASHBOARD-ALIGNED)
    ========================================================================== */
 
-.badge-timeline-container {
+.timeline-table-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  position: relative;
-  margin: var(--space-4) 0;
-  padding-left: 28px;
+  gap: 8px;
+  width: 100%;
 }
 
-.badge-timeline-container::before {
-  content: "";
-  position: absolute;
-  top: 24px;
-  bottom: 24px;
-  left: 11px;
-  width: 2px;
-  background: linear-gradient(180deg, var(--deep-frozen-midnight) 0%, var(--icy-steel-50) 100%);
-}
-
-.timeline-step-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid var(--icy-steel-30);
-  transition: all var(--transition-fast);
-}
-
-.timeline-step-card:hover {
-  background: var(--snow-white);
-  box-shadow: 0 4px 12px rgba(7, 22, 41, 0.06);
-}
-
-.timeline-step-card::before {
-  content: "";
-  position: absolute;
-  top: 16px;
-  left: -23px;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-full);
-  background: var(--snow-white);
-  border: 2px solid var(--icy-steel);
-  box-shadow: 0 0 0 2px var(--deep-frozen-midnight);
-}
-
-.timeline-step-card.completed {
-  border-left: 3px solid var(--deep-frozen-midnight);
-  background: rgba(234, 244, 255, 0.6);
-}
-
-.timeline-step-card.completed::before {
-  background: var(--deep-frozen-midnight);
-  border-color: var(--snow-white);
-  box-shadow: 0 0 0 2px var(--deep-frozen-midnight);
-}
-
-.timeline-step-card.active {
-  border-left: 3px solid var(--deep-frozen-midnight);
-  background: var(--snow-white);
-  box-shadow: 0 0 0 1px var(--deep-frozen-midnight), 0 4px 14px rgba(23, 52, 92, 0.12);
-}
-
-.timeline-step-card.active::before {
-  background: var(--deep-frozen-midnight);
-  box-shadow: 0 0 0 3px rgba(23, 52, 92, 0.35);
-  animation: pulse-ring 2s infinite;
-}
-
-.timeline-step-card.locked {
-  opacity: 0.7;
-  border-style: dashed;
-  background: rgba(234, 244, 255, 0.3);
-}
-
-.timeline-step-card.locked::before {
-  background: var(--icy-steel-50);
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.timeline-step-header {
+.timeline-row-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--snow-white);
+  border: 1.5px solid var(--icy-steel-50);
+  box-shadow: 0 1px 4px rgba(7, 22, 41, 0.04);
+  transition: all var(--transition-fast);
 }
 
-.timeline-step-title {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--frost-navy);
+.timeline-row-card:hover {
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 3px 10px rgba(23, 52, 92, 0.08);
+}
+
+.timeline-row-card.completed {
+  border-left: 4px solid var(--deep-frozen-midnight);
+  background: var(--snow-white);
+}
+
+.timeline-row-card.active {
+  border-left: 4px solid var(--deep-frozen-midnight);
+  background: var(--snow-white);
+  box-shadow: 0 0 0 1.5px var(--deep-frozen-midnight), 0 3px 12px rgba(23, 52, 92, 0.1);
+}
+
+.timeline-row-card.locked {
+  opacity: 0.65;
+  border-left: 4px solid var(--icy-steel);
+  border-style: dashed;
+  background: rgba(234, 244, 255, 0.35);
+}
+
+.timeline-row-left {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 14px;
 }
 
-.timeline-step-date {
-  font-size: 11.5px;
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-semibold);
-  color: var(--deep-frozen-midnight);
-  background: rgba(23, 52, 92, 0.08);
-  padding: 3px 8px;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--icy-steel-30);
-  white-space: nowrap;
-}
-
-.timeline-step-desc {
+.timeline-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
   font-size: 12px;
-  color: var(--frost-navy-50);
-  line-height: 1.4;
+  font-weight: 800;
+  font-family: var(--font-family-mono);
+  flex-shrink: 0;
+}
+
+.timeline-row-card.locked .timeline-step-badge {
+  background: var(--icy-steel);
+  color: var(--frost-navy);
+}
+
+.timeline-step-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--frost-navy);
+  letter-spacing: -0.2px;
+}
+
+.timeline-row-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline-date-pill {
+  font-family: var(--font-family-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--deep-frozen-midnight);
+  background: rgba(23, 52, 92, 0.07);
+  padding: 5px 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--icy-steel-50);
+  white-space: nowrap;
 }
 
 
