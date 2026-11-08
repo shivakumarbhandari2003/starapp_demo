@@ -325,6 +325,159 @@
       }
     },
 
+    // In-memory array for multiple selected PDFs
+    bulkPdfs: [],
+
+    // Handle multi-PDF selection via FileReader
+    handleBulkPdfSelect(event) {
+      const files = event.target.files;
+      if (!files || !files.length) return;
+      if (!window.StarAppBridge.bulkPdfs) {
+        window.StarAppBridge.bulkPdfs = [];
+      }
+      const promises = Array.from(files).map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            resolve({
+              name: file.name,
+              size: (file.size / 1024).toFixed(1),
+              dataUrl: e.target.result
+            });
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+
+      Promise.all(promises).then(newItems => {
+        window.StarAppBridge.bulkPdfs = window.StarAppBridge.bulkPdfs.concat(newItems);
+        window.StarAppBridge.renderBulkPdfList();
+      });
+    },
+
+    // Remove PDF from bulk list
+    removeBulkPdf(index) {
+      if (window.StarAppBridge.bulkPdfs && window.StarAppBridge.bulkPdfs.length > index) {
+        window.StarAppBridge.bulkPdfs.splice(index, 1);
+        window.StarAppBridge.renderBulkPdfList();
+      }
+    },
+
+    // Render interactive list of selected PDFs
+    renderBulkPdfList() {
+      const container = document.getElementById("bulk-pdf-list");
+      if (!container) return;
+      if (!window.StarAppBridge.bulkPdfs || !window.StarAppBridge.bulkPdfs.length) {
+        container.innerHTML = "";
+        return;
+      }
+      container.innerHTML = window.StarAppBridge.bulkPdfs.map((item, idx) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#FFFFFF; padding:6px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel); font-size:12px;">
+          <div style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <span style="font-weight:800; color:var(--deep-frozen-midnight);">📄 ${item.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+            <span style="color:var(--frost-navy-50); font-size:11px;">(${item.size} KB)</span>
+          </div>
+          <button type="button" onclick="window.StarAppBridge.removeBulkPdf(${idx})" style="background:transparent; border:none; color:#d9534f; cursor:pointer; font-weight:800; font-size:16px; padding:0 4px;" title="Remove this PDF">&times;</button>
+        </div>
+      `).join("");
+    },
+
+    // Clear or remove YouTube row
+    clearOrRemoveYouTubeRow(btn) {
+      if (document.querySelectorAll('.youtube-input-row').length > 1) {
+        btn.parentElement.remove();
+      } else {
+        const title = btn.parentElement.querySelector('.yt-title-input');
+        const url = btn.parentElement.querySelector('.yt-url-input');
+        if (title) title.value = '';
+        if (url) url.value = '';
+      }
+    },
+
+    // Add extra dynamic YouTube row
+    addYouTubeRow() {
+      const container = document.getElementById("youtube-rows-container");
+      if (!container) return;
+      const row = document.createElement("div");
+      row.className = "youtube-input-row";
+      row.style.cssText = "display:grid; grid-template-columns:1fr 1.5fr auto; gap:8px; align-items:center; margin-bottom:8px;";
+      row.innerHTML = `
+        <input type="text" class="yt-title-input form-control" placeholder="Video Title (e.g. Masterclass Lecture)">
+        <input type="url" class="yt-url-input form-control" placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/...">
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.clearOrRemoveYouTubeRow(this)" style="color:#d9534f; padding:4px 8px; font-weight:800;" title="Remove row">&times;</button>
+      `;
+      container.appendChild(row);
+    },
+
+    // Submit bulk materials form
+    submitBulkMaterials() {
+      const badgeEl = document.getElementById("bulk-mat-badge");
+      const topicEl = document.getElementById("bulk-mat-topic");
+      const descEl = document.getElementById("bulk-mat-desc");
+
+      const badgeId = badgeEl ? badgeEl.value : "";
+      const topic = topicEl ? topicEl.value.trim() : "Module Specification";
+      const desc = descEl ? descEl.value.trim() : "";
+
+      const pdfs = window.StarAppBridge.bulkPdfs || [];
+
+      const ytRows = document.querySelectorAll("#youtube-rows-container .youtube-input-row");
+      const youtubeLinks = [];
+      ytRows.forEach(row => {
+        const urlInput = row.querySelector(".yt-url-input");
+        const titleInput = row.querySelector(".yt-title-input");
+        const url = urlInput ? urlInput.value.trim() : "";
+        const title = titleInput ? titleInput.value.trim() : "";
+        if (url) {
+          youtubeLinks.push({ title: title, url: url });
+        }
+      });
+
+      if (pdfs.length === 0 && youtubeLinks.length === 0) {
+        alert("Please select at least one PDF file or enter at least one YouTube link.");
+        return;
+      }
+
+      const payload = {
+        badge_id: badgeId,
+        topic: topic,
+        description: desc,
+        pdfs: pdfs,
+        youtube_links: youtubeLinks
+      };
+
+      // Reset in-memory list and submit
+      window.StarAppBridge.bulkPdfs = [];
+      window.StarAppBridge.dispatchAction("save_bulk_materials", JSON.stringify(payload));
+    },
+
+    // Submit single material edit form
+    submitEditMaterial(matId) {
+      const badgeId = document.getElementById("edit-mat-badge")?.value || "";
+      const title = document.getElementById("edit-mat-title")?.value.trim() || "";
+      const topic = document.getElementById("edit-mat-topic")?.value.trim() || "";
+      const type = document.getElementById("edit-mat-type")?.value || "youtube";
+      const url = document.getElementById("edit-mat-url")?.value.trim() || "";
+      const desc = document.getElementById("edit-mat-desc")?.value.trim() || "";
+
+      if (!title) {
+        alert("Please enter a title for the material.");
+        return;
+      }
+
+      const payload = {
+        material_id: matId,
+        badge_id: badgeId,
+        title: title,
+        topic: topic,
+        material_type: type,
+        url_or_data: url,
+        description: desc
+      };
+
+      window.StarAppBridge.dispatchAction("update_material", JSON.stringify(payload));
+    },
+
     // Dispatch UI click/action event to Python controller
     dispatchAction(action, payloadJson = "{}") {
       if (window.starAppController && typeof window.starAppController.handle_event === "function") {

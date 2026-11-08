@@ -373,13 +373,21 @@ class StarAppController:
         elif action == "open_add_material_modal":
             self.active_modal = "add_material"
 
-        elif action == "save_material_form":
-            self.execute_save_material(payload)
+        elif action in ("save_bulk_materials", "save_material_form"):
+            self.execute_save_bulk_materials(payload)
+
+        elif action == "open_edit_material_modal":
+            mat_id = payload.get("material_id") if isinstance(payload, dict) else payload
+            self.active_modal = "edit_material"
+            self.modal_payload = {"material_id": mat_id}
+
+        elif action == "update_material":
+            self.execute_update_material(payload)
 
         elif action == "delete_material":
             mat_id = payload.get("material_id") if isinstance(payload, dict) else payload
             store.delete_material(mat_id)
-            self.set_flash("Material deleted successfully.", "info")
+            self.set_flash("Learning material deleted successfully.", "info")
 
         elif action == "open_extension_decision_modal":
             self.active_modal = "decide_extension"
@@ -1080,8 +1088,8 @@ if __name__ == "__main__":
 
         store.add_activity(
             event_type="material_published",
-            actor_id=self.current_user.id,
-            actor_name=self.current_user.name,
+            actor_id=self.current_user.id if self.current_user else "guardian_1",
+            actor_name=self.current_user.name if self.current_user else "Guardian",
             cosmonaut_id="",
             badge_id=badge_id,
             summary=f"Learning Material Published for {b_name}",
@@ -1090,6 +1098,122 @@ if __name__ == "__main__":
 
         self.active_modal = None
         self.set_flash(f"Resource '{title}' published for {b_name}.", "success")
+
+    def execute_save_bulk_materials(self, payload: Any):
+        if isinstance(payload, str) and payload.strip():
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+        # Fallback to single save if legacy fields are passed
+        if ("url_or_data" in payload or "title" in payload) and "pdfs" not in payload and "youtube_links" not in payload:
+            return self.execute_save_material(payload)
+
+        badge_id = payload.get("badge_id", "")
+        topic = payload.get("topic", "General Module").strip() or "General Module"
+        desc = payload.get("description", "").strip() or "Milestone learning resource"
+        pdfs = payload.get("pdfs", [])
+        youtube_links = payload.get("youtube_links", [])
+
+        if not badge_id:
+            all_b = store.get_all_badges()
+            if all_b:
+                badge_id = all_b[0].id
+
+        badge = store.get_badge(badge_id)
+        b_name = badge.code if badge else badge_id
+        saved_count = 0
+        import time
+
+        # Process uploaded PDFs
+        for idx, pdf in enumerate(pdfs):
+            name = pdf.get("name", f"Document_{idx+1}")
+            data_url = pdf.get("dataUrl", "")
+            if not data_url:
+                continue
+            mat_id = f"mat_pdf_{int(time.time()*1000)}_{idx+1}"
+            title = name.replace(".pdf", "").replace("_", " ").title()
+            mat = LearningMaterial(
+                id=mat_id,
+                badge_id=badge_id,
+                topic=topic,
+                title=title,
+                description=desc,
+                material_type="pdf",
+                url_or_data=data_url,
+                upload_date=current_iso_timestamp()
+            )
+            store.save_material(mat)
+            saved_count += 1
+
+        # Process YouTube links
+        for idx, yt in enumerate(youtube_links):
+            url = yt.get("url", "").strip()
+            title = yt.get("title", "").strip()
+            if not url:
+                continue
+            if not title:
+                title = f"{b_name}: Video Lecture {idx+1}"
+            mat_id = f"mat_yt_{int(time.time()*1000)}_{idx+1}"
+            mat = LearningMaterial(
+                id=mat_id,
+                badge_id=badge_id,
+                topic=topic,
+                title=title,
+                description=desc,
+                material_type="youtube",
+                url_or_data=url,
+                upload_date=current_iso_timestamp()
+            )
+            store.save_material(mat)
+            saved_count += 1
+
+        if saved_count > 0:
+            store.add_activity(
+                event_type="material_published",
+                actor_id=self.current_user.id if self.current_user else "guardian_1",
+                actor_name=self.current_user.name if self.current_user else "Guardian",
+                cosmonaut_id="",
+                badge_id=badge_id,
+                summary=f"Published {saved_count} Learning Materials for {b_name}",
+                details=f"Topic: {topic} &bull; {len(pdfs)} PDF(s), {len(youtube_links)} Video(s)"
+            )
+            self.set_flash(f"Successfully published {saved_count} learning resources for {b_name}.", "success")
+        else:
+            self.set_flash("Please provide at least one PDF file or YouTube link.", "error")
+
+        self.active_modal = None
+
+    def execute_update_material(self, payload: Any):
+        if isinstance(payload, str) and payload.strip():
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+        mat_id = payload.get("material_id", "")
+        mat = store.get_material(mat_id)
+        if not mat:
+            self.set_flash("Material record not found.", "error")
+            return
+
+        mat.badge_id = payload.get("badge_id", mat.badge_id)
+        mat.title = payload.get("title", mat.title).strip() or mat.title
+        mat.topic = payload.get("topic", mat.topic).strip() or mat.topic
+        mat.description = payload.get("description", mat.description).strip()
+        mat.material_type = payload.get("material_type", mat.material_type)
+        new_url = payload.get("url_or_data", "").strip()
+        if new_url:
+            mat.url_or_data = new_url
+
+        store.save_material(mat)
+        self.active_modal = None
+        self.set_flash(f"Updated learning material '{mat.title}'.", "success")
 
     # ==========================================================================
     # MODAL DIALOG RENDERER
@@ -1423,54 +1547,143 @@ if __name__ == "__main__":
             """
 
         elif self.active_modal == "add_material":
-            title = "Publish Learning Resource"
+            title = "Upload Learning Materials (Multi-File & Video Links)"
             badge_opts = []
             for b in store.get_all_badges():
                 badge_opts.append(f'<option value="{b.id}">{escape(b.code)}: {escape(b.title)}</option>')
 
             body = f"""
-            <form onsubmit="event.preventDefault(); const b=document.getElementById('mat-badge').value; const t=document.getElementById('mat-title').value; const top=document.getElementById('mat-topic').value; const d=document.getElementById('mat-desc').value; const type=document.getElementById('mat-type').value; const u=document.getElementById('mat-url').value; window.StarAppBridge.dispatchAction('save_material_form', JSON.stringify({{badge_id:b, title:t, topic:top, description:d, material_type:type, url_or_data:u}}));">
-                <div class="form-group">
-                    <label class="form-label">Target Milestone Badge</label>
-                    <select id="mat-badge" class="form-select">
+            <form onsubmit="event.preventDefault(); window.StarAppBridge.submitBulkMaterials();">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Target Milestone Badge *</label>
+                    <select id="bulk-mat-badge" class="form-select" style="font-size:12.5px; font-weight:700;">
                         {"".join(badge_opts)}
                     </select>
                 </div>
-                <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px;">
-                    <div class="form-group">
-                        <label class="form-label">Resource Title</label>
-                        <input type="text" id="mat-title" class="form-control" placeholder="e.g. Masterclass Lecture" required>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Topic / Module Category *</label>
+                        <input type="text" id="bulk-mat-topic" class="form-control" placeholder="e.g. Ingestion Foundations, Module 1" value="Module Specification" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Topic Category</label>
-                        <input type="text" id="mat-topic" class="form-control" placeholder="e.g. Index Tuning" required>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Batch Description / Notes</label>
+                        <input type="text" id="bulk-mat-desc" class="form-control" placeholder="e.g. Masterclass lectures and technical documentation.">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Format / Type</label>
-                    <select id="mat-type" class="form-select">
-                        <option value="youtube">Embedded YouTube Video</option>
-                        <option value="pdf">PDF Handbook Document</option>
-                        <option value="code">Reference Code Script</option>
-                    </select>
+
+                <!-- 1. PDF Uploads (Multiples Supported) -->
+                <div style="margin-bottom:16px; padding:14px; background:rgba(234,244,255,0.6); border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel-50);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:6px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Upload PDF Documents (Multiple Files Supported)
+                        </div>
+                        <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Supports .pdf</span>
+                    </div>
+
+                    <div style="background:#FFFFFF; border:2px dashed var(--icy-steel); border-radius:var(--radius-xs); padding:16px; text-align:center; cursor:pointer;" onclick="document.getElementById('bulk-pdf-input').click()">
+                        <input type="file" id="bulk-pdf-input" accept=".pdf,application/pdf" multiple style="display:none;" onchange="window.StarAppBridge.handleBulkPdfSelect(event)">
+                        <div style="color:var(--deep-frozen-midnight); font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Click to Select PDF Files (Multiple Files Supported)
+                        </div>
+                        <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:4px;">Upload course manuals, technical whitepapers, or syllabus handbooks</div>
+                    </div>
+
+                    <div id="bulk-pdf-list" style="margin-top:10px; display:flex; flex-direction:column; gap:6px;"></div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Resource URL or File Embed</label>
-                    <input type="text" id="mat-url" class="form-control" placeholder="https://www.youtube.com/watch?v=... or PDF URL" required>
+
+                <!-- 2. YouTube Video Links (Multiples Supported) -->
+                <div style="margin-bottom:16px; padding:14px; background:rgba(234,244,255,0.6); border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel-50);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; gap:6px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                            YouTube Video Lectures (Multiple Links Supported)
+                        </div>
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.addYouTubeRow()">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            + Add Another YouTube Link
+                        </button>
+                    </div>
+
+                    <div id="youtube-rows-container">
+                        <div class="youtube-input-row" style="display:grid; grid-template-columns:1fr 1.5fr auto; gap:8px; align-items:center; margin-bottom:8px;">
+                            <input type="text" class="yt-title-input form-control" placeholder="Video Title (e.g. Masterclass Lecture 1)">
+                            <input type="url" class="yt-url-input form-control" placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/...">
+                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.clearOrRemoveYouTubeRow(this)" style="color:#d9534f; padding:4px 8px; font-weight:800;" title="Clear row">&times;</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Description & Context</label>
-                    <textarea id="mat-desc" class="form-textarea" placeholder="Provide syllabus guidance..."></textarea>
-                </div>
-                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px; padding-top:12px; border-top:1px solid var(--icy-steel-30);">
                     <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
-                    <button type="submit" class="btn-metal">Publish Resource</button>
+                    <button type="submit" class="btn-metal" style="font-weight:800;">Upload &amp; Publish All Materials &rarr;</button>
                 </div>
             </form>
             """
 
+        elif self.active_modal == "edit_material":
+            mat_id = self.modal_payload.get("material_id") if self.modal_payload else ""
+            mat = store.get_material(mat_id)
+            if not mat:
+                title = "Material Not Found"
+                body = "<p style='padding:20px; text-align:center;'>Material not found.</p>"
+            else:
+                title = f"Edit Learning Material &mdash; {escape(mat.title)}"
+                badge_opts = []
+                for b in store.get_all_badges():
+                    sel = " selected" if b.id == mat.badge_id else ""
+                    badge_opts.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
+
+                body = f"""
+                <form onsubmit="event.preventDefault(); window.StarAppBridge.submitEditMaterial('{escape(mat.id)}');">
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Target Milestone Badge *</label>
+                        <select id="edit-mat-badge" class="form-select" style="font-size:12.5px; font-weight:700;">
+                            {"".join(badge_opts)}
+                        </select>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:12px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Resource Title *</label>
+                            <input type="text" id="edit-mat-title" class="form-control" value="{escape(mat.title)}" required>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Topic Category *</label>
+                            <input type="text" id="edit-mat-topic" class="form-control" value="{escape(mat.topic)}" required>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px; margin-bottom:12px;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Format / Type</label>
+                            <select id="edit-mat-type" class="form-select">
+                                <option value="youtube"{" selected" if mat.material_type == "youtube" else ""}>Embedded YouTube Video</option>
+                                <option value="pdf"{" selected" if mat.material_type == "pdf" else ""}>PDF Handbook Document</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Resource URL or Embed Link</label>
+                            <input type="text" id="edit-mat-url" class="form-control" value="{escape(mat.url_or_data)}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:4px; display:block;">Description & Overview</label>
+                        <textarea id="edit-mat-desc" class="form-textarea" rows="3">{escape(mat.description)}</textarea>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:12px; border-top:1px solid var(--icy-steel-30);">
+                        <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                        <button type="submit" class="btn-metal" style="font-weight:800;">Save Changes &rarr;</button>
+                    </div>
+                </form>
+                """
+
         modal_dialog_class = "liquid-glass-modal modal-dialog"
-        if self.active_modal in ["material_preview", "marksheet_modal"]:
+        if self.active_modal in ["material_preview", "marksheet_modal", "add_material", "edit_material"]:
             modal_dialog_class += " modal-lg"
 
         return f"""
@@ -1640,8 +1853,14 @@ if __name__ == "__main__":
                     main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'>Submission not found. <button onclick=\"window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')\" class='btn-secondary'>Back to Reviews</button></div>"
 
             elif self.current_view == "g_materials":
-                page_title = "Learning Materials & Video Management"
-                main_content_html = render_guardian_materials(store.get_materials(), badges)
+                page_title = "Learning Resources & Materials Manager"
+                main_content_html = render_guardian_materials(
+                    materials=store.get_materials(),
+                    badges=badges,
+                    badges_map=badges_map,
+                    selected_badge_filter=self.materials_badge_filter,
+                    selected_type_filter=self.materials_type_filter
+                )
 
             elif self.current_view == "g_extensions":
                 page_title = "Milestone Deadline Extensions"

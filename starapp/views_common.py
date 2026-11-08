@@ -6,7 +6,7 @@ Reusable UI templates for liquid-glass containers, marksheets, timelines, and na
 
 import html
 from typing import List, Dict, Any, Optional
-from starapp.models import AssessmentMarksheet, BadgeTimeline, Badge, Notification, User
+from starapp.models import AssessmentMarksheet, BadgeTimeline, Badge, Notification, User, LearningMaterial
 
 
 # ==============================================================================
@@ -422,4 +422,279 @@ def render_topbar(
         </div>
     </header>
     """
+
+
+# ==============================================================================
+# UNIFIED LEARNING & DEVELOPMENT MATERIALS WORKSPACE
+# ==============================================================================
+
+def extract_youtube_video_id(url_or_data: str) -> str:
+    """Extract standard 11-char YouTube ID from any url shape."""
+    if not url_or_data:
+        return "9ZGFF_bYenc"
+    s = url_or_data.strip()
+    if "watch?v=" in s:
+        vid = s.split("watch?v=")[1].split("&")[0].split("#")[0]
+        if vid:
+            return vid
+    if "youtu.be/" in s:
+        vid = s.split("youtu.be/")[1].split("?")[0].split("#")[0]
+        if vid:
+            return vid
+    if "/embed/" in s:
+        vid = s.split("/embed/")[1].split("?")[0].split("#")[0]
+        if vid:
+            return vid
+    if "/shorts/" in s:
+        vid = s.split("/shorts/")[1].split("?")[0].split("#")[0]
+        if vid:
+            return vid
+    return s if (len(s) == 11 and " " not in s) else "9ZGFF_bYenc"
+
+
+def render_learning_materials_view(
+    materials: List[LearningMaterial],
+    badges: List[Badge],
+    badges_map: Dict[str, Badge],
+    selected_badge_filter: str = "all",
+    selected_type_filter: str = "all",
+    is_guardian: bool = False
+) -> str:
+    """
+    Renders the unified, responsive learning and development resource hub for both Guardian and Cosmonaut.
+    Guardian gains Add / Edit / Delete management controls; Cosmonaut has clean read/view access.
+    """
+    # 1. Determine scoped badges
+    if selected_badge_filter == "all":
+        target_badges = badges
+    else:
+        target_badges = [b for b in badges if b.id == selected_badge_filter]
+        if not target_badges and selected_badge_filter in badges_map:
+            target_badges = [badges_map[selected_badge_filter]]
+
+    # Counts in current scope
+    scope_materials = [m for m in materials if any(b.id == m.badge_id for b in target_badges)]
+    count_all = len(scope_materials)
+    count_pdf = sum(1 for m in scope_materials if m.material_type == "pdf")
+    count_yt = sum(1 for m in scope_materials if m.material_type == "youtube")
+
+    # Badge filter dropdown
+    badge_opts = [f'<option value="all"{" selected" if selected_badge_filter == "all" else ""}>All Milestone Badges</option>']
+    for b in badges:
+        sel = " selected" if b.id == selected_badge_filter else ""
+        badge_opts.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
+
+    # Type button styling helper
+    def get_btn_style(is_active: bool) -> str:
+        if is_active:
+            return "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; box-shadow:0 2px 8px rgba(23,52,92,0.3); display:inline-flex; align-items:center; gap:6px;"
+        return "background:transparent; color:var(--deep-frozen-midnight); font-weight:700; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; opacity:0.85;"
+
+    btn_all_style = get_btn_style(selected_type_filter == "all")
+    btn_pdf_style = get_btn_style(selected_type_filter == "pdf")
+    btn_yt_style = get_btn_style(selected_type_filter == "youtube")
+
+    # Header action (Guardian only)
+    header_title = "Learning & Development Hub" if is_guardian else "Course Documents & Video Lectures"
+    header_desc = "Upload course syllabi, technical PDF documentation, and embedded YouTube video lectures." if is_guardian else "Curated technical whitepapers, architectural specifications, and video masterclasses."
+    header_action_html = ""
+    if is_guardian:
+        header_action_html = """
+        <button type="button" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:12.5px; padding:8px 16px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            + Upload Learning Materials
+        </button>
+        """
+
+    # 2. Render badge sections
+    badge_sections = []
+    for b in target_badges:
+        b_mats = [m for m in materials if m.badge_id == b.id]
+        if selected_type_filter == "pdf":
+            b_mats = [m for m in b_mats if m.material_type == "pdf"]
+        elif selected_type_filter == "youtube":
+            b_mats = [m for m in b_mats if m.material_type == "youtube"]
+
+        # Only skip if no materials and "all" filter is active
+        if not b_mats and selected_badge_filter == "all":
+            continue
+
+        mat_cards = []
+        for m in b_mats:
+            if m.material_type == "pdf":
+                type_pill = """
+                <span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--icy-steel-50); display:inline-flex; align-items:center; gap:5px;">
+                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    PDF DOCUMENT
+                </span>
+                """
+                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; In-Container PDF</span>'
+                pdf_src = m.url_or_data.replace(' ', '%20') if (m.url_or_data and not m.url_or_data.startswith('http') and not m.url_or_data.startswith('data:')) else (m.url_or_data or 'data/Chemistry%20Syllabus.pdf')
+                media_viewer_html = f"""
+                <div class="media-pdf-box">
+                    <object data="{escape(pdf_src)}" type="application/pdf">
+                        <iframe src="{escape(pdf_src)}" title="{escape(m.title)}"></iframe>
+                    </object>
+                </div>
+                """
+            else:
+                type_pill = """
+                <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(23,52,92,0.2);">
+                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    YOUTUBE VIDEO
+                </span>
+                """
+                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&#9654; In-Container Player</span>'
+                vid = extract_youtube_video_id(m.url_or_data)
+                embed_src = f"https://www.youtube.com/embed/{vid}"
+                media_viewer_html = f"""
+                <div class="media-video-box">
+                    <iframe src="{embed_src}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen title="{escape(m.title)}"></iframe>
+                </div>
+                """
+
+            # Management buttons for Guardian
+            guardian_actions = ""
+            if is_guardian:
+                guardian_actions = f"""
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('open_edit_material_modal', '{{\"material_id\": \"{m.id}\"}}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Edit
+                </button>
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; color:#d9534f; display:inline-flex; align-items:center; gap:4px;" onclick="if(confirm('Are you sure you want to delete this learning material?')) window.StarAppBridge.dispatchAction('delete_material', '{{\"material_id\": \"{m.id}\"}}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Delete
+                </button>
+                """
+
+            mat_cards.append(f"""
+            <div class="resource-media-card">
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        {type_pill}
+                        <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">{escape(m.topic)}</span>
+                    </div>
+                    <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:4px 0 2px 0; line-height:1.35; height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.title)}">{escape(m.title)}</h4>
+                    <p style="font-size:11.5px; color:var(--frost-navy-75); line-height:1.4; margin:0 0 6px 0; height:32px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.description)}">{escape(m.description)}</p>
+
+                    {media_viewer_html}
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-30); margin-top:4px; flex-wrap:wrap; gap:6px;">
+                    {read_indicator}
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{\"material_id\": \"{m.id}\"}}')">
+                            Theater View &rarr;
+                        </button>
+                        {guardian_actions}
+                    </div>
+                </div>
+            </div>
+            """)
+
+        mats_grid = f"""
+        <div class="materials-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:18px; align-items:stretch;">
+            {"".join(mat_cards)}
+        </div>
+        """ if mat_cards else """
+        <div style="padding:20px; text-align:center; color:var(--frost-navy-50); font-style:italic; background:rgba(234,244,255,0.4); border-radius:var(--radius-sm); border:1px dashed var(--icy-steel-50);">
+            No learning resources of the selected format found for this milestone.
+        </div>
+        """
+
+        badge_sections.append(f"""
+        <!-- Badge Section: {escape(b.code)} -->
+        <div class="badge-resource-section" style="background:#FFFFFF; border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-md); padding:18px 20px; margin-bottom:24px; box-shadow:0 4px 16px rgba(7,22,41,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs); letter-spacing:0.5px;">{escape(b.code)}</span>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(b.title)}</h3>
+                    <span style="font-size:11px; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{escape(b.category)}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:3px 10px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                        {len(b_mats)} Available {"Resource" if len(b_mats) == 1 else "Resources"}
+                    </span>
+                </div>
+            </div>
+
+            {mats_grid}
+        </div>
+        """)
+
+    # Empty State Handling
+    if not materials:
+        if is_guardian:
+            content_body = """
+            <div class="liquid-glass-card" style="padding:48px 24px; text-align:center;">
+                <div style="width:52px; height:52px; border-radius:50%; background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; color:var(--deep-frozen-midnight);">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Learning Materials Published Yet</h3>
+                <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:480px; margin:0 auto 20px;">Upload curriculum syllabi, engineering whitepapers, and embedded YouTube video lectures for your Cosmonauts.</p>
+                <button type="button" class="btn-metal" style="font-weight:800; font-size:13px; padding:10px 20px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
+                    + Upload Learning Materials
+                </button>
+            </div>
+            """
+        else:
+            content_body = """
+            <div class="liquid-glass-card" style="padding:48px 24px; text-align:center;">
+                <div style="width:52px; height:52px; border-radius:50%; background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; margin:0 auto 14px; color:var(--deep-frozen-midnight);">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Learning Materials Available</h3>
+                <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:480px; margin:0 auto;">Your Training Guardian will publish milestone specifications, PDF handbooks, and video lectures here.</p>
+            </div>
+            """
+    elif not badge_sections:
+        content_body = """
+        <div class="badge-resource-section" style="padding:48px 24px; text-align:center; color:var(--frost-navy-50); background:#FFFFFF; border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-md);">
+            <p style="font-size:15px; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">No learning resources matched your filter criteria.</p>
+            <p style="font-size:13px; margin:0;">Try selecting "All Milestone Badges" or toggling the format filter to All.</p>
+        </div>
+        """
+    else:
+        content_body = "".join(badge_sections)
+
+    return f"""
+    <div>
+        <!-- Top Title & Action Header -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+            <div>
+                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">{header_title}</h2>
+                <p style="font-size:13px; color:var(--frost-navy-50); margin:0;">{header_desc}</p>
+            </div>
+            {header_action_html}
+        </div>
+
+        <!-- Filter Controls Bar -->
+        <div class="liquid-glass-card" style="padding:14px 18px; margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <label style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Milestone:</label>
+                <select class="liquid-glass-control liquid-glass-select" style="font-size:12.5px; font-weight:700; padding:6px 12px; min-width:260px;" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value)">
+                    {"".join(badge_opts)}
+                </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px; background:rgba(234,244,255,0.7); padding:4px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                <button type="button" style="{btn_all_style}" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'all')">
+                    All Formats ({count_all})
+                </button>
+                <button type="button" style="{btn_pdf_style}" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'pdf')">
+                    <svg viewBox="0 0 24 24" style="width:13px; height:13px;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    PDF Documents ({count_pdf})
+                </button>
+                <button type="button" style="{btn_yt_style}" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'youtube')">
+                    <svg viewBox="0 0 24 24" style="width:13px; height:13px;" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    YouTube Videos ({count_yt})
+                </button>
+            </div>
+        </div>
+
+        <!-- Rendered Badge Resource Sections -->
+        {content_body}
+    </div>
+    """
+
 

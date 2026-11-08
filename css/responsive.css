@@ -298,3 +298,13 @@ table {
     font-size: 1.1rem !important;
   }
 }
+
+/* 8. Learning Materials Grid Responsiveness */
+@media (max-width: 680px) {
+  .materials-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .youtube-input-row {
+    grid-template-columns: 1fr !important;
+  }
+}

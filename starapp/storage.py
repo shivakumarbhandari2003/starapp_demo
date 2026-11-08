@@ -14,7 +14,7 @@ from starapp.models import (
 )
 from starapp.seed_data import get_initial_seed_data
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 class DataStore:
     def __init__(self):
@@ -45,16 +45,6 @@ class DataStore:
         self.submissions = {s["id"]: ProjectSubmission.from_dict(s) for s in data.get("submissions", [])}
         self.assessments = {a["id"]: AssessmentMarksheet.from_dict(a) for a in data.get("assessments", [])}
         self.materials = {m["id"]: LearningMaterial.from_dict(m) for m in data.get("materials", [])}
-        # Automatic upgrade: replace any legacy w3.org or dQw4w9WgXcQ materials with the requested links and data folder PDF
-        for m in self.materials.values():
-            if m.material_type == "pdf":
-                if "w3.org" in m.url_or_data or "dummy.pdf" in m.url_or_data or not m.url_or_data or "chemistry" in m.url_or_data.lower():
-                    m.url_or_data = "data/Chemistry%20Syllabus.pdf"
-                    m.title = "Chemistry & Technical Curriculum Syllabus (Official PDF)"
-            elif m.material_type == "youtube":
-                if "dQw4w9WgXcQ" in m.url_or_data:
-                    m.url_or_data = "https://www.youtube.com/watch?v=9ZGFF_bYenc&pp=ygUDYW90"
-                    m.title = "Tactical Operations & Scenario Engineering (Video 1)"
         self.extensions = {e["id"]: DeadlineExtension.from_dict(e) for e in data.get("extensions", [])}
         self.announcements = {a["id"]: Announcement.from_dict(a) for a in data.get("announcements", [])}
         

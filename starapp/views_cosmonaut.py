@@ -12,7 +12,8 @@ from starapp.models import (
 from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
-    render_status_pill, render_standard_marksheet, render_9point_timeline
+    render_status_pill, render_standard_marksheet, render_9point_timeline,
+    render_learning_materials_view
 )
 from starapp.roadmap import generate_roadmap_graph
 from starapp.assessment import RUBRIC_CRITERIA
@@ -1196,214 +1197,14 @@ def render_cosmonaut_materials(
     selected_badge_filter: str = "all",
     selected_type_filter: str = "all"
 ) -> str:
-    # 1. Determine badges to show
-    if selected_badge_filter == "all":
-        target_badges = badges
-    else:
-        target_badges = [b for b in badges if b.id == selected_badge_filter]
-        if not target_badges and selected_badge_filter in badges_map:
-            target_badges = [badges_map[selected_badge_filter]]
-
-    # Compute overall counts in current scope
-    scope_materials = [m for m in materials if any(b.id == m.badge_id for b in target_badges)]
-    count_all = len(scope_materials)
-    count_pdf = sum(1 for m in scope_materials if m.material_type == "pdf")
-    count_yt = sum(1 for m in scope_materials if m.material_type == "youtube")
-
-    # Options for Badge Dropdown
-    badge_opts = []
-    for b in badges:
-        sel = " selected" if b.id == selected_badge_filter else ""
-        badge_opts.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
-
-    # Type Filter Buttons Styling
-    def get_btn_style(is_active: bool) -> str:
-        if is_active:
-            return "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; box-shadow:0 2px 8px rgba(23,52,92,0.3); display:inline-flex; align-items:center; gap:6px;"
-        return "background:transparent; color:var(--deep-frozen-midnight); font-weight:700; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; opacity:0.85;"
-
-    btn_all_style = get_btn_style(selected_type_filter == "all")
-    btn_pdf_style = get_btn_style(selected_type_filter == "pdf")
-    btn_yt_style = get_btn_style(selected_type_filter == "youtube")
-
-    # 2. Render Badge-by-Badge Sections
-    badge_sections = []
-    for b in target_badges:
-        b_mats = [m for m in materials if m.badge_id == b.id]
-        if selected_type_filter == "pdf":
-            b_mats = [m for m in b_mats if m.material_type == "pdf"]
-        elif selected_type_filter == "youtube":
-            b_mats = [m for m in b_mats if m.material_type == "youtube"]
-
-        # Only render badge container if it has materials matching current filter, or if specific badge is chosen
-        if not b_mats and selected_badge_filter == "all":
-            continue
-
-        mat_cards = []
-        for m in b_mats:
-            if m.material_type == "pdf":
-                type_badge = """
-                <span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--icy-steel-50); display:inline-flex; align-items:center; gap:5px;">
-                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    PDF DOCUMENT
-                </span>
-                """
-                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; In-Container PDF</span>'
-
-                # Use official PDF from data folder
-                pdf_src = "data/Chemistry%20Syllabus.pdf"
-                if m.url_or_data and not m.url_or_data.startswith("http"):
-                    pdf_src = m.url_or_data.replace(" ", "%20")
-
-                # Fixed-size in-container PDF viewer (200px height, crisp, zero blur)
-                media_viewer_html = f"""
-                <div class="media-pdf-box">
-                    <object data="{escape(pdf_src)}" type="application/pdf">
-                        <iframe src="{escape(pdf_src)}" title="{escape(m.title)}"></iframe>
-                    </object>
-                </div>
-                """
-            else:
-                type_badge = """
-                <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(23,52,92,0.2);">
-                    <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    YOUTUBE VIDEO
-                </span>
-                """
-                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&#9654; In-Container Player</span>'
-
-                # Extract YouTube Video ID (defaults to Video 1 or Video 2)
-                vid = "9ZGFF_bYenc"
-                if "F0sqfPkCcyM" in m.url_or_data:
-                    vid = "F0sqfPkCcyM"
-                elif "9ZGFF_bYenc" in m.url_or_data:
-                    vid = "9ZGFF_bYenc"
-                elif "watch?v=" in m.url_or_data:
-                    vid = m.url_or_data.split("watch?v=")[1].split("&")[0]
-                elif "youtu.be/" in m.url_or_data:
-                    vid = m.url_or_data.split("youtu.be/")[1].split("?")[0]
-                elif "/embed/" in m.url_or_data:
-                    vid = m.url_or_data.split("/embed/")[1].split("?")[0]
-
-                embed_src = f"https://www.youtube.com/embed/{vid}"
-
-                # Fixed-size in-container YouTube player (200px height, 16:9 contained, no clipping, zero blur)
-                media_viewer_html = f"""
-                <div class="media-video-box">
-                    <iframe src="{embed_src}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen title="{escape(m.title)}"></iframe>
-                </div>
-                """
-
-            mat_cards.append(f"""
-            <div class="resource-media-card">
-                <div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        {type_badge}
-                        <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">{escape(m.topic)}</span>
-                    </div>
-                    <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:4px 0 2px 0; line-height:1.35; height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">{escape(m.title)}</h4>
-                    <p style="font-size:11.5px; color:var(--frost-navy-75); line-height:1.4; margin:0 0 6px 0; height:32px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">{escape(m.description)}</p>
-
-                    <!-- In-Container Media Box (Fixed 200px height, crisp, zero blur) -->
-                    {media_viewer_html}
-                </div>
-
-                <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-30); margin-top:4px;">
-                    {read_indicator}
-                    <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{"material_id": "{m.id}"}}')">
-                        Theater View &rarr;
-                    </button>
-                </div>
-            </div>
-            """)
-
-        mats_grid = f"""
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(310px, 1fr)); gap:18px; align-items:stretch;">
-            {"".join(mat_cards)}
-        </div>
-        """ if mat_cards else """
-        <div style="padding:20px; text-align:center; color:var(--frost-navy-50); font-style:italic; background:rgba(234,244,255,0.4); border-radius:var(--radius-sm); border:1px dashed var(--icy-steel-50);">
-            No learning resources of the selected format found for this milestone.
-        </div>
-        """
-
-        badge_sections.append(f"""
-        <!-- Badge Section: {escape(b.code)} (Zero blur, crisp styling) -->
-        <div class="badge-resource-section">
-            <!-- Badge Header -->
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs); letter-spacing:0.5px;">{escape(b.code)}</span>
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(b.title)}</h3>
-                    <span style="font-size:11px; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{escape(b.category)}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:3px 10px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
-                        {len(b_mats)} Available {"Resource" if len(b_mats) == 1 else "Resources"}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Below: Its Documents and Video Lectures (Properly Sized & Structured) -->
-            {mats_grid}
-        </div>
-        """)
-
-    content_body = "".join(badge_sections) if badge_sections else """
-    <div class="badge-resource-section" style="padding:48px 24px; text-align:center; color:var(--frost-navy-50);">
-        <p style="font-size:15px; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">No learning resources matched your criteria.</p>
-        <p style="font-size:13px; margin:0;">Try selecting "All Badges" or toggling the format filter to All.</p>
-    </div>
-    """
-
-    return f"""
-    <div>
-        <!-- Page Title & Guidance -->
-        <div style="margin-bottom:24px; text-align:center;">
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Milestone Learning Resources & Study Hub</h2>
-            <p style="font-size:13.5px; color:var(--frost-navy-50);">Comprehensive engineering documentation and video lectures &mdash; read documents and watch videos directly inside StarApp.</p>
-        </div>
-
-        <!-- Top Liquid Glass Filter Toolbar -->
-        <div class="liquid-glass-card" style="padding:16px 22px; margin-bottom:26px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.7) 100%); box-shadow:0 4px 18px rgba(7,22,41,0.04);">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
-                <!-- Left: Badge Selection Dropdown -->
-                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <label for="materials-badge-select" style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Badge:</label>
-                    <div class="liquid-select-wrapper" style="min-width:280px; width:auto;">
-                        <select id="materials-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value);">
-                            <option value="all"{' selected' if selected_badge_filter == 'all' else ''}>All Badges (Full Curriculum)</option>
-                            {"".join(badge_opts)}
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Right: Selecting button to choose PDF or YouTube videos -->
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:12px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Format:</span>
-                    <div style="display:inline-flex; background:rgba(234,244,255,0.85); padding:3.5px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); box-shadow:inset 1px 1px 1px rgba(255,255,255,0.9);">
-                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'all')" style="{btn_all_style}">
-                            All ({count_all})
-                        </button>
-                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'pdf')" style="{btn_pdf_style}">
-                            <svg viewBox="0 0 24 24" style="width:14px; height:14px;" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                            PDF Documents ({count_pdf})
-                        </button>
-                        <button type="button" onclick="window.StarAppBridge.dispatchAction('filter_materials_type', 'youtube')" style="{btn_yt_style}">
-                            <svg viewBox="0 0 24 24" style="width:14px; height:14px;" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            YouTube Videos ({count_yt})
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sequential Badge Sections: Badge Name, Below its Documents, Next Badge... -->
-        <div>
-            {content_body}
-        </div>
-    </div>
-    """
+    return render_learning_materials_view(
+        materials=materials,
+        badges=badges,
+        badges_map=badges_map,
+        selected_badge_filter=selected_badge_filter,
+        selected_type_filter=selected_type_filter,
+        is_guardian=False
+    )
 
 
 # ==============================================================================

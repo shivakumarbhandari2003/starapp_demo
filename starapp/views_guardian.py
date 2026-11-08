@@ -8,7 +8,8 @@ from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet, 
 from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
-    render_status_pill, render_standard_marksheet, render_9point_timeline
+    render_status_pill, render_standard_marksheet, render_9point_timeline,
+    render_learning_materials_view
 )
 from starapp.assessment import RUBRIC_CRITERIA
 
@@ -1293,55 +1294,23 @@ def render_assessment_modal_content(
 # 7.4 LEARNING & MATERIAL MANAGEMENT
 # ==============================================================================
 
-def render_guardian_materials(materials: List[LearningMaterial], badges: List[Badge]) -> str:
-    cards = []
-    badges_map = {b.id: b for b in badges}
-
-    for m in materials:
-        badge = badges_map.get(m.badge_id)
-        badge_label = f"{badge.code}: {badge.title}" if badge else m.badge_id
-        type_pill = render_status_pill("active" if m.material_type == "youtube" else "completed")
-
-        cards.append(f"""
-        <div class="liquid-glass-card" style="margin-bottom:14px;">
-            <div class="card-content" style="display:flex; align-items:flex-start; justify-content:space-between;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{escape(badge_label)}</span>
-                        {type_pill}
-                        <span style="font-size:11px; color:var(--frost-navy-50);">Topic: {escape(m.topic)}</span>
-                    </div>
-                    <h3 style="font-size:1.1rem; font-weight:700; color:var(--frost-navy);">{escape(m.title)}</h3>
-                    <p style="font-size:13px; color:var(--frost-navy-50); margin-top:2px;">{escape(m.description)}</p>
-                    <div style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); margin-top:6px;">
-                        URL: {escape(m.url_or_data[:60])}{"..." if len(m.url_or_data) > 60 else ""}
-                    </div>
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{\"material_id\": \"{m.id}\"}}')">Preview</button>
-                    <button type="button" class="btn-secondary btn-sm" style="color:var(--frost-navy-50);" onclick="window.StarAppBridge.dispatchAction('delete_material', '{{\"material_id\": \"{m.id}\"}}')">Delete</button>
-                </div>
-            </div>
-        </div>
-        """)
-
-    create_btn = render_metal_button("Upload / Add Material", "open_add_material_modal", "{}")
-
-    return f"""
-    <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
-            <div>
-                <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Learning Resources & Materials Manager</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Publish course handbooks, technical whitepapers, and embedded YouTube tutorials.</p>
-            </div>
-            {create_btn}
-        </div>
-
-        <div>
-            {"".join(cards) if cards else "<p style='padding:30px; text-align:center; color:var(--frost-navy-50);'>No materials published yet.</p>"}
-        </div>
-    </div>
-    """
+def render_guardian_materials(
+    materials: List[LearningMaterial],
+    badges: List[Badge],
+    badges_map: Optional[Dict[str, Badge]] = None,
+    selected_badge_filter: str = "all",
+    selected_type_filter: str = "all"
+) -> str:
+    if badges_map is None:
+        badges_map = {b.id: b for b in badges}
+    return render_learning_materials_view(
+        materials=materials,
+        badges=badges,
+        badges_map=badges_map,
+        selected_badge_filter=selected_badge_filter,
+        selected_type_filter=selected_type_filter,
+        is_guardian=True
+    )
 
 # ==============================================================================
 # 7.5 ACTIVITY HISTORY
