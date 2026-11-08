@@ -58,28 +58,35 @@ class TestDashboardEnhancements(unittest.TestCase):
         # Personal Interactive Tooltips and Popovers
         self.assertIn("metric-info-trigger", html)
         self.assertIn("glass-tooltip-popover", html)
-        self.assertIn("chart-node-interactive", html)
-        self.assertIn("chart-data-tooltip", html)
+        self.assertIn("has-glass-tooltip", html)
 
         # 3. Personalized Next Action Card
         self.assertIn("YOUR NEXT ACTION", html)
         self.assertIn("Under Guardian Review", html)
         self.assertIn("Track Submission Status", html)
 
-        # 4. Personal Roadmap & Rubric
-        self.assertIn("Rubric Competency Mastery", html)
-        self.assertIn("Curriculum Roadmap Status", html)
+        # 4. Batch Leaderboard (Now accessible to Cosmonaut to view batch mates' scores)
+        self.assertIn("Batch Orion-24 Academic Leaderboard", html)
+        self.assertIn("Seraphina Vale", html)
+        self.assertIn("Orion Blake", html)
+        self.assertIn("Lyra Bennett", html)
+        self.assertIn("Cassian Reed", html)
+        self.assertIn("Kaelen Frost", html)
+        self.assertIn("YOU", html)
+
+        # 5. Milestone Performance Bar Graph & Full Sections
+        self.assertIn("Milestone Performance & Rubric Marks Comparison", html)
         self.assertIn("GOV-101", html)
         self.assertIn("CUR-102", html)
         self.assertIn("DAT-103", html)
+        self.assertIn("ING-104", html)
+        self.assertIn("SQL-201", html)
+        self.assertIn("Verified Skills & Competency Matrix", html)
+        self.assertIn("ReactJS", html)
+        self.assertIn("Rating:", html)
 
-        # 5. Strict Privacy & Zero Leaks: No demo names, no scope dropdown
+        # 6. Guardian Control Restrictions: No scope selector dropdown, no demo profile tag
         self.assertNotIn("Analytics Scope Selector", html)
-        self.assertNotIn("Orion Blake", html)
-        self.assertNotIn("Lyra Bennett", html)
-        self.assertNotIn("Cassian Reed", html)
-        self.assertNotIn("Kaelen Frost", html)
-        self.assertNotIn("Seraphina Vale", html)
         self.assertNotIn("DEMONSTRATION ANALYTICS PROFILE", html)
 
     def test_guardian_dashboard_aggregate_and_sections(self):

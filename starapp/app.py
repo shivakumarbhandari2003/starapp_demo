@@ -1999,6 +1999,7 @@ if __name__ == "__main__":
                 page_title = f"Cosmonaut Dossier — {self.current_user.name}"
                 recent_anns = store.get_announcements_for_cosmonaut(self.current_user.id)[:3]
                 u_exts = store.get_extensions_for_cosmonaut(self.current_user.id)
+                cohort_profiles = get_guardian_cohort_profiles(self.current_user, assigned_badges, user_asms, user_subs, u_exts)
                 main_content_html = render_cosmonaut_dashboard(
                     current_user=self.current_user,
                     profile=profile,
@@ -2006,7 +2007,8 @@ if __name__ == "__main__":
                     assessments=user_asms,
                     submissions=user_subs,
                     extensions=u_exts,
-                    recent_announcements=recent_anns
+                    recent_announcements=recent_anns,
+                    cohort_profiles=cohort_profiles
                 )
 
             elif self.current_view == "c_roadmap":
