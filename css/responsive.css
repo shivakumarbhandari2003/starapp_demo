@@ -95,3 +95,143 @@
   }
 }
 
+
+
+/* ==========================================================================
+   COMPREHENSIVE RESPONSIVENESS ENHANCEMENTS (ALL PAGES: COSMONAUT & GUARDIAN)
+   ========================================================================== */
+
+/* 1. Global Responsive Containers & Tables */
+.table-responsive,
+.marksheet-table-wrapper,
+div[style*="overflow-x:auto"] {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* 2. Fluid 2-in-a-row Card Grids */
+@media (max-width: 991px) {
+  div[style*="grid-template-columns:repeat(auto-fit, minmax(440px"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  div[style*="grid-template-columns:repeat(auto-fit, minmax"] {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Timeline stepper responsive reflow on mobile */
+  div[style*="grid-template-columns:repeat(3, 1fr)"] {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+}
+
+/* 3. Topbar and Navigation Responsiveness */
+@media (max-width: 860px) {
+  .app-topbar {
+    height: auto !important;
+    padding: 10px 16px !important;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar-right {
+    width: 100%;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--icy-steel-30);
+  }
+
+  .topbar-page-title {
+    font-size: 1.15rem !important;
+  }
+}
+
+/* 4. Modal Dialogs Responsiveness */
+@media (max-width: 768px) {
+  .modal-dialog {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 12px auto !important;
+  }
+
+  .modal-body {
+    max-height: 75vh !important;
+    overflow-y: auto !important;
+    padding: 16px !important;
+  }
+
+  div[style*="grid-template-columns:1fr 2fr"],
+  div[style*="grid-template-columns:2fr 1fr"],
+  div[style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 5. Mobile Sidebar Navigation */
+@media (max-width: 768px) {
+  .app-sidebar {
+    width: 100% !important;
+    min-width: 100% !important;
+    position: relative !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--deep-frozen-midnight) !important;
+    padding: 12px 16px !important;
+  }
+
+  .sidebar-header {
+    margin-bottom: 8px !important;
+  }
+
+  .sidebar-nav {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    padding: 6px 0 !important;
+  }
+
+  .sidebar-nav .nav-item {
+    margin: 0 !important;
+    flex: 1 1 auto;
+    min-width: 130px;
+  }
+
+  .sidebar-nav .nav-link {
+    padding: 8px 12px !important;
+    font-size: 11.5px !important;
+    justify-content: center !important;
+  }
+
+  .page-container {
+    padding: 16px 12px !important;
+  }
+
+  /* Responsive action button bars */
+  .btn-metal, .btn-secondary, .btn-liquid {
+    white-space: nowrap;
+  }
+}
+
+/* 6. High DPI & Micro-displays (< 420px) */
+@media (max-width: 420px) {
+  .liquid-glass-card {
+    padding: 14px 12px !important;
+  }
+
+  .sidebar-nav .nav-item {
+    min-width: 100%;
+  }
+
+  .brand-title {
+    font-size: 1.1rem !important;
+  }
+}

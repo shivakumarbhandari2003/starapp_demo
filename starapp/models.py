@@ -94,7 +94,8 @@ class Badge:
         project_requirements: str,
         is_published: bool = True,
         assigned_cosmonaut_ids: Optional[List[str]] = None,
-        default_timeline: Optional[Dict[str, str]] = None
+        default_timeline: Optional[Dict[str, str]] = None,
+        is_allocated: bool = True
     ):
         self.id = id
         self.code = code
@@ -108,6 +109,7 @@ class Badge:
         self.is_published = is_published
         self.assigned_cosmonaut_ids = assigned_cosmonaut_ids or []
         self.default_timeline = default_timeline or {}
+        self.is_allocated = is_allocated
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -122,7 +124,8 @@ class Badge:
             "project_requirements": self.project_requirements,
             "is_published": self.is_published,
             "assigned_cosmonaut_ids": self.assigned_cosmonaut_ids,
-            "default_timeline": self.default_timeline
+            "default_timeline": self.default_timeline,
+            "is_allocated": getattr(self, "is_allocated", True)
         }
 
     @classmethod
@@ -139,7 +142,8 @@ class Badge:
             project_requirements=data.get("project_requirements", ""),
             is_published=data.get("is_published", True),
             assigned_cosmonaut_ids=data.get("assigned_cosmonaut_ids", []),
-            default_timeline=data.get("default_timeline", {})
+            default_timeline=data.get("default_timeline", {}),
+            is_allocated=data.get("is_allocated", True)
         )
 
 

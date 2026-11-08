@@ -14,7 +14,7 @@ from starapp.models import (
 )
 from starapp.seed_data import get_initial_seed_data
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 class DataStore:
     def __init__(self):

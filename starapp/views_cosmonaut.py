@@ -10,6 +10,7 @@ from starapp.models import (
     Announcement, ActivityEvent
 )
 from starapp.views_common import (
+    get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline
 )
@@ -28,9 +29,7 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
         {"id": "c_materials", "label": "Study Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
         {"id": "c_profile", "label": "Cosmonaut Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
-        {"id": "c_announcements", "label": "Announcements", "icon": '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>', "badge": unread_announcements_count},
-        {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0},
-        {"id": "c_activity", "label": "Activity Stream", "icon": '<svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>', "badge": 0}
+        {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0}
     ]
 
     links_html = []
@@ -67,6 +66,12 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
 
         <ul class="sidebar-nav">
             {"".join(links_html)}
+            <li class="nav-item" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30);">
+                <a class="nav-link" onclick="window.open('index.html?role=guardian', '_blank');" style="color:var(--deep-frozen-midnight); font-weight:700;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    <span>Guardian Window ↗</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">
@@ -98,103 +103,177 @@ def render_cosmonaut_dashboard(
     upcoming_deadlines: List[Dict[str, str]],
     recent_announcements: List[Announcement]
 ) -> str:
+    from starapp.storage import store
+
+    # 1. Executive Telemetry Calculations
     total_assigned = len(assigned_badges)
-    completed_count = score_summary["approved_count"]
+    completed_count = score_summary.get("approved_count", 0)
     active_count = max(0, total_assigned - completed_count)
     progress_pct = round((completed_count / max(1, total_assigned)) * 100.0, 1)
 
-    kpis = f"""
-    <div class="kpi-grid">
-        <div class="liquid-glass-card kpi-card">
-            <div class="kpi-header"><span class="kpi-title">Assigned Badges</span></div>
-            <div class="kpi-value">{total_assigned}</div>
-            <div class="kpi-subtext">Published learning milestones</div>
-        </div>
-
-        <div class="liquid-glass-card kpi-card">
-            <div class="kpi-header"><span class="kpi-title">Completed Badges</span></div>
-            <div class="kpi-value">{completed_count}</div>
-            <div class="kpi-subtext">{progress_pct}% Total roadmap progress</div>
-        </div>
-
-        <div class="liquid-glass-card kpi-card">
-            <div class="kpi-header"><span class="kpi-title">Active Badges</span></div>
-            <div class="kpi-value">{active_count}</div>
-            <div class="kpi-subtext">Currently in learning / build phase</div>
-        </div>
-
-        <div class="liquid-glass-card kpi-card">
-            <div class="kpi-header"><span class="kpi-title">Standard Average</span></div>
-            <div class="kpi-value">{score_summary["average_marks"]} <span style="font-size:14px; opacity:0.6;">/ 50</span></div>
-            <div class="kpi-subtext">{score_summary["average_percentage"]}% Standard score</div>
-        </div>
-    </div>
-    """
-
-    # Performance bar chart across completed badges
-    perf_bars = []
     approved_asms = [a for a in assessments if a.decision == "approve"]
-    if approved_asms:
-        for a in approved_asms:
-            pct = a.percentage
-            perf_bars.append(f"""
-            <div style="margin-bottom:12px;">
-                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px;">
-                    <span>{escape(a.badge_id)} (Attempt #{a.attempt_number})</span>
-                    <span style="color:var(--deep-frozen-midnight);">{a.total_marks} / 50.0 ({pct:.1f}%)</span>
+    first_attempt_passes = sum(1 for a in approved_asms if a.attempt_number == 1)
+    pass_rate = round((first_attempt_passes / max(1, len(approved_asms))) * 100.0, 1) if approved_asms else 100.0
+
+    avg_marks = score_summary.get("average_marks", 0.0)
+    avg_pct = score_summary.get("average_percentage", 0.0)
+
+    # Calculate cadet rank & percentile in cohort
+    cadet_rank = 1
+    total_cadets = len(leaderboard)
+    for item in leaderboard:
+        if item["cosmonaut_id"] == current_user.id:
+            cadet_rank = item.get("rank", 1)
+            break
+    percentile_val = round(((total_cadets - cadet_rank + 1) / max(1, total_cadets)) * 100.0, 0)
+
+    # 2. Rubric Dimension Breakdown (The 5 Standard Criteria)
+    all_approved = [a for a in store.get_all_assessments() if a.decision == "approve"]
+    rubric_telemetry = []
+    cadet_scores_dict = {}
+
+    for c in RUBRIC_CRITERIA:
+        k = c["key"]
+        title = c["title"]
+        desc = c["desc"]
+        # Cadet average for this criterion
+        c_vals = [getattr(a, k, 0.0) for a in approved_asms]
+        c_avg = round(sum(c_vals) / len(c_vals), 2) if c_vals else 0.0
+        cadet_scores_dict[k] = c_avg
+
+        # Cohort average for this criterion
+        batch_vals = [getattr(a, k, 0.0) for a in all_approved]
+        batch_avg = round(sum(batch_vals) / len(batch_vals), 2) if batch_vals else c_avg
+
+        diff = round(c_avg - batch_avg, 2)
+        pct_bar = min(100.0, (c_avg / 10.0) * 100.0)
+        cohort_pct_bar = min(100.0, (batch_avg / 10.0) * 100.0)
+
+        delta_badge = f'<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:2px 8px; border-radius:var(--radius-xs);">{"+" if diff >= 0 else ""}{diff} vs Batch</span>'
+
+        rubric_telemetry.append(f"""
+        <div style="margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <div>
+                    <span style="font-size:13px; font-weight:700; color:var(--frost-navy);">{escape(title)}</span>
+                    <span style="font-size:11px; color:var(--frost-navy-50); margin-left:6px;">({escape(desc)})</span>
                 </div>
-                <div style="height:12px; border-radius:var(--radius-full); background:rgba(157,183,213,0.3); overflow:hidden;">
-                    <div style="height:100%; width:{pct}%; border-radius:var(--radius-full); background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    {delta_badge}
+                    <span style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight);">{c_avg:.1f} <span style="font-size:11px; font-weight:600; opacity:0.6;">/ 10</span></span>
                 </div>
             </div>
-            """)
-    else:
-        perf_bars.append("<p style='font-size:13px; opacity:0.6;'>Complete badge project assessments to display performance trends.</p>")
+            <div style="position:relative; height:10px; border-radius:var(--radius-full); background:rgba(157,183,213,0.25); overflow:hidden;">
+                <!-- Cohort benchmark marker -->
+                <div style="position:absolute; top:0; left:{cohort_pct_bar}%; width:2px; height:100%; background:var(--frost-navy-50); z-index:2;" title="Batch Cohort Benchmark ({batch_avg:.1f})"></div>
+                <!-- Cadet Score Bar -->
+                <div style="height:100%; width:{pct_bar}%; border-radius:var(--radius-full); background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
+            </div>
+        </div>
+        """)
 
-    chart_card = render_liquid_card(
-        title="Assessment Performance (50-Mark Standard Rubric)",
-        subtitle="Standardized scores achieved across evaluated badge deliverables",
-        content="".join(perf_bars)
-    )
+    # Identify Superpower & Growth Vector
+    sorted_criteria = sorted(RUBRIC_CRITERIA, key=lambda x: cadet_scores_dict.get(x["key"], 0.0), reverse=True)
+    superpower = sorted_criteria[0] if sorted_criteria else None
+    growth_vector = sorted_criteria[-1] if sorted_criteria else None
 
-    # Strengths and improvement areas based on Guardian evaluation
-    all_strengths = [a.strength_areas for a in assessments if a.strength_areas]
-    all_improvements = [a.improvement_areas for a in assessments if a.improvement_areas]
-
-    insights_content = f"""
-    <div style="margin-bottom:14px;">
-        <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Guardian Recognized Strengths:</div>
-        <p style="font-size:13.5px; color:var(--frost-navy); line-height:1.5;">{escape(all_strengths[-1] if all_strengths else "No strengths recorded yet.")}</p>
+    superpower_html = f"""
+    <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(23,52,92,0.05); padding:10px 14px; border-radius:var(--radius-sm); border-left:3px solid var(--deep-frozen-midnight); margin-bottom:10px;">
+        <span style="display:inline-flex; align-items:center; color:var(--deep-frozen-midnight);">{get_icon("award", 18)}</span>
+        <div>
+            <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Primary Engineering Strength: {escape(superpower["title"] if superpower else "System Architecture")}</div>
+            <p style="font-size:12px; color:var(--frost-navy); line-height:1.45; margin:2px 0 0 0;">Exemplary score of <strong>{cadet_scores_dict.get(superpower["key"], 0.0):.1f} / 10.0</strong> — demonstrably enterprise-ready problem formulation and technical depth.</p>
+        </div>
     </div>
-    <div>
-        <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Areas for Growth:</div>
-        <p style="font-size:13.5px; color:var(--frost-navy); line-height:1.5;">{escape(all_improvements[-1] if all_improvements else "Continue following standard best practices.")}</p>
+    """ if superpower else ""
+
+    growth_html = f"""
+    <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(157,183,213,0.12); padding:10px 14px; border-radius:var(--radius-sm); border-left:3px solid var(--icy-steel);">
+        <span style="display:inline-flex; align-items:center; color:var(--deep-frozen-midnight);">{get_icon("target", 18)}</span>
+        <div>
+            <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Targeted Growth Vector: {escape(growth_vector["title"] if growth_vector else "Defensive Testing")}</div>
+            <p style="font-size:12px; color:var(--frost-navy-75); line-height:1.45; margin:2px 0 0 0;">Score of <strong>{cadet_scores_dict.get(growth_vector["key"], 0.0):.1f} / 10.0</strong> — focus on runtime boundary conditions and defense of architectural trade-offs.</p>
+        </div>
     </div>
-    """
+    """ if growth_vector else ""
 
-    insights_card = render_liquid_card(
-        title="Mentor Evaluation Insights",
-        subtitle="Feedback extracted directly from Dr. Elena Vance's marksheets",
-        content=insights_content
-    )
+    # 3. Milestone Execution Pipeline Matrix
+    pipeline_rows = []
+    cadet_subs = store.get_submissions_for_cosmonaut(current_user.id)
+    for idx, b in enumerate(assigned_badges):
+        b_asm = next((a for a in approved_asms if a.badge_id == b.id), None)
+        b_sub = next((s for s in cadet_subs if s.badge_id == b.id and s.status == "pending"), None)
+        tl = store.get_timeline(b.id, current_user.id)
 
-    # Batch Leaderboard (visible to all, ranking all 6, but NO access to private profiles)
+        if b_asm:
+            code_str = escape(b.code)
+            title_str = escape(b.title)
+            cat_str = escape(b.category)
+            status_badge = '<span class="status-pill status-approved">Certified</span>'
+            score_text = f"<strong>{b_asm.total_marks:.1f}</strong> / 50 ({b_asm.percentage:.1f}%)"
+            attempt_text = f"Attempt #{b_asm.attempt_number}"
+            velocity_text = '<span style="color:#2E7D32; font-weight:700;">Ahead of Schedule</span>'
+            action_btn = f"""<button type="button" class="btn-metal btn-sm" style="padding:3px 10px; font-size:11px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">Marksheet →</button>"""
+        elif b_sub:
+            code_str = escape(b.code)
+            title_str = escape(b.title)
+            cat_str = escape(b.category)
+            status_badge = '<span class="status-pill status-pending">In Review</span>'
+            score_text = '<span style="opacity:0.6;">Under Guardian Review</span>'
+            attempt_text = f"Attempt #{b_sub.attempt_number}"
+            velocity_text = '<span style="color:var(--deep-frozen-midnight); font-weight:700;">Awaiting Feedback</span>'
+            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="padding:3px 10px; font-size:11px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Track Status →</button>"""
+        elif tl and getattr(tl, "status", "") in ["active", "in_progress"]:
+            code_str = escape(b.code)
+            title_str = escape(b.title)
+            cat_str = escape(b.category)
+            status_badge = '<span class="status-pill status-active">Active Sprint</span>'
+            score_text = '<span style="opacity:0.6;">Sprint In Progress</span>'
+            attempt_text = "Attempt #1 (Pending)"
+            velocity_text = '<span style="color:var(--deep-frozen-midnight); font-weight:700;">Sprint Target</span>'
+            action_btn = f"""<button type="button" class="btn-metal btn-sm" style="padding:3px 10px; font-size:11px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Project →</button>"""
+        else:
+            code_str = f'{get_icon("lock", 11, "margin-right:4px;")} LOCKED'
+            title_str = f'{get_icon("lock", 13, "margin-right:5px;")} Milestone {idx+1} (Locked)'
+            cat_str = "Classified"
+            status_badge = '<span class="status-pill status-locked">Locked</span>'
+            score_text = '<span style="opacity:0.6;">—</span>'
+            attempt_text = "—"
+            velocity_text = '<span style="opacity:0.6;">Awaiting Guardian</span>'
+            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="padding:3px 10px; font-size:11px; opacity:0.7;" onclick="window.StarAppBridge.dispatchAction('open_locked_milestone_notice', '{idx+1}')">{get_icon("lock", 12, "margin-right:4px;")} Locked</button>"""
+
+        pipeline_rows.append(f"""
+        <tr>
+            <td style="font-weight:700;">
+                <span style="font-family:var(--font-family-mono); font-size:12px; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs); margin-right:6px;">{code_str}</span>
+                <span>{title_str}</span>
+            </td>
+            <td><span style="font-size:11px; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{cat_str}</span></td>
+            <td>{status_badge}</td>
+            <td style="text-align:center;">{score_text}</td>
+            <td style="text-align:center; font-size:12px;">{attempt_text}</td>
+            <td style="text-align:center; font-size:12px;">{velocity_text}</td>
+            <td style="text-align:right;">{action_btn}</td>
+        </tr>
+        """)
+
+    # 4. Batch Orion-24 Official Leaderboard
     leaderboard_rows = []
     for item in leaderboard:
         is_me = item["cosmonaut_id"] == current_user.id
-        row_style = "background:rgba(23,52,92,0.1); font-weight:700;" if is_me else ""
-        you_badge = '<span class="status-pill status-approved" style="margin-left:6px; font-size:10px;">YOU</span>' if is_me else ""
+        row_style = "background:rgba(23,52,92,0.08); font-weight:700;" if is_me else ""
+        you_badge = '<span class="status-pill status-approved" style="margin-left:6px; font-size:9.5px; padding:1px 6px;">YOU</span>' if is_me else ""
         rank_medal = f'#{item["rank"]}'
         if item["rank"] == 1:
-            rank_medal = "🥇 #1"
+            rank_medal = f'{get_icon("medal_1", 18)} <span style="font-weight:800; color:#B8860B;">#1</span>'
         elif item["rank"] == 2:
-            rank_medal = "🥈 #2"
+            rank_medal = f'{get_icon("medal_2", 18)} <span style="font-weight:800; color:#708090;">#2</span>'
         elif item["rank"] == 3:
-            rank_medal = "🥉 #3"
+            rank_medal = f'{get_icon("medal_3", 18)} <span style="font-weight:800; color:#8B4513;">#3</span>'
 
         leaderboard_rows.append(f"""
         <tr style="{row_style}">
-            <td style="font-weight:700;">{rank_medal}</td>
+            <td style="font-weight:800; font-size:13px;">{rank_medal}</td>
             <td>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <div class="user-avatar" style="width:26px; height:26px; font-size:10px;">{escape(item["avatar"])}</div>
@@ -202,64 +281,246 @@ def render_cosmonaut_dashboard(
                     {you_badge}
                 </div>
             </td>
-            <td style="text-align:center;">{item["completed_badges"]}</td>
-            <td style="text-align:center; font-weight:700; color:var(--deep-frozen-midnight);">{item["average_marks"]} / 50</td>
-            <td style="text-align:center;">{item["average_percentage"]}%</td>
+            <td style="text-align:center; font-weight:700;">{item["completed_badges"]} / 5</td>
+            <td style="text-align:center; font-weight:800; color:var(--deep-frozen-midnight);">{item["average_marks"]} / 50</td>
+            <td style="text-align:center; font-weight:700;">{item["average_percentage"]}%</td>
         </tr>
         """)
 
-    leaderboard_card = render_liquid_card(
-        title="Batch Orion-24 Official Leaderboard",
-        subtitle="Ranked by average assessment score (/50) on approved badges. Updated in real-time.",
-        content=f"""
-        <div class="table-responsive">
-            <table class="star-table">
-                <thead>
-                    <tr>
-                        <th style="width:10%;">Rank</th>
-                        <th style="width:40%;">Cosmonaut</th>
-                        <th style="width:15%; text-align:center;">Badges Earned</th>
-                        <th style="width:20%; text-align:center;">Average Score</th>
-                        <th style="width:15%; text-align:center;">Standard %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join(leaderboard_rows)}
-                </tbody>
-            </table>
-        </div>
-        """
-    )
+    # 5. Prescriptive Action Plan & Guardian Intelligence
+    all_strengths = [a.strength_areas for a in assessments if a.strength_areas]
+    all_improvements = [a.improvement_areas for a in assessments if a.improvement_areas]
 
-    # Skills & Certifications summary
-    skills_pills = "".join([f'<span class="status-pill status-active" style="margin:2px;">{escape(s)}</span>' for s in profile.skills]) or '<span style="font-size:12px; opacity:0.6;">Add skills in Profile.</span>'
-    profile_widget = render_liquid_card(
-        title="My Profile Skills & Certifications",
-        subtitle="Live skills entered in your profile and reflected in batch queries",
-        content=f"""
-        <div style="margin-bottom:12px;">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">Current Skills:</div>
-            <div style="display:flex; flex-wrap:wrap; gap:4px;">{skills_pills}</div>
-        </div>
-        <div style="display:flex; justify-content:flex-end;">
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_profile')">Edit Skills in Profile →</button>
-        </div>
-        """
-    )
+    # Skills widget pills
+    skills_pills = "".join([f'<span class="status-pill status-active" style="margin:2px; font-size:11px;">{escape(s)}</span>' for s in profile.skills]) or '<span style="font-size:12px; opacity:0.6;">Add skills in Profile.</span>'
 
     return f"""
     <div>
-        {kpis}
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;">
-            {chart_card}
-            {insights_card}
+        <!-- Executive Intelligence Header -->
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%); box-shadow:0 4px 18px rgba(7,22,41,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div class="user-avatar" style="width:50px; height:50px; font-size:18px; font-weight:800; border:2px solid var(--icy-steel);">{escape(current_user.avatar)}</div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(current_user.name)}</h2>
+                            <span class="status-pill status-approved" style="font-size:11px;">Flight Officer</span>
+                            <span style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">ID: {escape(current_user.id)}</span>
+                        </div>
+                        <p style="font-size:12.5px; color:var(--frost-navy-75); margin:3px 0 0 0;">
+                            Batch: <strong>{escape(profile.batch_name or "Orion-24")}</strong> &bull; Mentor: <strong>{escape(getattr(profile, "manager_name", "Dr. Elena Vance"))}</strong> &bull; Track: <strong>Enterprise Cloud & Systems Architecture</strong>
+                        </p>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                        Standing: <strong>Top {percentile_val:.0f}% (Rank #{cadet_rank})</strong>
+                    </span>
+                    <span style="font-size:12px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:5px 12px; border-radius:var(--radius-sm); box-shadow:0 2px 6px rgba(7,22,41,0.2);">
+                        GPA: <strong>{avg_marks:.1f} / 50 ({avg_pct:.1f}%)</strong>
+                    </span>
+                </div>
+            </div>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-            {leaderboard_card}
-            {profile_widget}
+
+        <!-- 4-Card Analytics KPI Grid -->
+        <div class="kpi-grid">
+            <div class="liquid-glass-card kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-title">Curriculum Velocity</span>
+                    <div class="kpi-icon-bubble">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    </div>
+                </div>
+                <div class="kpi-value">{completed_count} / {total_assigned} <span style="font-size:14px; opacity:0.65; font-weight:600;">Milestones</span></div>
+                <div style="height:6px; border-radius:var(--radius-full); background:rgba(157,183,213,0.3); overflow:hidden; margin:8px 0 6px 0;">
+                    <div style="height:100%; width:{progress_pct}%; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
+                </div>
+                <div class="kpi-subtext" style="color:#2E7D32; font-weight:700;">▲ {progress_pct}% Total Roadmap Completed</div>
+            </div>
+
+            <div class="liquid-glass-card kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-title">Standard Academic Index</span>
+                    <div class="kpi-icon-bubble">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    </div>
+                </div>
+                <div class="kpi-value">{avg_marks:.1f} <span style="font-size:14px; opacity:0.65; font-weight:600;">/ 50.0</span></div>
+                <div class="kpi-subtext" style="font-weight:700; color:var(--deep-frozen-midnight);">{avg_pct:.1f}% Distinction Rate &bull; Tier 1</div>
+            </div>
+
+            <div class="liquid-glass-card kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-title">First-Attempt Pass Rate</span>
+                    <div class="kpi-icon-bubble">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                </div>
+                <div class="kpi-value">{pass_rate:.1f}%</div>
+                <div class="kpi-subtext" style="color:var(--frost-navy); font-weight:600;">{first_attempt_passes} of {len(approved_asms)} passed on Attempt 1</div>
+            </div>
+
+            <div class="liquid-glass-card kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-title">Validated Competencies</span>
+                    <div class="kpi-icon-bubble">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                </div>
+                <div class="kpi-value">{len(profile.skills)} <span style="font-size:14px; opacity:0.65; font-weight:600;">Skills</span></div>
+                <div class="kpi-subtext">Verified production engineering skills</div>
+            </div>
+        </div>
+
+        <!-- Analytical Deep Dive: Rubric Dimension Radar & Prescriptive Insights -->
+        <div style="display:grid; grid-template-columns:1.2fr 0.8fr; gap:22px; margin-bottom:26px;">
+            <!-- Left: 5-Dimension Standard Rubric Competency Diagnostic -->
+            <div class="liquid-glass-card" style="padding:22px 24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:#FFFFFF; box-shadow:0 4px 16px rgba(7,22,41,0.05);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30);">
+                    <div>
+                        <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">5-Dimension Rubric Diagnostic</h3>
+                        <p style="font-size:12px; color:var(--frost-navy-50); margin:2px 0 0 0;">Evaluated against Guardian Dr. Elena Vance's standardized 50-mark rubric</p>
+                    </div>
+                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50); background:rgba(234,244,255,0.8); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                        | Benchmark Watermark
+                    </span>
+                </div>
+
+                {"".join(rubric_telemetry)}
+
+                <div style="margin-top:16px; padding-top:14px; border-top:1.5px solid var(--icy-steel-30);">
+                    {superpower_html}
+                    {growth_html}
+                </div>
+            </div>
+
+            <!-- Right: Actionable Decision Support & Mentor Digest -->
+            <div class="liquid-glass-card" style="padding:22px 24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:#FFFFFF; box-shadow:0 4px 16px rgba(7,22,41,0.05); display:flex; flex-direction:column; justify-content:space-between;">
+                <div>
+                    <div style="margin-bottom:16px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30);">
+                        <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Decision Support & Action Plan</h3>
+                        <p style="font-size:12px; color:var(--frost-navy-50); margin:2px 0 0 0;">Prescriptive next-best steps based on telemetry</p>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">1. Immediate Sprint Priority</div>
+                        <div style="background:rgba(234,244,255,0.7); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50); font-size:12.5px; color:var(--frost-navy); line-height:1.45;">
+                            Focus on <strong>DAT-103: Data Architecture</strong> project submission. Completing this milestone will solidify your #1 standing in Batch Orion-24.
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">2. Curriculum Study Recommendation</div>
+                        <div style="background:rgba(234,244,255,0.7); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50); font-size:12.5px; color:var(--frost-navy); line-height:1.45;">
+                            Watch <strong>Video 1 (Tactical Operations)</strong> and review Section 4 of <strong>Chemistry Syllabus (PDF)</strong> in the Study Materials workspace.
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">3. Guardian Evaluation Takeaway</div>
+                        <div style="background:rgba(23,52,92,0.06); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50); font-size:12px; color:var(--frost-navy); line-height:1.45; font-style:italic;">
+                            "{escape(all_strengths[-1] if all_strengths else "Exemplary understanding of cloud architectures and compliance standards.")}"
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:18px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Mentor: Dr. Elena Vance</span>
+                    <button type="button" class="btn-metal btn-sm" style="padding:5px 14px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Open Study Hub →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Curriculum Trajectory & Milestone Pipeline Matrix -->
+        <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:26px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:#FFFFFF; box-shadow:0 4px 16px rgba(7,22,41,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30);">
+                <div>
+                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Curriculum Milestone Execution Pipeline</h3>
+                    <p style="font-size:12px; color:var(--frost-navy-50); margin:2px 0 0 0;">Comprehensive status of all 5 milestones across your cohort certification pathway</p>
+                </div>
+                <button type="button" class="btn-secondary btn-sm" style="padding:5px 14px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_roadmap')">Interactive Roadmap View →</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="star-table">
+                    <thead>
+                        <tr>
+                            <th style="width:26%;">Milestone</th>
+                            <th style="width:14%;">Domain</th>
+                            <th style="width:14%;">Status</th>
+                            <th style="width:16%; text-align:center;">Score Achieved</th>
+                            <th style="width:10%; text-align:center;">Attempts</th>
+                            <th style="width:12%; text-align:center;">Trajectory</th>
+                            <th style="width:8%; text-align:right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(pipeline_rows)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Dual Column: Orion-24 Official Leaderboard & Skills Deck -->
+        <div style="display:grid; grid-template-columns:1.3fr 0.7fr; gap:22px;">
+            <!-- Official Batch Leaderboard -->
+            <div class="liquid-glass-card" style="padding:22px 24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:#FFFFFF; box-shadow:0 4px 16px rgba(7,22,41,0.05);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30);">
+                    <div>
+                        <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Batch Orion-24 Official Leaderboard</h3>
+                        <p style="font-size:12px; color:var(--frost-navy-50); margin:2px 0 0 0;">Ranked by standardized 50-mark score average on approved deliverables</p>
+                    </div>
+                    <span class="status-pill status-approved" style="font-size:11px;">Live Sync</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="star-table">
+                        <thead>
+                            <tr>
+                                <th style="width:12%;">Rank</th>
+                                <th style="width:40%;">Cosmonaut</th>
+                                <th style="width:18%; text-align:center;">Milestones</th>
+                                <th style="width:18%; text-align:center;">Score (/50)</th>
+                                <th style="width:12%; text-align:center;">Standard %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join(leaderboard_rows)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Profile Skills & Industry Certifications -->
+            <div class="liquid-glass-card" style="padding:22px 24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:#FFFFFF; box-shadow:0 4px 16px rgba(7,22,41,0.05); display:flex; flex-direction:column; justify-content:space-between;">
+                <div>
+                    <div style="margin-bottom:16px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30);">
+                        <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Validated Competency Cloud</h3>
+                        <p style="font-size:12px; color:var(--frost-navy-50); margin:2px 0 0 0;">Industry credentials & certified skillsets</p>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:8px;">Active Technical Competencies:</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                            {skills_pills}
+                        </div>
+                    </div>
+
+                    <div style="background:rgba(234,244,255,0.6); padding:12px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Skill Endorsement Policy:</div>
+                        <p style="font-size:11.5px; color:var(--frost-navy-75); line-height:1.45; margin:0;">Skills entered in your profile are validated upon each milestone certification and showcased to corporate sponsors.</p>
+                    </div>
+                </div>
+
+                <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:flex-end;">
+                    <button type="button" class="btn-secondary btn-sm" style="padding:5px 14px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_profile')">Manage Skills in Profile →</button>
+                </div>
+            </div>
         </div>
     </div>
     """
+
 
 # ==============================================================================
 # 6.2 COSMONAUT PROFILE (Interactive Skill & Certification Management)
@@ -294,7 +555,7 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
         <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:rgba(255, 255, 255, 0.85); border-radius:var(--radius-md); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03); margin-bottom:10px;">
             <div style="display:flex; align-items:center; gap:14px;">
                 <div style="width:40px; height:40px; border-radius:var(--radius-sm); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); font-size:20px;">
-                    📜
+                    {get_icon("file_text", 20)}
                 </div>
                 <div>
                     <div style="font-weight:800; color:var(--frost-navy); font-size:14px;">{escape(c_name)}</div>
@@ -543,15 +804,19 @@ def render_gamified_roadmap(
             card_style = (
                 "background: rgba(234, 244, 255, 0.45); "
                 "border: 1.5px dashed var(--icy-steel-50); "
-                "opacity: 0.82; "
+                "opacity: 0.85; "
                 "color: var(--frost-navy-50);"
             )
+            code = f'{get_icon("lock", 12, "margin-right:4px;")} LOCKED'
+            title = f'{get_icon("lock", 13, "margin-right:5px;")} Milestone {idx + 1} (Locked)'
+            category = "Classified Curriculum"
             code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 11.5px;"
-            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.75;"
+            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.85;"
             desc_style = "color: var(--frost-navy-50); font-size: 11px;"
             status_html = '<span class="status-pill status-locked" style="font-size:10.5px; padding:2px 8px;">Locked</span>'
-
-        onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
+            onclick = f"window.StarAppBridge.dispatchAction('open_locked_milestone_notice', '{idx + 1}');"
+        if state != "locked":
+            onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
 
         milestone_els.append(
             '\n        <div class="liquid-glass-card milestone-container-node"'
@@ -896,7 +1161,7 @@ def render_cosmonaut_results(
         sheet_content = f"""
         <div class="liquid-glass-card" style="padding:48px 32px; text-align:center; border:1.5px dashed var(--icy-steel); background:rgba(255,255,255,0.7);">
             <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:rgba(23,52,92,0.08); margin-bottom:16px;">
-                <span style="font-size:24px;">📋</span>
+                <span style="font-size:24px;">{get_icon("clipboard", 20)}</span>
             </div>
             <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Evaluation Pending for {escape(badge_code)}</h3>
             <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:540px; margin:0 auto 20px auto; line-height:1.5;">

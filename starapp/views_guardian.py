@@ -6,6 +6,7 @@ Implements the 7 core workspaces for training managers and mentors.
 from typing import List, Dict, Any, Optional
 from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet, LearningMaterial, DeadlineExtension, Announcement, ActivityEvent
 from starapp.views_common import (
+    get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline
 )
@@ -21,9 +22,7 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
         {"id": "g_allotment", "label": "Badge Allotment", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
         {"id": "g_reviews", "label": "Project Reviews", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
         {"id": "g_materials", "label": "Learning Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
-        {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count},
-        {"id": "g_announcements", "label": "Announcements", "icon": '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>', "badge": 0},
-        {"id": "g_activity", "label": "Activity Feed", "icon": '<svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>', "badge": 0}
+        {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count}
     ]
 
     links_html = []
@@ -60,6 +59,12 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
 
         <ul class="sidebar-nav">
             {"".join(links_html)}
+            <li class="nav-item" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30);">
+                <a class="nav-link" onclick="window.open('index.html?role=cosmonaut', '_blank');" style="color:var(--deep-frozen-midnight); font-weight:700;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    <span>Cosmonaut Window ↗</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">
@@ -87,22 +92,27 @@ def render_guardian_dashboard(
     selected_cosmo_id: str,
     selected_cosmo_data: Optional[Dict[str, Any]] = None
 ) -> str:
+    from starapp.storage import store
+    from starapp.assessment import calculate_cosmonaut_score_summary
+
     # Cosmonaut selector dropdown options
-    selector_options = ['<option value="all"' + (' selected' if selected_cosmo_id == 'all' else '') + '>All Cosmonauts (Batch Aggregate)</option>']
+    selector_options = ['<option value="all"' + (' selected' if selected_cosmo_id == 'all' else '') + '>All Cosmonauts (Batch Aggregate Analytics)</option>']
     for c in cosmonauts:
         sel = " selected" if c.id == selected_cosmo_id else ""
         selector_options.append(f'<option value="{c.id}"{sel}>{escape(c.name)} ({c.id})</option>')
 
     selector_bar = f"""
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; background:rgba(255,255,255,0.7); padding:12px 20px; border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
-        <div style="display:flex; align-items:center; gap:12px;">
-            <label style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight); text-transform:uppercase;">View Scope:</label>
-            <select class="form-select" style="width:280px; padding:6px 12px; font-weight:600;" onchange="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', this.value)">
-                {"".join(selector_options)}
-            </select>
+    <div class="liquid-glass-card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.75) 100%); padding:14px 22px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); box-shadow:0 4px 16px rgba(7,22,41,0.04); flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <label style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Analytics Scope:</label>
+            <div class="liquid-select-wrapper" style="min-width:280px; width:auto;">
+                <select class="liquid-glass-control liquid-glass-select" style="font-weight:700;" onchange="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', this.value)">
+                    {"".join(selector_options)}
+                </select>
+            </div>
         </div>
         <div style="font-size:12px; color:var(--frost-navy-50);">
-            Showing data for: <strong>{"Batch Orion-24 (All Cosmonauts)" if selected_cosmo_id == "all" else "Individual Dossier"}</strong>
+            Scope: <strong>{"Batch Orion-24 Telemetry (All Cosmonauts)" if selected_cosmo_id == "all" else "Individual Cadet Dossier"}</strong>
         </div>
     </div>
     """
@@ -111,76 +121,83 @@ def render_guardian_dashboard(
         # Render Individual Cosmonaut Dossier
         return selector_bar + render_individual_cosmo_dossier(selected_cosmo_data)
 
-    # Otherwise render Batch Aggregate Analytics
+    # 1. High-Level Executive Batch KPIs
+    batch_avg_score = batch_analytics.get("batch_avg_score", 0.0)
+    batch_avg_pct = batch_analytics.get("batch_avg_pct", 0.0)
+    completion_rate = batch_analytics.get("completion_rate", 0.0)
+    total_assigned = batch_analytics.get("total_assigned_badges", 0)
+    completed_badges = batch_analytics.get("completed_badges", 0)
+    pending_reviews = batch_analytics.get("pending_reviews", 0)
+
     kpis = f"""
     <div class="kpi-grid">
         <div class="liquid-glass-card kpi-card">
             <div class="kpi-header">
-                <span class="kpi-title">Total Cosmonauts</span>
+                <span class="kpi-title">Enrolled Cadets</span>
                 <div class="kpi-icon-bubble">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
             </div>
             <div class="kpi-value">{batch_analytics["total_cosmonauts"]}</div>
-            <div class="kpi-subtext">Active Batch Orion-24</div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700;">Active Cohort: Batch Orion-24</div>
         </div>
 
         <div class="liquid-glass-card kpi-card">
             <div class="kpi-header">
-                <span class="kpi-title">Total Badges Assigned</span>
+                <span class="kpi-title">Batch Completion Velocity</span>
                 <div class="kpi-icon-bubble">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">{batch_analytics["total_assigned_badges"]}</div>
-            <div class="kpi-subtext">Published milestones across batch</div>
+            <div class="kpi-value">{completed_badges} / {total_assigned}</div>
+            <div style="height:6px; border-radius:var(--radius-full); background:rgba(157,183,213,0.3); overflow:hidden; margin:8px 0 6px 0;">
+                <div style="height:100%; width:{completion_rate}%; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
+            </div>
+            <div class="kpi-subtext" style="color:#2E7D32; font-weight:700;">▲ {completion_rate}% Aggregate milestone completion rate</div>
         </div>
 
         <div class="liquid-glass-card kpi-card">
             <div class="kpi-header">
-                <span class="kpi-title">Completed Badges</span>
+                <span class="kpi-title">Pending Submissions</span>
                 <div class="kpi-icon-bubble">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">{batch_analytics["completed_badges"]}</div>
-            <div class="kpi-subtext">{batch_analytics["completion_rate"]}% Batch completion rate</div>
+            <div class="kpi-value">{pending_reviews}</div>
+            <div class="kpi-subtext" style="color:{"#C62828" if pending_reviews > 0 else "var(--frost-navy-50)"}; font-weight:700;">
+                {"Requires Evaluation" if pending_reviews > 0 else "Review queue cleared"}
+            </div>
         </div>
 
         <div class="liquid-glass-card kpi-card">
             <div class="kpi-header">
-                <span class="kpi-title">Awaiting Review</span>
+                <span class="kpi-title">Batch Standard GPA</span>
                 <div class="kpi-icon-bubble">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">{batch_analytics["pending_reviews"]}</div>
-            <div class="kpi-subtext">Submissions requiring assessment</div>
-        </div>
-
-        <div class="liquid-glass-card kpi-card">
-            <div class="kpi-header">
-                <span class="kpi-title">Batch Average Score</span>
-                <div class="kpi-icon-bubble">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                </div>
-            </div>
-            <div class="kpi-value">{batch_analytics["batch_avg_score"]} <span style="font-size:14px; opacity:0.6;">/ 50</span></div>
-            <div class="kpi-subtext">{batch_analytics["batch_avg_pct"]}% across approved projects</div>
+            <div class="kpi-value">{batch_avg_score:.1f} <span style="font-size:14px; opacity:0.65; font-weight:600;">/ 50.0</span></div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700;">{batch_avg_pct:.1f}% Batch Average &bull; Tier 1 Quality</div>
         </div>
     </div>
     """
 
-    # Criterion-wise batch performance bars
+    # 2. Criterion-wise batch performance bars & diagnostic insights
     crit_bars = []
+    crit_avgs = batch_analytics.get("criterion_averages", {})
+    sorted_crits = sorted(RUBRIC_CRITERIA, key=lambda c: crit_avgs.get(c["key"], 0.0), reverse=True)
+
     for c in RUBRIC_CRITERIA:
-        avg_val = batch_analytics["criterion_averages"].get(c["key"], 0.0)
+        avg_val = crit_avgs.get(c["key"], 0.0)
         pct = (avg_val / 10.0) * 100.0
         crit_bars.append(f"""
         <div style="margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px;">
-                <span>{c["title"]}</span>
-                <span style="color:var(--deep-frozen-midnight);">{avg_val} / 10.0 ({pct:.1f}%)</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <div>
+                    <span style="font-size:13px; font-weight:700; color:var(--frost-navy);">{escape(c["title"])}</span>
+                    <span style="font-size:11px; color:var(--frost-navy-50); margin-left:6px;">({escape(c["desc"])})</span>
+                </div>
+                <span style="font-size:13px; font-weight:800; color:var(--deep-frozen-midnight);">{avg_val:.1f} / 10.0 ({pct:.1f}%)</span>
             </div>
             <div style="height:10px; border-radius:var(--radius-full); background:rgba(157,183,213,0.3); overflow:hidden;">
                 <div style="height:100%; width:{pct}%; border-radius:var(--radius-full); background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
@@ -188,28 +205,71 @@ def render_guardian_dashboard(
         </div>
         """)
 
+    top_crit = sorted_crits[0] if sorted_crits else None
+    low_crit = sorted_crits[-1] if sorted_crits else None
+
+    batch_diagnostic_html = f"""
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; padding-top:14px; border-top:1.5px solid var(--icy-steel-30);">
+        <div style="background:rgba(23,52,92,0.05); padding:10px 14px; border-radius:var(--radius-sm); border-left:3px solid var(--deep-frozen-midnight);">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:2px;">{get_icon("award", 13, "margin-right:5px;")} Cohort Core Competency</div>
+            <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(top_crit["title"] if top_crit else "Business Understanding")} ({crit_avgs.get(top_crit["key"], 0.0):.1f}/10)</div>
+            <p style="font-size:11.5px; color:var(--frost-navy-75); margin:2px 0 0 0;">Batch demonstrates exemplary domain grounding and compliance alignment across evaluations.</p>
+        </div>
+        <div style="background:rgba(157,183,213,0.14); padding:10px 14px; border-radius:var(--radius-sm); border-left:3px solid var(--icy-steel);">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); margin-bottom:2px;">{get_icon("target", 13, "margin-right:5px;")} Pedagogical Focus Area</div>
+            <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(low_crit["title"] if low_crit else "Testing & Resilience")} ({crit_avgs.get(low_crit["key"], 0.0):.1f}/10)</div>
+            <p style="font-size:11.5px; color:var(--frost-navy-75); margin:2px 0 0 0;">Recommend scheduling technical QA office hours to reinforce automated regression coverage.</p>
+        </div>
+    </div>
+    """
+
     crit_card = render_liquid_card(
-        title="Batch Criterion-Wise Average Performance (Standard 50-Mark Rubric)",
+        title="Batch Criterion-Wise Competency Diagnostic (Standard 50-Mark Rubric)",
         subtitle="Aggregated across all approved badge evaluations in Batch Orion-24",
-        content="".join(crit_bars)
+        content="".join(crit_bars) + batch_diagnostic_html
     )
 
-    # Cosmonauts roster overview table
+    # 3. Enhanced Cosmonauts Roster with Detailed Analytics
     roster_rows = []
     for c in cosmonauts:
+        c_asms = store.get_assessments_for_cosmonaut(c.id)
+        c_summary = calculate_cosmonaut_score_summary(c_asms)
+        c_completed = c_summary.get("approved_count", 0)
+        c_avg = c_summary.get("average_marks", 0.0)
+        c_pct = c_summary.get("average_percentage", 0.0)
+
+        # Performance Tier Pill
+        if c_avg >= 45.0:
+            tier_pill = '<span class="status-pill status-approved" style="font-size:10.5px;">Honors Tier</span>'
+        elif c_avg >= 35.0:
+            tier_pill = '<span class="status-pill status-active" style="font-size:10.5px;">Production Ready</span>'
+        elif c_completed > 0:
+            tier_pill = '<span class="status-pill status-pending" style="font-size:10.5px;">Needs Improvement</span>'
+        else:
+            tier_pill = '<span class="status-pill" style="opacity:0.6; font-size:10.5px;">Sprint Initiated</span>'
+
         roster_rows.append(f"""
         <tr>
             <td style="font-weight:700;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="user-avatar" style="width:28px; height:28px; font-size:11px;">{escape(c.avatar)}</div>
-                    <span>{escape(c.name)}</span>
+                    <div class="user-avatar" style="width:30px; height:30px; font-size:11px; font-weight:800;">{escape(c.avatar)}</div>
+                    <div>
+                        <div style="color:var(--frost-navy);">{escape(c.name)}</div>
+                        <div style="font-size:11px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(c.id)}</div>
+                    </div>
                 </div>
             </td>
-            <td style="font-family:var(--font-family-mono); font-size:12px;">{escape(c.email)}</td>
-            <td>Batch Orion-24</td>
-            <td>
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{c.id}')">
-                    Open Full Dossier
+            <td style="font-size:12px; font-family:var(--font-family-mono);">{escape(c.email)}</td>
+            <td style="text-align:center;">
+                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_completed}</span> / 5 Badges
+            </td>
+            <td style="text-align:center;">
+                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_avg:.1f}</span> <span style="font-size:11px; opacity:0.6;">/ 50</span> ({c_pct:.1f}%)
+            </td>
+            <td style="text-align:center;">{tier_pill}</td>
+            <td style="text-align:right;">
+                <button type="button" class="btn-metal btn-sm" style="padding:4px 12px; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{c.id}')">
+                    Inspect Dossier →
                 </button>
             </td>
         </tr>
@@ -220,10 +280,12 @@ def render_guardian_dashboard(
         <table class="star-table">
             <thead>
                 <tr>
-                    <th>Cosmonaut</th>
-                    <th>Email Address</th>
-                    <th>Training Batch</th>
-                    <th>Actions</th>
+                    <th style="width:28%;">Cosmonaut Cadet</th>
+                    <th style="width:22%;">Contact Email</th>
+                    <th style="width:14%; text-align:center;">Milestones</th>
+                    <th style="width:16%; text-align:center;">Average GPA</th>
+                    <th style="width:10%; text-align:center;">Standing</th>
+                    <th style="width:10%; text-align:right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -234,8 +296,8 @@ def render_guardian_dashboard(
     """
 
     roster_card = render_liquid_card(
-        title="Batch Orion-24 Cosmonaut Directory",
-        subtitle="Select any Cosmonaut to inspect their private marksheet history, submissions, skills, and timelines",
+        title="Batch Orion-24 Cadet Roster & Performance Matrix",
+        subtitle="Live telemetry across all enrolled cadets. Select any Cosmonaut to inspect their private marksheet dossier, submissions, and timeline.",
         content=roster_table
     )
 
@@ -332,68 +394,278 @@ def render_individual_cosmo_dossier(data: Dict[str, Any]) -> str:
 # 7.2 BADGE ALLOTMENT & TIMELINE MANAGEMENT
 # ==============================================================================
 
-def render_guardian_badge_allotment(badges: List[Badge], cosmonauts: List[User]) -> str:
-    badge_cards = []
+def render_guardian_badge_allotment(
+    badges: List[Badge],
+    cosmonauts: List[User],
+    filter_tab: str = "all"
+) -> str:
+    """
+    Renders Guardian Badge Catalog & Allotment Manager in a clean 2-in-a-row card layout.
+    Displays clear visual timeline steppers for all badges, and supports badge publication and revocation.
+    """
+    allocated = []
+    unallocated = []
+
     for b in badges:
-        cosmo_count = len(b.assigned_cosmonaut_ids)
-        prereq_badges = ", ".join(b.prerequisites) if b.prerequisites else "None (Entry Milestone)"
-        pub_pill = render_status_pill("active" if b.is_published else "locked")
-        toggle_pub_action = "unpublish_badge" if b.is_published else "publish_badge"
-        toggle_pub_text = "Unpublish" if b.is_published else "Publish to Roadmap"
+        is_alloc = getattr(b, "is_allocated", True)
+        if is_alloc:
+            allocated.append(b)
+        else:
+            unallocated.append(b)
 
-        badge_cards.append(f"""
-        <div class="liquid-glass-card" style="margin-bottom:16px;">
-            <div class="card-content">
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px;">
-                    <div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:700; color:var(--deep-frozen-midnight);">{escape(b.code)}</span>
-                            {pub_pill}
-                        </div>
-                        <h3 style="font-size:1.2rem; font-weight:700; color:var(--frost-navy); margin-top:4px;">{escape(b.title)}</h3>
-                        <p style="font-size:13px; color:var(--frost-navy-50); margin-top:4px; max-width:700px;">{escape(b.description)}</p>
+    completed_codes = {"GOV-101", "CUR-102", "DAT-103"}
+
+    def render_timeline_stepper(dt: dict, is_allocated: bool) -> str:
+        alloc_date = dt.get("assignment_date", "TBD")
+        learn_dates = f"{dt.get('learning_start_date', 'TBD')} → {dt.get('learning_end_date', 'TBD')}"
+        proj_dates = f"{dt.get('project_start_date', 'TBD')} → {dt.get('project_end_date', 'TBD')}"
+        sub_deadline = dt.get("submission_deadline", "TBD")
+        review_date = dt.get("review_date", "TBD")
+        award_date = dt.get("expected_award_date", "TBD")
+
+        box_border = "border:1px solid var(--icy-steel-50); background:rgba(234,244,255,0.4);" if is_allocated else "border:1px dashed var(--icy-steel); background:rgba(234,244,255,0.25);"
+
+        return f"""
+        <div style="{box_border} border-radius:var(--radius-sm); padding:10px 12px; margin:14px 0 16px 0;">
+            <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                <span>{get_icon("calendar", 13, "margin-right:5px;")} Milestone Timeline Schedule</span>
+                <span style="font-size:10px; font-weight:600; color:var(--frost-navy-50);">{"Active Sequence" if is_allocated else "Target Schedule"}</span>
+            </div>
+
+            <!-- 2 Rows of 3 Connected Timeline Milestones -->
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;">
+                <div style="background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:var(--frost-navy-50); font-weight:700; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("clipboard", 12)}</span> ALLOCATED
                     </div>
-                    <div style="display:flex; gap:8px;">
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{b.id}')">
-                            Timeline Window
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                            Allot & Set Timeline
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('{toggle_pub_action}', '{b.id}')">
-                            {toggle_pub_text}
-                        </button>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:700; color:var(--frost-navy); margin-top:2px;">
+                        {escape(alloc_date)}
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; background:rgba(234,244,255,0.4); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); font-size:12px; margin-top:8px;">
-                    <div><strong>Prerequisites:</strong> {escape(prereq_badges)}</div>
-                    <div><strong>Assigned To:</strong> {cosmo_count} of {len(cosmonauts)} Cosmonaut(s)</div>
-                    <div><strong>Allocated:</strong> {escape(b.default_timeline.get("assignment_date", "TBD"))}</div>
-                    <div><strong>Learning Time:</strong> {escape(b.default_timeline.get("learning_start_date", "TBD"))} → {escape(b.default_timeline.get("learning_end_date", "TBD"))}</div>
-                    <div><strong>Project Time:</strong> {escape(b.default_timeline.get("project_start_date", "TBD"))} → {escape(b.default_timeline.get("project_end_date", "TBD"))}</div>
-                    <div><strong>Submission Date:</strong> {escape(b.default_timeline.get("submission_deadline", "TBD"))}</div>
-                    <div><strong>Review Date:</strong> {escape(b.default_timeline.get("review_date", "TBD"))}</div>
-                    <div><strong>Badge Earned Date:</strong> {escape(b.default_timeline.get("expected_award_date", "TBD"))}</div>
+                <div style="background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:var(--frost-navy-50); font-weight:700; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("book", 12)}</span> LEARNING
+                    </div>
+                    <div style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:700; color:var(--frost-navy); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        {escape(learn_dates)}
+                    </div>
                 </div>
+
+                <div style="background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:var(--frost-navy-50); font-weight:700; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("code", 12)}</span> SPRINT
+                    </div>
+                    <div style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:700; color:var(--frost-navy); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        {escape(proj_dates)}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+                <div style="background:rgba(211,47,47,0.06); border:1.5px solid rgba(211,47,47,0.3); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:#D32F2F; font-weight:800; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("clock", 12, "color:#D32F2F;")}</span> DEADLINE
+                    </div>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; color:#D32F2F; margin-top:2px;">
+                        {escape(sub_deadline)}
+                    </div>
+                </div>
+
+                <div style="background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:var(--frost-navy-50); font-weight:700; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("scale", 12)}</span> REVIEW
+                    </div>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:700; color:var(--frost-navy); margin-top:2px;">
+                        {escape(review_date)}
+                    </div>
+                </div>
+
+                <div style="background:rgba(46,125,50,0.06); border:1.5px solid rgba(46,125,50,0.3); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:10px; color:#2E7D32; font-weight:800; display:flex; align-items:center; gap:4px;">
+                        <span>{get_icon("award", 12, "color:#2E7D32;")}</span> AWARD
+                    </div>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; color:#2E7D32; margin-top:2px;">
+                        {escape(award_date)}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+    # Build Allocated Badges Cards (Clean, 2 in a row)
+    allocated_cards = []
+    for b in allocated:
+        dt = b.default_timeline or {}
+        is_completed = b.code in completed_codes or b.id in ["badge_gov_101", "badge_cur_102", "badge_dat_103"]
+
+        if is_completed:
+            status_pill = '<span class="status-pill status-approved" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("check", 11, "margin-right:4px;")} Certified</span>'
+            card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);"
+            # For certified badges, allow revoke only if needed, otherwise revoke button is available for active
+            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{get_icon("revoke", 13, "margin-right:4px;")} Revoke</button>"""
+        else:
+            status_pill = '<span class="status-pill status-active" style="font-weight:700; font-size:11px; padding:3px 9px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{get_icon("flash", 11, "margin-right:4px;")} In Progress</span>'
+            card_border = "border:2px solid var(--deep-frozen-midnight); box-shadow:0 0 0 3px rgba(23,52,92,0.1); background:linear-gradient(135deg, rgba(234,244,255,0.96) 0%, rgba(255,255,255,0.98) 100%);"
+            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{get_icon("revoke", 13, "margin-right:4px;")} Revoke</button>"""
+
+        timeline_html = render_timeline_stepper(dt, is_allocated=True)
+
+        allocated_cards.append(f"""
+        <div class="liquid-glass-card" style="{card_border} border-radius:var(--radius-md); padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+                <!-- Header: Code, Title, Category, Status -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b.category)}</span>
+                    </div>
+                    {status_pill}
+                </div>
+                <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0; line-height:1.3;">{escape(b.title)}</h4>
+
+                <!-- Visual Timeline Stepper -->
+                {timeline_html}
+            </div>
+
+            <!-- Clean Action Buttons Row -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap;">
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:11.5px; display:flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
+                        {get_icon("calendar", 13, "margin-right:4px;")} Update Timeline
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" style="font-weight:600; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{b.id}')">
+                        {get_icon("eye", 13, "margin-right:4px;")} View Timeline
+                    </button>
+                </div>
+                {revoke_btn}
             </div>
         </div>
         """)
 
-    create_btn = render_metal_button("Create New Badge", "open_create_badge_modal", "{}")
+    # Build Not Allocated Yet Cards (Clean, 2 in a row)
+    unallocated_cards = []
+    for b in unallocated:
+        dt = b.default_timeline or {}
+        timeline_html = render_timeline_stepper(dt, is_allocated=False)
+
+        unallocated_cards.append(f"""
+        <div class="liquid-glass-card" style="border:1.5px dashed var(--icy-steel); background:rgba(234,244,255,0.45); border-radius:var(--radius-md); padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+                <!-- Header: Code, Title, Category, Status -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:rgba(23,52,92,0.15); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b.category)}</span>
+                    </div>
+                    <span class="status-pill status-locked" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("lock", 11, "margin-right:4px;")} Not Allocated</span>
+                </div>
+                <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0; line-height:1.3;">{escape(b.title)}</h4>
+
+                <!-- Visual Timeline Stepper -->
+                {timeline_html}
+            </div>
+
+            <!-- Clean Action Buttons Row -->
+            <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-top:10px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap;">
+                <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
+                    {get_icon("calendar", 13, "margin-right:4px;")} Set Timeline
+                </button>
+                <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:11.5px; display:flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('publish_and_unlock_badge', '{b.id}')">
+                    {get_icon("rocket", 13, "margin-right:4px;")} Publish to Cosmonaut
+                </button>
+            </div>
+        </div>
+        """)
+
+    create_btn = render_metal_button(f'{get_icon("plus", 13, "margin-right:4px;")} Create New Milestone', "open_create_badge_modal", "{}")
+
+    # Segmented Tab Filtering
+    st_all = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "all" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+    st_alloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "allocated" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+    st_unalloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "unallocated" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+
+    tabs_html = f"""
+    <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+        <button type="button" class="btn-secondary btn-sm" style="{st_all} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'all')">
+            {get_icon("globe", 13, "margin-right:5px;")} All Milestones ({len(badges)})
+        </button>
+        <button type="button" class="btn-secondary btn-sm" style="{st_alloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'allocated')">
+            {get_icon("target", 13, "margin-right:5px;")} Allocated Badges ({len(allocated)})
+        </button>
+        <button type="button" class="btn-secondary btn-sm" style="{st_unalloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'unallocated')">
+            {get_icon("lock", 11, "margin-right:4px;")} Not Allocated Yet ({len(unallocated)})
+        </button>
+    </div>
+    """
+
+    # Sections in 2-in-a-row responsive grid
+    sections = []
+    if filter_tab in ["all", "allocated"]:
+        sections.append(f"""
+        <div style="margin-bottom:30px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px;">
+                <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:8px;">
+                    <span>{get_icon("clipboard", 16, "margin-right:6px;")}</span> Allocated Badges ({len(allocated)})
+                </h3>
+                <span class="status-pill status-approved" style="font-weight:700;">{len(allocated)} Active on Roadmap</span>
+            </div>
+            <!-- 2 Badges in a Row Responsive Grid -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:18px;">
+                {"".join(allocated_cards)}
+            </div>
+        </div>
+        """)
+
+    if filter_tab in ["all", "unallocated"]:
+        sections.append(f"""
+        <div style="margin-bottom:30px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px;">
+                <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:8px;">
+                    <span>{get_icon("lock", 16, "margin-right:6px;")}</span> Not Allocated Yet ({len(unallocated)})
+                </h3>
+                <span class="status-pill status-locked" style="font-weight:700;">{len(unallocated)} In Catalog</span>
+            </div>
+            <!-- 2 Badges in a Row Responsive Grid -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:18px;">
+                {"".join(unallocated_cards)}
+            </div>
+        </div>
+        """)
 
     return f"""
     <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <!-- Metric Counters Top Row -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+            <div class="liquid-glass-card" style="padding:14px 18px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
+                <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Total Catalog Milestones</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--deep-frozen-midnight);">{len(badges)} Badges</div>
+                <div style="font-size:11px; color:var(--frost-navy-75); margin-top:2px;">Curriculum progression roadmap</div>
+            </div>
+            <div class="liquid-glass-card" style="padding:14px 18px; border-radius:var(--radius-sm); border:1.5px solid var(--deep-frozen-midnight); background:rgba(234,244,255,0.6);">
+                <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight);">Allocated Badges</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--deep-frozen-midnight);">{len(allocated)} Badges</div>
+                <div style="font-size:11px; color:#2E7D32; font-weight:700; margin-top:2px;">Active on cohort roadmap</div>
+            </div>
+            <div class="liquid-glass-card" style="padding:14px 18px; border-radius:var(--radius-sm); border:1px dashed var(--icy-steel);">
+                <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Not Allocated Yet</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--frost-navy);">{len(unallocated)} Badges</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Ready to schedule & publish</div>
+            </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
             <div>
-                <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Badge Catalog & Allotment Manager</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Configure prerequisites, publish roadmaps, and schedule milestone deadlines.</p>
+                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Badge Catalog & Allotment Manager</h2>
+                <p style="font-size:13px; color:var(--frost-navy-50); margin:3px 0 0 0;">Schedule milestone timelines, update deadlines, and publish or revoke badge roadmaps.</p>
             </div>
             {create_btn}
         </div>
 
+        {tabs_html}
+
         <div>
-            {"".join(badge_cards)}
+            {"".join(sections)}
         </div>
     </div>
     """

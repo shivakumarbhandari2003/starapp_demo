@@ -55,6 +55,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Milestone 1: GOV-101 (Completed)
         {
             "id": "badge_gov_101",
+            "is_allocated": True,
             "code": "GOV-101",
             "title": "Governance Foundations",
             "category": "Foundations",
@@ -84,6 +85,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Milestone 2: CUR-102 (Completed)
         {
             "id": "badge_cur_102",
+            "is_allocated": True,
             "code": "CUR-102",
             "title": "Curation Foundations",
             "category": "Foundations",
@@ -113,6 +115,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Milestone 3: DAT-103 (Completed)
         {
             "id": "badge_dat_103",
+            "is_allocated": True,
             "code": "DAT-103",
             "title": "Data Model Foundations",
             "category": "Foundations",
@@ -142,6 +145,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Milestone 4: ING-104 (At Present / Active)
         {
             "id": "badge_ing_104",
+            "is_allocated": True,
             "code": "ING-104",
             "title": "Ingestion Foundations",
             "category": "Core Engineering",
@@ -171,6 +175,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Milestone 5: SQL-201 (Locked)
         {
             "id": "badge_sql_201",
+            "is_allocated": False,
             "code": "SQL-201",
             "title": "SQL-1",
             "category": "Core Engineering",
@@ -200,6 +205,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         # Catalog Badges (Unassigned initially, ready to be unlocked)
         {
             "id": "badge_ai_301",
+            "is_allocated": False,
             "code": "AI-301",
             "title": "AI Operating Systems Foundations",
             "category": "Advanced AI",
@@ -228,6 +234,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         },
         {
             "id": "badge_cld_202",
+            "is_allocated": False,
             "code": "CLD-202",
             "title": "Cloud Foundations",
             "category": "Infrastructure",

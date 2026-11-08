@@ -22,6 +22,7 @@ from starapp.validation import (
     validate_extension_request, validate_announcement_input
 )
 from starapp.views_common import (
+    get_icon,
     render_topbar, render_liquid_card, render_metal_button, escape,
     render_status_pill, render_standard_marksheet, render_9point_timeline
 )
@@ -55,6 +56,7 @@ class StarAppController:
         self.current_view: str = "login"
         self.selected_guardian_cosmo_id: str = "all"
         self.guardian_review_filter: str = "all"
+        self.guardian_allotment_filter: str = "all"
         self.cosmonaut_submission_badge_id: str = "badge_cur_102"
         self.cosmonaut_results_badge_id: str = "badge_gov_101"
         self.materials_badge_filter: str = "all"
@@ -111,6 +113,21 @@ class StarAppController:
         if IS_BROWSER and hasattr(js, "window") and hasattr(js.window, "StarAppBridge"):
             js.window.StarAppBridge.setStore("data", json_data)
             js.window.StarAppBridge.setStore("session", session_data)
+
+    def reload_data(self, stored_json: Optional[str] = None):
+        """
+        Real-time multi-window synchronization callback.
+        Called when another browser window updates the shared data store.
+        Reloads domain data from JSON while maintaining this window's user session.
+        Re-renders immediately so changes appear live across windows.
+        """
+        if stored_json and stored_json.strip():
+            store.load_from_json(stored_json)
+            if self.current_user:
+                updated_user = store.get_user_by_id(self.current_user.id)
+                if updated_user:
+                    self.current_user = updated_user
+            self.render()
 
     def set_flash(self, message: str, ftype: str = "info"):
         self.flash_message = message
@@ -228,6 +245,100 @@ class StarAppController:
 
         elif action == "submit_evaluation_rubric":
             self.execute_submit_evaluation(payload)
+
+        elif action == "filter_guardian_allotment":
+            self.guardian_allotment_filter = payload if isinstance(payload, str) else payload.get("filter", "all")
+
+        elif action == "open_locked_milestone_notice":
+            idx = payload if isinstance(payload, (str, int)) else payload.get("index", "5")
+            self.active_modal = "locked_milestone_notice"
+            self.modal_payload = {"index": idx}
+
+        elif action == "publish_and_unlock_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(badge_id)
+            if badge:
+                badge.is_allocated = True
+                badge.is_published = True
+                all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
+                badge.assigned_cosmonaut_ids = all_cosmo_ids
+                store.save_badge(badge)
+
+                dt = badge.default_timeline or {}
+                for cid in all_cosmo_ids:
+                    tl = store.get_timeline(badge.id, cid)
+                    if not tl:
+                        new_tl = BadgeTimeline(
+                            badge_id=badge.id,
+                            cosmonaut_id=cid,
+                            assignment_date=dt.get("assignment_date", "2026-11-10"),
+                            publication_date=dt.get("publication_date", "2026-11-10"),
+                            learning_start_date=dt.get("learning_start_date", "2026-11-11"),
+                            learning_end_date=dt.get("learning_end_date", "2026-11-20"),
+                            project_start_date=dt.get("project_start_date", "2026-11-21"),
+                            project_end_date=dt.get("project_end_date", "2026-12-01"),
+                            submission_deadline=dt.get("submission_deadline", "2026-12-03"),
+                            review_date=dt.get("review_date", "2026-12-06"),
+                            expected_award_date=dt.get("expected_award_date", "2026-12-08"),
+                            status="active"
+                        )
+                        store.save_timeline(new_tl)
+                    else:
+                        tl.status = "active"
+                        store.save_timeline(tl)
+
+                    store.add_notification(
+                        recipient_id=cid,
+                        title=f"Milestone Unlocked: {badge.code}",
+                        message=f"Dr. Elena Vance published and unlocked {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
+                        link_section="c_roadmap"
+                    )
+
+                # Assign next catalog milestone as new locked milestone
+                all_b = store.get_all_badges()
+                for nb in all_b:
+                    if nb.id != badge.id and not getattr(nb, "is_allocated", True):
+                        nb.is_published = True
+                        nb.assigned_cosmonaut_ids = all_cosmo_ids
+                        store.save_badge(nb)
+                        break
+
+                store.add_activity(
+                    event_type="badge_published",
+                    actor_id=self.current_user.id,
+                    actor_name=self.current_user.name,
+                    cosmonaut_id="",
+                    badge_id=badge.id,
+                    summary=f"Published & Unlocked Milestone {badge.code}: {badge.title}",
+                    details="Milestone unlocked on Cosmonaut roadmap; subsequent catalog milestone queued as locked."
+                )
+                self.set_flash(f"Successfully published and unlocked {badge.code}: {badge.title} for Cosmonauts! Next milestone queued as locked.", "success")
+
+        elif action == "revoke_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(badge_id)
+            if badge:
+                badge.is_allocated = False
+                badge.is_published = False
+                all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
+                badge.assigned_cosmonaut_ids = []
+                for cid in all_cosmo_ids:
+                    tl = store.get_timeline(badge.id, cid)
+                    if tl:
+                        tl.status = "locked"
+                        store.save_timeline(tl)
+                store.save_badge(badge)
+
+                store.add_activity(
+                    event_type="badge_revoked",
+                    actor_id=self.current_user.id,
+                    actor_name=self.current_user.name,
+                    cosmonaut_id="",
+                    badge_id=badge.id,
+                    summary=f"Revoked Badge {badge.code}: {badge.title}",
+                    details="Milestone revoked by Guardian; removed from active Cosmonaut roadmap and returned to catalog."
+                )
+                self.set_flash(f"Revoked {badge.code}: {badge.title}. It has been removed from the Cosmonaut roadmap and returned to catalog.", "info")
 
         elif action == "publish_badge":
             badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
@@ -770,7 +881,8 @@ class StarAppController:
             project_requirements=reqs,
             is_published=True,
             assigned_cosmonaut_ids=assigned_ids,
-            default_timeline=default_tl
+            default_timeline=default_tl,
+            is_allocated=True
         )
         store.save_badge(badge)
 
@@ -1068,6 +1180,23 @@ class StarAppController:
             </form>
             """
 
+        elif self.active_modal == "locked_milestone_notice":
+            idx = self.modal_payload.get("index", "5")
+            title = f'{get_icon("lock", 16, "margin-right:6px;")} Milestone {idx} is Locked & Classified'
+            body = f"""
+            <div style="text-align:center; padding:10px 0;">
+                <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(23,52,92,0.08); margin:0 auto 14px; color:var(--deep-frozen-midnight);">{get_icon("lock", 32)}</div>
+                <h3 style="color:var(--frost-navy); font-weight:800; font-size:1.25rem; margin-bottom:8px;">Milestone {escape(str(idx))} Sealed</h3>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.6; max-width:440px; margin:0 auto 16px;">
+                    This milestone curriculum and project parameters are managed by your Guardian, <strong>Dr. Elena Vance</strong>. Once your current sprint deliverables are reviewed and certified, Dr. Vance will publish the timeline and unlock this milestone for your cohort.
+                </p>
+                <div style="background:rgba(234,244,255,0.6); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); font-size:12px; color:var(--frost-navy); margin-bottom:20px;">
+                    <strong>Next Action:</strong> Complete and submit your active milestone (<strong>ING-104 Ingestion Foundations</strong>) to qualify for advancement.
+                </div>
+                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Acknowledged</button>
+            </div>
+            """
+
         elif self.active_modal in ["create_badge", "edit_badge"]:
             is_edit = self.active_modal == "edit_badge"
             b_id = self.modal_payload.get("badge_id", "")
@@ -1282,9 +1411,23 @@ class StarAppController:
                     <p style="font-size:14px; color:var(--frost-navy-50); margin-top:4px;">Autonomous Training & Gamified Badge Management Platform</p>
                 </div>
 
-                <div class="liquid-glass-card" style="padding:24px; margin-bottom:24px;">
+                <div class="liquid-glass-card" style="padding:24px; margin-bottom:20px;">
                     <h3 style="font-size:1.1rem; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:12px;">One-Click Demo Account Access:</h3>
                     {"".join(account_buttons)}
+                </div>
+
+                <!-- Multi-Window Live Sync Testing Station -->
+                <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">{get_icon("flash", 14, "margin-right:6px;")} Multi-Window Live Sync Testing</div>
+                            <p style="font-size:12px; color:var(--frost-navy-75); margin:3px 0 0 0;">Open two windows side-by-side. Guardian actions in one window reflect live in the Cosmonaut window instantly.</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button type="button" class="btn-secondary btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=cosmonaut', '_blank');">Launch Cosmonaut ↗</button>
+                            <button type="button" class="btn-metal btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=guardian', '_blank');">Launch Guardian ↗</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="text-align:center; font-size:12px; color:var(--frost-navy-50);">
@@ -1351,7 +1494,7 @@ class StarAppController:
 
             elif self.current_view == "g_allotment":
                 page_title = "Badge Allotment & Timeline Management"
-                main_content_html = render_guardian_badge_allotment(badges, cosmonauts)
+                main_content_html = render_guardian_badge_allotment(badges, cosmonauts, getattr(self, 'guardian_allotment_filter', 'all'))
 
             elif self.current_view == "g_reviews":
                 page_title = "Project Deliverable Assessment Queue"

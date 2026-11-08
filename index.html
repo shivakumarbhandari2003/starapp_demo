@@ -16,8 +16,8 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 
   <!-- StarApp Bridges & Python Module Bundle -->
-  <script src="js/bridge.js"></script>
-  <script src="js/starapp_bundle.js"></script>
+  <script src="js/bridge.js?v=8"></script>
+  <script src="js/starapp_bundle.js?v=8"></script>
 </head>
 <body>
 
@@ -98,13 +98,33 @@
         if (progressBar) progressBar.style.width = "70%";
         if (statusText) statusText.innerText = "Mounting StarApp domain architecture in Pyodide virtual FS...";
 
-        // 2. Mount StarApp Python modules directly into Pyodide virtual filesystem
-        if (window.__STARAPP_PYTHON_MODULES__) {
-          try { pyodide.FS.mkdir("starapp"); } catch (e) {}
-
-          for (const [vpath, sourceCode] of Object.entries(window.__STARAPP_PYTHON_MODULES__)) {
-            pyodide.FS.writeFile(vpath, sourceCode);
+        // 2. Ensure StarApp Python bundle is loaded; fallback to dynamic fetch if necessary
+        if (!window.__STARAPP_PYTHON_MODULES__) {
+          console.warn("[StarApp] __STARAPP_PYTHON_MODULES__ not detected on window, fetching js/starapp_bundle.js dynamically...");
+          try {
+            const resp = await fetch("js/starapp_bundle.js?v=" + Date.now());
+            if (resp.ok) {
+              const bundleCode = await resp.text();
+              const runner = new Function(bundleCode);
+              runner();
+            }
+          } catch (e) {
+            console.error("[StarApp] Dynamic bundle fetch failed:", e);
           }
+        }
+
+        if (!window.__STARAPP_PYTHON_MODULES__) {
+          throw new Error("StarApp Python bundle (js/starapp_bundle.js) could not be loaded. Please ensure the file is present.");
+        }
+
+        // Mount StarApp Python modules directly into Pyodide virtual filesystem
+        try { pyodide.FS.mkdir("starapp"); } catch (e) {}
+        try { pyodide.FS.mkdir("/home/pyodide/starapp"); } catch (e) {}
+
+        for (const [vpath, sourceCode] of Object.entries(window.__STARAPP_PYTHON_MODULES__)) {
+          const fname = vpath.replace(/^starapp\//, "");
+          try { pyodide.FS.writeFile("starapp/" + fname, sourceCode); } catch (e) {}
+          try { pyodide.FS.writeFile("/home/pyodide/starapp/" + fname, sourceCode); } catch (e) {}
         }
 
         if (progressBar) progressBar.style.width = "85%";
@@ -120,8 +140,13 @@
         if (progressBar) progressBar.style.width = "95%";
         if (statusText) statusText.innerText = "Launching StarApp Controller...";
 
-        // 4. Run Python initialization code
+        // 4. Run Python initialization code with robust sys.path configuration
         await pyodide.runPythonAsync(`
+import sys, os
+for p in [os.getcwd(), ".", "/home/pyodide", "/"]:
+    if p and p not in sys.path:
+        sys.path.insert(0, p)
+
 import js
 from starapp.app import controller
 
