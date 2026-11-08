@@ -222,11 +222,16 @@ class ProjectSubmission:
         badge_id: str,
         cosmonaut_id: str,
         attempt_number: int,
-        submission_type: str,  # "pdf", "github", "code"
+        submission_type: str,  # "pdf", "github", "code", "multi"
         payload: str,          # file dataUrl or github url or code text
         file_name: str,
         submitted_at: str,
-        status: str = "pending"  # "pending", "approved", "rejected", "resubmission_requested"
+        status: str = "pending",  # "pending", "approved", "rejected", "resubmission_requested"
+        pdf_name: str = "",
+        pdf_payload: str = "",
+        code_name: str = "",
+        code_payload: str = "",
+        github_url: str = ""
     ):
         self.id = id
         self.badge_id = badge_id
@@ -238,6 +243,12 @@ class ProjectSubmission:
         self.submitted_at = submitted_at
         self.status = status
 
+        self.pdf_name = pdf_name or (file_name if submission_type == "pdf" else "")
+        self.pdf_payload = pdf_payload or (payload if submission_type == "pdf" else "")
+        self.code_name = code_name or (file_name if submission_type == "code" else "")
+        self.code_payload = code_payload or (payload if submission_type == "code" else "")
+        self.github_url = github_url or (payload if submission_type == "github" else "")
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -248,21 +259,34 @@ class ProjectSubmission:
             "payload": self.payload,
             "file_name": self.file_name,
             "submitted_at": self.submitted_at,
-            "status": self.status
+            "status": self.status,
+            "pdf_name": getattr(self, "pdf_name", ""),
+            "pdf_payload": getattr(self, "pdf_payload", ""),
+            "code_name": getattr(self, "code_name", ""),
+            "code_payload": getattr(self, "code_payload", ""),
+            "github_url": getattr(self, "github_url", "")
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectSubmission":
+        sub_type = data.get("submission_type", "pdf")
+        payload = data.get("payload", "")
+        fname = data.get("file_name", "")
         return cls(
             id=data["id"],
             badge_id=data["badge_id"],
             cosmonaut_id=data["cosmonaut_id"],
             attempt_number=data.get("attempt_number", 1),
-            submission_type=data.get("submission_type", "pdf"),
-            payload=data.get("payload", ""),
-            file_name=data.get("file_name", ""),
+            submission_type=sub_type,
+            payload=payload,
+            file_name=fname,
             submitted_at=data.get("submitted_at", current_iso_timestamp()),
-            status=data.get("status", "pending")
+            status=data.get("status", "pending"),
+            pdf_name=data.get("pdf_name", fname if sub_type == "pdf" else ""),
+            pdf_payload=data.get("pdf_payload", payload if sub_type == "pdf" else ""),
+            code_name=data.get("code_name", fname if sub_type == "code" else ""),
+            code_payload=data.get("code_payload", payload if sub_type == "code" else ""),
+            github_url=data.get("github_url", payload if sub_type == "github" else "")
         )
 
 

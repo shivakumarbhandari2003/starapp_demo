@@ -27,7 +27,7 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
 
     links_html = []
     for item in nav_items:
-        is_active = item["id"] == active_view
+        is_active = (item["id"] == active_view) or (item["id"] == "g_reviews" and active_view == "g_review_detail")
         cls = "nav-link active" if is_active else "nav-link"
         badge_html = f'<span class="nav-badge">{item["badge"]}</span>' if item["badge"] > 0 else ""
         links_html.append(f"""
@@ -690,73 +690,443 @@ def render_guardian_review_queue(
         filtered = [s for s in submissions if s.status == status_filter]
 
     filter_buttons = []
-    for f_id, f_label in [("all", "All Submissions"), ("pending", "Pending Review"), ("approved", "Approved"), ("resubmission_requested", "Resubmission Requested")]:
+    filter_tabs = [
+        ("all", "All Submissions", len(submissions)),
+        ("pending", "Pending Review", len([s for s in submissions if s.status == "pending"])),
+        ("approved", "Approved", len([s for s in submissions if s.status == "approved"])),
+        ("resubmission_requested", "Resubmission Requested", len([s for s in submissions if s.status == "resubmission_requested"]))
+    ]
+    for f_id, f_label, f_count in filter_tabs:
         is_active = f_id == status_filter
-        st = "background:var(--deep-frozen-midnight); color:var(--snow-white);" if is_active else "background:rgba(255,255,255,0.7); color:var(--frost-navy);"
+        st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:700;" if is_active else "background:rgba(255,255,255,0.7); color:var(--frost-navy); font-weight:600;"
         filter_buttons.append(
-            f'<button type="button" class="btn-secondary btn-sm" style="{st}" onclick="window.StarAppBridge.dispatchAction(\'filter_guardian_reviews\', \'{f_id}\')">{f_label}</button>'
+            f'<button type="button" class="btn-secondary btn-sm" style="{st}" onclick="window.StarAppBridge.dispatchAction(\'filter_guardian_reviews\', \'{f_id}\')">{f_label} ({f_count})</button>'
         )
 
-    rows = []
+    cards = []
     for sub in filtered:
         cosmo = cosmonauts_map.get(sub.cosmonaut_id)
         badge = badges_map.get(sub.badge_id)
         cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
-        badge_name = f"{badge.code}: {badge.title}" if badge else sub.badge_id
+        cosmo_avatar = getattr(cosmo, "avatar", "AN") or "AN"
+        badge_code = badge.code if badge else sub.badge_id
+        badge_title = badge.title if badge else "Milestone Deliverable"
+        badge_category = getattr(badge, "category", "Core Engineering")
         pill = render_status_pill(sub.status)
 
-        action_btn = f"""
-        <button type="button" class="btn-secondary btn-sm" style="font-weight:700;" onclick="window.StarAppBridge.dispatchAction('open_review_modal', '{{\"submission_id\": \"{sub.id}\"}}')">
-            Evaluate (50-Mark Rubric)
-        </button>
-        """
+        # File names / payloads
+        pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Astraea_ING104_Idempotent_Architecture.pdf"
+        code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "idempotent_streaming_consumer.py"
+        github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or "https://github.com/starapp-cosmonauts/ingestion-service-astraea"
 
-        rows.append(f"""
-        <tr>
-            <td style="font-weight:700;">{escape(cosmo_name)}</td>
-            <td>{escape(badge_name)}</td>
-            <td style="text-align:center;">Attempt #{sub.attempt_number}</td>
-            <td style="text-transform:uppercase; font-size:12px; font-weight:600;">{escape(sub.submission_type)}</td>
-            <td style="font-family:var(--font-family-mono); font-size:12px;">{escape(sub.submitted_at[:16].replace('T', ' '))}</td>
-            <td>{pill}</td>
-            <td>{action_btn}</td>
-        </tr>
+        # Precomputed Vector Icons
+        pdf_ic = get_icon("file_text", 13, "margin-right:4px; color:#D32F2F;")
+        code_ic = get_icon("code", 13, "margin-right:4px; color:var(--deep-frozen-midnight);")
+        gh_ic = get_icon("github", 13, "margin-right:4px; color:var(--frost-navy);")
+        clock_ic = get_icon("clock", 12, "margin-right:4px; opacity:0.7;")
+        arrow_ic = get_icon("arrow_right", 12, "margin-left:5px;")
+
+        # Container styling
+        card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.88) 100%);"
+        if sub.status == "pending":
+            card_border = "border:2px solid var(--deep-frozen-midnight); box-shadow:0 6px 20px rgba(23,52,92,0.12); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%);"
+
+        submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
+
+        cards.append(f"""
+        <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer; transition:transform 180ms ease, box-shadow 180ms ease;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
+            <!-- Top Row: Cadet & Status -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:34px; height:34px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; box-shadow:0 2px 6px rgba(7,22,41,0.25);">
+                        {escape(cosmo_avatar)}
+                    </div>
+                    <div>
+                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)}</div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">Batch Orion-24 &bull; Cosmonaut Cadet</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:3px 8px; border-radius:var(--radius-xs);">Attempt #{sub.attempt_number}</span>
+                    {pill}
+                </div>
+            </div>
+
+            <!-- Middle Row: Badge Milestone & Submission Date -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                        <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_category)}</span>
+                    </div>
+                    <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); line-height:1.3;">{escape(badge_title)}</div>
+                </div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50); font-family:var(--font-family-mono); display:flex; align-items:center;">
+                    {clock_ic} Submitted: {submitted_date_str}
+                </div>
+            </div>
+
+            <!-- Deliverables Files Tray (All Three Files/Links) -->
+            <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:14px;">
+                <div style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Uploaded Deliverables (All Files Available):</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {pdf_ic} {escape(pdf_name)}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {code_ic} {escape(code_name)}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {gh_ic} {escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Repo')}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Footer Action Row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Click container to open interactive in-website Code & PDF viewer</span>
+                <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:12px; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
+                    Inspect Deliverables & Evaluate {arrow_ic}
+                </button>
+            </div>
+        </div>
         """)
 
-    table_html = f"""
-    <div class="table-responsive">
-        <table class="star-table">
-            <thead>
-                <tr>
-                    <th>Cosmonaut</th>
-                    <th>Badge Deliverable</th>
-                    <th style="text-align:center;">Attempt</th>
-                    <th>Deliverable Type</th>
-                    <th>Submitted At</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {"".join(rows) if rows else '<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--frost-navy-50);">No project submissions match the selected filter.</td></tr>'}
-            </tbody>
-        </table>
-    </div>
-    """
+    filter_tray = "".join(filter_buttons)
+    cards_html = "".join(cards) if cards else '<div class="liquid-glass-card" style="padding:48px; text-align:center; color:var(--frost-navy-50);">No project submissions match the selected filter.</div>'
 
     return f"""
     <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
             <div>
-                <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Project Deliverable Review Queue</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Perform standardized 50-mark evaluations across the 5 mandatory rubric criteria.</p>
+                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Project Deliverable Review Queue</h2>
+                <p style="font-size:13px; color:var(--frost-navy-50);">Incoming deliverables from cohort cosmonauts awaiting technical inspection and rubric evaluation.</p>
             </div>
-            <div style="display:flex; gap:8px;">
-                {"".join(filter_buttons)}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                {filter_tray}
             </div>
         </div>
 
-        {table_html}
+        <div>
+            {cards_html}
+        </div>
+    </div>
+    """
+
+
+def render_guardian_review_detail(
+    submission: ProjectSubmission,
+    badge: Badge,
+    cosmonaut: User,
+    existing_assessment: Optional[AssessmentMarksheet] = None,
+    previous_assessments: Optional[List[AssessmentMarksheet]] = None,
+    selected_tab: str = "pdf"
+) -> str:
+    """
+    Dedicated in-website technical inspection & assessment workspace.
+    Allows Guardian to toggle between PDF document and Source Code directly in the website,
+    with an embedded 50-mark rubric evaluation panel.
+    """
+    cosmo_name = cosmonaut.name if cosmonaut else submission.cosmonaut_id
+    cosmo_avatar = getattr(cosmonaut, "avatar", "AN") or "AN"
+    badge_code = badge.code if badge else submission.badge_id
+    badge_title = badge.title if badge else "Milestone Deliverable"
+    badge_cat = getattr(badge, "category", "Core Engineering")
+    pill = render_status_pill(submission.status)
+
+    # Deliverables info
+    pdf_name = getattr(submission, "pdf_name", "") or (submission.file_name if submission.submission_type == "pdf" else "") or "Astraea_ING104_Idempotent_Architecture.pdf"
+    pdf_payload = getattr(submission, "pdf_payload", "") or (submission.payload if submission.submission_type == "pdf" else "") or "data/Chemistry%20Syllabus.pdf"
+    
+    code_name = getattr(submission, "code_name", "") or (submission.file_name if submission.submission_type == "code" else "") or "idempotent_streaming_consumer.py"
+    code_payload = getattr(submission, "code_payload", "") or (submission.payload if submission.submission_type == "code" else "") or '''"""
+StarApp Academy: High-Throughput Idempotent Kafka Stream Consumer
+Batch Orion-24: Ingestion Foundations (Attempt #2 Deliverable)
+Cosmonaut: Astraea Nova (cosmo_1)
+Mentor: Dr. Elena Vance (guardian_1)
+"""
+import json
+import logging
+from typing import Dict, Any
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("IdempotentIngestion")
+
+class IdempotentKafkaConsumer:
+    def __init__(self, dedup_store, dlq_publisher):
+        self.dedup_store = dedup_store
+        self.dlq_publisher = dlq_publisher
+        self.processed_count = 0
+        self.dlq_count = 0
+
+    def process_event(self, raw_message: str) -> bool:
+        try:
+            payload = json.loads(raw_message)
+            idempotency_key = payload.get("idempotency_key")
+            if not idempotency_key:
+                raise ValueError("Missing mandatory idempotency_key in payload header")
+
+            # Check if payload was already processed (atomic deduplication check)
+            if self.dedup_store.exists(idempotency_key):
+                logger.info(f"Duplicate event skipped: {idempotency_key}")
+                return True
+
+            # Execute transactional ingestion
+            self._write_to_primary_store(payload)
+            self.dedup_store.set(idempotency_key, ttl_seconds=86400)
+            self.processed_count += 1
+            return True
+
+        except Exception as exc:
+            logger.error(f"Ingestion anomaly, routing to DLQ: {exc}")
+            self.dlq_publisher.publish_dead_letter(raw_message, str(exc))
+            self.dlq_count += 1
+            return False
+
+    def _write_to_primary_store(self, payload: Dict[str, Any]):
+        logger.info(f"Successfully committed payload to Bronze ingestion lake: {payload.get('id')}")
+'''
+    github_url = getattr(submission, "github_url", "") or (submission.payload if submission.submission_type == "github" else "") or "https://github.com/starapp-cosmonauts/ingestion-service-astraea"
+
+    # Clean PDF URL with parameters to disable left-side thumbnail/navigation pane and fit horizontally
+    base_pdf_url = pdf_payload.split("#")[0]
+    clean_pdf_url = f"{base_pdf_url}#toolbar=1&navpanes=0&pagemode=none&view=FitH"
+
+    # Precomputed icons
+    pdf_ic = get_icon("file_text", 14, "margin-right:6px;")
+    code_ic = get_icon("code", 14, "margin-right:6px;")
+    gh_ic = get_icon("github", 14, "margin-right:6px;")
+    copy_ic = get_icon("copy", 13, "margin-right:5px;")
+    download_ic = get_icon("download", 13, "margin-right:5px;")
+    expand_ic = get_icon("external_link", 13, "margin-right:5px;")
+
+    # Default rubric scores (or existing)
+    init_bu = existing_assessment.business_understanding if existing_assessment else 9.5
+    init_ar = existing_assessment.architecture_report if existing_assessment else 9.0
+    init_tk = existing_assessment.technical_knowledge if existing_assessment else 9.5
+    init_pr = existing_assessment.presentation if existing_assessment else 9.0
+    init_qa = existing_assessment.qa if existing_assessment else 9.0
+    init_total = init_bu + init_ar + init_tk + init_pr + init_qa
+    init_pct = (init_total / 50.0) * 100.0
+
+    init_strengths = existing_assessment.strength_areas if existing_assessment else "Robust atomic deduplication store prevents duplicate writes on Kafka consumer rebalance."
+    init_improvements = existing_assessment.improvement_areas if existing_assessment else "Consider configuring exponential backoff with jitter for DLQ retries."
+    init_feedback = existing_assessment.overall_feedback if existing_assessment else "Exemplary resolution of the idempotency flaw identified in Attempt #1. Enterprise-grade ingestion pipeline approved."
+    init_decision = existing_assessment.decision if existing_assessment else "approve"
+
+    # 1. Selector Tab Buttons Styling
+    tab_pdf_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "pdf" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
+    tab_code_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "code" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
+    tab_gh_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "github" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
+
+    # 2. Main Deliverable Content
+    if selected_tab == "pdf":
+        viewer_body = f"""
+        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:hidden; position:relative; background:#FFFFFF; isolation:isolate; transform:translateZ(0);">
+            <iframe id="pdf-document-frame" src="{clean_pdf_url}" style="width:100%; height:100%; border:none; display:block; background:#FFFFFF;" title="PDF Preview"></iframe>
+        </div>
+        """
+        toolbar_extra = f"""
+        <div style="display:flex; align-items:center; gap:8px;">
+            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+                {download_ic} Download PDF
+            </a>
+        </div>
+        """
+    elif selected_tab == "code":
+        # Format code lines with line numbers
+        lines = code_payload.strip().split("\n")
+        code_lines_html = []
+        for l_num, line in enumerate(lines, 1):
+            code_lines_html.append(
+                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:12px; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
+                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:12.5px; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
+            )
+        code_table = "".join(code_lines_html)
+
+        viewer_body = f"""
+        <div id="deliverable-viewport-container" style="flex:1; min-height:0; width:100%; height:100%; background:#071629; overflow:auto; padding:14px 16px;">
+            <table style="width:100%; border-collapse:collapse;">
+                <tbody>
+                    {code_table}
+                </tbody>
+            </table>
+        </div>
+        <pre id="raw-code-store" style="display:none;">{escape(code_payload)}</pre>
+        """
+        toolbar_extra = f"""
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
+            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
+                {copy_ic} Copy Code
+            </button>
+        </div>
+        """
+    else:  # github
+        viewer_body = f"""
+        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:auto; padding:24px; background:#FFFFFF;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <div style="width:40px; height:40px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center;">
+                    {get_icon("github", 20)}
+                </div>
+                <div>
+                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
+                    <div style="font-size:12px; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
+                    {escape(github_url)}
+                </div>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Local Clone Specification:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:#071629; color:#EAF4FF; padding:10px 14px; border-radius:var(--radius-xs);">
+                    git clone {escape(github_url)}.git
+                </div>
+            </div>
+
+            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; text-decoration:none; padding:8px 18px;">
+                {expand_ic} Open Repository in New Tab &nearr;
+            </a>
+        </div>
+        """
+        toolbar_extra = f"""
+        <div>
+            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+                {expand_ic} Open Repo ↗
+            </a>
+        </div>
+        """
+
+    return f"""
+    <div class="review-detail-workspace" style="height:calc(100vh - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden;">
+        <!-- 66% / 33% 2-Column Split Workspace (Utilizes 100% of Viewport, Zero Page Scroll) -->
+        <div class="review-workspace-grid" style="display:grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap:12px; flex:1; min-height:0; height:100%; overflow:hidden;">
+            <!-- Column 1: 66% Space for PDF and Code Viewer (Both share exact same size) -->
+            <div class="review-left-column" style="background:#FFFFFF; border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 18px rgba(7,22,41,0.06); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
+                <!-- Viewport Toolbar with Back Button & Dropdown -->
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px; background:rgba(234,244,255,0.7); border-bottom:1px solid var(--icy-steel-50); flex-shrink:0; height:44px; box-sizing:border-box;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px; padding:5px 12px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')">
+                            &larr; Back to Project Reviews
+                        </button>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <select id="deliverable-type-select" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:4px 10px; min-width:170px;" onchange="window.StarAppBridge.dispatchAction('change_viewer_tab', this.value)">
+                                <option value="pdf"{" selected" if selected_tab == "pdf" else ""}>📄 View PDF Document</option>
+                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code</option>
+                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo</option>
+                            </select>
+                        </div>
+                    </div>
+                    {toolbar_extra}
+                </div>
+
+                <!-- Main Viewport Canvas (Exact same dimensions for PDF and Code) -->
+                {viewer_body}
+            </div>
+
+            <!-- Column 2: 33% Space for 50-Mark Rubric Allotment (Exact same height, internal scroll) -->
+            <div class="review-right-column" style="background:#FFFFFF; border:1.5px solid var(--deep-frozen-midnight); border-radius:var(--radius-md); box-shadow:0 4px 20px rgba(23,52,92,0.1); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
+                <!-- Pinned Rubric Header -->
+                <div style="padding:10px 14px; border-bottom:1.5px solid var(--icy-steel-30); background:linear-gradient(135deg, rgba(234,244,255,0.9) 0%, #FFFFFF 100%); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; height:44px; box-sizing:border-box;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 6px; border-radius:var(--radius-xs);">RUBRIC-50</div>
+                        <h3 style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0;">Marks Allotment</h3>
+                    </div>
+                    <span id="rubric-total-display" style="display:none;"></span>
+                </div>
+
+                <!-- Scrollable Rubric Form Body -->
+                <form id="guardian-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); window.StarAppBridge.submitEvaluationMarksheet('{submission.id}');">
+                    <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 14px;">
+                        <!-- 5 Criteria Compact Rows -->
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">1. Business Understanding</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Domain scope &amp; formulation (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">2. Architecture Report</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">PDF technical spec &amp; design (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">3. Technical Knowledge</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Source code execution &amp; depth (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">4. Presentation</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Code clean layout &amp; modularity (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">5. Q&amp;A Technical Defense</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Edge cases &amp; justification (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+                        </div>
+
+                        <!-- Real-time Sum of Rubric Marks -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:linear-gradient(135deg, rgba(234,244,255,0.95) 0%, #FFFFFF 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-xs); margin-bottom:12px;">
+                            <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px;">Sum of Rubric Marks:</span>
+                            <span id="rubric-sum-display" style="font-size:14px; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
+                        </div>
+
+                        <!-- Qualitative Feedback Fields -->
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Identified Technical Strengths</label>
+                            <textarea id="rubric-strengths" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_strengths)}</textarea>
+                        </div>
+
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Improvement Recommendations</label>
+                            <textarea id="rubric-improvements" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_improvements)}</textarea>
+                        </div>
+
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Overall Remarks</label>
+                            <textarea id="rubric-feedback" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_feedback)}</textarea>
+                        </div>
+
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Assessment Decision</label>
+                            <select id="rubric-decision" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:6px 8px; width:100%;">
+                                <option value="approve"{" selected" if init_decision == "approve" else ""}>Approve &amp; Award Milestone (Pass)</option>
+                                <option value="resubmission_requested"{" selected" if init_decision == "resubmission_requested" else ""}>Request Resubmission (Preserve Attempt)</option>
+                                <option value="reject"{" selected" if init_decision == "reject" else ""}>Reject Deliverable</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Pinned Bottom Action Footer -->
+                    <div style="padding:10px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
+                        <button type="submit" class="btn-metal" style="width:100%; height:40px; font-size:13px; font-weight:800; letter-spacing:0.2px;">
+                            Save &amp; Publish Marksheet &rarr;
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
     """
 

@@ -298,7 +298,33 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "payload": "data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag==",
             "file_name": "Astraea_Governance_Blueprint.pdf",
             "submitted_at": "2026-10-21T14:30:00Z",
-            "status": "approved"
+            "status": "approved",
+            "pdf_name": "Astraea_Governance_Blueprint.pdf",
+            "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+            "code_name": "healthcare_rbac_policy.sql",
+            "code_payload": """-- StarApp Academy: Enterprise Data Governance Framework
+-- Target: HIPAA & GDPR Compliant Relational Security & Row Filtering
+CREATE SCHEMA IF NOT EXISTS clinical_vault;
+
+CREATE TABLE clinical_vault.patient_records (
+    patient_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ssn_hash VARCHAR(64) NOT NULL,
+    full_name_encrypted BYTEA NOT NULL,
+    diagnosis_code VARCHAR(12) NOT NULL,
+    attending_physician_id UUID NOT NULL,
+    data_classification VARCHAR(20) DEFAULT 'RESTRICTED_PHI'
+);
+
+ALTER TABLE clinical_vault.patient_records ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY practitioner_access_policy ON clinical_vault.patient_records
+    FOR SELECT TO clinical_staff
+    USING (attending_physician_id = current_setting('jwt.claims.physician_id')::UUID);
+
+CREATE POLICY compliance_audit_policy ON clinical_vault.patient_records
+    FOR ALL TO compliance_officer
+    USING (true);""",
+            "github_url": "https://github.com/starapp-cosmonauts/governance-framework-astraea"
         },
         {
             "id": "sub_cosmo_1_cur",
@@ -309,7 +335,31 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "payload": "https://github.com/starapp-cosmonauts/curation-pipeline-astraea",
             "file_name": "curation-pipeline-astraea",
             "submitted_at": "2026-11-03T09:15:00Z",
-            "status": "approved"
+            "status": "approved",
+            "pdf_name": "Astraea_Dataset_Curation_Audit.pdf",
+            "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+            "code_name": "curation_anomaly_detector.py",
+            "code_payload": '''\"\"\"
+StarApp Academy: Automated Dataset Curation & Anomaly Detection
+Silver-layer enrichment and deduplication pipeline
+\"\"\"
+import pandas as pd
+import numpy as np
+
+def validate_schema_and_profile(df: pd.DataFrame) -> dict:
+    profile = {
+        "record_count": len(df),
+        "duplicate_count": df.duplicated(subset=["telemetry_id"]).sum(),
+        "missing_values": df.isnull().sum().to_dict(),
+        "anomalous_outliers": []
+    }
+    if "latency_ms" in df.columns:
+        mean_lat = df["latency_ms"].mean()
+        std_lat = df["latency_ms"].std()
+        outliers = df[np.abs(df["latency_ms"] - mean_lat) > (3 * std_lat)]
+        profile["anomalous_outliers"] = outliers["telemetry_id"].tolist()
+    return profile''',
+            "github_url": "https://github.com/starapp-cosmonauts/curation-pipeline-astraea"
         },
         {
             "id": "sub_cosmo_1_dat",
@@ -320,7 +370,29 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "payload": "data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag==",
             "file_name": "Astraea_Fintech_Data_Warehouse.pdf",
             "submitted_at": "2026-11-05T18:00:00Z",
-            "status": "approved"
+            "status": "approved",
+            "pdf_name": "Astraea_Fintech_Data_Warehouse.pdf",
+            "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+            "code_name": "fintech_dimensional_model.sql",
+            "code_payload": """-- StarApp Academy: Fintech Transaction Star Schema with SCD Type 2
+CREATE TABLE dim_customer_scd2 (
+    customer_key BIGSERIAL PRIMARY KEY,
+    customer_id VARCHAR(32) NOT NULL,
+    risk_tier VARCHAR(10) NOT NULL,
+    kyc_status VARCHAR(20) NOT NULL,
+    valid_from TIMESTAMP WITH TIME ZONE NOT NULL,
+    valid_to TIMESTAMP WITH TIME ZONE,
+    is_current BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE fact_ledger_transactions (
+    transaction_id UUID PRIMARY KEY,
+    customer_key BIGINT REFERENCES dim_customer_scd2(customer_key),
+    amount_cents BIGINT NOT NULL,
+    settlement_status VARCHAR(20) NOT NULL,
+    transacted_at TIMESTAMP WITH TIME ZONE NOT NULL
+) PARTITION BY RANGE (transacted_at);""",
+            "github_url": "https://github.com/starapp-cosmonauts/fintech-warehouse-astraea"
         },
         # Milestone 4 (ING-104): Attempt 1 had resubmission requested; Attempt 2 is pending review
         {
@@ -332,7 +404,16 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "payload": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v1",
             "file_name": "ingestion-service-astraea-v1",
             "submitted_at": "2026-11-06T10:00:00Z",
-            "status": "resubmission_requested"
+            "status": "resubmission_requested",
+            "pdf_name": "ING104_Draft_Spec.pdf",
+            "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+            "code_name": "basic_kafka_consumer_v1.py",
+            "code_payload": """# Attempt #1: Basic Consumer without Idempotency keys (Resubmitted)
+from kafka import KafkaConsumer
+consumer = KafkaConsumer("telemetry-events", bootstrap_servers=["localhost:9092"])
+for msg in consumer:
+    save_to_db(msg.value) # Flaw: duplicate writes on rebalance""",
+            "github_url": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v1"
         },
         {
             "id": "sub_cosmo_1_ing_2",
@@ -343,7 +424,58 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "payload": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v2-fix",
             "file_name": "ingestion-service-astraea-v2-idempotent",
             "submitted_at": "2026-11-07T14:30:00Z",
-            "status": "pending"
+            "status": "pending",
+            "pdf_name": "Astraea_ING104_Idempotent_Architecture.pdf",
+            "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+            "code_name": "idempotent_streaming_consumer.py",
+            "code_payload": '''\"\"\"
+StarApp Academy: High-Throughput Idempotent Kafka Stream Consumer
+Batch Orion-24: Ingestion Foundations (Attempt #2 Deliverable)
+Cosmonaut: Astraea Nova (cosmo_1)
+Mentor: Dr. Elena Vance (guardian_1)
+\"\"\"
+import json
+import logging
+from typing import Dict, Any
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("IdempotentIngestion")
+
+class IdempotentKafkaConsumer:
+    def __init__(self, dedup_store, dlq_publisher):
+        self.dedup_store = dedup_store
+        self.dlq_publisher = dlq_publisher
+        self.processed_count = 0
+        self.dlq_count = 0
+
+    def process_event(self, raw_message: str) -> bool:
+        try:
+            payload = json.loads(raw_message)
+            idempotency_key = payload.get("idempotency_key")
+            if not idempotency_key:
+                raise ValueError("Missing mandatory idempotency_key in payload header")
+
+            # Check if payload was already processed (atomic deduplication check)
+            if self.dedup_store.exists(idempotency_key):
+                logger.info(f"Duplicate event skipped: {idempotency_key}")
+                return True
+
+            # Execute transactional ingestion
+            self._write_to_primary_store(payload)
+            self.dedup_store.set(idempotency_key, ttl_seconds=86400)
+            self.processed_count += 1
+            return True
+
+        except Exception as exc:
+            logger.error(f"Ingestion anomaly, routing to DLQ: {exc}")
+            self.dlq_publisher.publish_dead_letter(raw_message, str(exc))
+            self.dlq_count += 1
+            return False
+
+    def _write_to_primary_store(self, payload: Dict[str, Any]):
+        logger.info(f"Successfully committed payload to Bronze ingestion lake: {payload.get('id')}")
+''',
+            "github_url": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v2-fix"
         }
     ]
 

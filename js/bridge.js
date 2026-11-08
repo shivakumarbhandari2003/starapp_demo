@@ -183,7 +183,7 @@
     // Read user uploaded file as Base64 data URL
     readFileAsDataUrl(fileInputId) {
       return new Promise((resolve, reject) => {
-        const input = document.getElementById(fileInputId);
+        const input = typeof fileInputId === "string" ? document.getElementById(fileInputId) : fileInputId;
         if (!input || !input.files || input.files.length === 0) {
           resolve(null);
           return;
@@ -199,6 +199,130 @@
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       });
+    },
+
+    // Read user uploaded file as UTF-8 Text
+    readFileAsText(fileInputId) {
+      return new Promise((resolve, reject) => {
+        const input = typeof fileInputId === "string" ? document.getElementById(fileInputId) : fileInputId;
+        if (!input || !input.files || input.files.length === 0) {
+          resolve(null);
+          return;
+        }
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          text: reader.result
+        });
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+      });
+    },
+
+    // High-performance asynchronous submission form handler
+    async submitCosmonautDeliverables() {
+      const badgeInp = document.getElementById("submission-badge-id");
+      const pdfInp = document.getElementById("submission-pdf-file");
+      const codeInp = document.getElementById("submission-code-file");
+      const ghInp = document.getElementById("submission-github-url");
+
+      let pdfData = null;
+      if (pdfInp && pdfInp.files && pdfInp.files.length > 0) {
+        pdfData = await window.StarAppBridge.readFileAsDataUrl("submission-pdf-file");
+      }
+
+      let codeData = null;
+      if (codeInp && codeInp.files && codeInp.files.length > 0) {
+        codeData = await window.StarAppBridge.readFileAsText("submission-code-file");
+      }
+
+      const payload = {
+        badge_id: badgeInp ? badgeInp.value : "",
+        pdf_name: pdfData ? pdfData.name : "",
+        pdf_payload: pdfData ? pdfData.dataUrl : "",
+        code_name: codeData ? codeData.name : "",
+        code_payload: codeData ? codeData.text : "",
+        github_url: ghInp ? ghInp.value.trim() : ""
+      };
+
+      window.StarAppBridge.dispatchAction("submit_project_deliverable", JSON.stringify(payload));
+    },
+
+    // Real-time recalculation of the 50-mark rubric in browser DOM
+    recalcRubricTotal() {
+      const bu = parseFloat(document.getElementById("rubric-bu")?.value || 0);
+      const ar = parseFloat(document.getElementById("rubric-ar")?.value || 0);
+      const tk = parseFloat(document.getElementById("rubric-tk")?.value || 0);
+      const pr = parseFloat(document.getElementById("rubric-pr")?.value || 0);
+      const qa = parseFloat(document.getElementById("rubric-qa")?.value || 0);
+      const total = bu + ar + tk + pr + qa;
+      const pct = (total / 50.0) * 100.0;
+      const formatted = total.toFixed(1) + " / 50.0 (" + pct.toFixed(1) + "%)";
+      const disp = document.getElementById("rubric-total-display");
+      if (disp) {
+        disp.innerText = formatted;
+      }
+      const sumDisp = document.getElementById("rubric-sum-display");
+      if (sumDisp) {
+        sumDisp.innerText = formatted;
+      }
+    },
+
+    // Submit evaluation marksheet with form values collected from DOM
+    submitEvaluationMarksheet(subId) {
+      const bu = parseFloat(document.getElementById("rubric-bu")?.value || 0);
+      const ar = parseFloat(document.getElementById("rubric-ar")?.value || 0);
+      const tk = parseFloat(document.getElementById("rubric-tk")?.value || 0);
+      const pr = parseFloat(document.getElementById("rubric-pr")?.value || 0);
+      const qa = parseFloat(document.getElementById("rubric-qa")?.value || 0);
+      const strengths = document.getElementById("rubric-strengths")?.value || "";
+      const improvements = document.getElementById("rubric-improvements")?.value || "";
+      const feedback = document.getElementById("rubric-feedback")?.value || "";
+      const decision = document.getElementById("rubric-decision")?.value || "approve";
+
+      const payload = {
+        submission_id: subId,
+        bu: bu,
+        ar: ar,
+        tk: tk,
+        pr: pr,
+        qa: qa,
+        strengths: strengths,
+        improvements: improvements,
+        feedback: feedback,
+        decision: decision
+      };
+      window.StarAppBridge.dispatchAction("submit_evaluation_marksheet", JSON.stringify(payload));
+    },
+
+    // Toggle expand deliverable viewer to full window height in-place
+    toggleViewerExpand() {
+      const container = document.getElementById("deliverable-viewport-container");
+      const btn = document.getElementById("toggle-viewer-expand-btn");
+      if (!container) return;
+      if (container.style.height === "calc(100vh - 140px)" || container.style.height === "88vh") {
+        container.style.height = "760px";
+        if (btn) btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg> Expand Viewport';
+      } else {
+        container.style.height = "calc(100vh - 140px)";
+        if (btn) btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/></svg> Standard Height';
+        container.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    },
+
+    // Copy source code to clipboard
+    copySourceCode() {
+      const pre = document.getElementById("raw-code-store");
+      if (pre) {
+        navigator.clipboard.writeText(pre.innerText).then(() => {
+          alert("Source code copied to clipboard!");
+        }).catch(() => {
+          alert("Source code copied.");
+        });
+      }
     },
 
     // Dispatch UI click/action event to Python controller

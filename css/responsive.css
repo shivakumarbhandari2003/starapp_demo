@@ -221,7 +221,70 @@ table {
   }
 }
 
-/* 6. High DPI & Micro-displays (< 420px) */
+/* 6. Review Detail Workspace: 66% Deliverables / 33% Rubric 100vh Layout */
+.page-review-detail {
+  padding: 8px 14px 8px 14px !important;
+  max-width: 100% !important;
+  height: 100vh !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.review-detail-workspace {
+  height: calc(100vh - 16px) !important;
+  max-height: calc(100vh - 16px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.review-workspace-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr) !important;
+  gap: 12px !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.review-left-column,
+.review-right-column {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 992px) {
+  .page-review-detail {
+    height: auto !important;
+    overflow: visible !important;
+    padding: var(--space-4) !important;
+  }
+
+  .review-detail-workspace {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .review-workspace-grid {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .review-left-column {
+    height: 520px !important;
+  }
+
+  .review-right-column {
+    height: auto !important;
+    min-height: 480px;
+  }
+}
+
+/* 7. High DPI & Micro-displays (< 420px) */
 @media (max-width: 420px) {
   .liquid-glass-card {
     padding: 14px 12px !important;

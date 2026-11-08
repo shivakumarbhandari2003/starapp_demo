@@ -1047,7 +1047,7 @@ def render_cosmonaut_submission_workspace(
 
         <div style="display:flex; justify-content:center; width:100%; margin-bottom:32px;">
             <div class="liquid-submission-portal" style="width:100%; max-width:680px; padding:32px 36px;">
-                <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('submit_project_deliverable', '{{}}');">
+                <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
                     <!-- 1. Target Badge Milestone Dropdown -->
                     <div class="liquid-form-group" style="margin-bottom:22px;">
                         <label class="liquid-form-label" for="submission-badge-id">Target Badge Milestone</label>
