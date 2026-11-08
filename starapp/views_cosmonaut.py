@@ -233,14 +233,17 @@ def render_cosmonaut_dashboard(
             velocity_text = '<span style="color:var(--deep-frozen-midnight); font-weight:700;">Sprint Target</span>'
             action_btn = f"""<button type="button" class="btn-metal btn-sm" style="padding:3px 10px; font-size:11px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Project →</button>"""
         else:
-            code_str = f'{get_icon("lock", 11, "margin-right:4px;")} LOCKED'
-            title_str = f'{get_icon("lock", 13, "margin-right:5px;")} Milestone {idx+1} (Locked)'
+            lock_ic_11 = get_icon("lock", 11, "margin-right:4px;")
+            lock_ic_13 = get_icon("lock", 13, "margin-right:5px;")
+            lock_ic_12 = get_icon("lock", 12, "margin-right:4px;")
+            code_str = f"{lock_ic_11} LOCKED"
+            title_str = f"{lock_ic_13} Milestone {idx+1} (Locked)"
             cat_str = "Classified"
             status_badge = '<span class="status-pill status-locked">Locked</span>'
             score_text = '<span style="opacity:0.6;">—</span>'
             attempt_text = "—"
             velocity_text = '<span style="opacity:0.6;">Awaiting Guardian</span>'
-            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="padding:3px 10px; font-size:11px; opacity:0.7;" onclick="window.StarAppBridge.dispatchAction('open_locked_milestone_notice', '{idx+1}')">{get_icon("lock", 12, "margin-right:4px;")} Locked</button>"""
+            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="padding:3px 10px; font-size:11px; opacity:0.7;" onclick="window.StarAppBridge.dispatchAction('open_locked_milestone_notice', '{idx+1}')">{lock_ic_12} Locked</button>"""
 
         pipeline_rows.append(f"""
         <tr>
@@ -807,8 +810,10 @@ def render_gamified_roadmap(
                 "opacity: 0.85; "
                 "color: var(--frost-navy-50);"
             )
-            code = f'{get_icon("lock", 12, "margin-right:4px;")} LOCKED'
-            title = f'{get_icon("lock", 13, "margin-right:5px;")} Milestone {idx + 1} (Locked)'
+            lock_ic_12 = get_icon("lock", 12, "margin-right:4px;")
+            lock_ic_13 = get_icon("lock", 13, "margin-right:5px;")
+            code = f"{lock_ic_12} LOCKED"
+            title = f"{lock_ic_13} Milestone {idx + 1} (Locked)"
             category = "Classified Curriculum"
             code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 11.5px;"
             title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.85;"

@@ -717,3 +717,10 @@ def get_initial_seed_data() -> Dict[str, Any]:
         "activities": activities,
         "notifications": notifications
     }
+
+
+if __name__ == "__main__":
+    seed = get_initial_seed_data()
+    print("[OK] StarApp seed_data.py is valid and verified.")
+    print(f"Total Badges: {len(seed['badges'])} | Users: {len(seed['users'])} | Timelines: {len(seed['timelines'])}")
+

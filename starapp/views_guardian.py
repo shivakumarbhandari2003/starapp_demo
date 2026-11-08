@@ -499,15 +499,18 @@ def render_guardian_badge_allotment(
         dt = b.default_timeline or {}
         is_completed = b.code in completed_codes or b.id in ["badge_gov_101", "badge_cur_102", "badge_dat_103"]
 
+        check_ic_11 = get_icon("check", 11, "margin-right:4px;")
+        flash_ic_11 = get_icon("flash", 11, "margin-right:4px;")
+        revoke_ic_13 = get_icon("revoke", 13, "margin-right:4px;")
+
         if is_completed:
-            status_pill = '<span class="status-pill status-approved" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("check", 11, "margin-right:4px;")} Certified</span>'
+            status_pill = f'<span class="status-pill status-approved" style="font-weight:700; font-size:11px; padding:3px 9px;">{check_ic_11} Certified</span>'
             card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);"
-            # For certified badges, allow revoke only if needed, otherwise revoke button is available for active
-            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{get_icon("revoke", 13, "margin-right:4px;")} Revoke</button>"""
+            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
         else:
-            status_pill = '<span class="status-pill status-active" style="font-weight:700; font-size:11px; padding:3px 9px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{get_icon("flash", 11, "margin-right:4px;")} In Progress</span>'
+            status_pill = f'<span class="status-pill status-active" style="font-weight:700; font-size:11px; padding:3px 9px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} In Progress</span>'
             card_border = "border:2px solid var(--deep-frozen-midnight); box-shadow:0 0 0 3px rgba(23,52,92,0.1); background:linear-gradient(135deg, rgba(234,244,255,0.96) 0%, rgba(255,255,255,0.98) 100%);"
-            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{get_icon("revoke", 13, "margin-right:4px;")} Revoke</button>"""
+            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
 
         timeline_html = render_timeline_stepper(dt, is_allocated=True)
 

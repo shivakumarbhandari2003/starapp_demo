@@ -1182,10 +1182,12 @@ class StarAppController:
 
         elif self.active_modal == "locked_milestone_notice":
             idx = self.modal_payload.get("index", "5")
-            title = f'{get_icon("lock", 16, "margin-right:6px;")} Milestone {idx} is Locked & Classified'
+            lock_ic_16 = get_icon("lock", 16, "margin-right:6px;")
+            lock_ic_32 = get_icon("lock", 32)
+            title = f"{lock_ic_16} Milestone {idx} is Locked & Classified"
             body = f"""
             <div style="text-align:center; padding:10px 0;">
-                <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(23,52,92,0.08); margin:0 auto 14px; color:var(--deep-frozen-midnight);">{get_icon("lock", 32)}</div>
+                <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(23,52,92,0.08); margin:0 auto 14px; color:var(--deep-frozen-midnight);">{lock_ic_32}</div>
                 <h3 style="color:var(--frost-navy); font-weight:800; font-size:1.25rem; margin-bottom:8px;">Milestone {escape(str(idx))} Sealed</h3>
                 <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.6; max-width:440px; margin:0 auto 16px;">
                     This milestone curriculum and project parameters are managed by your Guardian, <strong>Dr. Elena Vance</strong>. Once your current sprint deliverables are reviewed and certified, Dr. Vance will publish the timeline and unlock this milestone for your cohort.
@@ -1385,20 +1387,27 @@ class StarAppController:
         account_buttons = []
         for acc in demo_accounts:
             badge_cls = "status-approved" if acc["role"] == "Guardian" else "status-active"
+            acc_id = acc["id"]
+            acc_name = escape(acc["name"])
+            acc_role = escape(acc["role"])
+            acc_desc = escape(acc["desc"])
             account_buttons.append(f"""
-            <div class="liquid-glass-card interactive" style="padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('select_demo_account', '{acc["id"]}')">
+            <div class="liquid-glass-card interactive" style="padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('select_demo_account', '{acc_id}')">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <div>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <strong style="color:var(--frost-navy); font-size:14px;">{escape(acc["name"])}</strong>
-                            <span class="status-pill {badge_cls}">{escape(acc["role"])}</span>
+                            <strong style="color:var(--frost-navy); font-size:14px;">{acc_name}</strong>
+                            <span class="status-pill {badge_cls}">{acc_role}</span>
                         </div>
-                        <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">{escape(acc["desc"])}</div>
+                        <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">{acc_desc}</div>
                     </div>
-                    <span style="font-weight:700; color:var(--deep-frozen-midnight); font-size:14px;">Sign In →</span>
+                    <span style="font-weight:700; color:var(--deep-frozen-midnight); font-size:14px;">Sign In &rarr;</span>
                 </div>
             </div>
             """)
+
+        flash_icon = get_icon("flash", 14, "margin-right:6px;")
+        joined_accounts = "".join(account_buttons)
 
         return f"""
         <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; width:100%;">
@@ -1413,19 +1422,19 @@ class StarAppController:
 
                 <div class="liquid-glass-card" style="padding:24px; margin-bottom:20px;">
                     <h3 style="font-size:1.1rem; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:12px;">One-Click Demo Account Access:</h3>
-                    {"".join(account_buttons)}
+                    {joined_accounts}
                 </div>
 
                 <!-- Multi-Window Live Sync Testing Station -->
                 <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                         <div>
-                            <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">{get_icon("flash", 14, "margin-right:6px;")} Multi-Window Live Sync Testing</div>
+                            <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">{flash_icon} Multi-Window Live Sync Testing</div>
                             <p style="font-size:12px; color:var(--frost-navy-75); margin:3px 0 0 0;">Open two windows side-by-side. Guardian actions in one window reflect live in the Cosmonaut window instantly.</p>
                         </div>
                         <div style="display:flex; gap:10px;">
-                            <button type="button" class="btn-secondary btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=cosmonaut', '_blank');">Launch Cosmonaut ↗</button>
-                            <button type="button" class="btn-metal btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=guardian', '_blank');">Launch Guardian ↗</button>
+                            <button type="button" class="btn-secondary btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=cosmonaut', '_blank');">Launch Cosmonaut &nearr;</button>
+                            <button type="button" class="btn-metal btn-sm" style="font-weight:700;" onclick="window.open('index.html?role=guardian', '_blank');">Launch Guardian &nearr;</button>
                         </div>
                     </div>
                 </div>
