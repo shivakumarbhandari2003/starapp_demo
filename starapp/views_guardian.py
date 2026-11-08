@@ -1372,61 +1372,76 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
         cosmo = cosmonauts_map.get(ext.cosmonaut_id)
         badge = badges_map.get(ext.badge_id)
         cosmo_name = cosmo.name if cosmo else ext.cosmonaut_id
-        badge_name = badge.title if badge else ext.badge_id
+        b_code = badge.code if badge else ext.badge_id
+        b_title = badge.title if badge else "Milestone Deliverable"
 
         actions_html = ""
         if ext.status == "pending":
             actions_html = f"""
-            <div style="display:flex; gap:8px; margin-top:12px;">
-                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', '{{\"extension_id\": \"{ext.id}\", \"decision\": \"approved\"}}')">
-                    Approve Extension
+            <div style="display:flex; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); justify-content:flex-end;">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:12.5px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'rejected'}}))">
+                    &#10005; Reject
                 </button>
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', '{{\"extension_id\": \"{ext.id}\", \"decision\": \"rejected\"}}')">
-                    Reject
+                <button type="button" class="btn-metal btn-sm" style="font-size:12.5px; padding:6px 16px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'approved'}}))">
+                    &#10003; Approve Extension &rarr;
                 </button>
             </div>
             """
         else:
+            note = ext.guardian_response or "No specific mentor note recorded."
             actions_html = f"""
-            <div style="margin-top:10px; font-size:12.5px; padding:8px 12px; background:rgba(23,52,92,0.06); border-radius:var(--radius-xs);">
-                <strong>Decision Response:</strong> {escape(ext.guardian_response or "No response note provided.")}
+            <div style="margin-top:12px; padding:10px 14px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:12.5px; color:var(--frost-navy);">
+                <strong>Decision Response:</strong> {escape(note)}
             </div>
             """
 
+        if ext.status == "approved":
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#10B981; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+        elif ext.status == "rejected":
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
+        else:
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
+
         items.append(f"""
-        <div class="liquid-glass-card" style="margin-bottom:14px;">
-            <div class="card-content">
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:8px;">
-                    <div>
-                        <div style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); text-transform:uppercase;">{escape(badge_name)}</div>
-                        <h3 style="font-size:1.15rem; font-weight:700; color:var(--frost-navy); margin-top:2px;">Requested by {escape(cosmo_name)}</h3>
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 16px rgba(7,22,41,0.05);">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                        <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); text-transform:uppercase;">{escape(b_title)}</span>
                     </div>
-                    {render_status_pill(ext.status)}
+                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Requested by {escape(cosmo_name)}</h3>
                 </div>
-
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:rgba(234,244,255,0.5); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:10px; font-size:13px;">
-                    <div><strong>Original Deadline:</strong> <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline)}</span></div>
-                    <div><strong>Proposed New Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</span></div>
-                </div>
-
-                <div style="font-size:13.5px; line-height:1.5; color:var(--frost-navy);">
-                    <strong>Cosmonaut Justification:</strong> {escape(ext.reason)}
-                </div>
-
-                {actions_html}
+                {status_pill}
             </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; background:rgba(234,244,255,0.6); padding:10px 14px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:12px; font-size:13px;">
+                <div><strong>Original Deadline:</strong> <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline)}</span></div>
+                <div><strong>Proposed New Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</span></div>
+            </div>
+
+            <div style="font-size:13px; line-height:1.5; color:var(--frost-navy);">
+                <strong>Cosmonaut Justification:</strong> {escape(ext.reason)}
+            </div>
+
+            {actions_html}
         </div>
         """)
 
     return f"""
     <div>
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Deadline Extension Management</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Review extension requests. Approving an extension automatically updates the badge timeline application-wide.</p>
+        <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Deadline Extension Management</h2>
+                <p style="font-size:13px; color:var(--frost-navy-50);">Review extension requests submitted by cosmonauts. Approving an extension automatically updates the milestone cutoff application-wide.</p>
+            </div>
+            <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:5px 12px; border-radius:var(--radius-xs);">
+                {len(extensions)} Request{"s" if len(extensions) != 1 else ""} Total
+            </span>
         </div>
 
         <div>
-            {"".join(items) if items else "<p style='padding:30px; text-align:center; color:var(--frost-navy-50);'>No deadline extension requests.</p>"}
+            {"".join(items) if items else "<div style='padding:40px 20px; text-align:center; color:var(--frost-navy-50); font-style:italic; background:rgba(255,255,255,0.7); border-radius:var(--radius-md); border:1px dashed var(--icy-steel);'>No deadline extension requests pending or evaluated.</div>"}
         </div>
     </div>
     """

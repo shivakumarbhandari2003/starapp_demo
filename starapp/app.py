@@ -391,6 +391,11 @@ class StarAppController:
 
         elif action == "open_extension_decision_modal":
             self.active_modal = "decide_extension"
+            if isinstance(payload, str) and payload.strip():
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    pass
             self.modal_payload = payload
 
         elif action == "submit_extension_decision":
@@ -807,6 +812,14 @@ if __name__ == "__main__":
 
     def execute_submit_extension_request(self, payload: Dict[str, Any]):
         try:
+            if isinstance(payload, str) and payload.strip():
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    pass
+            if not isinstance(payload, dict):
+                payload = {}
+
             badge_id = payload.get("badge_id")
             prop_date = payload.get("proposed_deadline")
             reason = payload.get("reason")
@@ -856,6 +869,14 @@ if __name__ == "__main__":
             self.set_flash(f"Failed to submit extension request: {e}", "error")
 
     def execute_extension_decision(self, payload: Dict[str, Any]):
+        if isinstance(payload, str) and payload.strip():
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                pass
+        if not isinstance(payload, dict):
+            payload = {}
+
         ext_id = payload.get("extension_id")
         decision = payload.get("decision")  # "approved" or "rejected"
         response_note = payload.get("response_note", "")
@@ -1338,26 +1359,38 @@ if __name__ == "__main__":
                 body = render_assessment_modal_content(sub, badge, cosmo, existing_asm, prev_asms)
 
         elif self.active_modal == "decide_extension":
-            ext_id = self.modal_payload.get("extension_id")
-            decision = self.modal_payload.get("decision", "approved")
+            if isinstance(self.modal_payload, str) and self.modal_payload.strip():
+                try:
+                    self.modal_payload = json.loads(self.modal_payload)
+                except Exception:
+                    pass
+            ext_id = self.modal_payload.get("extension_id") if isinstance(self.modal_payload, dict) else ""
+            decision = self.modal_payload.get("decision", "approved") if isinstance(self.modal_payload, dict) else "approved"
             ext = store.get_extension(ext_id)
-            title = f"{decision.title()} Extension Request"
+            badge = store.get_badge(ext.badge_id) if ext else None
+            badge_label = f"{badge.code}: {badge.title}" if badge else (ext.badge_id if ext else "Milestone")
+            cosmo = store.get_user_by_id(ext.cosmonaut_id) if ext else None
+            cosmo_name = cosmo.name if cosmo else (ext.cosmonaut_id if ext else "Cosmonaut")
+            title = f"{decision.title()} Extension: {badge.code if badge else 'Request'}"
             body = f"""
             <form onsubmit="event.preventDefault(); const n=document.getElementById('ext-decision-note').value; window.StarAppBridge.dispatchAction('submit_extension_decision', JSON.stringify({{extension_id:'{ext_id}', decision:'{decision}', response_note:n}}));">
-                <div style="font-size:13.5px; margin-bottom:12px;">
-                    Are you sure you want to <strong>{decision}</strong> the extension request for <strong>{escape(ext.badge_id)}</strong>?
+                <div style="font-size:14px; margin-bottom:14px; color:var(--frost-navy);">
+                    Are you sure you want to <strong style="color:var(--deep-frozen-midnight);">{decision.upper()}</strong> the extension request from <strong>{escape(cosmo_name)}</strong> for <strong>{escape(badge_label)}</strong>?
                 </div>
-                <div style="background:rgba(234,244,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:14px; font-size:13px;">
-                    <div><strong>Proposed Deadline:</strong> {escape(ext.proposed_deadline)}</div>
-                    <div><strong>Cosmonaut Reason:</strong> {escape(ext.reason)}</div>
+                <div style="background:rgba(234,244,255,0.7); padding:12px 16px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:16px; font-size:13px; line-height:1.5;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                        <span><strong>Original Cutoff:</strong> <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline if ext else 'N/A')}</span></span>
+                        <span><strong>Proposed Cutoff:</strong> <span style="font-family:var(--font-family-mono); font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline if ext else 'N/A')}</span></span>
+                    </div>
+                    <div><strong>Cosmonaut Rationale:</strong> {escape(ext.reason if ext else 'N/A')}</div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Mentor Feedback / Decision Note (Optional)</label>
-                    <textarea id="ext-decision-note" class="form-textarea" placeholder="Add guidance, milestones, or conditions..."></textarea>
+                    <label class="form-label" style="font-weight:700;">Mentor Feedback / Decision Note (Optional)</label>
+                    <textarea id="ext-decision-note" class="form-textarea" style="min-height:85px; font-size:13px;" placeholder="Add guidance, expectations, or schedule details for the cosmonaut..."></textarea>
                 </div>
-                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
                     <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
-                    <button type="submit" class="btn-metal">Confirm {decision.title()}</button>
+                    <button type="submit" class="btn-metal" style="font-weight:700;">Confirm {decision.title()} &rarr;</button>
                 </div>
             </form>
             """
@@ -1913,7 +1946,8 @@ if __name__ == "__main__":
                     assessments=user_asms,
                     badges_map=badges_map,
                     selected_badge_id=res_badge_id,
-                    available_badges=assigned_badges
+                    available_badges=assigned_badges,
+                    extensions=store.get_extensions_for_cosmonaut(self.current_user.id)
                 )
 
             elif self.current_view == "c_materials":

@@ -1104,7 +1104,8 @@ def render_cosmonaut_results(
     assessments: List[AssessmentMarksheet],
     badges_map: Dict[str, Badge],
     selected_badge_id: Optional[str] = None,
-    available_badges: Optional[List[Badge]] = None
+    available_badges: Optional[List[Badge]] = None,
+    extensions: Optional[List[DeadlineExtension]] = None
 ) -> str:
     # 1. Determine list of selectable badges (the present 4 badges plus any assigned or catalog badges)
     badge_list = list(available_badges) if available_badges else []
@@ -1141,6 +1142,51 @@ def render_cosmonaut_results(
     current_badge = badges_map.get(selected_badge_id)
     badge_code = current_badge.code if current_badge else selected_badge_id
     badge_title = current_badge.title if current_badge else "Milestone Assessment"
+
+    # Deadline extension reflection banner
+    ext_banner = ""
+    if extensions:
+        badge_exts = [e for e in extensions if e.badge_id == selected_badge_id]
+        if badge_exts:
+            latest_ext = badge_exts[-1]
+            if latest_ext.status == "approved":
+                ext_banner = f"""
+                <div style="margin-bottom:20px; padding:12px 18px; background:linear-gradient(135deg, rgba(16,185,129,0.09) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #10B981; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:#10B981; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
+                        <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
+                            Official Submission Deadline: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> (Approved by Guardian)
+                        </span>
+                    </div>
+                    <div style="font-size:12px; color:var(--frost-navy-50); font-style:italic;">
+                        {escape(latest_ext.guardian_response or "Schedule adjustment approved by mentor.")}
+                    </div>
+                </div>
+                """
+            elif latest_ext.status == "pending":
+                ext_banner = f"""
+                <div style="margin-bottom:20px; padding:12px 18px; background:rgba(245,158,11,0.08); border:1.5px solid #F59E0B; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:#F59E0B; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
+                        <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
+                            Requested Extension to <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> &bull; Awaiting Guardian Review
+                        </span>
+                    </div>
+                    <span style="font-size:12px; color:var(--frost-navy-50);">Current Cutoff: {escape(latest_ext.current_deadline)}</span>
+                </div>
+                """
+            elif latest_ext.status == "rejected":
+                ext_banner = f"""
+                <div style="margin-bottom:20px; padding:12px 18px; background:rgba(239,68,68,0.06); border:1px solid #EF4444; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:#EF4444; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Rejected</span>
+                        <span style="font-size:13px; font-weight:700; color:var(--frost-navy);">
+                            Original Cutoff Maintained: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.current_deadline)}</span>
+                        </span>
+                    </div>
+                    <div style="font-size:12px; color:var(--frost-navy-50); font-style:italic;">{escape(latest_ext.guardian_response or "Extension rejected by mentor.")}</div>
+                </div>
+                """
 
     # Top header with Title on the left and Badge Dropdown on the top right
     top_header_html = f"""
@@ -1182,6 +1228,7 @@ def render_cosmonaut_results(
     return f"""
     <div>
         {top_header_html}
+        {ext_banner}
         {sheet_content}
     </div>
     """
@@ -1226,156 +1273,133 @@ def render_cosmonaut_extensions(
     else:
         badge_opts = '<option disabled selected>All assigned badges are currently completed</option>'
 
-    req_items = []
+    # Build clean, compact table rows / cards for submitted requests
+    req_rows = []
     for ext in extensions:
         badge = badges_map.get(ext.badge_id)
         b_code = badge.code if badge else ext.badge_id
         b_title = badge.title if badge else "Milestone Deliverable"
-        
-        # High-contrast action/status badge and current action footer
+
         if ext.status == "approved":
-            status_pill = '<span class="status-pill status-approved" style="font-size:12px; font-weight:800; padding:5px 14px; background:var(--deep-frozen-midnight); color:var(--snow-white); border:1.5px solid var(--icy-steel); display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(23,52,92,0.25);">&#10003; Accepted &bull; Approved</span>'
-            current_action_html = f"""
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
-                    <span style="font-size:12.5px; color:var(--deep-frozen-midnight); font-weight:700;">Extension granted to {escape(ext.proposed_deadline)} &bull; Synchronized across roadmap</span>
-                </div>
-                <div style="display:flex; gap:8px;">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{ext.badge_id}')">
-                        View Updated Timeline &rarr;
-                    </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
-                        Submit Deliverable
-                    </button>
-                </div>
-            </div>
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#10B981; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+            action_btn = f"""
+            <button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+                Submit Deliverable &rarr;
+            </button>
             """
         elif ext.status == "rejected":
-            status_pill = '<span class="status-pill status-rejected" style="font-size:12px; font-weight:800; padding:5px 14px; background:rgba(7,22,41,0.08); color:var(--frost-navy); border:1.5px solid var(--frost-navy-50); display:inline-flex; align-items:center; gap:6px;">&#10005; Rejected</span>'
-            current_action_html = f"""
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); background:rgba(7,22,41,0.10); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
-                    <span style="font-size:12.5px; color:var(--frost-navy); font-weight:600;">Original cutoff ({escape(ext.current_deadline)}) in effect &bull; Immediate deliverable required</span>
-                </div>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
-                    Proceed to Submission &rarr;
-                </button>
-            </div>
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
+            action_btn = f"""
+            <button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+                Submit Deliverable
+            </button>
             """
         else:
-            status_pill = '<span class="status-pill status-active" style="font-size:12px; font-weight:800; padding:5px 14px; background:rgba(234,244,255,0.95); color:var(--deep-frozen-midnight); border:1.5px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(23,52,92,0.12);"><span style="width:7px; height:7px; border-radius:50%; background:var(--deep-frozen-midnight); display:inline-block;"></span> Awaiting Review &bull; Pending</span>'
-            current_action_html = f"""
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 9px; border-radius:var(--radius-xs);">Current Action</span>
-                    <span style="font-size:12.5px; color:var(--frost-navy-75); font-weight:600;">Awaiting Guardian review by Dr. Elena Vance</span>
-                </div>
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{ext.badge_id}')">
-                    Inspect Milestone &rarr;
-                </button>
-            </div>
-            """
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
+            action_btn = '<span style="font-size:12px; color:var(--frost-navy-50); font-weight:600; font-style:italic;">Awaiting Mentor</span>'
 
-        guardian_note = ""
+        feedback_html = ""
         if ext.guardian_response:
-            guardian_note = f"""
-            <div style="margin-top:12px; font-size:13px; padding:12px 16px; background:linear-gradient(135deg, rgba(234,244,255,0.85) 0%, rgba(255,255,255,0.95) 100%); border-radius:var(--radius-sm); border-left:4px solid var(--deep-frozen-midnight); border:1px solid var(--icy-steel-50); border-left-width:4px;">
-                <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Guardian Review Feedback (Dr. Elena Vance):</div>
-                <div style="color:var(--frost-navy); line-height:1.5;">{escape(ext.guardian_response)}</div>
+            feedback_html = f"""
+            <div style="margin-top:6px; font-size:12px; padding:6px 10px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); color:var(--frost-navy);">
+                <strong>Guardian Note:</strong> {escape(ext.guardian_response)}
             </div>
             """
 
-        req_items.append(f"""
-        <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 6px 20px rgba(7,22,41,0.06), inset 1px 1px 1px rgba(255,255,255,0.95);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:4px 10px; border-radius:var(--radius-xs); border:1px solid var(--deep-frozen-midnight); letter-spacing:0.5px;">{escape(b_code)}</span>
-                    <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(b_title)}</span>
+        req_rows.append(f"""
+        <tr style="border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;">
+            <td style="padding:14px 16px; vertical-align:top;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                    <strong style="font-size:13.5px; color:var(--frost-navy);">{escape(b_title)}</strong>
                 </div>
+                <div style="font-size:12px; color:var(--frost-navy-75); line-height:1.4; max-width:420px;">
+                    <span style="color:var(--frost-navy-50);">Reason:</span> {escape(ext.reason)}
+                </div>
+                {feedback_html}
+            </td>
+            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:12.5px; color:var(--frost-navy-75); white-space:nowrap;">
+                {escape(ext.current_deadline)}
+            </td>
+            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:13px; font-weight:800; color:var(--deep-frozen-midnight); white-space:nowrap;">
+                {escape(ext.proposed_deadline)}
+            </td>
+            <td style="padding:14px 16px; vertical-align:middle; text-align:center; white-space:nowrap;">
                 {status_pill}
-            </div>
-
-            <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-bottom:12px; padding:10px 16px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div>
-                    <div style="font-size:10.5px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:2px;">Original Cutoff</div>
-                    <div style="font-family:var(--font-family-mono); font-size:13px; font-weight:700; color:var(--frost-navy-75); text-decoration:line-through;">{escape(ext.current_deadline)}</div>
-                </div>
-                <div style="font-size:16px; font-weight:800; color:var(--deep-frozen-midnight); padding:0 4px;">&rarr;</div>
-                <div>
-                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:2px;">Requested Extension</div>
-                    <div style="font-family:var(--font-family-mono); font-size:14px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</div>
-                </div>
-            </div>
-
-            <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; background:#FFFFFF; padding:12px 16px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); box-shadow:0 1px 4px rgba(7,22,41,0.02);">
-                <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Cosmonaut Technical Rationale:</div>
-                {escape(ext.reason)}
-            </div>
-
-            {guardian_note}
-
-            {current_action_html}
-        </div>
+            </td>
+            <td style="padding:14px 16px; vertical-align:middle; text-align:right; white-space:nowrap;">
+                {action_btn}
+            </td>
+        </tr>
         """)
+
+    table_body = "".join(req_rows) if req_rows else """
+    <tr>
+        <td colspan="5" style="padding:32px 16px; text-align:center; color:var(--frost-navy-50); font-style:italic;">
+            No deadline extension requests submitted yet. Select an in-progress milestone above to request an adjustment.
+        </td>
+    </tr>
+    """
 
     return f"""
     <div>
-        <div style="margin-bottom:24px; text-align:center;">
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Milestone Deadline Extension Portal</h2>
+        <div style="margin-bottom:24px;">
+            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Milestone Deadline Extension Portal</h2>
             <p style="font-size:13.5px; color:var(--frost-navy-50);">Request scheduling adjustments for active milestones and track Guardian evaluations in real-time.</p>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:24px; align-items:start;">
-            <!-- Container 1: Extension Request Form -->
+        <!-- Vertically Stacked Layout: Form on top, Submitted requests below -->
+        <div style="display:flex; flex-direction:column; gap:24px;">
+            <!-- 1. Request Deadline Extension Container (Top) -->
             <div class="liquid-submission-portal" style="padding:28px 32px;">
-                <div style="margin-bottom:20px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Request Deadline Extension</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Choose an in-progress milestone and specify a realistic engineering rationale.</div>
+                <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px;">
+                    <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Request Deadline Extension</h3>
+                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Choose an in-progress milestone and specify a realistic engineering rationale for mentor review.</div>
                 </div>
 
                 <form id="deadline-extension-form" onsubmit="event.preventDefault(); const b=document.getElementById('ext-badge'); const d=document.getElementById('ext-date'); const r=document.getElementById('ext-reason'); window.StarAppBridge.dispatchAction('submit_deadline_extension_request', JSON.stringify({{badge_id:b.value, proposed_deadline:d.value, reason:r.value}}));">
-                    <!-- 1. Dropdown of current available non-completed badges -->
-                    <div class="liquid-form-group" style="margin-bottom:20px;">
-                        <label class="liquid-form-label" for="ext-badge">Target Available Milestone (In-Progress)</label>
-                        <div class="liquid-select-wrapper">
-                            <select id="ext-badge" class="liquid-glass-control liquid-glass-select" required>
-                                {badge_opts}
-                            </select>
-                        </div>
-                        <span class="liquid-form-hint">Only current non-completed milestones are eligible for extension requests.</span>
-                    </div>
-
-                    <!-- 2. Liquid Glass Calendar Datepicker -->
-                    <div class="liquid-form-group" style="margin-bottom:20px;">
-                        <label class="liquid-form-label" for="ext-date">Proposed New Submission Deadline</label>
-                        <div class="liquid-date-wrapper">
-                            <div class="liquid-date-icon-box">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                                </svg>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:18px; margin-bottom:18px;">
+                        <!-- Milestone Selector -->
+                        <div class="liquid-form-group">
+                            <label class="liquid-form-label" for="ext-badge">Target Available Milestone (In-Progress)</label>
+                            <div class="liquid-select-wrapper">
+                                <select id="ext-badge" class="liquid-glass-control liquid-glass-select" required>
+                                    {badge_opts}
+                                </select>
                             </div>
-                            <input type="date" id="ext-date" class="liquid-glass-date" required>
+                            <span class="liquid-form-hint">Only active non-completed milestones are eligible.</span>
                         </div>
-                        <span class="liquid-form-hint">Choose a future cutoff date allowing adequate buffer beyond the milestone deadline.</span>
+
+                        <!-- Datepicker -->
+                        <div class="liquid-form-group">
+                            <label class="liquid-form-label" for="ext-date">Proposed New Submission Deadline</label>
+                            <div class="liquid-date-wrapper">
+                                <div class="liquid-date-icon-box">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                                    </svg>
+                                </div>
+                                <input type="date" id="ext-date" class="liquid-glass-date" required>
+                            </div>
+                            <span class="liquid-form-hint">Choose a future cutoff date allowing buffer for completion.</span>
+                        </div>
                     </div>
 
-                    <!-- 3. Reason Textarea -->
-                    <div class="liquid-form-group" style="margin-bottom:24px;">
+                    <!-- Reason Textarea -->
+                    <div class="liquid-form-group" style="margin-bottom:20px;">
                         <label class="liquid-form-label" for="ext-reason">Technical Justification & Bottleneck Details</label>
-                        <textarea id="ext-reason" class="liquid-glass-control" style="min-height:105px; padding:12px 16px; resize:vertical; font-family:var(--font-family-base); line-height:1.5;" placeholder="Describe the unexpected complexity, data pipeline latency, or algorithmic research requiring additional engineering time..." required></textarea>
+                        <textarea id="ext-reason" class="liquid-glass-control" style="min-height:90px; padding:12px 14px; resize:vertical; font-family:var(--font-family-base); line-height:1.5;" placeholder="Describe the unexpected complexity, data pipeline latency, or algorithmic research requiring additional engineering time..." required></textarea>
                         <span class="liquid-form-hint">Provide at least 10 characters detailing the engineering rationale for your Guardian.</span>
                     </div>
 
-                    <!-- 4. Submit Button -->
+                    <!-- Submit Button -->
                     <div style="display:flex; justify-content:flex-end;">
-                        <div class="btn-metal-wrapper" style="width:100%;">
+                        <div class="btn-metal-wrapper">
                             <div class="btn-metal-inner"></div>
-                            <button type="submit" class="btn-metal" style="width:100%; height:46px; font-size:14px; font-weight:700; letter-spacing:0.3px;">
+                            <button type="submit" class="btn-metal" style="height:44px; padding:0 24px; font-size:13.5px; font-weight:700;">
                                 Submit Extension Request for Guardian Review &rarr;
                             </button>
                         </div>
@@ -1383,15 +1407,33 @@ def render_cosmonaut_extensions(
                 </form>
             </div>
 
-            <!-- Container 2: Submitted Requests & Status -->
+            <!-- 2. Submitted Requests & Status Container (Shown Below Request Container) -->
             <div class="liquid-submission-portal" style="padding:28px 32px;">
-                <div style="margin-bottom:20px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Submitted Requests & Actions</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Audit trail of all requested milestone extensions and mentor decisions.</div>
+                <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Submitted Requests & Actions</h3>
+                        <div style="font-size:12.5px; color:var(--frost-navy-50);">Requested milestone extensions, live status, and necessary actions.</div>
+                    </div>
+                    <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {len(extensions)} Total Request{"s" if len(extensions) != 1 else ""}
+                    </span>
                 </div>
 
-                <div>
-                    {"".join(req_items) if req_items else "<div style='padding:36px 20px; text-align:center; color:var(--frost-navy-50); font-style:italic;'>No extension requests submitted yet. Select an available milestone on the left to request a schedule adjustment.</div>"}
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left;">
+                        <thead>
+                            <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.4);">
+                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Milestone & Details</th>
+                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Current Cutoff</th>
+                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Proposed Cutoff</th>
+                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:center;">Status</th>
+                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table_body}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
