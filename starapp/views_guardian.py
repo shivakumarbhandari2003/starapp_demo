@@ -280,99 +280,177 @@ def render_guardian_dashboard(
     """
 
     # --------------------------------------------------------------------------
-    # SECTION C: Top Command Deck (Velocity Chart + Guardian Action Center) - MOVED ABOVE
+    # SECTION C: Top Command Deck (Cadet Milestone Velocity & Pacing Chart + Guardian Action Center)
     # --------------------------------------------------------------------------
-    trends = cohort_analytics["weekly_trends"]
-    max_scale = 6.0 # total 6 enrolled cadets in batch
-    trend_bars = []
-    for idx, t in enumerate(trends, start=1):
-        # Scale: max bar height is 75px
-        h_comp = max(8, round((t["completions"] / max_scale) * 75))
-        h_sub = max(8, round((t["submissions"] / max_scale) * 75))
-        
-        comp_pct = round((t["completions"] / 6.0) * 100.0, 1)
-        sub_pct = round((t["submissions"] / 6.0) * 100.0, 1)
-        
-        if idx == 1:
+    # Per-student grouped bar chart: Completed Badges | Pending Badges | Extra Attempts Taken
+    # Dynamically derived from cohort_profiles across all 6 enrolled cadets
+    TOTAL_BADGES = 5  # Standard cohort curriculum milestone count
+    BAR_MAX_H = 100   # Maximum bar height in px for 5 badges
+
+    cadet_bars = []
+    total_completed_all = 0
+    total_pending_all = 0
+    total_extra_all = 0
+
+    for idx, profile in enumerate(cohort_profiles):
+        name_full = profile.get("name", "Cadet")
+        first_name = name_full.split()[0]
+        avatar = profile.get("avatar", name_full[:2].upper())
+        risk = profile.get("risk_status", "On Track")
+
+        # 1. Completed badges count (approved milestones)
+        completed = profile.get("completed_count", 0)
+        # Fallback to counting approved assessments if completed_count is 0 but assessments exist
+        if completed == 0:
+            asms = profile.get("assessments", [])
+            completed = len([a for a in asms if a.get("decision") == "approve"])
+
+        # 2. Extra attempts taken (resubmissions beyond attempt 1)
+        extra = profile.get("resubmission_count", 0)
+
+        # 3. Pending badges (remaining milestones to clear)
+        total_assigned = profile.get("total_assigned", TOTAL_BADGES)
+        pending = max(0, total_assigned - completed)
+
+        total_completed_all += completed
+        total_pending_all += pending
+        total_extra_all += extra
+
+        # Risk indicator color
+        risk_color_map = {
+            "On Track": "#10B981",
+            "Monitor": "#F59E0B",
+            "Needs Attention": "#EF4444",
+            "At Risk": "#DC2626"
+        }
+        risk_color = risk_color_map.get(risk, "#10B981")
+
+        # Proportional bar heights
+        h_comp = max(8, round((completed / TOTAL_BADGES) * BAR_MAX_H)) if completed > 0 else 0
+        h_pend = max(8, round((pending / TOTAL_BADGES) * BAR_MAX_H)) if pending > 0 else 0
+        h_extra = max(8, round((min(extra, TOTAL_BADGES) / TOTAL_BADGES) * BAR_MAX_H)) if extra > 0 else 0
+
+        # Telemetry metrics for tooltip
+        avg_marks = profile.get("average_marks", 0.0)
+        avg_pct = profile.get("average_percentage", 0.0)
+        active_code = profile.get("active_badge_code", "N/A")
+
+        # Tooltip alignment (first item aligns left, last aligns right, middle aligns center)
+        if idx == 0:
             pop_align = "pop-align-left"
-        elif idx >= 5:
+        elif idx >= len(cohort_profiles) - 1:
             pop_align = "pop-align-right"
         else:
             pop_align = "pop-align-center"
-        
-        trend_bars.append(f"""
-        <div class="velocity-bar-col {pop_align}" style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; position:relative;">
+
+        cadet_bars.append(f"""
+        <div class="velocity-bar-col {pop_align}" style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; position:relative; flex:1; min-width:45px;">
             <!-- Interactive Floating Liquid-Glass Tooltip -->
             <div class="velocity-hover-popover">
                 <div class="vel-pop-header">
-                    <span>{escape(t['week'])} Telemetry</span>
-                    <span style="font-size:9.5px; font-weight:700; color:var(--pure-ice);">{escape(t['label'])}</span>
+                    <span style="display:flex; align-items:center; gap:6px;">
+                        <span style="width:20px; height:20px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center;">{escape(avatar)}</span>
+                        {escape(name_full)}
+                    </span>
+                    <span style="font-size:9.5px; font-weight:700; color:{risk_color}; padding:2px 6px; background:rgba(255,255,255,0.12); border-radius:8px;">{escape(risk)}</span>
                 </div>
                 <div class="vel-pop-row">
-                    <span class="vel-pop-label">Certified:</span>
-                    <span class="vel-pop-val" style="color:#00e5ff;">{t['completions']} / 6 Cadets ({comp_pct}%)</span>
+                    <span class="vel-pop-label">Completed:</span>
+                    <span class="vel-pop-val" style="color:#00e5ff;">{completed} / {total_assigned} Badges ({round((completed/max(1, total_assigned))*100, 1)}%)</span>
                 </div>
                 <div class="vel-pop-row">
-                    <span class="vel-pop-label">Submitted:</span>
-                    <span class="vel-pop-val" style="color:#93c5fd;">{t['submissions']} / 6 Cadets ({sub_pct}%)</span>
+                    <span class="vel-pop-label">Pending:</span>
+                    <span class="vel-pop-val" style="color:#FCD34D;">{pending} Remaining</span>
+                </div>
+                <div class="vel-pop-row">
+                    <span class="vel-pop-label">Extra Attempts:</span>
+                    <span class="vel-pop-val" style="color:#F87171;">{extra} Resubmission{"s" if extra != 1 else ""}</span>
                 </div>
                 <div class="vel-pop-row">
                     <span class="vel-pop-label">Average Score:</span>
-                    <span class="vel-pop-val" style="color:#10B981;">{t['avg_score']:.1f} / 50.0</span>
+                    <span class="vel-pop-val" style="color:#34D399;">{avg_marks:.1f} / 50.0 ({avg_pct:.1f}%)</span>
                 </div>
                 <div class="vel-pop-row" style="margin-top:4px; padding-top:4px; border-top:1px dashed rgba(157,183,213,0.3); font-size:10px;">
-                    <span class="vel-pop-label">Pacing Status:</span>
-                    <span class="vel-pop-val" style="color:#34D399;">+18% Ahead (3.3/wk)</span>
+                    <span class="vel-pop-label">Active Milestone:</span>
+                    <span class="vel-pop-val" style="color:#93c5fd;">{escape(active_code)}</span>
                 </div>
             </div>
 
-            <!-- Dual Bars with Visible Numeric Values -->
-            <div style="display:flex; gap:8px; align-items:flex-end; height:105px; margin-bottom:8px;">
-                <!-- Certified Bar -->
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                    <span style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">{t['completions']}</span>
-                    <div style="width:20px; height:{h_comp}px; background:linear-gradient(180deg, var(--deep-frozen-midnight) 0%, rgba(23,52,92,0.92) 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(7,22,41,0.2);"></div>
+            <!-- 3 Grouped Bars per Student: Completed | Pending | Extra Attempts -->
+            <div style="display:flex; gap:4px; align-items:flex-end; height:{BAR_MAX_H + 26}px; margin-bottom:8px;">
+                <!-- Completed Bar -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
+                    <span style="font-size:10.5px; font-weight:800; color:var(--deep-frozen-midnight);">{completed}</span>
+                    <div style="width:14px; height:{h_comp}px; background:linear-gradient(180deg, #071629 0%, #17345C 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(7,22,41,0.25);" title="Completed: {completed}"></div>
                 </div>
-                <!-- Submitted Bar -->
-                <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
-                    <span style="font-size:11px; font-weight:800; color:var(--frost-navy);">{t['submissions']}</span>
-                    <div style="width:20px; height:{h_sub}px; background:linear-gradient(180deg, var(--icy-steel) 0%, rgba(157,183,213,0.6) 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(157,183,213,0.25);"></div>
+                <!-- Pending Bar -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
+                    <span style="font-size:10.5px; font-weight:800; color:#D97706;">{pending}</span>
+                    <div style="width:14px; height:{h_pend}px; background:linear-gradient(180deg, #F59E0B 0%, #FCD34D 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(245,158,11,0.25);" title="Pending: {pending}"></div>
+                </div>
+                <!-- Extra Attempts Bar -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
+                    <span style="font-size:10.5px; font-weight:800; color:{'#DC2626' if extra > 0 else 'var(--frost-navy-50)'};">{extra}</span>
+                    <div style="width:14px; height:{h_extra if extra > 0 else 4}px; background:{'linear-gradient(180deg, #EF4444 0%, #FCA5A5 100%)' if extra > 0 else 'rgba(157,183,213,0.25)'}; border-radius:4px 4px 0 0; box-shadow:{'0 2px 6px rgba(239,68,68,0.25)' if extra > 0 else 'none'};" title="Extra Attempts: {extra}"></div>
                 </div>
             </div>
 
-            <!-- Labels Below Bars -->
-            <span style="font-size:12px; font-weight:800; color:var(--frost-navy);">{escape(t['week'])}</span>
-            <span style="font-size:10px; color:var(--frost-navy-50); margin-top:1px;">{escape(t['label'].split('-')[0].strip())}</span>
-            <span style="font-size:10.5px; font-family:var(--font-family-mono); font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:2px 6px; border-radius:4px; margin-top:3px;">{t['avg_score']:.1f}/50</span>
+            <!-- Cadet Identity Pill Below Bars -->
+            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                <div style="width:24px; height:24px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:9.5px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid {risk_color}; box-shadow:0 1px 4px rgba(7,22,41,0.15);">{escape(avatar)}</div>
+                <span style="font-size:10.5px; font-weight:800; color:var(--frost-navy); white-space:nowrap; max-width:54px; overflow:hidden; text-overflow:ellipsis;" title="{escape(name_full)}">{escape(first_name)}</span>
+            </div>
         </div>
         """)
+
+    avg_completion_pct = round((total_completed_all / max(1, len(cohort_profiles) * TOTAL_BADGES)) * 100.0, 1)
 
     top_command_deck = f"""
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:20px; margin-bottom:24px;">
         <!-- Left: Weekly Velocity & Pacing Telemetry -->
         <div class="liquid-glass-card velocity-glass-card" style="padding:22px 24px; display:flex; flex-direction:column; justify-content:space-between; overflow:visible !important; position:relative; z-index:50;">
-            <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h3 style="font-size:1.22rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0; display:flex; align-items:center;">
+                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0; display:flex; align-items:center; gap:6px;">
                         Weekly Curriculum Velocity & Pacing
                         {render_metric_info_popover('weekly_velocity', cohort_analytics, 'cohort', 'right')}
                     </h3>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">Cohort milestone throughput and delivery pacing (hover any bar for detailed telemetry).</div>
+                    <div style="font-size:11.5px; color:var(--frost-navy-50);">Individual cadet milestone completion, pending backlog &amp; extra attempts across all 6 enrolled cadets.</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:14px; font-size:11.5px;">
-                    <span style="display:flex; align-items:center; gap:6px;"><span style="width:12px; height:12px; background:var(--deep-frozen-midnight); border-radius:3px;"></span> <strong>Certified</strong></span>
-                    <span style="display:flex; align-items:center; gap:6px;"><span style="width:12px; height:12px; background:var(--icy-steel); border-radius:3px;"></span> <strong>Submitted</strong></span>
+                <div style="display:flex; align-items:center; gap:12px; font-size:11px; flex-wrap:wrap;">
+                    <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #071629 0%, #17345C 100%); border-radius:3px;"></span> <strong style="color:var(--frost-navy);">Completed</strong></span>
+                    <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #F59E0B 0%, #FCD34D 100%); border-radius:3px;"></span> <strong style="color:#B45309;">Pending</strong></span>
+                    <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #EF4444 0%, #FCA5A5 100%); border-radius:3px;"></span> <strong style="color:#B91C1C;">Extra Attempts</strong></span>
                 </div>
             </div>
 
-            <!-- Spacious Chart Area with Adequate Headroom -->
-            <div style="display:flex; justify-content:space-around; align-items:flex-end; height:220px; padding-top:20px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30); position:relative; overflow:visible !important;">
-                {"".join(trend_bars)}
+            <!-- Y-Axis + Multi-Cadet Grouped Bars Container -->
+            <div style="display:flex; gap:0; align-items:stretch; position:relative; min-height:190px;">
+                <!-- Y-Axis Scale (0 to 5 Badges) -->
+                <div style="display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-right:8px; height:{BAR_MAX_H + 26 + 48}px; padding-bottom:48px; padding-top:6px;">
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">5</span>
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">4</span>
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">3</span>
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">2</span>
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">1</span>
+                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">0</span>
+                </div>
+                <!-- Plot Area with Horizontal Grid Lines -->
+                <div style="flex:1; position:relative;">
+                    <div style="position:absolute; top:6px; left:0; right:0; bottom:48px; pointer-events:none;">
+                        {"".join(f'<div style="position:absolute; left:0; right:0; bottom:{round((i/TOTAL_BADGES)*BAR_MAX_H)}px; height:1px; background:rgba(23,52,92,0.06);"></div>' for i in range(TOTAL_BADGES+1))}
+                    </div>
+                    <!-- Grouped Student Bars -->
+                    <div style="display:flex; justify-content:space-around; align-items:flex-end; height:{BAR_MAX_H + 26 + 48}px; padding-top:6px; padding-bottom:0; position:relative; overflow:visible !important;">
+                        {"".join(cadet_bars)}
+                    </div>
+                </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:11.5px; flex-wrap:wrap; gap:8px;">
-                <span style="color:var(--frost-navy-75);">Batch Pacing Velocity: <strong style="color:#059669;">+18% Ahead of Baseline (3.3 Badges/Week)</strong></span>
-                <span style="color:var(--frost-navy-50);">Cumulative: <strong>20 Certified</strong> &bull; <strong>23 Submissions</strong></span>
+            <!-- Aggregate Performance Summary Footer -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30); font-size:11.5px; flex-wrap:wrap; gap:8px;">
+                <span style="color:var(--frost-navy-75);">Batch Completion: <strong style="color:#059669;">{avg_completion_pct:.1f}% ({total_completed_all}/{len(cohort_profiles) * TOTAL_BADGES} Total Certified)</strong></span>
+                <span style="color:var(--frost-navy-50);">Pending: <strong style="color:#D97706;">{total_pending_all} Milestones</strong> &bull; Resubmissions: <strong style="color:#DC2626;">{total_extra_all} Extra Attempts</strong></span>
             </div>
         </div>
 
