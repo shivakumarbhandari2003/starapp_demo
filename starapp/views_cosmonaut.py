@@ -623,19 +623,6 @@ def render_cosmonaut_dashboard(
     </div>
     """
 
-    # --------------------------------------------------------------------------
-    # SECTION J: ANNOUNCEMENTS PREVIEW
-    # --------------------------------------------------------------------------
-    ann_items = []
-    for ann in cadet_anns[:2]:
-        ann_items.append(f"""
-        <div style="padding:10px 14px; background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:8px;">
-            <div style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(ann.title)}</div>
-            <div style="font-size:11.5px; color:var(--frost-navy-75); margin-top:2px; line-height:1.4;">{escape(ann.message[:120])}...</div>
-        </div>
-        """)
-    anns_html = "".join(ann_items) if ann_items else "<div style='font-size:12px; color:var(--frost-navy-50);'>No pending broadcast announcements.</div>"
-
     return f"""
     <div>
         <!-- SECTION A: Personal Welcome / Dossier Header -->
@@ -815,38 +802,6 @@ def render_cosmonaut_dashboard(
                 </span>
             </div>
             {diagnostics_html}
-        </div>
-
-        <!-- SECTION J: Broadcast Announcements & Milestone Deadline Status -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:20px;">
-            <div class="liquid-glass-card" style="padding:22px 24px;">
-                <div style="margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:8px;">
-                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Broadcast Announcements</h3>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">Official directives from Dr. Elena Vance and academy mentors.</div>
-                </div>
-                {anns_html}
-            </div>
-
-            <div class="liquid-glass-card" style="padding:22px 24px;">
-                <div style="margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Milestone Deadline Status</h3>
-                        <div style="font-size:12px; color:var(--frost-navy-50);">Submission schedules and evaluated extension requests.</div>
-                    </div>
-                    <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:3px 10px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_extensions')">
-                        Extensions Hub &rarr;
-                    </button>
-                </div>
-                <div style="padding:10px 14px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12.5px;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                        <strong>ING-104 Milestone Deadline:</strong>
-                        <span style="font-family:var(--font-family-mono); font-weight:800; color:var(--deep-frozen-midnight);">2026-12-02</span>
-                    </div>
-                    <div style="font-size:12px; color:var(--frost-navy-75);">
-                        Deliverable package for Attempt #2 submitted on 2026-11-07. Awaiting marksheet evaluation.
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
     """

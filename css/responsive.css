@@ -308,3 +308,66 @@ table {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ==========================================================================
+   9. CADET RISK & LEADERBOARD TABLE STICKY COLUMNS (MOBILE / TABLET)
+   Ensures cadet name and action buttons stay in view during horizontal scroll
+   ========================================================================== */
+@media (max-width: 900px) {
+  .cadet-risk-table th:first-child,
+  .cadet-risk-table td:first-child {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 3 !important;
+    background: rgba(240, 246, 255, 0.98) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
+    box-shadow: 2px 0 6px rgba(7, 22, 41, 0.08) !important;
+  }
+
+  .cadet-risk-table th:last-child,
+  .cadet-risk-table td:last-child {
+    position: sticky !important;
+    right: 0 !important;
+    z-index: 3 !important;
+    background: rgba(240, 246, 255, 0.98) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
+    box-shadow: -2px 0 6px rgba(7, 22, 41, 0.08) !important;
+  }
+}
+
+/* ==========================================================================
+   10. MOBILE LIQUID GLASS GPU ACCELERATION & PREFERS-REDUCED-MOTION
+   Replaces heavy SVG displacement filters with pure GPU blur on mobile
+   ========================================================================== */
+@media (max-width: 768px) {
+  .liquid-glass-card,
+  .liquid-glass-panel,
+  .liquid-glass-modal {
+    -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
+    backdrop-filter: blur(12px) saturate(150%) !important;
+  }
+
+  /* Safe touch target padding for interactive buttons and pills */
+  button,
+  .btn-metal,
+  .btn-secondary,
+  .btn-liquid,
+  select,
+  input[type="text"],
+  input[type="url"],
+  input[type="number"] {
+    min-height: 38px;
+  }
+}
+
+/* Accessibility: Respect user motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

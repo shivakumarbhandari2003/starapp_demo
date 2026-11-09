@@ -215,6 +215,8 @@ def get_guardian_cohort_profiles(
     demos = get_dashboard_demo_cosmonauts()
     return [astraea] + list(demos)
 
+_COHORT_ANALYTICS_CACHE: Dict[str, Any] = {}
+
 def calculate_guardian_cohort_analytics(
     cohort_profiles: List[Dict[str, Any]],
     actual_subs: List[ProjectSubmission],
@@ -222,7 +224,13 @@ def calculate_guardian_cohort_analytics(
 ) -> Dict[str, Any]:
     """
     Computes comprehensive cohort-wide metrics across all 6 profiles.
+    Optimized with memoization cache to eliminate redundant computation on non-mutating renders.
     """
+    asms_sum = sum(getattr(a, "total_marks", 0) for a in actual_asms)
+    cache_key = f"{len(cohort_profiles)}_{len(actual_subs)}_{len(actual_asms)}_{asms_sum}"
+    if _COHORT_ANALYTICS_CACHE.get("key") == cache_key:
+        return dict(_COHORT_ANALYTICS_CACHE["data"])
+
     total_profiles = len(cohort_profiles)
     actual_count = sum(1 for p in cohort_profiles if not p.get("is_demo", False))
     demo_count = sum(1 for p in cohort_profiles if p.get("is_demo", False))
@@ -399,7 +407,7 @@ def calculate_guardian_cohort_analytics(
     weekly_velocity = round(total_completed_badges / 6.0, 1) if total_completed_badges else 0.0
     total_marks_sum = round(sum(a["total_marks"] for a in all_approved_evals), 1)
 
-    return {
+    result = {
         "total_profiles": total_profiles,
         "actual_count": actual_count,
         "demo_count": demo_count,
@@ -422,6 +430,10 @@ def calculate_guardian_cohort_analytics(
         "badge_performance": badge_performance,
         "weekly_trends": weekly_trends
     }
+
+    _COHORT_ANALYTICS_CACHE["key"] = cache_key
+    _COHORT_ANALYTICS_CACHE["data"] = result
+    return result
 
 def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort") -> Dict[str, str]:
     """

@@ -130,6 +130,8 @@ def calculate_cosmonaut_score_summary(
         "criterion_averages": crit_avgs
     }
 
+_LEADERBOARD_CACHE: Dict[str, Any] = {}
+
 def calculate_batch_leaderboard(
     cosmonauts: List[Any],
     all_assessments: List[AssessmentMarksheet]
@@ -139,7 +141,13 @@ def calculate_batch_leaderboard(
     Ranking criteria:
     1. Average score across approved badges (/50)
     2. Number of completed badges
+    Optimized with memoization cache to eliminate redundant sorting on non-mutating renders.
     """
+    asms_sum = sum(getattr(a, "total_marks", 0) for a in all_assessments)
+    cache_key = f"{len(cosmonauts)}_{len(all_assessments)}_{asms_sum}"
+    if _LEADERBOARD_CACHE.get("key") == cache_key:
+        return [dict(item) for item in _LEADERBOARD_CACHE["data"]]
+
     leaderboard = []
     asms_by_user: Dict[str, List[AssessmentMarksheet]] = {}
     for a in all_assessments:
@@ -165,7 +173,9 @@ def calculate_batch_leaderboard(
     for idx, item in enumerate(leaderboard, start=1):
         item["rank"] = idx
 
-    return leaderboard
+    _LEADERBOARD_CACHE["key"] = cache_key
+    _LEADERBOARD_CACHE["data"] = leaderboard
+    return [dict(item) for item in leaderboard]
 
 def calculate_batch_aggregate_analytics(
     cosmonauts: List[Any],

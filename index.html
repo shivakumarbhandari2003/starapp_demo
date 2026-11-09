@@ -169,6 +169,17 @@ controller.initialize(stored_data, session_data)
 
     // Launch on DOM ready
     window.addEventListener("DOMContentLoaded", initializeStarApp);
+
+    // Register Service Worker for instant cached startup when served over HTTP/HTTPS
+    if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").then((reg) => {
+          console.log("[StarApp] Service Worker active, scope:", reg.scope);
+        }).catch((err) => {
+          console.warn("[StarApp] Service Worker registration skipped:", err);
+        });
+      });
+    }
   </script>
 </body>
 </html>

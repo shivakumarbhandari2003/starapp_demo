@@ -506,7 +506,7 @@ def render_guardian_dashboard(
         </div>
 
         <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; text-align:left;">
+            <table class="cadet-risk-table" style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
                     <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:10.5px; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
                         <th style="padding:8px 14px; text-align:center;">Rank</th>
@@ -619,7 +619,7 @@ def render_guardian_dashboard(
         </div>
 
         <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; text-align:left;">
+            <table class="cadet-risk-table" style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
                     <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:11px; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
                         <th style="padding:12px 14px; text-align:left; width:18%;">Cosmonaut Cadet</th>
@@ -1330,7 +1330,7 @@ def render_guardian_badge_allotment(
         </div>
         """)
 
-    create_btn = render_metal_button(f'{get_icon("plus", 13, "margin-right:4px;")} Create New Milestone', "open_create_badge_modal", "{}")
+    create_btn = render_metal_button("Create New Milestone", "open_create_badge_modal", "{}", icon_svg=get_icon("plus", 13, "margin-right:4px;"))
 
     # Segmented Tab Filtering
     st_all = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "all" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
@@ -1409,7 +1409,7 @@ def render_guardian_badge_allotment(
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
             <div>
                 <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Badge Catalog & Allotment Manager</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50); margin:3px 0 0 0;">Schedule milestone timelines, update deadlines, and publish or revoke badge roadmaps.</p>
+
             </div>
             {create_btn}
         </div>

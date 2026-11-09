@@ -485,6 +485,157 @@
       } else {
         console.warn("[StarAppBridge] Controller not yet initialized. Queuing action:", action);
       }
+    },
+
+    // Smooth, targeted DOM reconciliation & scroll/focus preservation
+    updateAppRoot(newHtml) {
+      const root = document.getElementById("app-root");
+      if (!root) return;
+
+      // 1. Capture scroll positions of window and all scrollable sub-containers
+      const savedWindowY = window.scrollY || window.pageYOffset || 0;
+      const scrollSnapshots = [];
+      const scrollableElements = root.querySelectorAll("[id], .page-container, .main-content, .table-responsive, .modal-body, .review-workspace-grid");
+      scrollableElements.forEach((el, idx) => {
+        if (el.scrollTop > 0 || el.scrollLeft > 0) {
+          scrollSnapshots.push({
+            id: el.id || null,
+            className: el.className || null,
+            index: idx,
+            top: el.scrollTop,
+            left: el.scrollLeft
+          });
+        }
+      });
+
+      // 2. Capture active input focus and cursor selection
+      const activeEl = document.activeElement;
+      const activeId = (activeEl && activeEl !== document.body && activeEl.id) ? activeEl.id : null;
+      let selStart = null;
+      let selEnd = null;
+      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+        try {
+          selStart = activeEl.selectionStart;
+          selEnd = activeEl.selectionEnd;
+        } catch (e) {}
+      }
+
+      // 3. Reconcile DOM using safe morphing algorithm with innerHTML fallback
+      try {
+        const tempContainer = document.createElement("div");
+        tempContainer.id = "app-root";
+        tempContainer.innerHTML = newHtml;
+
+        // Recursive lightweight DOM morpher
+        function morph(oldEl, newEl) {
+          if (!oldEl || !newEl) return;
+          if (oldEl.nodeType !== newEl.nodeType) {
+            oldEl.replaceWith(newEl.cloneNode(true));
+            return;
+          }
+
+          // Text and comment nodes
+          if (oldEl.nodeType === 3) {
+            if (oldEl.nodeValue !== newEl.nodeValue) {
+              oldEl.nodeValue = newEl.nodeValue;
+            }
+            return;
+          }
+          if (oldEl.nodeType !== 1) return;
+
+          // Tag mismatch -> replace
+          if (oldEl.tagName !== newEl.tagName) {
+            oldEl.replaceWith(newEl.cloneNode(true));
+            return;
+          }
+
+          // Update attributes
+          const oldAttrs = oldEl.attributes;
+          const newAttrs = newEl.attributes;
+
+          for (let i = 0; i < newAttrs.length; i++) {
+            const attr = newAttrs[i];
+            if (attr.name !== "value" && oldEl.getAttribute(attr.name) !== attr.value) {
+              oldEl.setAttribute(attr.name, attr.value);
+            }
+          }
+          for (let i = oldAttrs.length - 1; i >= 0; i--) {
+            const attrName = oldAttrs[i].name;
+            if (!newEl.hasAttribute(attrName)) {
+              oldEl.removeAttribute(attrName);
+            }
+          }
+
+          // Handle form inputs value & checked preservation
+          if (oldEl.tagName === "INPUT" || oldEl.tagName === "TEXTAREA") {
+            if (oldEl !== document.activeElement && oldEl.value !== newEl.value) {
+              oldEl.value = newEl.value;
+            }
+            if (oldEl.type === "checkbox" || oldEl.type === "radio") {
+              oldEl.checked = newEl.checked;
+            }
+          } else if (oldEl.tagName === "SELECT") {
+            if (oldEl.value !== newEl.value) {
+              oldEl.value = newEl.value;
+            }
+          }
+
+          // Reconcile children
+          const oldChildren = Array.from(oldEl.childNodes);
+          const newChildren = Array.from(newEl.childNodes);
+          const maxLen = Math.max(oldChildren.length, newChildren.length);
+
+          for (let i = 0; i < maxLen; i++) {
+            const oChild = oldChildren[i];
+            const nChild = newChildren[i];
+
+            if (!oChild && nChild) {
+              oldEl.appendChild(nChild.cloneNode(true));
+            } else if (oChild && !nChild) {
+              oldEl.removeChild(oChild);
+            } else if (oChild && nChild) {
+              morph(oChild, nChild);
+            }
+          }
+        }
+
+        morph(root, tempContainer);
+      } catch (morphErr) {
+        // Safe graceful fallback to innerHTML if any unexpected DOM structure is encountered
+        console.warn("[StarAppBridge] Morph encountered notice, applying innerHTML update:", morphErr);
+        root.innerHTML = newHtml;
+      }
+
+      // 4. Restore scroll positions
+      if (savedWindowY > 0) {
+        window.scrollTo(0, savedWindowY);
+      }
+      scrollSnapshots.forEach(snap => {
+        let target = null;
+        if (snap.id) {
+          target = document.getElementById(snap.id);
+        }
+        if (!target && snap.className) {
+          target = root.querySelector("." + snap.className.split(" ")[0]);
+        }
+        if (target) {
+          target.scrollTop = snap.top;
+          target.scrollLeft = snap.left;
+        }
+      });
+
+      // 5. Restore active focus and cursor selection
+      if (activeId) {
+        const targetFocus = document.getElementById(activeId);
+        if (targetFocus && typeof targetFocus.focus === "function") {
+          targetFocus.focus();
+          if (selStart !== null && selEnd !== null && typeof targetFocus.setSelectionRange === "function") {
+            try {
+              targetFocus.setSelectionRange(selStart, selEnd);
+            } catch (e) {}
+          }
+        }
+      }
     }
   };
 })();

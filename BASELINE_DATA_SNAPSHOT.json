@@ -1,0 +1,679 @@
+{
+  "schema_version": 9,
+  "users": [
+    {
+      "id": "guardian_1",
+      "username": "guardian",
+      "email": "guardian@starapp.dev",
+      "role": "guardian",
+      "name": "Dr. Elena Vance",
+      "avatar": "EV"
+    },
+    {
+      "id": "cosmo_1",
+      "username": "astraea",
+      "email": "astraea@starapp.dev",
+      "role": "cosmonaut",
+      "name": "Astraea Nova",
+      "avatar": "AN"
+    }
+  ],
+  "profiles": [
+    {
+      "user_id": "cosmo_1",
+      "batch_name": "Orion-24",
+      "assigned_guardian_id": "guardian_1",
+      "guardian_credentials": "Ph.D. Distributed Systems & AI, Lead Academy Mentor",
+      "skills": [
+        "Data Governance",
+        "SQL Optimization",
+        "Data Modeling",
+        "Python ETL",
+        "Kafka Ingestion"
+      ],
+      "certifications": [
+        {
+          "name": "Enterprise Data Governance Associate",
+          "issuer": "Data Council",
+          "year": "2024"
+        },
+        {
+          "name": "Advanced Relational Modeling",
+          "issuer": "OpenData Org",
+          "year": "2025"
+        }
+      ]
+    }
+  ],
+  "badges": [
+    {
+      "id": "badge_gov_101",
+      "code": "GOV-101",
+      "title": "Governance Foundations",
+      "category": "Foundations",
+      "description": "Master data classification schemes, regulatory frameworks (GDPR, HIPAA, CCPA), and role-based data governance policies.",
+      "learning_outcomes": [
+        "Formulate comprehensive data stewardship agreements",
+        "Implement role-based access control and masking policies",
+        "Establish compliance reporting pipelines"
+      ],
+      "learning_topics": [
+        "Data Classification",
+        "Audit Trails",
+        "Privacy Compliance",
+        "Access Roles"
+      ],
+      "prerequisites": [],
+      "project_requirements": "Design a complete Data Governance Framework Charter and Access Matrix for an enterprise healthcare dataset.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "default_timeline": {
+        "assignment_date": "2026-10-01",
+        "publication_date": "2026-10-01",
+        "learning_start_date": "2026-10-02",
+        "learning_end_date": "2026-10-10",
+        "project_start_date": "2026-10-11",
+        "project_end_date": "2026-10-20",
+        "submission_deadline": "2026-10-22",
+        "review_date": "2026-10-25",
+        "expected_award_date": "2026-10-26"
+      },
+      "is_allocated": true
+    },
+    {
+      "id": "badge_cur_102",
+      "code": "CUR-102",
+      "title": "Curation Foundations",
+      "category": "Foundations",
+      "description": "Learn dataset quality assessment, deduplication pipelines, anomaly detection heuristics, and silver-layer enrichment.",
+      "learning_outcomes": [
+        "Perform automated schema validation",
+        "Implement outlier detection and missing-value imputation",
+        "Document end-to-end data lineage"
+      ],
+      "learning_topics": [
+        "Data Profiling",
+        "Anomaly Detection",
+        "Lineage Graphs",
+        "Cleanliness Metrics"
+      ],
+      "prerequisites": [
+        "badge_gov_101"
+      ],
+      "project_requirements": "Build an automated quality profiling script and audit report verifying a dirty customer telemetry dataset.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "default_timeline": {
+        "assignment_date": "2026-10-15",
+        "publication_date": "2026-10-15",
+        "learning_start_date": "2026-10-16",
+        "learning_end_date": "2026-10-25",
+        "project_start_date": "2026-10-26",
+        "project_end_date": "2026-11-05",
+        "submission_deadline": "2026-11-08",
+        "review_date": "2026-11-12",
+        "expected_award_date": "2026-11-14"
+      },
+      "is_allocated": true
+    },
+    {
+      "id": "badge_dat_103",
+      "code": "DAT-103",
+      "title": "Data Model Foundations",
+      "category": "Foundations",
+      "description": "Architect normalized 3NF schemas, dimensional star/snowflake warehouses, slowly changing dimensions (SCD Type 2), and surrogate keys.",
+      "learning_outcomes": [
+        "Translate business requirements into relational ERDs",
+        "Design dimensional star schemas with fact and dimension tables",
+        "Handle historical tracking using SCD Type 2 strategies"
+      ],
+      "learning_topics": [
+        "3NF Normalization",
+        "Star Schemas",
+        "Grain Definition",
+        "SCD Strategies"
+      ],
+      "prerequisites": [
+        "badge_cur_102"
+      ],
+      "project_requirements": "Produce an architectural report and DDL statements for a high-volume fintech transaction warehouse.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "default_timeline": {
+        "assignment_date": "2026-11-01",
+        "publication_date": "2026-11-01",
+        "learning_start_date": "2026-11-02",
+        "learning_end_date": "2026-11-12",
+        "project_start_date": "2026-11-13",
+        "project_end_date": "2026-11-24",
+        "submission_deadline": "2026-11-26",
+        "review_date": "2026-11-29",
+        "expected_award_date": "2026-11-30"
+      },
+      "is_allocated": true
+    },
+    {
+      "id": "badge_ing_104",
+      "code": "ING-104",
+      "title": "Ingestion Foundations",
+      "category": "Core Engineering",
+      "description": "Implement robust batch and streaming ingest architectures, backpressure regulation, idempotency guarantees, and dead-letter queues.",
+      "learning_outcomes": [
+        "Construct fault-tolerant REST and webhook ingestion connectors",
+        "Guarantee exactly-once or idempotent delivery semantics",
+        "Route malformed payloads to DLQs with alerting triggers"
+      ],
+      "learning_topics": [
+        "Kafka / PubSub Ingestion",
+        "Dead Letter Queues",
+        "Idempotency",
+        "Backpressure"
+      ],
+      "prerequisites": [
+        "badge_dat_103"
+      ],
+      "project_requirements": "Implement an idempotent streaming ingestion consumer with a dead-letter recovery pipeline.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "default_timeline": {
+        "assignment_date": "2026-11-05",
+        "publication_date": "2026-11-05",
+        "learning_start_date": "2026-11-06",
+        "learning_end_date": "2026-11-18",
+        "project_start_date": "2026-11-19",
+        "project_end_date": "2026-11-30",
+        "submission_deadline": "2026-12-02",
+        "review_date": "2026-12-05",
+        "expected_award_date": "2026-12-07"
+      },
+      "is_allocated": true
+    },
+    {
+      "id": "badge_sql_201",
+      "code": "SQL-201",
+      "title": "SQL-1",
+      "category": "Core Engineering",
+      "description": "Deep dive into advanced analytic queries, window functions, recursive CTEs, indexing strategies (B-Tree vs Hash), and EXPLAIN query plan optimization.",
+      "learning_outcomes": [
+        "Execute complex cohort and retention window aggregations",
+        "Analyze query execution plans and resolve sequential table scans",
+        "Formulate recursive CTEs for hierarchical tree traversal"
+      ],
+      "learning_topics": [
+        "Window Functions",
+        "Query Plan Costing",
+        "Recursive CTEs",
+        "Partial Indexes"
+      ],
+      "prerequisites": [
+        "badge_dat_103"
+      ],
+      "project_requirements": "Optimize 5 pathological slow queries in an enterprise schema and document the 10x latency reduction.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "default_timeline": {
+        "assignment_date": "2026-11-10",
+        "publication_date": "2026-11-10",
+        "learning_start_date": "2026-11-11",
+        "learning_end_date": "2026-11-20",
+        "project_start_date": "2026-11-21",
+        "project_end_date": "2026-12-01",
+        "submission_deadline": "2026-12-03",
+        "review_date": "2026-12-06",
+        "expected_award_date": "2026-12-08"
+      },
+      "is_allocated": false
+    },
+    {
+      "id": "badge_ai_301",
+      "code": "AI-301",
+      "title": "AI Operating Systems Foundations",
+      "category": "Advanced AI",
+      "description": "Integrate autonomous LLM reasoning agents, embedding index retrievals, context window optimization, tool-use safety guardrails, and latency caching.",
+      "learning_outcomes": [
+        "Deploy local vector embedding pipelines",
+        "Construct deterministic tool-calling workflows for LLM agents",
+        "Implement safety filters and prompt injection shields"
+      ],
+      "learning_topics": [
+        "Vector Stores",
+        "Agentic Tool Calling",
+        "Context Compression",
+        "Prompt Defense"
+      ],
+      "prerequisites": [
+        "badge_sql_201"
+      ],
+      "project_requirements": "Build a secure agentic assistant that queries an internal knowledge base with tool verification.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [],
+      "default_timeline": {
+        "assignment_date": "2026-11-15",
+        "publication_date": "2026-11-15",
+        "learning_start_date": "2026-11-16",
+        "learning_end_date": "2026-12-01",
+        "project_start_date": "2026-12-02",
+        "project_end_date": "2026-12-15",
+        "submission_deadline": "2026-12-18",
+        "review_date": "2026-12-21",
+        "expected_award_date": "2026-12-23"
+      },
+      "is_allocated": false
+    },
+    {
+      "id": "badge_cld_202",
+      "code": "CLD-202",
+      "title": "Cloud Foundations",
+      "category": "Infrastructure",
+      "description": "Deploy immutable cloud infrastructure with declarative specs, VPC isolation, zero-trust security groups, and object store lifecycle policies.",
+      "learning_outcomes": [
+        "Provision secure multi-tier cloud network topologies",
+        "Configure cloud object storage with tiering and replication",
+        "Enforce IAM principle of least privilege"
+      ],
+      "learning_topics": [
+        "VPC Topologies",
+        "Object Storage",
+        "IAM Least Privilege",
+        "CloudWatch / Logs"
+      ],
+      "prerequisites": [
+        "badge_gov_101"
+      ],
+      "project_requirements": "Write a complete cloud infrastructure blueprint specification for a HIPAA-compliant app environment.",
+      "is_published": true,
+      "assigned_cosmonaut_ids": [],
+      "default_timeline": {
+        "assignment_date": "2026-10-20",
+        "publication_date": "2026-10-20",
+        "learning_start_date": "2026-10-21",
+        "learning_end_date": "2026-11-02",
+        "project_start_date": "2026-11-03",
+        "project_end_date": "2026-11-15",
+        "submission_deadline": "2026-11-18",
+        "review_date": "2026-11-21",
+        "expected_award_date": "2026-11-23"
+      },
+      "is_allocated": false
+    }
+  ],
+  "timelines": [
+    {
+      "badge_id": "badge_gov_101",
+      "cosmonaut_id": "cosmo_1",
+      "assignment_date": "2026-10-01",
+      "publication_date": "2026-10-01",
+      "learning_start_date": "2026-10-02",
+      "learning_end_date": "2026-10-10",
+      "project_start_date": "2026-10-11",
+      "project_end_date": "2026-10-20",
+      "submission_deadline": "2026-10-22",
+      "review_date": "2026-10-25",
+      "expected_award_date": "2026-10-26",
+      "actual_award_date": "2026-10-26",
+      "status": "completed"
+    },
+    {
+      "badge_id": "badge_cur_102",
+      "cosmonaut_id": "cosmo_1",
+      "assignment_date": "2026-10-15",
+      "publication_date": "2026-10-15",
+      "learning_start_date": "2026-10-16",
+      "learning_end_date": "2026-10-25",
+      "project_start_date": "2026-10-26",
+      "project_end_date": "2026-11-05",
+      "submission_deadline": "2026-11-08",
+      "review_date": "2026-11-12",
+      "expected_award_date": "2026-11-14",
+      "actual_award_date": "2026-11-14",
+      "status": "completed"
+    },
+    {
+      "badge_id": "badge_dat_103",
+      "cosmonaut_id": "cosmo_1",
+      "assignment_date": "2026-11-01",
+      "publication_date": "2026-11-01",
+      "learning_start_date": "2026-11-02",
+      "learning_end_date": "2026-11-12",
+      "project_start_date": "2026-11-13",
+      "project_end_date": "2026-11-24",
+      "submission_deadline": "2026-11-26",
+      "review_date": "2026-11-29",
+      "expected_award_date": "2026-11-30",
+      "actual_award_date": "2026-11-30",
+      "status": "completed"
+    },
+    {
+      "badge_id": "badge_ing_104",
+      "cosmonaut_id": "cosmo_1",
+      "assignment_date": "2026-11-05",
+      "publication_date": "2026-11-05",
+      "learning_start_date": "2026-11-06",
+      "learning_end_date": "2026-11-18",
+      "project_start_date": "2026-11-19",
+      "project_end_date": "2026-11-30",
+      "submission_deadline": "2026-12-02",
+      "review_date": "2026-12-05",
+      "expected_award_date": "2026-12-07",
+      "actual_award_date": null,
+      "status": "active"
+    },
+    {
+      "badge_id": "badge_sql_201",
+      "cosmonaut_id": "cosmo_1",
+      "assignment_date": "2026-11-10",
+      "publication_date": "2026-11-10",
+      "learning_start_date": "2026-11-11",
+      "learning_end_date": "2026-11-20",
+      "project_start_date": "2026-11-21",
+      "project_end_date": "2026-12-01",
+      "submission_deadline": "2026-12-03",
+      "review_date": "2026-12-06",
+      "expected_award_date": "2026-12-08",
+      "actual_award_date": null,
+      "status": "locked"
+    }
+  ],
+  "submissions": [
+    {
+      "id": "sub_cosmo_1_gov",
+      "badge_id": "badge_gov_101",
+      "cosmonaut_id": "cosmo_1",
+      "attempt_number": 1,
+      "submission_type": "pdf",
+      "payload": "data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag==",
+      "file_name": "Astraea_Governance_Blueprint.pdf",
+      "submitted_at": "2026-10-21T14:30:00Z",
+      "status": "approved",
+      "pdf_name": "Astraea_Governance_Blueprint.pdf",
+      "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+      "code_name": "healthcare_rbac_policy.sql",
+      "code_payload": "-- StarApp Academy: Enterprise Data Governance Framework\n-- Target: HIPAA & GDPR Compliant Relational Security & Row Filtering\nCREATE SCHEMA IF NOT EXISTS clinical_vault;\n\nCREATE TABLE clinical_vault.patient_records (\n    patient_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    ssn_hash VARCHAR(64) NOT NULL,\n    full_name_encrypted BYTEA NOT NULL,\n    diagnosis_code VARCHAR(12) NOT NULL,\n    attending_physician_id UUID NOT NULL,\n    data_classification VARCHAR(20) DEFAULT 'RESTRICTED_PHI'\n);\n\nALTER TABLE clinical_vault.patient_records ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY practitioner_access_policy ON clinical_vault.patient_records\n    FOR SELECT TO clinical_staff\n    USING (attending_physician_id = current_setting('jwt.claims.physician_id')::UUID);\n\nCREATE POLICY compliance_audit_policy ON clinical_vault.patient_records\n    FOR ALL TO compliance_officer\n    USING (true);",
+      "github_url": "https://github.com/starapp-cosmonauts/governance-framework-astraea"
+    },
+    {
+      "id": "sub_cosmo_1_cur",
+      "badge_id": "badge_cur_102",
+      "cosmonaut_id": "cosmo_1",
+      "attempt_number": 1,
+      "submission_type": "github",
+      "payload": "https://github.com/starapp-cosmonauts/curation-pipeline-astraea",
+      "file_name": "curation-pipeline-astraea",
+      "submitted_at": "2026-11-03T09:15:00Z",
+      "status": "approved",
+      "pdf_name": "Astraea_Dataset_Curation_Audit.pdf",
+      "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+      "code_name": "curation_anomaly_detector.py",
+      "code_payload": "\"\"\"\nStarApp Academy: Automated Dataset Curation & Anomaly Detection\nSilver-layer enrichment and deduplication pipeline\n\"\"\"\nimport pandas as pd\nimport numpy as np\n\ndef validate_schema_and_profile(df: pd.DataFrame) -> dict:\n    profile = {\n        \"record_count\": len(df),\n        \"duplicate_count\": df.duplicated(subset=[\"telemetry_id\"]).sum(),\n        \"missing_values\": df.isnull().sum().to_dict(),\n        \"anomalous_outliers\": []\n    }\n    if \"latency_ms\" in df.columns:\n        mean_lat = df[\"latency_ms\"].mean()\n        std_lat = df[\"latency_ms\"].std()\n        outliers = df[np.abs(df[\"latency_ms\"] - mean_lat) > (3 * std_lat)]\n        profile[\"anomalous_outliers\"] = outliers[\"telemetry_id\"].tolist()\n    return profile",
+      "github_url": "https://github.com/starapp-cosmonauts/curation-pipeline-astraea"
+    },
+    {
+      "id": "sub_cosmo_1_dat",
+      "badge_id": "badge_dat_103",
+      "cosmonaut_id": "cosmo_1",
+      "attempt_number": 1,
+      "submission_type": "pdf",
+      "payload": "data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrp/Og0MTGCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iag==",
+      "file_name": "Astraea_Fintech_Data_Warehouse.pdf",
+      "submitted_at": "2026-11-05T18:00:00Z",
+      "status": "approved",
+      "pdf_name": "Astraea_Fintech_Data_Warehouse.pdf",
+      "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+      "code_name": "fintech_dimensional_model.sql",
+      "code_payload": "-- StarApp Academy: Fintech Transaction Star Schema with SCD Type 2\nCREATE TABLE dim_customer_scd2 (\n    customer_key BIGSERIAL PRIMARY KEY,\n    customer_id VARCHAR(32) NOT NULL,\n    risk_tier VARCHAR(10) NOT NULL,\n    kyc_status VARCHAR(20) NOT NULL,\n    valid_from TIMESTAMP WITH TIME ZONE NOT NULL,\n    valid_to TIMESTAMP WITH TIME ZONE,\n    is_current BOOLEAN DEFAULT TRUE\n);\n\nCREATE TABLE fact_ledger_transactions (\n    transaction_id UUID PRIMARY KEY,\n    customer_key BIGINT REFERENCES dim_customer_scd2(customer_key),\n    amount_cents BIGINT NOT NULL,\n    settlement_status VARCHAR(20) NOT NULL,\n    transacted_at TIMESTAMP WITH TIME ZONE NOT NULL\n) PARTITION BY RANGE (transacted_at);",
+      "github_url": "https://github.com/starapp-cosmonauts/fintech-warehouse-astraea"
+    },
+    {
+      "id": "sub_cosmo_1_ing_1",
+      "badge_id": "badge_ing_104",
+      "cosmonaut_id": "cosmo_1",
+      "attempt_number": 1,
+      "submission_type": "github",
+      "payload": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v1",
+      "file_name": "ingestion-service-astraea-v1",
+      "submitted_at": "2026-11-06T10:00:00Z",
+      "status": "resubmission_requested",
+      "pdf_name": "ING104_Draft_Spec.pdf",
+      "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+      "code_name": "basic_kafka_consumer_v1.py",
+      "code_payload": "# Attempt #1: Basic Consumer without Idempotency keys (Resubmitted)\nfrom kafka import KafkaConsumer\nconsumer = KafkaConsumer(\"telemetry-events\", bootstrap_servers=[\"localhost:9092\"])\nfor msg in consumer:\n    save_to_db(msg.value) # Flaw: duplicate writes on rebalance",
+      "github_url": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v1"
+    },
+    {
+      "id": "sub_cosmo_1_ing_2",
+      "badge_id": "badge_ing_104",
+      "cosmonaut_id": "cosmo_1",
+      "attempt_number": 2,
+      "submission_type": "github",
+      "payload": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v2-fix",
+      "file_name": "ingestion-service-astraea-v2-idempotent",
+      "submitted_at": "2026-11-07T14:30:00Z",
+      "status": "pending",
+      "pdf_name": "Astraea_ING104_Idempotent_Architecture.pdf",
+      "pdf_payload": "data/Chemistry%20Syllabus.pdf",
+      "code_name": "idempotent_streaming_consumer.py",
+      "code_payload": "\"\"\"\nStarApp Academy: High-Throughput Idempotent Kafka Stream Consumer\nBatch Orion-24: Ingestion Foundations (Attempt #2 Deliverable)\nCosmonaut: Astraea Nova (cosmo_1)\nMentor: Dr. Elena Vance (guardian_1)\n\"\"\"\nimport json\nimport logging\nfrom typing import Dict, Any\n\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(\"IdempotentIngestion\")\n\nclass IdempotentKafkaConsumer:\n    def __init__(self, dedup_store, dlq_publisher):\n        self.dedup_store = dedup_store\n        self.dlq_publisher = dlq_publisher\n        self.processed_count = 0\n        self.dlq_count = 0\n\n    def process_event(self, raw_message: str) -> bool:\n        try:\n            payload = json.loads(raw_message)\n            idempotency_key = payload.get(\"idempotency_key\")\n            if not idempotency_key:\n                raise ValueError(\"Missing mandatory idempotency_key in payload header\")\n\n            # Check if payload was already processed (atomic deduplication check)\n            if self.dedup_store.exists(idempotency_key):\n                logger.info(f\"Duplicate event skipped: {idempotency_key}\")\n                return True\n\n            # Execute transactional ingestion\n            self._write_to_primary_store(payload)\n            self.dedup_store.set(idempotency_key, ttl_seconds=86400)\n            self.processed_count += 1\n            return True\n\n        except Exception as exc:\n            logger.error(f\"Ingestion anomaly, routing to DLQ: {exc}\")\n            self.dlq_publisher.publish_dead_letter(raw_message, str(exc))\n            self.dlq_count += 1\n            return False\n\n    def _write_to_primary_store(self, payload: Dict[str, Any]):\n        logger.info(f\"Successfully committed payload to Bronze ingestion lake: {payload.get('id')}\")\n",
+      "github_url": "https://github.com/starapp-cosmonauts/ingestion-service-astraea/tree/v2-fix"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "asm_c1_gov",
+      "submission_id": "sub_cosmo_1_gov",
+      "attempt_number": 1,
+      "badge_id": "badge_gov_101",
+      "cosmonaut_id": "cosmo_1",
+      "reviewer_id": "guardian_1",
+      "reviewer_name": "Dr. Elena Vance",
+      "reviewed_at": "2026-10-24T16:00:00Z",
+      "decision": "approve",
+      "business_understanding": 10.0,
+      "architecture_report": 9.5,
+      "technical_knowledge": 9.5,
+      "presentation": 10.0,
+      "qa": 9.0,
+      "total_marks": 48.0,
+      "percentage": 96.0,
+      "strength_areas": "Flawless articulation of HIPAA/GDPR boundaries; exemplary role-based matrix.",
+      "improvement_areas": "Document automated edge-gateway policy triggers.",
+      "overall_feedback": "Exemplary standard for enterprise governance blueprints. Approved."
+    },
+    {
+      "id": "asm_c1_cur",
+      "submission_id": "sub_cosmo_1_cur",
+      "attempt_number": 1,
+      "badge_id": "badge_cur_102",
+      "cosmonaut_id": "cosmo_1",
+      "reviewer_id": "guardian_1",
+      "reviewer_name": "Dr. Elena Vance",
+      "reviewed_at": "2026-11-04T14:30:00Z",
+      "decision": "approve",
+      "business_understanding": 9.5,
+      "architecture_report": 9.5,
+      "technical_knowledge": 10.0,
+      "presentation": 9.0,
+      "qa": 9.0,
+      "total_marks": 47.0,
+      "percentage": 94.0,
+      "strength_areas": "High-throughput deduplication heuristic; clean statistical variance charts.",
+      "improvement_areas": "Explore Bayesian adaptive imputation.",
+      "overall_feedback": "Deep comprehension of silver-layer data quality. Approved."
+    },
+    {
+      "id": "asm_c1_dat",
+      "submission_id": "sub_cosmo_1_dat",
+      "attempt_number": 1,
+      "badge_id": "badge_dat_103",
+      "cosmonaut_id": "cosmo_1",
+      "reviewer_id": "guardian_1",
+      "reviewer_name": "Dr. Elena Vance",
+      "reviewed_at": "2026-11-06T11:00:00Z",
+      "decision": "approve",
+      "business_understanding": 10.0,
+      "architecture_report": 10.0,
+      "technical_knowledge": 10.0,
+      "presentation": 9.5,
+      "qa": 9.5,
+      "total_marks": 49.0,
+      "percentage": 98.0,
+      "strength_areas": "Exceptional star schema grain definition and SCD Type 2 tracking strategy.",
+      "improvement_areas": "Consider partitioning on timestamp key.",
+      "overall_feedback": "Flawless data warehouse architecture. Ready for Ingestion Foundations."
+    },
+    {
+      "id": "asm_c1_ing_1",
+      "submission_id": "sub_cosmo_1_ing_1",
+      "attempt_number": 1,
+      "badge_id": "badge_ing_104",
+      "cosmonaut_id": "cosmo_1",
+      "reviewer_id": "guardian_1",
+      "reviewer_name": "Dr. Elena Vance",
+      "reviewed_at": "2026-11-06T18:00:00Z",
+      "decision": "resubmission_requested",
+      "business_understanding": 7.0,
+      "architecture_report": 6.5,
+      "technical_knowledge": 6.5,
+      "presentation": 6.0,
+      "qa": 6.0,
+      "total_marks": 32.0,
+      "percentage": 64.0,
+      "strength_areas": "Basic streaming consumer connects reliably and processes happy-path events.",
+      "improvement_areas": "Lacks idempotency keys in Kafka consumer offsets; duplicate payloads result in duplicate DB writes.",
+      "overall_feedback": "Promising start, but critical enterprise ingestion requirements (idempotency and DLQ backoff) must be resolved. Please resubmit Attempt 2."
+    }
+  ],
+  "materials": [],
+  "extensions": [
+    {
+      "id": "ext_1",
+      "badge_id": "badge_ing_104",
+      "cosmonaut_id": "cosmo_1",
+      "current_deadline": "2026-12-02",
+      "proposed_deadline": "2026-12-10",
+      "reason": "Encountered backpressure buffering bottlenecks in high-volume mock stream. Requesting additional days to benchmark Kafka consumer offsets.",
+      "status": "pending",
+      "guardian_response": "",
+      "requested_at": "2026-11-06T11:00:00Z",
+      "decided_at": null
+    }
+  ],
+  "announcements": [
+    {
+      "id": "ann_1",
+      "title": "StarApp Cohort Orientation & Academy Guidelines",
+      "message": "Welcome to Batch Orion-24! Please ensure your project submissions strictly follow the 5-criterion 50-mark assessment rubric guidelines before submitting deliverables.",
+      "author_id": "guardian_1",
+      "author_name": "Dr. Elena Vance",
+      "target_type": "all",
+      "target_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "badge_id": "badge_gov_101",
+      "published_at": "2026-10-01T08:00:00Z",
+      "expiry_date": "",
+      "read_by_cosmonaut_ids": [
+        "cosmo_1"
+      ]
+    },
+    {
+      "id": "ann_2",
+      "title": "Advanced Ingestion Architecture Mentorship Clinic",
+      "message": "We are hosting an interactive session on Kafka consumer offsets, idempotency keys, and dead-letter queues this Friday at 14:00 UTC.",
+      "author_id": "guardian_1",
+      "author_name": "Dr. Elena Vance",
+      "target_type": "all",
+      "target_cosmonaut_ids": [
+        "cosmo_1"
+      ],
+      "badge_id": "badge_ing_104",
+      "published_at": "2026-11-05T10:00:00Z",
+      "expiry_date": "",
+      "read_by_cosmonaut_ids": []
+    }
+  ],
+  "activities": [
+    {
+      "id": "act_1",
+      "timestamp": "2026-10-01T08:00:00Z",
+      "event_type": "batch_initialized",
+      "actor_id": "guardian_1",
+      "actor_name": "Dr. Elena Vance",
+      "cosmonaut_id": "",
+      "badge_id": "",
+      "summary": "Training Batch Orion-24 Initialized",
+      "details": "Academy portal initialized with Mentor Dr. Elena Vance and Cosmonaut Astraea Nova."
+    },
+    {
+      "id": "act_2",
+      "timestamp": "2026-10-24T16:00:00Z",
+      "event_type": "badge_awarded",
+      "actor_id": "guardian_1",
+      "actor_name": "Dr. Elena Vance",
+      "cosmonaut_id": "cosmo_1",
+      "badge_id": "badge_gov_101",
+      "summary": "Milestone Awarded: GOV-101",
+      "details": "Astraea Nova passed Governance Foundations with 48.0/50 (96.0%)."
+    },
+    {
+      "id": "act_3",
+      "timestamp": "2026-11-04T14:30:00Z",
+      "event_type": "badge_awarded",
+      "actor_id": "guardian_1",
+      "actor_name": "Dr. Elena Vance",
+      "cosmonaut_id": "cosmo_1",
+      "badge_id": "badge_cur_102",
+      "summary": "Milestone Awarded: CUR-102",
+      "details": "Astraea Nova passed Curation Foundations with 47.0/50 (94.0%)."
+    },
+    {
+      "id": "act_4",
+      "timestamp": "2026-11-06T11:00:00Z",
+      "event_type": "badge_awarded",
+      "actor_id": "guardian_1",
+      "actor_name": "Dr. Elena Vance",
+      "cosmonaut_id": "cosmo_1",
+      "badge_id": "badge_dat_103",
+      "summary": "Milestone Awarded: DAT-103",
+      "details": "Astraea Nova passed Data Model Foundations with 49.0/50 (98.0%)."
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_1",
+      "recipient_id": "cosmo_1",
+      "title": "Welcome to StarApp Academy",
+      "message": "Your training journey has begun. Review your active milestones in the Learning Roadmap.",
+      "link_section": "c_roadmap",
+      "created_at": "2026-10-01T08:05:00Z",
+      "is_read": true
+    },
+    {
+      "id": "notif_2",
+      "recipient_id": "cosmo_1",
+      "title": "Milestone Awarded: DAT-103",
+      "message": "Dr. Elena Vance approved your Data Model Foundations project deliverable (49.0/50).",
+      "link_section": "c_results",
+      "created_at": "2026-11-06T11:05:00Z",
+      "is_read": false
+    },
+    {
+      "id": "notif_3",
+      "recipient_id": "guardian_1",
+      "title": "Ingestion Deliverable Submitted",
+      "message": "Astraea Nova submitted Attempt #2 for ING-104 Ingestion Foundations.",
+      "link_section": "g_reviews",
+      "created_at": "2026-11-07T14:30:00Z",
+      "is_read": false
+    }
+  ]
+}

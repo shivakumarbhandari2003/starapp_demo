@@ -31,6 +31,15 @@ class DataStore:
         self.activities: List[ActivityEvent] = []
         self.notifications: List[Notification] = []
         self.is_loaded = False
+        self.version: int = 1
+        self.dirty: bool = False
+        self._cached_json: Optional[str] = None
+
+    def mark_dirty(self):
+        """Flags store as modified to trigger targeted JSON serialization and persistence."""
+        self.version += 1
+        self.dirty = True
+        self._cached_json = None
 
     def load_from_dict(self, data: Dict[str, Any]):
         self.users = {u["id"]: User.from_dict(u) for u in data.get("users", [])}
@@ -51,6 +60,9 @@ class DataStore:
         self.activities = [ActivityEvent.from_dict(act) for act in data.get("activities", [])]
         self.notifications = [Notification.from_dict(n) for n in data.get("notifications", [])]
         self.is_loaded = True
+        self.version += 1
+        self.dirty = False
+        self._cached_json = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -69,7 +81,10 @@ class DataStore:
         }
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2)
+        if not self.dirty and self._cached_json is not None:
+            return self._cached_json
+        self._cached_json = json.dumps(self.to_dict(), indent=2)
+        return self._cached_json
 
     def load_from_json(self, json_str: Optional[str]):
         if json_str and json_str.strip():
@@ -112,13 +127,23 @@ class DataStore:
             )
         return self.profiles[user_id]
 
+    def save_user(self, user: User):
+        self.users[user.id] = user
+        self.mark_dirty()
+
+    def save_profile(self, profile: CosmonautProfile):
+        self.profiles[profile.user_id] = profile
+        self.mark_dirty()
+
     def update_cosmonaut_skills(self, user_id: str, skills: List[str]):
         profile = self.get_cosmonaut_profile(user_id)
         profile.skills = [s.strip() for s in skills if s.strip()]
+        self.mark_dirty()
 
     def update_cosmonaut_certifications(self, user_id: str, certifications: List[Dict[str, str]]):
         profile = self.get_cosmonaut_profile(user_id)
         profile.certifications = certifications
+        self.mark_dirty()
 
     # --- Badges ---
     def get_all_badges(self) -> List[Badge]:
@@ -129,6 +154,7 @@ class DataStore:
 
     def save_badge(self, badge: Badge):
         self.badges[badge.id] = badge
+        self.mark_dirty()
 
     def get_badges_for_cosmonaut(self, cosmo_id: str) -> List[Badge]:
         return [b for b in self.badges.values() if b.is_published and cosmo_id in b.assigned_cosmonaut_ids]
@@ -141,6 +167,7 @@ class DataStore:
     def save_timeline(self, timeline: BadgeTimeline):
         key = f"{timeline.badge_id}_{timeline.cosmonaut_id}"
         self.timelines[key] = timeline
+        self.mark_dirty()
 
     # --- Submissions ---
     def get_all_submissions(self) -> List[ProjectSubmission]:
@@ -158,6 +185,7 @@ class DataStore:
 
     def save_submission(self, sub: ProjectSubmission):
         self.submissions[sub.id] = sub
+        self.mark_dirty()
 
     # --- Assessments ---
     def get_all_assessments(self) -> List[AssessmentMarksheet]:
@@ -180,6 +208,7 @@ class DataStore:
 
     def save_assessment(self, asm: AssessmentMarksheet):
         self.assessments[asm.id] = asm
+        self.mark_dirty()
 
     # --- Materials ---
     def get_materials(self, badge_id: Optional[str] = None) -> List[LearningMaterial]:
@@ -193,10 +222,12 @@ class DataStore:
 
     def save_material(self, mat: LearningMaterial):
         self.materials[mat.id] = mat
+        self.mark_dirty()
 
     def delete_material(self, mat_id: str):
         if mat_id in self.materials:
             del self.materials[mat_id]
+            self.mark_dirty()
 
     # --- Extensions ---
     def get_all_extensions(self) -> List[DeadlineExtension]:
@@ -210,6 +241,7 @@ class DataStore:
 
     def save_extension(self, ext: DeadlineExtension):
         self.extensions[ext.id] = ext
+        self.mark_dirty()
 
     # --- Announcements ---
     def get_all_announcements(self) -> List[Announcement]:
@@ -224,12 +256,14 @@ class DataStore:
 
     def save_announcement(self, ann: Announcement):
         self.announcements[ann.id] = ann
+        self.mark_dirty()
 
     def mark_announcement_read(self, ann_id: str, cosmo_id: str):
         if ann_id in self.announcements:
             ann = self.announcements[ann_id]
             if cosmo_id not in ann.read_by_cosmonaut_ids:
                 ann.read_by_cosmonaut_ids.append(cosmo_id)
+                self.mark_dirty()
 
     # --- Activities ---
     def get_activities(self, cosmo_id: Optional[str] = None) -> List[ActivityEvent]:
@@ -261,6 +295,7 @@ class DataStore:
             details=details
         )
         self.activities.insert(0, event)
+        self.mark_dirty()
 
     # --- Notifications ---
     def get_notifications(self, user_id: str) -> List[Notification]:
@@ -279,17 +314,20 @@ class DataStore:
             is_read=False
         )
         self.notifications.insert(0, notif)
+        self.mark_dirty()
 
     def mark_notification_read(self, notif_id: str):
         for n in self.notifications:
             if n.id == notif_id:
                 n.is_read = True
+                self.mark_dirty()
                 break
 
     def mark_all_notifications_read(self, user_id: str):
         for n in self.notifications:
             if n.recipient_id == user_id:
                 n.is_read = True
+        self.mark_dirty()
 
 # Global store instance
 store = DataStore()

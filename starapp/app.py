@@ -107,19 +107,25 @@ class StarAppController:
             except Exception as e:
                 print(f"[Controller] Session restore error: {e}")
 
-        self.sync_storage()
+        self.sync_storage(force_data=True)
         self.render()
 
-    def sync_storage(self):
-        """Persists current state snapshot to IndexedDB / localStorage via bridge."""
-        json_data = store.to_json()
+    def sync_storage(self, force_data: bool = False):
+        """
+        Persists current session state to sessionStorage.
+        Only serializes and writes domain data to IndexedDB / localStorage when
+        store.dirty is True or force_data is requested, avoiding expensive redundant writes.
+        """
         session_data = json.dumps({
             "user_id": self.current_user.id if self.current_user else None,
             "current_view": self.current_view
         })
         if IS_BROWSER and hasattr(js, "window") and hasattr(js.window, "StarAppBridge"):
-            js.window.StarAppBridge.setStore("data", json_data)
             js.window.StarAppBridge.setStore("session", session_data)
+            if store.dirty or force_data:
+                json_data = store.to_json()
+                js.window.StarAppBridge.setStore("data", json_data)
+                store.dirty = False
 
     def reload_data(self, stored_json: Optional[str] = None):
         """
@@ -356,6 +362,7 @@ class StarAppController:
             badge = store.get_badge(badge_id)
             if badge:
                 badge.is_published = True
+                store.save_badge(badge)
                 store.add_activity("badge_published", self.current_user.id, self.current_user.name, "", badge.id, f"Published {badge.code}: {badge.title} to learning roadmap")
                 self.set_flash(f"Published {badge.code} to Cosmonaut learning roadmaps.", "success")
 
@@ -364,6 +371,7 @@ class StarAppController:
             badge = store.get_badge(badge_id)
             if badge:
                 badge.is_published = False
+                store.save_badge(badge)
                 store.add_activity("badge_unpublished", self.current_user.id, self.current_user.name, "", badge.id, f"Unpublished {badge.code}: {badge.title}")
                 self.set_flash(f"Unpublished {badge.code} from active roadmaps.", "info")
 
@@ -422,6 +430,7 @@ class StarAppController:
                 profile = store.get_cosmonaut_profile(self.current_user.id)
                 if skill not in profile.skills:
                     profile.skills.append(skill)
+                    store.save_profile(profile)
                     self.set_flash(f"Added skill '{skill}' to profile.", "success")
 
         elif action == "remove_skill":
@@ -430,12 +439,14 @@ class StarAppController:
                 profile = store.get_cosmonaut_profile(self.current_user.id)
                 if skill in profile.skills:
                     profile.skills.remove(skill)
+                    store.save_profile(profile)
                     self.set_flash(f"Removed skill '{skill}'.", "info")
 
         elif action == "add_certification":
             if isinstance(payload, dict) and self.current_user:
                 profile = store.get_cosmonaut_profile(self.current_user.id)
                 profile.certifications.append(payload)
+                store.save_profile(profile)
                 self.set_flash(f"Added certification '{payload.get('name')}' to profile.", "success")
 
         elif action == "remove_certification":
@@ -444,6 +455,7 @@ class StarAppController:
                 profile = store.get_cosmonaut_profile(self.current_user.id)
                 if 0 <= idx < len(profile.certifications):
                     del profile.certifications[idx]
+                    store.save_profile(profile)
                     self.set_flash("Removed certification.", "info")
 
         elif action == "change_submission_target_badge":
@@ -1880,9 +1892,17 @@ if __name__ == "__main__":
         if not self.current_user or self.current_view == "login":
             html_output = self.render_login_view()
             if IS_BROWSER and hasattr(js, "document"):
-                root = js.document.getElementById("app-root")
-                if root:
-                    root.innerHTML = html_output
+                if hasattr(js, "window") and hasattr(js.window, "StarAppBridge") and hasattr(js.window.StarAppBridge, "updateAppRoot"):
+                    try:
+                        js.window.StarAppBridge.updateAppRoot(html_output)
+                    except Exception:
+                        root = js.document.getElementById("app-root")
+                        if root:
+                            root.innerHTML = html_output
+                else:
+                    root = js.document.getElementById("app-root")
+                    if root:
+                        root.innerHTML = html_output
             return html_output
 
         # Common data calculations
@@ -2097,9 +2117,17 @@ if __name__ == "__main__":
         """
 
         if IS_BROWSER and hasattr(js, "document"):
-            root = js.document.getElementById("app-root")
-            if root:
-                root.innerHTML = full_html
+            if hasattr(js, "window") and hasattr(js.window, "StarAppBridge") and hasattr(js.window.StarAppBridge, "updateAppRoot"):
+                try:
+                    js.window.StarAppBridge.updateAppRoot(full_html)
+                except Exception:
+                    root = js.document.getElementById("app-root")
+                    if root:
+                        root.innerHTML = full_html
+            else:
+                root = js.document.getElementById("app-root")
+                if root:
+                    root.innerHTML = full_html
 
         return full_html
 
