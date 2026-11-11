@@ -201,7 +201,7 @@
   font-size: var(--font-size-sm);
   color: var(--frost-navy);
   outline: none;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
 .form-control:focus,
@@ -341,7 +341,7 @@
   justify-content: center;
   position: relative;
   box-shadow: 0 6px 16px rgba(7, 22, 41, 0.15);
-  transition: all var(--transition-normal);
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal), filter var(--transition-normal);
   border: 3px solid transparent;
 }
 
@@ -745,9 +745,21 @@
   gap: 12px;
   min-height: 42px;
   position: relative;
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
-  animation: nodeItemEntrance 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 1;
+}
+
+.modal-body.modal-no-replay .timeline-track-fill,
+.modal-body.modal-no-replay .timeline-node-row,
+.modal-body.modal-no-replay [style*="animation:"] {
+  animation: none !important;
+}
+
+.milestone-container-node {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.milestone-container-node:hover {
+  transform: scale(1.03);
 }
 
 .node-anchor {

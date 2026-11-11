@@ -6,20 +6,20 @@
  * 3. StarApp JavaScript bridge and Python bundle
  */
 
-const CACHE_NAME = "starapp-runtime-cache-v1";
+const CACHE_NAME = "starapp-runtime-cache-v2";
 const PYODIDE_CACHE_NAME = "starapp-pyodide-v0.26.2";
 
 // Static core assets to pre-cache on service worker install
 const CORE_STATIC_ASSETS = [
   "./",
   "./index.html",
-  "./css/design_tokens.css",
-  "./css/liquid_glass.css",
-  "./css/layout.css",
-  "./css/components.css",
-  "./css/responsive.css",
-  "./js/bridge.js?v=8",
-  "./js/starapp_bundle.js?v=8"
+  "./css/design_tokens.css?v=9",
+  "./css/liquid_glass.css?v=9",
+  "./css/layout.css?v=9",
+  "./css/components.css?v=9",
+  "./css/responsive.css?v=9",
+  "./js/bridge.js?v=9",
+  "./js/starapp_bundle.js?v=9"
 ];
 
 // Install: Cache local static assets

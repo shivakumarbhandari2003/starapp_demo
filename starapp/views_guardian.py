@@ -22,33 +22,31 @@ def render_metric_info_popover(key: str, data: Dict[str, Any], scope: str = "coh
     align_cls = f"pop-{align}" if align else ""
     return f"""
     <span class="has-glass-tooltip">
-        <button type="button" class="metric-info-trigger" aria-label="Metric details for {escape(info.get('title', ''))}" tabindex="0">
-            i
-            <div class="glass-tooltip-popover {align_cls}">
-                <div class="popover-header">
-                    <span class="popover-title">{escape(info.get('title', ''))}</span>
-                    <span class="popover-scope-badge">{escape(info.get('scope', 'Cohort'))}</span>
-                </div>
-                <div class="popover-formula-box">{escape(info.get('formula', ''))}</div>
-                <div class="popover-data-row">
-                    <span class="popover-data-label">Numerator:</span>
-                    <span class="popover-data-val">{escape(info.get('numerator', ''))}</span>
-                </div>
-                <div class="popover-data-row">
-                    <span class="popover-data-label">Denominator:</span>
-                    <span class="popover-data-val">{escape(info.get('denominator', ''))}</span>
-                </div>
-                <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
-                    <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
-                    <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
-                </div>
-                <div class="popover-criteria-section">
-                    <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
-                    <div style="margin-top:3px;"><strong>Excluded:</strong> {escape(info.get('excluded', ''))}</div>
-                    <div style="margin-top:4px; color:var(--pure-ice); font-style:italic;">{escape(info.get('insight', ''))}</div>
-                </div>
+        <button type="button" class="metric-info-trigger" aria-label="Metric details for {escape(info.get('title', ''))}" tabindex="0">i</button>
+        <div class="glass-tooltip-popover {align_cls}">
+            <div class="popover-header">
+                <span class="popover-title">{escape(info.get('title', ''))}</span>
+                <span class="popover-scope-badge">{escape(info.get('scope', 'Cohort'))}</span>
             </div>
-        </button>
+            <div class="popover-formula-box">{escape(info.get('formula', ''))}</div>
+            <div class="popover-data-row">
+                <span class="popover-data-label">Numerator:</span>
+                <span class="popover-data-val">{escape(info.get('numerator', ''))}</span>
+            </div>
+            <div class="popover-data-row">
+                <span class="popover-data-label">Denominator:</span>
+                <span class="popover-data-val">{escape(info.get('denominator', ''))}</span>
+            </div>
+            <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
+                <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
+                <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
+            </div>
+            <div class="popover-criteria-section">
+                <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
+                <div style="margin-top:3px;"><strong>Excluded:</strong> {escape(info.get('excluded', ''))}</div>
+                <div style="margin-top:4px; color:var(--pure-ice); font-style:italic;">{escape(info.get('insight', ''))}</div>
+            </div>
+        </div>
     </span>
     """
 
@@ -70,10 +68,12 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
     for item in nav_items:
         is_active = (item["id"] == active_view) or (item["id"] == "g_reviews" and active_view == "g_review_detail")
         cls = "nav-link active" if is_active else "nav-link"
-        badge_html = f'<span class="nav-badge">{item["badge"]}</span>' if item["badge"] > 0 else ""
+        badge_val = item["badge"]
+        badge_style = "" if badge_val > 0 else ' style="display:none;"'
+        badge_html = f'<span class="nav-badge" data-badge-for="{item["id"]}"{badge_style}>{badge_val}</span>' if item["id"] in ("g_reviews", "g_extensions") else ""
         links_html.append(f"""
         <li class="nav-item">
-            <a class="{cls}" onclick="window.StarAppBridge.dispatchAction('nav_guardian', '{item["id"]}')">
+            <a class="{cls}" data-nav-id="{item["id"]}" onclick="window.StarAppBridge.dispatchAction('nav_guardian', '{item["id"]}')">
                 {item["icon"]}
                 <span>{item["label"]}</span>
                 {badge_html}
@@ -82,7 +82,7 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
         """)
 
     return f"""
-    <aside class="app-sidebar">
+    <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="guardian" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
             <div class="brand-badge">
                 <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -225,7 +225,7 @@ def render_guardian_dashboard(
         </div>
 
         <!-- KPI 3: Pending Submissions -->
-        <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')" title="Click to view Project Review queue">
+        <div class="liquid-glass-card interactive kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')" title="Click to view Project Review queue">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
                     <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
@@ -244,7 +244,7 @@ def render_guardian_dashboard(
         </div>
 
         <!-- KPI 4: Cadets For Attention -->
-        <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer; transition:transform 0.15s ease;" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'attention')" title="Click to filter Cosmonaut monitoring table">
+        <div class="liquid-glass-card interactive kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'attention')" title="Click to filter Cosmonaut monitoring table">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
                     <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
@@ -846,7 +846,7 @@ def render_individual_cosmo_dossier(
             <div style="font-size:12px; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
 
             <!-- Vertical Bar Fill -->
-            <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:all 0.2s ease;"></div>
+            <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:height 0.2s ease, opacity 0.2s ease;"></div>
 
             <!-- Popover Tooltip -->
             <div class="glass-tooltip-popover {pop_align}" style="min-width:215px;">
@@ -1561,7 +1561,7 @@ def render_guardian_review_queue(
         submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
 
         cards.append(f"""
-        <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer; transition:transform 180ms ease, box-shadow 180ms ease;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
+        <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
             <!-- Top Row: Cadet & Status -->
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -1749,7 +1749,7 @@ class IdempotentKafkaConsumer:
     # 2. Main Deliverable Content
     if selected_tab == "pdf":
         viewer_body = f"""
-        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:hidden; position:relative; background:#FFFFFF; isolation:isolate; transform:translateZ(0);">
+        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:hidden; position:relative; background:#FFFFFF;">
             <iframe id="pdf-document-frame" src="{clean_pdf_url}" style="width:100%; height:100%; border:none; display:block; background:#FFFFFF;" title="PDF Preview"></iframe>
         </div>
         """
@@ -1830,7 +1830,7 @@ class IdempotentKafkaConsumer:
         """
 
     return f"""
-    <div class="review-detail-workspace" style="height:calc(100vh - 20px); max-height:calc(100vh - 20px); display:flex; flex-direction:column; overflow:hidden;">
+    <div class="review-detail-workspace" style="height:calc(100vh - 16px); max-height:calc(100vh - 16px); display:flex; flex-direction:column; overflow:hidden;">
         <!-- 66% / 33% 2-Column Split Workspace (Utilizes 100% of Viewport, Zero Page Scroll) -->
         <div class="review-workspace-grid" style="display:grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap:12px; flex:1; min-height:0; height:100%; overflow:hidden;">
             <!-- Column 1: 66% Space for PDF and Code Viewer (Both share exact same size) -->

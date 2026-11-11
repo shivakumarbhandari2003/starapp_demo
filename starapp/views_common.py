@@ -528,13 +528,18 @@ def render_learning_materials_view(
                     PDF DOCUMENT
                 </span>
                 """
-                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; In-Container PDF</span>'
+                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; Clickable PDF</span>'
                 pdf_src = m.url_or_data.replace(' ', '%20') if (m.url_or_data and not m.url_or_data.startswith('http') and not m.url_or_data.startswith('data:')) else (m.url_or_data or 'data/Chemistry%20Syllabus.pdf')
                 media_viewer_html = f"""
-                <div class="media-pdf-box">
-                    <object data="{escape(pdf_src)}" type="application/pdf">
-                        <iframe src="{escape(pdf_src)}" title="{escape(m.title)}"></iframe>
+                <div class="media-pdf-box" style="cursor:pointer; position:relative;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{m.id}');" title="Click to open and read PDF in large window">
+                    <object data="{escape(pdf_src)}" type="application/pdf" style="pointer-events:none; width:100%; height:100%;">
+                        <iframe src="{escape(pdf_src)}" title="{escape(m.title)}" style="pointer-events:none; width:100%; height:100%;"></iframe>
                     </object>
+                    <div style="position:absolute; inset:0; z-index:10; cursor:pointer; background:rgba(7,22,41,0.03); display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px; transition:background 0.2s ease;">
+                        <span style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(255,255,255,0.95); padding:5px 12px; border-radius:20px; box-shadow:0 2px 8px rgba(7,22,41,0.18); border:1px solid var(--icy-steel-50); display:flex; align-items:center; gap:5px; cursor:pointer;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Click to Read in Large Window
+                        </span>
+                    </div>
                 </div>
                 """
             else:
@@ -557,11 +562,11 @@ def render_learning_materials_view(
             guardian_actions = ""
             if is_guardian:
                 guardian_actions = f"""
-                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('open_edit_material_modal', '{{\"material_id\": \"{m.id}\"}}')">
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('open_edit_material_modal', '{m.id}')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     Edit
                 </button>
-                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; color:#d9534f; display:inline-flex; align-items:center; gap:4px;" onclick="if(confirm('Are you sure you want to delete this learning material?')) window.StarAppBridge.dispatchAction('delete_material', '{{\"material_id\": \"{m.id}\"}}')">
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; color:#d9534f; display:inline-flex; align-items:center; gap:4px;" onclick="if(confirm('Are you sure you want to delete this learning material?')) window.StarAppBridge.dispatchAction('delete_material', '{m.id}')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     Delete
                 </button>
@@ -583,8 +588,8 @@ def render_learning_materials_view(
                 <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-30); margin-top:4px; flex-wrap:wrap; gap:6px;">
                     {read_indicator}
                     <div style="display:flex; align-items:center; gap:6px;">
-                        <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{{\"material_id\": \"{m.id}\"}}')">
-                            Theater View &rarr;
+                        <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{m.id}')" title="Open document/video in large view">
+                            {get_icon("file_text" if m.material_type == "pdf" else "play", 12)} Theater View (Large Reader) &rarr;
                         </button>
                         {guardian_actions}
                     </div>
@@ -671,8 +676,8 @@ def render_learning_materials_view(
         <!-- Filter Controls Bar -->
         <div class="liquid-glass-card" style="padding:14px 18px; margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
             <div style="display:flex; align-items:center; gap:10px;">
-                <label style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Milestone:</label>
-                <select class="liquid-glass-control liquid-glass-select" style="font-size:12.5px; font-weight:700; padding:6px 12px; min-width:260px;" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value)">
+                <label for="materials-badge-filter-select" style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Milestone:</label>
+                <select id="materials-badge-filter-select" class="liquid-glass-control liquid-glass-select" style="font-size:12.5px; font-weight:700; padding:6px 12px; min-width:260px;" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value)">
                     {"".join(badge_opts)}
                 </select>
             </div>

@@ -14,15 +14,25 @@ body {
   font-size: var(--font-size-base);
   color: var(--frost-navy);
   background-color: var(--frost-mist);
-  background-image: 
-    radial-gradient(circle at 10% 20%, rgba(157, 183, 213, 0.22) 0%, transparent 40%),
-    radial-gradient(circle at 90% 80%, rgba(23, 52, 92, 0.10) 0%, transparent 45%);
-  background-attachment: fixed;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* GPU-accelerated fixed background canvas: eliminates CPU paint thrashing & scrolling flicker */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(157, 183, 213, 0.22) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(23, 52, 92, 0.10) 0%, transparent 45%);
+  pointer-events: none;
+  z-index: -1;
+  transform: translateZ(0);
 }
 
 /* App container */
@@ -143,7 +153,7 @@ body {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
   cursor: pointer;
   position: relative;
 }
@@ -243,6 +253,7 @@ body {
   min-width: 0;
   height: 100vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .app-topbar {
@@ -251,8 +262,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--icy-steel-30);
   position: sticky;
   top: 0;
@@ -291,7 +303,7 @@ body {
   justify-content: center;
   cursor: pointer;
   color: var(--deep-frozen-midnight);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
 
 .notif-btn:hover {
@@ -322,12 +334,6 @@ body {
   max-width: 1440px;
   margin: 0 auto;
   width: 100%;
-  animation: fadeIn 200ms ease-in-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ==========================================================================
@@ -357,17 +363,23 @@ body {
   max-width: 780px;
   width: 100%;
   max-height: 90vh;
-  display: flex !important;
-  flex-direction: column !important;
-  background: #EAF4FF !important;
+  display: flex;
+  flex-direction: column;
+  background: #EAF4FF;
   border-radius: var(--radius-lg);
-  overflow: hidden !important;
-  min-height: 0 !important;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .modal-dialog.modal-lg {
   max-width: 940px;
   width: 95vw;
+}
+
+.modal-dialog.modal-xl {
+  max-width: 1280px;
+  width: 96vw;
+  max-height: 94vh;
 }
 
 .modal-header {

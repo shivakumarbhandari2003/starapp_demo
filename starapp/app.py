@@ -72,10 +72,12 @@ class StarAppController:
         self.modal_payload: Dict[str, Any] = {}
         self.flash_message: Optional[str] = None
         self.flash_type: str = "info"
+        self.render_generation: int = 0
+        self._last_render_source: str = "init"
 
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
-        "g_dashboard", "g_roadmap", "g_cosmonauts", "g_badge_allotment", "g_reviews", "g_review_detail",
+        "g_dashboard", "g_roadmap", "g_cosmonauts", "g_allotment", "g_badge_allotment", "g_reviews", "g_review_detail",
         "g_materials", "g_extensions", "g_announcements", "g_activity"
     }
     _COSMONAUT_VIEWS = {
@@ -108,6 +110,7 @@ class StarAppController:
                 print(f"[Controller] Session restore error: {e}")
 
         self.sync_storage(force_data=True)
+        self._last_render_source = "initialize"
         self.render()
 
     def sync_storage(self, force_data: bool = False):
@@ -127,19 +130,22 @@ class StarAppController:
                 js.window.StarAppBridge.setStore("data", json_data)
                 store.dirty = False
 
-    def reload_data(self, stored_json: Optional[str] = None):
+    def reload_data(self, stored_json: Optional[str] = None, expected_generation: Optional[int] = None):
         """
         Real-time multi-window synchronization callback.
         Called when another browser window updates the shared data store.
         Reloads domain data from JSON while maintaining this window's user session.
-        Re-renders immediately so changes appear live across windows.
+        Aborts cleanly if a newer local navigation/render generation has occurred.
         """
+        if expected_generation is not None and int(expected_generation) < self.render_generation:
+            return
         if stored_json and stored_json.strip():
             store.load_from_json(stored_json)
             if self.current_user:
                 updated_user = store.get_user_by_id(self.current_user.id)
                 if updated_user:
                     self.current_user = updated_user
+            self._last_render_source = "cross_tab_reload"
             self.render()
 
     def set_flash(self, message: str, ftype: str = "info"):
@@ -361,10 +367,44 @@ class StarAppController:
             badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
             badge = store.get_badge(badge_id)
             if badge:
+                badge.is_allocated = True
                 badge.is_published = True
+                all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
+                badge.assigned_cosmonaut_ids = all_cosmo_ids
                 store.save_badge(badge)
+
+                dt = badge.default_timeline or {}
+                for cid in all_cosmo_ids:
+                    tl = store.get_timeline(badge.id, cid)
+                    if not tl:
+                        new_tl = BadgeTimeline(
+                            badge_id=badge.id,
+                            cosmonaut_id=cid,
+                            assignment_date=dt.get("assignment_date", "2026-11-10"),
+                            publication_date=dt.get("publication_date", "2026-11-10"),
+                            learning_start_date=dt.get("learning_start_date", "2026-11-11"),
+                            learning_end_date=dt.get("learning_end_date", "2026-11-20"),
+                            project_start_date=dt.get("project_start_date", "2026-11-21"),
+                            project_end_date=dt.get("project_end_date", "2026-12-01"),
+                            submission_deadline=dt.get("submission_deadline", "2026-12-03"),
+                            review_date=dt.get("review_date", "2026-12-06"),
+                            expected_award_date=dt.get("expected_award_date", "2026-12-08"),
+                            status="active"
+                        )
+                        store.save_timeline(new_tl)
+                    else:
+                        tl.status = "active"
+                        store.save_timeline(tl)
+
+                    store.add_notification(
+                        recipient_id=cid,
+                        title=f"Milestone Published: {badge.code}",
+                        message=f"Dr. Elena Vance published {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
+                        link_section="c_roadmap"
+                    )
+
                 store.add_activity("badge_published", self.current_user.id, self.current_user.name, "", badge.id, f"Published {badge.code}: {badge.title} to learning roadmap")
-                self.set_flash(f"Published {badge.code} to Cosmonaut learning roadmaps.", "success")
+                self.set_flash(f"Published {badge.code}: {badge.title} to Cosmonaut and Guardian roadmaps.", "success")
 
         elif action == "unpublish_badge":
             badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
@@ -532,6 +572,7 @@ class StarAppController:
             return
 
         self.sync_storage()
+        self._last_render_source = f"action:{action}"
         self.render()
 
     # ==========================================================================
@@ -1044,7 +1085,7 @@ if __name__ == "__main__":
             is_published=True,
             assigned_cosmonaut_ids=assigned_ids,
             default_timeline=default_tl,
-            is_allocated=True
+            is_allocated=payload.get("is_allocated", False if is_new else True)
         )
         store.save_badge(badge)
 
@@ -1398,21 +1439,36 @@ if __name__ == "__main__":
                     </div>
                     """
                 elif mat.material_type == "pdf":
+                    raw_pdf_url = mat.url_or_data.replace(' ', '%20') if (mat.url_or_data and not mat.url_or_data.startswith('http') and not mat.url_or_data.startswith('data:')) else (mat.url_or_data or 'data/Chemistry%20Syllabus.pdf')
+                    clean_pdf_url = f"{raw_pdf_url}#toolbar=1&navpanes=0&pagemode=none&view=FitH"
+                    download_url = raw_pdf_url
                     body = f"""
-                    <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; background:rgba(23,52,92,0.06); padding:8px 14px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">
-                        <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(badge_label)}</span>
-                        <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Topic: {escape(mat.topic)}</span>
+                    <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; background:rgba(23,52,92,0.06); padding:10px 16px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <span style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(badge_label)}</span>
+                            <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-left:8px;">Topic: {escape(mat.topic)}</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <a href="{escape(raw_pdf_url)}" target="_blank" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:5px; padding:4px 12px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                Open in Full Tab
+                            </a>
+                            <a href="{escape(download_url)}" download="{escape(mat.title)}.pdf" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:5px; padding:4px 12px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download PDF
+                            </a>
+                        </div>
                     </div>
-                    <div style="background:#FFFFFF; border-radius:var(--radius-md); overflow:hidden; border:1.5px solid var(--icy-steel-50); box-shadow:0 6px 24px rgba(7,22,41,0.06); margin-bottom:12px;">
-                        <object data="{escape(mat.url_or_data.replace(' ', '%20') if (mat.url_or_data and not mat.url_or_data.startswith('http')) else (mat.url_or_data or 'data/Chemistry%20Syllabus.pdf'))}" type="application/pdf" style="width:100%; height:580px; border:none; display:block;">
-                            <iframe class="pdf-preview-box" src="{escape(mat.url_or_data.replace(' ', '%20') if (mat.url_or_data and not mat.url_or_data.startswith('http')) else (mat.url_or_data or 'data/Chemistry%20Syllabus.pdf'))}" style="width:100%; height:580px; border:none; display:block;" title="{escape(mat.title)}"></iframe>
+                    <div style="background:#FFFFFF; border-radius:var(--radius-md); overflow:hidden; border:1.5px solid var(--icy-steel-50); box-shadow:0 8px 32px rgba(7,22,41,0.12); margin-bottom:12px;">
+                        <object data="{escape(clean_pdf_url)}" type="application/pdf" style="width:100%; height:72vh; min-height:600px; border:none; display:block;">
+                            <iframe class="pdf-preview-box" src="{escape(clean_pdf_url)}" style="width:100%; height:72vh; min-height:600px; border:none; display:block;" title="{escape(mat.title)}"></iframe>
                         </object>
                     </div>
-                    <div style="padding:12px 16px; background:#FFFFFF; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Document Syllabus & Engineering Context:</div>
-                        <p style="font-size:13.5px; line-height:1.55; color:var(--frost-navy); margin:0;">{escape(mat.description)}</p>
-                    </div>
-                    <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                    <div style="padding:12px 16px; background:#FFFFFF; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div style="flex:1; min-width:240px;">
+                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:2px;">Document Syllabus & Engineering Context:</div>
+                            <p style="font-size:13px; line-height:1.5; color:var(--frost-navy); margin:0;">{escape(mat.description)}</p>
+                        </div>
                         <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close Document Reader</button>
                     </div>
                     """
@@ -1794,7 +1850,9 @@ if __name__ == "__main__":
                 """
 
         modal_dialog_class = "liquid-glass-modal modal-dialog"
-        if self.active_modal in ["material_preview", "marksheet_modal", "add_material", "edit_material"]:
+        if self.active_modal == "material_preview":
+            modal_dialog_class += " modal-xl modal-lg"
+        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material"]:
             modal_dialog_class += " modal-lg"
 
         return f"""
@@ -1887,22 +1945,57 @@ if __name__ == "__main__":
     # MAIN APPLICATION RENDERER
     # ==========================================================================
 
+    def _dispatch_browser_render(self, regions_payload: Dict[str, Any], full_html: str):
+        """Dispatches 3-region incremental update to JS bridge when running in Pyodide browser."""
+        if not (IS_BROWSER and hasattr(js, "document")):
+            return
+        if hasattr(js, "window") and hasattr(js.window, "StarAppBridge"):
+            bridge = js.window.StarAppBridge
+            if hasattr(bridge, "updateRegions"):
+                try:
+                    bridge.updateRegions(json.dumps(regions_payload))
+                    return
+                except Exception as exc:
+                    print(f"[Controller] updateRegions fallback due to error: {exc}")
+            if hasattr(bridge, "updateAppRoot"):
+                try:
+                    bridge.updateAppRoot(full_html)
+                    return
+                except Exception:
+                    pass
+        root = js.document.getElementById("app-root")
+        if root:
+            root.innerHTML = full_html
+
     def render(self) -> str:
-        """Constructs the complete application view HTML."""
+        """Constructs the complete application view HTML and dispatches incremental region updates."""
+        self.render_generation += 1
+        render_source = getattr(self, "_last_render_source", "direct")
+        self._last_render_source = "direct"
+
         if not self.current_user or self.current_view == "login":
             html_output = self.render_login_view()
-            if IS_BROWSER and hasattr(js, "document"):
-                if hasattr(js, "window") and hasattr(js.window, "StarAppBridge") and hasattr(js.window.StarAppBridge, "updateAppRoot"):
-                    try:
-                        js.window.StarAppBridge.updateAppRoot(html_output)
-                    except Exception:
-                        root = js.document.getElementById("app-root")
-                        if root:
-                            root.innerHTML = html_output
-                else:
-                    root = js.document.getElementById("app-root")
-                    if root:
-                        root.innerHTML = html_output
+            self._dispatch_browser_render(
+                {
+                    "mode": "login",
+                    "generation": self.render_generation,
+                    "isCrossTabReload": render_source == "cross_tab_reload",
+                    "portalKey": "login",
+                    "routeKey": "login",
+                    "activeNavId": "",
+                    "pageTitle": "StarApp — Sign In",
+                    "sidebarBadges": {},
+                    "sidebarHtml": "",
+                    "pageContainerClass": "",
+                    "flashHtml": "",
+                    "mainContentHtml": html_output,
+                    "activeModal": "",
+                    "modalKey": "",
+                    "modalTitle": "",
+                    "modalHtml": "",
+                },
+                html_output,
+            )
             return html_output
 
         # Common data calculations
@@ -1920,10 +2013,15 @@ if __name__ == "__main__":
         sidebar_html = ""
         main_content_html = ""
         page_title = "StarApp Workspace"
+        sidebar_badges: Dict[str, int] = {}
+        active_nav_id = self.current_view
+        route_key = self.current_view
 
         if self.current_user.role == "guardian":
             pending_reviews = len([s for s in all_subs if s.status == "pending"])
             pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
+            sidebar_badges = {"g_reviews": pending_reviews, "g_extensions": pending_exts}
+            active_nav_id = "g_reviews" if self.current_view == "g_review_detail" else self.current_view
             sidebar_html = render_guardian_sidebar(self.current_view, self.current_user, pending_reviews, pending_exts)
 
             if self.current_view == "g_dashboard":
@@ -1972,6 +2070,7 @@ if __name__ == "__main__":
                 if not sub and all_subs:
                     sub = all_subs[0]
                 if sub:
+                    route_key = f"g_review_detail:{sub.id}"
                     badge = badges_map.get(sub.badge_id)
                     cosmo = cosmo_map.get(sub.cosmonaut_id)
                     existing_asm = store.get_assessment_for_submission(sub.id)
@@ -2107,27 +2206,43 @@ if __name__ == "__main__":
 
         full_html = f"""
         {sidebar_html}
-        <div class="app-main">
-            <main class="{page_container_cls}">
-                {flash_html}
-                {main_content_html}
+        <div id="starapp-main-viewport" class="app-main">
+            <main id="starapp-page-slot" class="{page_container_cls}">
+                <div id="starapp-flash-slot">{flash_html}</div>
+                <div id="starapp-page-body">{main_content_html}</div>
             </main>
         </div>
-        {modal_html}
+        <div id="starapp-modal-root">{modal_html}</div>
         """
 
-        if IS_BROWSER and hasattr(js, "document"):
-            if hasattr(js, "window") and hasattr(js.window, "StarAppBridge") and hasattr(js.window.StarAppBridge, "updateAppRoot"):
-                try:
-                    js.window.StarAppBridge.updateAppRoot(full_html)
-                except Exception:
-                    root = js.document.getElementById("app-root")
-                    if root:
-                        root.innerHTML = full_html
-            else:
-                root = js.document.getElementById("app-root")
-                if root:
-                    root.innerHTML = full_html
+        modal_key = ""
+        if self.active_modal:
+            try:
+                modal_key = f"{self.active_modal}:{json.dumps(self.modal_payload, sort_keys=True)}"
+            except Exception:
+                modal_key = str(self.active_modal)
+
+        portal_key = f"{self.current_user.role}:{self.current_user.id}:{self.current_user.name}:{getattr(self.current_user, 'avatar', '')}"
+        self._dispatch_browser_render(
+            {
+                "mode": "workspace",
+                "generation": self.render_generation,
+                "isCrossTabReload": render_source == "cross_tab_reload",
+                "portalKey": portal_key,
+                "routeKey": route_key,
+                "activeNavId": active_nav_id,
+                "pageTitle": page_title,
+                "sidebarBadges": sidebar_badges,
+                "sidebarHtml": sidebar_html,
+                "pageContainerClass": page_container_cls,
+                "flashHtml": flash_html,
+                "mainContentHtml": main_content_html,
+                "activeModal": self.active_modal or "",
+                "modalKey": modal_key,
+                "modalHtml": modal_html,
+            },
+            full_html,
+        )
 
         return full_html
 

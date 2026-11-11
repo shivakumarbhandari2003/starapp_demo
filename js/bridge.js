@@ -17,6 +17,51 @@
   // Tab-unique identifier to prevent self-triggering broadcast loops
   const currentWindowId = "win_" + Math.random().toString(36).substring(2, 10);
   let lastSyncTimestamp = 0;
+  let localActionSeq = 0;
+  let lastKnownDataJson = null;
+  let pendingSyncTimer = null;
+  let pendingDeferredReload = false;
+
+  // Incremental 3-region DOM state
+  const renderState = {
+    mode: null,
+    portalKey: null,
+    routeKey: null,
+    pageContainerClass: null,
+    flashHtml: null,
+    mainHtml: null,
+    modalKind: "",
+    modalKey: "",
+    modalHtml: "",
+    appliedGeneration: 0,
+    regionSkipCounts: {
+      sidebarSkipped: 0,
+      mainSkipped: 0,
+      modalSkipped: 0,
+      modalPatchedInPlace: 0,
+      reviewLeftOnly: 0,
+      staleAsyncDropped: 0
+    }
+  };
+
+  function isActivelyEditingFormControl() {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    const tag = el.tagName;
+    if (tag === "TEXTAREA") return true;
+    if (tag === "INPUT") {
+      const t = (el.type || "text").toLowerCase();
+      return !["button", "submit", "reset", "checkbox", "radio", "file"].includes(t);
+    }
+    return false;
+  }
+
+  document.addEventListener("focusout", () => {
+    if (pendingDeferredReload && !isActivelyEditingFormControl()) {
+      pendingDeferredReload = false;
+      triggerCrossWindowLiveReload("deferred_after_edit");
+    }
+  });
 
   // Real-time cross-window synchronization channel
   const syncChannel = ("BroadcastChannel" in window)
@@ -37,39 +82,62 @@
     });
   }
 
-  // Cross-window live data synchronization handler
+  // Cross-window live data synchronization handler with async race guard
   async function triggerCrossWindowLiveReload(sourceName) {
+    if (isActivelyEditingFormControl()) {
+      pendingDeferredReload = true;
+      return;
+    }
     const now = Date.now();
-    // Debounce rapid sync triggers within 150ms
-    if (now - lastSyncTimestamp < 150) return;
+    // Coalesce bursts within 300ms into a single trailing reload
+    if (now - lastSyncTimestamp < 300) {
+      if (!pendingSyncTimer) {
+        pendingSyncTimer = setTimeout(() => {
+          pendingSyncTimer = null;
+          triggerCrossWindowLiveReload(sourceName);
+        }, 310 - (now - lastSyncTimestamp));
+      }
+      return;
+    }
     lastSyncTimestamp = now;
+    const seqAtStart = localActionSeq;
 
     try {
       const latestDataJson = await window.StarAppBridge.getStore("data");
-      if (latestDataJson && window.starAppController && typeof window.starAppController.reload_data === "function") {
+      // Abort if user navigated/acted locally while awaiting IndexedDB I/O
+      if (localActionSeq !== seqAtStart) {
+        renderState.regionSkipCounts.staleAsyncDropped += 1;
+        return;
+      }
+      if (!latestDataJson || latestDataJson === lastKnownDataJson) {
+        return;
+      }
+      if (window.starAppController && typeof window.starAppController.reload_data === "function") {
+        lastKnownDataJson = latestDataJson;
         console.log(`[StarAppBridge] Live data sync executed from ${sourceName}. Updating controller...`);
-        window.starAppController.reload_data(latestDataJson);
+        window.starAppController.reload_data(latestDataJson, renderState.appliedGeneration);
       }
     } catch (err) {
       console.warn("[StarAppBridge] Cross-window live sync error:", err);
     }
   }
 
-  // 1. Listen for BroadcastChannel events from other browser windows
+  // 1. Listen for BroadcastChannel events from other browser windows (preferred, tab-targeted)
   if (syncChannel) {
     syncChannel.onmessage = (event) => {
       if (event.data && event.data.type === "STARAPP_DATA_UPDATED" && event.data.sender !== currentWindowId) {
         triggerCrossWindowLiveReload("BroadcastChannel");
       }
     };
+  } else {
+    // 2. Fallback: ONLY listen for storage events if BroadcastChannel is not supported
+    // Prevents duplicate sync events firing within milliseconds of each other
+    window.addEventListener("storage", (e) => {
+      if (e.key === "starapp_data" && e.newValue) {
+        triggerCrossWindowLiveReload("storage_event");
+      }
+    });
   }
-
-  // 2. Fallback: Listen for localStorage storage events across windows
-  window.addEventListener("storage", (e) => {
-    if (e.key === "starapp_data" && e.newValue) {
-      triggerCrossWindowLiveReload("storage_event");
-    }
-  });
 
   window.StarAppBridge = {
     // Current window ID for debugging & multi-window telemetry
@@ -132,6 +200,9 @@
       }
 
       // Data store write: persist in shared localStorage + IndexedDB
+      if (key === "data") {
+        lastKnownDataJson = value;
+      }
       try {
         localStorage.setItem("starapp_" + key, value);
         const db = await openDatabase();
@@ -478,8 +549,15 @@
       window.StarAppBridge.dispatchAction("update_material", JSON.stringify(payload));
     },
 
+    // Read-only telemetry accessor for regression verification
+    _getRenderState() {
+      return renderState;
+    },
+
     // Dispatch UI click/action event to Python controller
     dispatchAction(action, payloadJson = "{}") {
+      localActionSeq += 1;
+      pendingDeferredReload = false;
       if (window.starAppController && typeof window.starAppController.handle_event === "function") {
         window.starAppController.handle_event(action, payloadJson);
       } else {
@@ -487,28 +565,8 @@
       }
     },
 
-    // Smooth, targeted DOM reconciliation & scroll/focus preservation
-    updateAppRoot(newHtml) {
-      const root = document.getElementById("app-root");
-      if (!root) return;
-
-      // 1. Capture scroll positions of window and all scrollable sub-containers
-      const savedWindowY = window.scrollY || window.pageYOffset || 0;
-      const scrollSnapshots = [];
-      const scrollableElements = root.querySelectorAll("[id], .page-container, .main-content, .table-responsive, .modal-body, .review-workspace-grid");
-      scrollableElements.forEach((el, idx) => {
-        if (el.scrollTop > 0 || el.scrollLeft > 0) {
-          scrollSnapshots.push({
-            id: el.id || null,
-            className: el.className || null,
-            index: idx,
-            top: el.scrollTop,
-            left: el.scrollLeft
-          });
-        }
-      });
-
-      // 2. Capture active input focus and cursor selection
+    // Capture focus + selection within an optional root/container
+    _captureFocus() {
       const activeEl = document.activeElement;
       const activeId = (activeEl && activeEl !== document.body && activeEl.id) ? activeEl.id : null;
       let selStart = null;
@@ -519,123 +577,306 @@
           selEnd = activeEl.selectionEnd;
         } catch (e) {}
       }
+      return { activeId, selStart, selEnd };
+    },
 
-      // 3. Reconcile DOM using safe morphing algorithm with innerHTML fallback
-      try {
-        const tempContainer = document.createElement("div");
-        tempContainer.id = "app-root";
-        tempContainer.innerHTML = newHtml;
-
-        // Recursive lightweight DOM morpher
-        function morph(oldEl, newEl) {
-          if (!oldEl || !newEl) return;
-          if (oldEl.nodeType !== newEl.nodeType) {
-            oldEl.replaceWith(newEl.cloneNode(true));
-            return;
-          }
-
-          // Text and comment nodes
-          if (oldEl.nodeType === 3) {
-            if (oldEl.nodeValue !== newEl.nodeValue) {
-              oldEl.nodeValue = newEl.nodeValue;
-            }
-            return;
-          }
-          if (oldEl.nodeType !== 1) return;
-
-          // Tag mismatch -> replace
-          if (oldEl.tagName !== newEl.tagName) {
-            oldEl.replaceWith(newEl.cloneNode(true));
-            return;
-          }
-
-          // Update attributes
-          const oldAttrs = oldEl.attributes;
-          const newAttrs = newEl.attributes;
-
-          for (let i = 0; i < newAttrs.length; i++) {
-            const attr = newAttrs[i];
-            if (attr.name !== "value" && oldEl.getAttribute(attr.name) !== attr.value) {
-              oldEl.setAttribute(attr.name, attr.value);
-            }
-          }
-          for (let i = oldAttrs.length - 1; i >= 0; i--) {
-            const attrName = oldAttrs[i].name;
-            if (!newEl.hasAttribute(attrName)) {
-              oldEl.removeAttribute(attrName);
-            }
-          }
-
-          // Handle form inputs value & checked preservation
-          if (oldEl.tagName === "INPUT" || oldEl.tagName === "TEXTAREA") {
-            if (oldEl !== document.activeElement && oldEl.value !== newEl.value) {
-              oldEl.value = newEl.value;
-            }
-            if (oldEl.type === "checkbox" || oldEl.type === "radio") {
-              oldEl.checked = newEl.checked;
-            }
-          } else if (oldEl.tagName === "SELECT") {
-            if (oldEl.value !== newEl.value) {
-              oldEl.value = newEl.value;
-            }
-          }
-
-          // Reconcile children
-          const oldChildren = Array.from(oldEl.childNodes);
-          const newChildren = Array.from(newEl.childNodes);
-          const maxLen = Math.max(oldChildren.length, newChildren.length);
-
-          for (let i = 0; i < maxLen; i++) {
-            const oChild = oldChildren[i];
-            const nChild = newChildren[i];
-
-            if (!oChild && nChild) {
-              oldEl.appendChild(nChild.cloneNode(true));
-            } else if (oChild && !nChild) {
-              oldEl.removeChild(oChild);
-            } else if (oChild && nChild) {
-              morph(oChild, nChild);
-            }
-          }
+    _restoreFocus(focusSnap) {
+      if (!focusSnap || !focusSnap.activeId) return;
+      const targetFocus = document.getElementById(focusSnap.activeId);
+      if (targetFocus && typeof targetFocus.focus === "function") {
+        targetFocus.focus({ preventScroll: true });
+        if (focusSnap.selStart !== null && focusSnap.selEnd !== null && typeof targetFocus.setSelectionRange === "function") {
+          try {
+            targetFocus.setSelectionRange(focusSnap.selStart, focusSnap.selEnd);
+          } catch (e) {}
         }
-
-        morph(root, tempContainer);
-      } catch (morphErr) {
-        // Safe graceful fallback to innerHTML if any unexpected DOM structure is encountered
-        console.warn("[StarAppBridge] Morph encountered notice, applying innerHTML update:", morphErr);
-        root.innerHTML = newHtml;
       }
+    },
 
-      // 4. Restore scroll positions
-      if (savedWindowY > 0) {
-        window.scrollTo(0, savedWindowY);
+    _captureScrolls(container) {
+      if (!container) return [];
+      const snapshots = [];
+      const scrollables = [];
+      if (container.classList && container.classList.contains("app-main")) {
+        scrollables.push(container);
       }
-      scrollSnapshots.forEach(snap => {
-        let target = null;
-        if (snap.id) {
-          target = document.getElementById(snap.id);
+      const mainViewport = document.getElementById("starapp-main-viewport") || document.querySelector(".app-main");
+      if (mainViewport && !scrollables.includes(mainViewport)) {
+        scrollables.push(mainViewport);
+      }
+      container.querySelectorAll("[id], .app-main, .sidebar-nav, .page-container, .table-responsive, .modal-body, .review-workspace-grid").forEach((el) => {
+        if (!scrollables.includes(el)) scrollables.push(el);
+      });
+      scrollables.forEach((el) => {
+        if (el.scrollTop > 0 || el.scrollLeft > 0) {
+          snapshots.push({
+            id: el.id || null,
+            firstClass: (typeof el.className === "string" && el.className.trim()) ? el.className.trim().split(/\s+/)[0] : null,
+            top: el.scrollTop,
+            left: el.scrollLeft
+          });
         }
-        if (!target && snap.className) {
-          target = root.querySelector("." + snap.className.split(" ")[0]);
+      });
+      return snapshots;
+    },
+
+    _restoreScrolls(container, snapshots) {
+      if (!container || !snapshots || !snapshots.length) return;
+      snapshots.forEach((snap) => {
+        let target = snap.id ? document.getElementById(snap.id) : null;
+        if (!target && snap.firstClass) {
+          if (snap.firstClass === "app-main") {
+            target = document.getElementById("starapp-main-viewport") || document.querySelector(".app-main");
+          } else {
+            target = container.querySelector("." + snap.firstClass);
+          }
         }
         if (target) {
           target.scrollTop = snap.top;
           target.scrollLeft = snap.left;
         }
       });
+    },
 
-      // 5. Restore active focus and cursor selection
-      if (activeId) {
-        const targetFocus = document.getElementById(activeId);
-        if (targetFocus && typeof targetFocus.focus === "function") {
-          targetFocus.focus();
-          if (selStart !== null && selEnd !== null && typeof targetFocus.setSelectionRange === "function") {
-            try {
-              targetFocus.setSelectionRange(selStart, selEnd);
-            } catch (e) {}
+    // Update persistent sidebar active state and badges in-place without rebuilding <aside>
+    _updateSidebarInPlace(sidebarEl, activeNavId, badgesMap) {
+      if (!sidebarEl) return;
+      sidebarEl.querySelectorAll("a.nav-link[data-nav-id]").forEach((link) => {
+        const isActive = link.dataset.navId === activeNavId;
+        if (link.classList.contains("active") !== isActive) {
+          link.classList.toggle("active", isActive);
+        }
+      });
+      if (badgesMap && typeof badgesMap === "object") {
+        Object.entries(badgesMap).forEach(([navId, count]) => {
+          const badgeEl = sidebarEl.querySelector(`.nav-badge[data-badge-for="${navId}"]`);
+          if (badgeEl) {
+            const nextText = String(count);
+            if (badgeEl.textContent !== nextText) {
+              badgeEl.textContent = nextText;
+            }
+            const shouldShow = Number(count) > 0;
+            const currentlyHidden = badgeEl.style.display === "none";
+            if (shouldShow && currentlyHidden) {
+              badgeEl.style.display = "";
+            } else if (!shouldShow && !currentlyHidden) {
+              badgeEl.style.display = "none";
+            }
+          }
+        });
+      }
+    },
+
+    // 3-Region incremental renderer: Persistent Sidebar + Main Page Slot + Modal Root
+    updateRegions(regionsJson) {
+      const root = document.getElementById("app-root");
+      if (!root) return;
+
+      let payload;
+      try {
+        payload = typeof regionsJson === "string" ? JSON.parse(regionsJson) : regionsJson;
+      } catch (e) {
+        return;
+      }
+      if (!payload) return;
+
+      if (payload.isCrossTabReload && payload.generation < renderState.appliedGeneration) {
+        renderState.regionSkipCounts.staleAsyncDropped += 1;
+        return;
+      }
+      renderState.appliedGeneration = Math.max(renderState.appliedGeneration, Number(payload.generation || 0));
+
+      if (payload.pageTitle) {
+        document.title = `StarApp — ${payload.pageTitle}`;
+      }
+
+      // Mode 1: Login view
+      if (payload.mode === "login") {
+        if (renderState.mode === "login" && renderState.mainHtml === payload.mainContentHtml) {
+          renderState.regionSkipCounts.mainSkipped += 1;
+          return;
+        }
+        root.innerHTML = payload.mainContentHtml;
+        renderState.mode = "login";
+        renderState.portalKey = "login";
+        renderState.routeKey = "login";
+        renderState.pageContainerClass = "";
+        renderState.flashHtml = "";
+        renderState.mainHtml = payload.mainContentHtml;
+        renderState.modalKind = "";
+        renderState.modalKey = "";
+        renderState.modalHtml = "";
+        return;
+      }
+
+      // Mode 2: Authenticated 3-Region Workspace
+      const existingSidebar = document.getElementById("starapp-shell-sidebar");
+      const existingViewport = document.getElementById("starapp-main-viewport");
+      const existingPageSlot = document.getElementById("starapp-page-slot");
+      const existingFlashSlot = document.getElementById("starapp-flash-slot");
+      const existingPageBody = document.getElementById("starapp-page-body");
+      const existingModalRoot = document.getElementById("starapp-modal-root");
+
+      const canPatchRegions = Boolean(
+        existingSidebar &&
+        existingViewport &&
+        existingPageSlot &&
+        existingFlashSlot &&
+        existingPageBody &&
+        existingModalRoot &&
+        renderState.mode === "workspace" &&
+        renderState.portalKey === payload.portalKey
+      );
+
+      if (!canPatchRegions) {
+        // Initial workspace mount or portal/user switch
+        root.innerHTML =
+          `${payload.sidebarHtml}` +
+          `<div id="starapp-main-viewport" class="app-main">` +
+            `<main id="starapp-page-slot" class="${payload.pageContainerClass}">` +
+              `<div id="starapp-flash-slot">${payload.flashHtml || ""}</div>` +
+              `<div id="starapp-page-body">${payload.mainContentHtml}</div>` +
+            `</main>` +
+          `</div>` +
+          `<div id="starapp-modal-root">${payload.modalHtml || ""}</div>`;
+
+        renderState.mode = "workspace";
+        renderState.portalKey = payload.portalKey;
+        renderState.routeKey = payload.routeKey;
+        renderState.pageContainerClass = payload.pageContainerClass;
+        renderState.flashHtml = payload.flashHtml || "";
+        renderState.mainHtml = payload.mainContentHtml;
+        renderState.modalKind = payload.activeModal || "";
+        renderState.modalKey = payload.modalKey || "";
+        renderState.modalHtml = payload.modalHtml || "";
+        return;
+      }
+
+      // Region 1: Persistent Sidebar (update active link + badge counts in place)
+      this._updateSidebarInPlace(existingSidebar, payload.activeNavId, payload.sidebarBadges);
+      renderState.regionSkipCounts.sidebarSkipped += 1;
+
+      // Region 2: Main Page Content
+      const nextFlash = payload.flashHtml || "";
+      if (renderState.pageContainerClass !== payload.pageContainerClass) {
+        existingPageSlot.className = payload.pageContainerClass;
+        renderState.pageContainerClass = payload.pageContainerClass;
+      }
+      if (renderState.flashHtml !== nextFlash) {
+        existingFlashSlot.innerHTML = nextFlash;
+        renderState.flashHtml = nextFlash;
+      }
+
+      if (renderState.mainHtml !== payload.mainContentHtml) {
+        const sameRoute = (renderState.routeKey === payload.routeKey);
+        const focusSnap = sameRoute ? this._captureFocus() : null;
+        const scrollSnaps = sameRoute ? this._captureScrolls(existingViewport) : [];
+
+        // Special case: switching viewer tab (pdf <-> code <-> github) on the SAME review submission
+        // preserves .review-right-column (#guardian-rubric-form) untouched!
+        let patchedLeftOnly = false;
+        if (sameRoute && payload.routeKey.startsWith("g_review_detail:")) {
+          const oldLeft = existingPageBody.querySelector(".review-left-column");
+          if (oldLeft) {
+            const tpl = document.createElement("template");
+            tpl.innerHTML = payload.mainContentHtml;
+            const newLeft = tpl.content.querySelector(".review-left-column");
+            if (newLeft) {
+              oldLeft.replaceWith(newLeft);
+              patchedLeftOnly = true;
+              renderState.regionSkipCounts.reviewLeftOnly += 1;
+            }
           }
         }
+
+        if (!patchedLeftOnly) {
+          existingPageBody.innerHTML = payload.mainContentHtml;
+        }
+
+        renderState.mainHtml = payload.mainContentHtml;
+        renderState.routeKey = payload.routeKey;
+
+        if (sameRoute) {
+          this._restoreScrolls(existingViewport, scrollSnaps);
+          this._restoreFocus(focusSnap);
+        } else {
+          // Route changed: reset main viewport scroll cleanly without copying old page offsets
+          existingViewport.scrollTop = 0;
+          existingViewport.scrollLeft = 0;
+        }
+      } else {
+        renderState.routeKey = payload.routeKey;
+        renderState.regionSkipCounts.mainSkipped += 1;
       }
+
+      // Region 3: Modal Root
+      const nextModalKind = payload.activeModal || "";
+      const nextModalKey = payload.modalKey || "";
+      const nextModalHtml = payload.modalHtml || "";
+
+      if (!nextModalKind) {
+        if (renderState.modalKind) {
+          existingModalRoot.innerHTML = "";
+        } else {
+          renderState.regionSkipCounts.modalSkipped += 1;
+        }
+        renderState.modalKind = "";
+        renderState.modalKey = "";
+        renderState.modalHtml = "";
+      } else if (renderState.modalHtml === nextModalHtml) {
+        renderState.regionSkipCounts.modalSkipped += 1;
+      } else if (renderState.modalKind === nextModalKind && renderState.modalKey === nextModalKey) {
+        // Same open modal updated (e.g. live BroadcastChannel sync): update title & body without restarting .modal-backdrop fade!
+        const existingTitle = existingModalRoot.querySelector(".modal-title");
+        const existingBody = existingModalRoot.querySelector(".modal-body");
+        if (existingTitle && existingBody) {
+          const tpl = document.createElement("template");
+          tpl.innerHTML = nextModalHtml;
+          const nextTitleEl = tpl.content.querySelector(".modal-title");
+          const nextBodyEl = tpl.content.querySelector(".modal-body");
+          if (nextTitleEl && nextBodyEl) {
+            const modalFocus = this._captureFocus();
+            const modalScrollTop = existingBody.scrollTop;
+            if (existingTitle.textContent !== nextTitleEl.textContent) {
+              existingTitle.textContent = nextTitleEl.textContent;
+            }
+            existingBody.classList.add("modal-no-replay");
+            existingBody.innerHTML = nextBodyEl.innerHTML;
+            existingBody.scrollTop = modalScrollTop;
+            this._restoreFocus(modalFocus);
+            renderState.modalHtml = nextModalHtml;
+            renderState.regionSkipCounts.modalPatchedInPlace += 1;
+            return;
+          }
+        }
+        existingModalRoot.innerHTML = nextModalHtml;
+        renderState.modalHtml = nextModalHtml;
+      } else {
+        existingModalRoot.innerHTML = nextModalHtml;
+        renderState.modalKind = nextModalKind;
+        renderState.modalKey = nextModalKey;
+        renderState.modalHtml = nextModalHtml;
+      }
+    },
+
+    // Fallback atomic DOM update (with .app-main scroll support)
+    updateAppRoot(newHtml) {
+      const root = document.getElementById("app-root");
+      if (!root) return;
+
+      const savedWindowY = window.scrollY || window.pageYOffset || 0;
+      const scrollSnapshots = this._captureScrolls(root);
+      const focusSnap = this._captureFocus();
+
+      root.innerHTML = newHtml;
+      renderState.mode = null;
+      renderState.portalKey = null;
+
+      if (savedWindowY > 0) {
+        window.scrollTo(0, savedWindowY);
+      }
+      this._restoreScrolls(root, scrollSnapshots);
+      this._restoreFocus(focusSnap);
     }
   };
 })();

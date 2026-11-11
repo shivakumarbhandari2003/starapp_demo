@@ -19,84 +19,6 @@
   }
 }
 
-/* Tablet portrait & Mobile */
-@media (max-width: 768px) {
-  #app-root {
-    flex-direction: column;
-  }
-
-  .app-sidebar {
-    width: 100%;
-    min-width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--midnight-50);
-  }
-
-  .sidebar-nav {
-    display: flex;
-    flex-wrap: wrap;
-    padding: var(--space-2) var(--space-3);
-    gap: var(--space-2);
-  }
-
-  .nav-item {
-    margin-bottom: 0;
-  }
-
-  .nav-link {
-    padding: 6px 10px;
-    font-size: var(--font-size-xs);
-  }
-
-  .app-topbar {
-    padding: 0 var(--space-4);
-    height: 60px;
-  }
-
-  .topbar-page-title {
-    font-size: var(--font-size-md);
-  }
-
-  .page-container {
-    padding: var(--space-4);
-  }
-
-  .kpi-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .marksheet-feedback-section {
-    grid-template-columns: 1fr;
-  }
-
-  .rubric-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .modal-dialog {
-    max-width: 95vw;
-    margin: 10px;
-  }
-
-  .roadmap-row.pos-left,
-  .roadmap-row.pos-right {
-    justify-content: center;
-    padding-left: 0;
-    padding-right: 0;
-  }
-
-  .milestone-stone {
-    width: 60px;
-    height: 60px;
-  }
-
-  .milestone-card-preview {
-    min-width: 140px;
-  }
-}
-
-
-
 /* ==========================================================================
    COMPREHENSIVE RESPONSIVENESS ENHANCEMENTS (ALL PAGES: COSMONAUT & GUARDIAN)
    ========================================================================== */
@@ -156,29 +78,12 @@ table {
   }
 }
 
-/* 4. Modal Dialogs Responsiveness */
+/* 4 & 5. Unified Tablet Portrait & Mobile Breakpoint (<= 768px) */
 @media (max-width: 768px) {
-  .modal-dialog {
-    width: 95vw !important;
-    max-width: 95vw !important;
-    margin: 12px auto !important;
+  #app-root {
+    flex-direction: column;
   }
 
-  .modal-body {
-    max-height: 75vh !important;
-    overflow-y: auto !important;
-    padding: 16px !important;
-  }
-
-  div[style*="grid-template-columns:1fr 2fr"],
-  div[style*="grid-template-columns:2fr 1fr"],
-  div[style*="grid-template-columns:1fr 1fr"] {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* 5. Mobile Sidebar Navigation */
-@media (max-width: 768px) {
   .app-sidebar {
     width: 100% !important;
     min-width: 100% !important;
@@ -199,25 +104,94 @@ table {
     padding: 6px 0 !important;
   }
 
+  .nav-item,
   .sidebar-nav .nav-item {
     margin: 0 !important;
     flex: 1 1 auto;
     min-width: 130px;
   }
 
+  .nav-link,
   .sidebar-nav .nav-link {
     padding: 8px 12px !important;
     font-size: 11.5px !important;
     justify-content: center !important;
   }
 
+  .app-topbar {
+    padding: 0 var(--space-4);
+    height: 60px;
+  }
+
+  .topbar-page-title {
+    font-size: var(--font-size-md);
+  }
+
   .page-container {
     padding: 16px 12px !important;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marksheet-feedback-section {
+    grid-template-columns: 1fr;
+  }
+
+  .rubric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .modal-dialog {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 12px auto !important;
+  }
+
+  .modal-body {
+    max-height: 75vh !important;
+    overflow-y: auto !important;
+    padding: 16px !important;
+  }
+
+  div[style*="grid-template-columns:1fr 2fr"],
+  div[style*="grid-template-columns:2fr 1fr"],
+  div[style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .roadmap-row.pos-left,
+  .roadmap-row.pos-right {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .milestone-stone {
+    width: 60px;
+    height: 60px;
+  }
+
+  .milestone-card-preview {
+    min-width: 140px;
   }
 
   /* Responsive action button bars */
   .btn-metal, .btn-secondary, .btn-liquid {
     white-space: nowrap;
+  }
+
+  /* Safe touch target padding for interactive buttons and pills */
+  button,
+  .btn-metal,
+  .btn-secondary,
+  .btn-liquid,
+  select,
+  input[type="text"],
+  input[type="url"],
+  input[type="number"] {
+    min-height: 38px;
   }
 }
 
@@ -320,8 +294,6 @@ table {
     left: 0 !important;
     z-index: 3 !important;
     background: rgba(240, 246, 255, 0.98) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-    backdrop-filter: blur(8px) !important;
     box-shadow: 2px 0 6px rgba(7, 22, 41, 0.08) !important;
   }
 
@@ -331,36 +303,27 @@ table {
     right: 0 !important;
     z-index: 3 !important;
     background: rgba(240, 246, 255, 0.98) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-    backdrop-filter: blur(8px) !important;
     box-shadow: -2px 0 6px rgba(7, 22, 41, 0.08) !important;
   }
 }
 
-/* ==========================================================================
-   10. MOBILE LIQUID GLASS GPU ACCELERATION & PREFERS-REDUCED-MOTION
-   Replaces heavy SVG displacement filters with pure GPU blur on mobile
-   ========================================================================== */
-@media (max-width: 768px) {
-  .liquid-glass-card,
-  .liquid-glass-panel,
-  .liquid-glass-modal {
-    -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
-    backdrop-filter: blur(12px) saturate(150%) !important;
+/* Wrap status pills cleanly inside narrow mobile modals (320px-540px) */
+@media (max-width: 540px) {
+  .node-connector-strip,
+  .node-connector-strip > div {
+    min-width: 0;
+    flex-wrap: wrap !important;
+    gap: 6px;
   }
 
-  /* Safe touch target padding for interactive buttons and pills */
-  button,
-  .btn-metal,
-  .btn-secondary,
-  .btn-liquid,
-  select,
-  input[type="text"],
-  input[type="url"],
-  input[type="number"] {
-    min-height: 38px;
+  .node-connector-strip {
+    padding: 8px 10px;
   }
 }
+
+/* ==========================================================================
+   10. PREFERS-REDUCED-MOTION ACCESSIBILITY
+   ========================================================================== */
 
 /* Accessibility: Respect user motion preference */
 @media (prefers-reduced-motion: reduce) {

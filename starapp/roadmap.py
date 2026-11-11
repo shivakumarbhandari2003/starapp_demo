@@ -54,10 +54,10 @@ def generate_roadmap_graph(
     - Initially shows 5 badges:
       - 3 completed (approved assessments)
       - 1 at present (active milestone with pulsing halo)
-      - 1 locked (last badge in sequence)
-    - When Guardian creates a new badge:
-      - The previously locked badge becomes UNLOCKED (active)
-      - The newly created badge becomes the new LOCKED milestone
+      - 1 locked (last unallocated / pending prerequisite badge)
+    - When Guardian allocates / unlocks a badge:
+      - The newly allocated badge becomes AVAILABLE / ACTIVE (replaces the locked badge)
+      - The NEXT route / upcoming unallocated curriculum badge becomes the new LOCKED milestone
     """
     # Approved badge IDs for this Cosmonaut
     approved_badge_ids = {
@@ -71,27 +71,64 @@ def generate_roadmap_graph(
         if s.cosmonaut_id == cosmo_id:
             latest_sub_status[s.badge_id] = s.status
 
-    # Filter published badges assigned to this Cosmonaut
-    assigned_badges = [b for b in badges if b.is_published and cosmo_id in b.assigned_cosmonaut_ids]
-
     # Order badges according to canonical progression, followed by newly created badges
     def sort_key(b: Badge):
         if b.id in CANONICAL_ORDER:
             return (0, CANONICAL_ORDER.index(b.id))
         return (1, b.id)
 
-    ordered_badges = sorted(assigned_badges, key=sort_key)
-    total_count = len(ordered_badges)
+    # Filter published badges assigned to this Cosmonaut
+    assigned_badges = [b for b in badges if b.is_published and cosmo_id in b.assigned_cosmonaut_ids]
+    ordered_assigned = sorted(assigned_badges, key=sort_key)
 
+    # Sequence of roadmap badges
+    roadmap_badges = list(ordered_assigned)
+
+    # Check if the last badge in assigned sequence is unallocated (e.g. SQL-201 in seed data)
+    has_locked_badge = False
+    if roadmap_badges:
+        last_b = roadmap_badges[-1]
+        if not getattr(last_b, "is_allocated", True):
+            has_locked_badge = True
+
+    # If the last assigned badge IS allocated (e.g. Guardian published/allocated AI-301),
+    # or all assigned badges are completed, the newly allocated badge must be AVAILABLE (active),
+    # and the NEXT unallocated curriculum badge must show as the new LOCKED route!
+    if not has_locked_badge and roadmap_badges:
+        assigned_ids = {b.id for b in roadmap_badges}
+        unallocated_badges = [b for b in sorted(badges, key=sort_key) if b.id not in assigned_ids and b.is_published]
+        if unallocated_badges:
+            next_locked_badge = unallocated_badges[0]
+            roadmap_badges.append(next_locked_badge)
+        elif len(roadmap_badges) < len(CANONICAL_ORDER):
+            next_idx = len(roadmap_badges) + 1
+            next_code = CANONICAL_ORDER[len(roadmap_badges)].replace("badge_", "").upper().replace("_", "-")
+            placeholder_locked = Badge(
+                id=f"placeholder_milestone_{next_idx}",
+                code=next_code,
+                title=f"Milestone {next_idx} (Classified)",
+                category="Advanced Specialization",
+                description="Upcoming curriculum milestone. Requirements will unlock upon Guardian directive.",
+                learning_outcomes=["Advanced engineering competency"],
+                learning_topics=["Curriculum Pipeline"],
+                prerequisites=[roadmap_badges[-1].id],
+                project_requirements="Classified capstone deliverable.",
+                is_published=True,
+                assigned_cosmonaut_ids=[cosmo_id],
+                is_allocated=False
+            )
+            roadmap_badges.append(placeholder_locked)
+
+    total_count = len(roadmap_badges)
     nodes = []
     found_first_active = False
 
-    for idx, badge in enumerate(ordered_badges):
+    for idx, badge in enumerate(roadmap_badges):
         # Progression state:
         # 1. If badge is approved -> 'completed'
         # 2. If not approved:
-        #    - If it is the last badge in the roadmap sequence -> 'locked'
-        #    - Otherwise -> 'active' (unlocked)
+        #    - If it is the last badge in roadmap sequence -> 'locked'
+        #    - Otherwise -> 'active' (AVAILABLE!)
         if badge.id in approved_badge_ids:
             state = "completed"
             is_current_active = False

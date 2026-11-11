@@ -27,33 +27,31 @@ def render_cosmo_metric_info_popover(key: str, data: Dict[str, Any], scope: str 
     align_cls = f"pop-{align}" if align else ""
     return f"""
     <span class="has-glass-tooltip">
-        <button type="button" class="metric-info-trigger" aria-label="Metric details for {escape(info.get('title', ''))}" tabindex="0">
-            i
-            <div class="glass-tooltip-popover {align_cls}">
-                <div class="popover-header">
-                    <span class="popover-title">{escape(info.get('title', ''))}</span>
-                    <span class="popover-scope-badge">{escape(info.get('scope', 'Personal'))}</span>
-                </div>
-                <div class="popover-formula-box">{escape(info.get('formula', ''))}</div>
-                <div class="popover-data-row">
-                    <span class="popover-data-label">Numerator:</span>
-                    <span class="popover-data-val">{escape(info.get('numerator', ''))}</span>
-                </div>
-                <div class="popover-data-row">
-                    <span class="popover-data-label">Denominator:</span>
-                    <span class="popover-data-val">{escape(info.get('denominator', ''))}</span>
-                </div>
-                <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
-                    <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
-                    <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
-                </div>
-                <div class="popover-criteria-section">
-                    <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
-                    <div style="margin-top:3px;"><strong>Excluded:</strong> {escape(info.get('excluded', ''))}</div>
-                    <div style="margin-top:4px; color:var(--pure-ice); font-style:italic;">{escape(info.get('insight', ''))}</div>
-                </div>
+        <button type="button" class="metric-info-trigger" aria-label="Metric details for {escape(info.get('title', ''))}" tabindex="0">i</button>
+        <div class="glass-tooltip-popover {align_cls}">
+            <div class="popover-header">
+                <span class="popover-title">{escape(info.get('title', ''))}</span>
+                <span class="popover-scope-badge">{escape(info.get('scope', 'Personal'))}</span>
             </div>
-        </button>
+            <div class="popover-formula-box">{escape(info.get('formula', ''))}</div>
+            <div class="popover-data-row">
+                <span class="popover-data-label">Numerator:</span>
+                <span class="popover-data-val">{escape(info.get('numerator', ''))}</span>
+            </div>
+            <div class="popover-data-row">
+                <span class="popover-data-label">Denominator:</span>
+                <span class="popover-data-val">{escape(info.get('denominator', ''))}</span>
+            </div>
+            <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
+                <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
+                <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
+            </div>
+            <div class="popover-criteria-section">
+                <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
+                <div style="margin-top:3px;"><strong>Excluded:</strong> {escape(info.get('excluded', ''))}</div>
+                <div style="margin-top:4px; color:var(--pure-ice); font-style:italic;">{escape(info.get('insight', ''))}</div>
+            </div>
+        </div>
     </span>
     """
 
@@ -76,10 +74,10 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
     for item in nav_items:
         is_active = item["id"] == active_view
         cls = "nav-link active" if is_active else "nav-link"
-        badge_html = f'<span class="nav-badge">{item["badge"]}</span>' if item["badge"] > 0 else ""
+        badge_html = f'<span class="nav-badge" data-badge-for="{item["id"]}">{item["badge"]}</span>' if item["badge"] > 0 else ""
         links_html.append(f"""
         <li class="nav-item">
-            <a class="{cls}" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', '{item["id"]}')">
+            <a class="{cls}" data-nav-id="{item["id"]}" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', '{item["id"]}')">
                 {item["icon"]}
                 <span>{item["label"]}</span>
                 {badge_html}
@@ -88,7 +86,7 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         """)
 
     return f"""
-    <aside class="app-sidebar">
+    <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="cosmonaut" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
             <div class="brand-badge">
                 <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -401,7 +399,7 @@ def render_cosmonaut_dashboard(
             <div style="font-size:12px; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
 
             <!-- Vertical Bar Fill -->
-            <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:all 0.2s ease;"></div>
+            <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:height 0.2s ease, opacity 0.2s ease;"></div>
 
             <!-- Popover Tooltip -->
             <div class="glass-tooltip-popover {pop_align}" style="min-width:215px;">
@@ -1084,34 +1082,34 @@ def render_gamified_roadmap(
             code_style = "color: var(--deep-frozen-midnight); font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
             title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px;"
             desc_style = "color: var(--frost-navy-50); font-size: 11px;"
-            status_html = '<span class="status-pill status-active" style="font-size:10.5px; padding:2px 8px;">Active • Current</span>'
+            if node.get("is_current_active"):
+                status_html = '<span class="status-pill status-active" style="font-size:10.5px; padding:2px 8px;">Active • Current</span>'
+            else:
+                status_html = '<span class="status-pill status-active" style="font-size:10.5px; padding:2px 8px;">Available</span>'
         else:  # locked
             card_style = (
                 "background: rgba(234, 244, 255, 0.45); "
                 "border: 1.5px dashed var(--icy-steel-50); "
-                "opacity: 0.85; "
+                "opacity: 0.9; "
                 "color: var(--frost-navy-50);"
             )
             lock_ic_12 = get_icon("lock", 12, "margin-right:4px;")
             lock_ic_13 = get_icon("lock", 13, "margin-right:5px;")
-            code = f"{lock_ic_12} LOCKED"
-            title = f"{lock_ic_13} Milestone {idx + 1} (Locked)"
-            category = "Classified Curriculum"
+            code = f"{lock_ic_12} {escape(node['code'])}"
+            title = f"{escape(node['title'])}"
+            category = escape(node.get("category", "Foundations"))
             code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 11.5px;"
             title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.85;"
             desc_style = "color: var(--frost-navy-50); font-size: 11px;"
             status_html = '<span class="status-pill status-locked" style="font-size:10.5px; padding:2px 8px;">Locked</span>'
-            onclick = f"window.StarAppBridge.dispatchAction('open_locked_milestone_notice', '{idx + 1}');"
+            onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
         if state != "locked":
             onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
 
         milestone_els.append(
-            '\n        <div class="liquid-glass-card milestone-container-node"'
+            '\n        <div class="liquid-glass-card interactive milestone-container-node"'
             ' style="position:absolute;left:{cl}px;top:{ct}px;width:{cw}px;height:{ch}px;'
-            'z-index:2;cursor:pointer;{card_style}padding:12px 16px;border-radius:var(--radius-md);'
-            'transition:transform 200ms ease, box-shadow 200ms ease;"'
-            ' onmouseover="this.style.transform=\'scale(1.03)\'"'
-            ' onmouseout="this.style.transform=\'scale(1)\'"'
+            'z-index:2;cursor:pointer;{card_style}padding:12px 16px;border-radius:var(--radius-md);"'
             ' onclick="{onclick}">'
             '\n            <div style="display:flex;align-items:center;justify-content:space-between;">'
             '\n                <span style="{code_style}">{code}</span>'
