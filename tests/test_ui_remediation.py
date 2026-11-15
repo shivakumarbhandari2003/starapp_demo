@@ -46,6 +46,7 @@ class TestUIRemediation(unittest.TestCase):
         guardian_views = [
             "g_dashboard",
             "g_allotment",
+            "g_mapping",
             "g_reviews",
             "g_review_detail",
             "g_materials",

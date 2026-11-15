@@ -260,6 +260,528 @@ def get_initial_seed_data() -> Dict[str, Any]:
                 "review_date": "2026-11-21",
                 "expected_award_date": "2026-11-23"
             }
+        },
+        {
+            "id": "badge_net_203",
+            "is_allocated": False,
+            "code": "NET-203",
+            "title": "Distributed APIs & Service Mesh",
+            "category": "Infrastructure",
+            "description": "Design resilient microservice gateways, circuit breakers, and zero-trust mTLS service-to-service communication.",
+            "learning_outcomes": [
+                "Implement rate limiting, retries, and circuit breakers",
+                "Configure mTLS service-mesh traffic routing",
+                "Instrument distributed tracing headers across API boundaries"
+            ],
+            "learning_topics": ["API Gateways", "Circuit Breakers", "mTLS", "OpenTelemetry"],
+            "prerequisites": ["badge_cld_202"],
+            "project_requirements": "Build an API gateway policy blueprint with circuit-breaking thresholds and distributed trace propagation.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-11-20",
+                "publication_date": "2026-11-20",
+                "learning_start_date": "2026-11-21",
+                "learning_end_date": "2026-11-30",
+                "project_start_date": "2026-12-01",
+                "project_end_date": "2026-12-10",
+                "submission_deadline": "2026-12-12",
+                "review_date": "2026-12-15",
+                "expected_award_date": "2026-12-18"
+            }
+        },
+        {
+            "id": "badge_sec_204",
+            "is_allocated": False,
+            "code": "SEC-204",
+            "title": "Data Security & Zero-Trust IAM",
+            "category": "Governance",
+            "description": "Enforce envelope encryption, fine-grained RBAC/ABAC authorization, key rotation, and secrets lifecycle security.",
+            "learning_outcomes": [
+                "Design KMS envelope encryption workflows for sensitive datasets",
+                "Implement least-privilege policy-as-code access controls",
+                "Audit secret rotation and credential leakage prevention"
+            ],
+            "learning_topics": ["KMS Envelope Encryption", "ABAC Policies", "Key Rotation", "Secrets Management"],
+            "prerequisites": ["badge_gov_101", "badge_cld_202"],
+            "project_requirements": "Deliver a zero-trust IAM policy bundle and key-rotation verification spec for multi-tenant data stores.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-11-25",
+                "publication_date": "2026-11-25",
+                "learning_start_date": "2026-11-26",
+                "learning_end_date": "2026-12-05",
+                "project_start_date": "2026-12-06",
+                "project_end_date": "2026-12-15",
+                "submission_deadline": "2026-12-18",
+                "review_date": "2026-12-21",
+                "expected_award_date": "2026-12-24"
+            }
+        },
+        {
+            "id": "badge_str_205",
+            "is_allocated": False,
+            "code": "STR-205",
+            "title": "Real-Time Stream Processing",
+            "category": "Data Engineering",
+            "description": "Build stateful event-time streaming pipelines with tumbling/sliding windows, watermarks, and late-event handling.",
+            "learning_outcomes": [
+                "Construct watermarked event-time aggregations",
+                "Manage RocksDB-backed stateful checkpointing",
+                "Handle out-of-order and late-arriving telemetry records"
+            ],
+            "learning_topics": ["Event-Time Windows", "Watermarks", "Stateful Checkpoints", "Stream Joins"],
+            "prerequisites": ["badge_ing_104"],
+            "project_requirements": "Implement a stateful windowed stream aggregation pipeline with exactly-once sink guarantees.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-01",
+                "publication_date": "2026-12-01",
+                "learning_start_date": "2026-12-02",
+                "learning_end_date": "2026-12-11",
+                "project_start_date": "2026-12-12",
+                "project_end_date": "2026-12-21",
+                "submission_deadline": "2026-12-23",
+                "review_date": "2026-12-26",
+                "expected_award_date": "2026-12-29"
+            }
+        },
+        {
+            "id": "badge_dbt_206",
+            "is_allocated": False,
+            "code": "DBT-206",
+            "title": "Analytics Engineering & Dimensional Models",
+            "category": "Core Engineering",
+            "description": "Transform raw lake tables into tested, documented medallion/dimensional data marts using modular SQL models.",
+            "learning_outcomes": [
+                "Structure Bronze-Silver-Gold analytical SQL DAGs",
+                "Write schema, referential, and freshness assertions",
+                "Optimize incremental model materializations"
+            ],
+            "learning_topics": ["Medallion Architecture", "Incremental Models", "Schema Tests", "Lineage Docs"],
+            "prerequisites": ["badge_sql_201"],
+            "project_requirements": "Build an incremental analytics mart DAG with automated contract tests and lineage documentation.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-05",
+                "publication_date": "2026-12-05",
+                "learning_start_date": "2026-12-06",
+                "learning_end_date": "2026-12-15",
+                "project_start_date": "2026-12-16",
+                "project_end_date": "2026-12-26",
+                "submission_deadline": "2026-12-28",
+                "review_date": "2026-12-30",
+                "expected_award_date": "2027-01-02"
+            }
+        },
+        {
+            "id": "badge_lkh_207",
+            "is_allocated": False,
+            "code": "LKH-207",
+            "title": "Open Lakehouse Table Formats",
+            "category": "Data Engineering",
+            "description": "Operate ACID transactions, schema evolution, time-travel queries, and Parquet file compaction on open lakehouse tables.",
+            "learning_outcomes": [
+                "Configure Iceberg/Delta snapshot isolation and time-travel",
+                "Optimize Z-ordering and small-file compaction jobs",
+                "Manage safe zero-downtime schema evolution"
+            ],
+            "learning_topics": ["Apache Iceberg", "ACID Snapshots", "File Compaction", "Schema Evolution"],
+            "prerequisites": ["badge_dat_103", "badge_sql_201"],
+            "project_requirements": "Design an open lakehouse storage compaction and snapshot-retention strategy for petabyte tables.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-10",
+                "publication_date": "2026-12-10",
+                "learning_start_date": "2026-12-11",
+                "learning_end_date": "2026-12-20",
+                "project_start_date": "2026-12-21",
+                "project_end_date": "2026-12-30",
+                "submission_deadline": "2027-01-02",
+                "review_date": "2027-01-05",
+                "expected_award_date": "2027-01-08"
+            }
+        },
+        {
+            "id": "badge_orc_208",
+            "is_allocated": False,
+            "code": "ORC-208",
+            "title": "Workflow Orchestration & DAG Scheduling",
+            "category": "Data Engineering",
+            "description": "Coordinate multi-stage pipelines with asset-aware scheduling, SLA alerting, dynamic task mapping, and backfill safety.",
+            "learning_outcomes": [
+                "Author idempotent orchestrated DAGs with sensor triggers",
+                "Implement backfill isolation and retry backoff strategies",
+                "Track SLA breaches with automated incident hooks"
+            ],
+            "learning_topics": ["DAG Scheduling", "Dynamic Mapping", "Backfill Safety", "SLA Alerting"],
+            "prerequisites": ["badge_ing_104"],
+            "project_requirements": "Deliver an asset-driven orchestration pipeline supporting safe historical partition backfills.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-15",
+                "publication_date": "2026-12-15",
+                "learning_start_date": "2026-12-16",
+                "learning_end_date": "2026-12-26",
+                "project_start_date": "2026-12-27",
+                "project_end_date": "2027-01-05",
+                "submission_deadline": "2027-01-08",
+                "review_date": "2027-01-11",
+                "expected_award_date": "2027-01-14"
+            }
+        },
+        {
+            "id": "badge_dq_209",
+            "is_allocated": False,
+            "code": "DQ-209",
+            "title": "Data Quality & Contract Observability",
+            "category": "Governance",
+            "description": "Enforce producer-consumer data contracts, statistical anomaly detection, and circuit-breaker quarantine tables.",
+            "learning_outcomes": [
+                "Define enforceable YAML/JSON schema contracts",
+                "Detect distribution drift and null spikes automatically",
+                "Route quarantined payloads without halting clean traffic"
+            ],
+            "learning_topics": ["Data Contracts", "Anomaly Detection", "Quarantine Sinks", "Freshness SLIs"],
+            "prerequisites": ["badge_cur_102", "badge_dbt_206"],
+            "project_requirements": "Create a data contract validator and anomaly monitor with quarantine routing for broken upstream feeds.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-20",
+                "publication_date": "2026-12-20",
+                "learning_start_date": "2026-12-21",
+                "learning_end_date": "2026-12-31",
+                "project_start_date": "2027-01-01",
+                "project_end_date": "2027-01-10",
+                "submission_deadline": "2027-01-12",
+                "review_date": "2027-01-15",
+                "expected_award_date": "2027-01-18"
+            }
+        },
+        {
+            "id": "badge_ml_302",
+            "is_allocated": False,
+            "code": "ML-302",
+            "title": "Applied ML Feature Pipelines",
+            "category": "Advanced AI",
+            "description": "Build point-in-time-correct online/offline feature stores preventing training-serving skew in production ML models.",
+            "learning_outcomes": [
+                "Prevent data leakage with point-in-time feature joins",
+                "Synchronize low-latency online stores with batch backfills",
+                "Track feature lineage and model version reproducibility"
+            ],
+            "learning_topics": ["Feature Stores", "Point-in-Time Joins", "Online Sync", "Model Lineage"],
+            "prerequisites": ["badge_sql_201", "badge_ai_301"],
+            "project_requirements": "Implement a feature pipeline specification serving consistent batch training and online inference vectors.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2026-12-25",
+                "publication_date": "2026-12-25",
+                "learning_start_date": "2026-12-26",
+                "learning_end_date": "2027-01-05",
+                "project_start_date": "2027-01-06",
+                "project_end_date": "2027-01-16",
+                "submission_deadline": "2027-01-18",
+                "review_date": "2027-01-21",
+                "expected_award_date": "2027-01-24"
+            }
+        },
+        {
+            "id": "badge_rag_303",
+            "is_allocated": False,
+            "code": "RAG-303",
+            "title": "Vector Databases & Hybrid RAG",
+            "category": "Advanced AI",
+            "description": "Architect semantic chunking, HNSW vector indexing, BM25 hybrid reranking, and citation-grounded retrieval pipelines.",
+            "learning_outcomes": [
+                "Tune HNSW index parameters for recall vs latency",
+                "Combine dense embeddings with BM25 lexical fusion",
+                "Enforce provenance citations and ACL document filtering"
+            ],
+            "learning_topics": ["HNSW Indexing", "Hybrid Retrieval", "Cross-Encoder Rerank", "ACL Grounding"],
+            "prerequisites": ["badge_ai_301"],
+            "project_requirements": "Deliver a multi-tenant hybrid RAG architecture benchmarked for precision@k and ACL isolation.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-01",
+                "publication_date": "2027-01-01",
+                "learning_start_date": "2027-01-02",
+                "learning_end_date": "2027-01-12",
+                "project_start_date": "2027-01-13",
+                "project_end_date": "2027-01-22",
+                "submission_deadline": "2027-01-25",
+                "review_date": "2027-01-28",
+                "expected_award_date": "2027-01-31"
+            }
+        },
+        {
+            "id": "badge_agt_304",
+            "is_allocated": False,
+            "code": "AGT-304",
+            "title": "Autonomous Tool-Use Agents",
+            "category": "Advanced AI",
+            "description": "Design deterministic state-machine workflows, structured function-calling schemas, sandboxing, and human-in-the-loop checkpoints.",
+            "learning_outcomes": [
+                "Constrain agent tool execution with typed schemas",
+                "Implement approval gates for high-impact state mutations",
+                "Recover gracefully from tool timeouts and partial states"
+            ],
+            "learning_topics": ["Function Calling", "Agent State Graphs", "Tool Sandboxing", "Human Approval Gates"],
+            "prerequisites": ["badge_ai_301", "badge_rag_303"],
+            "project_requirements": "Build an autonomous multi-step operations agent with typed tool contracts and human confirmation hooks.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-05",
+                "publication_date": "2027-01-05",
+                "learning_start_date": "2027-01-06",
+                "learning_end_date": "2027-01-16",
+                "project_start_date": "2027-01-17",
+                "project_end_date": "2027-01-26",
+                "submission_deadline": "2027-01-29",
+                "review_date": "2027-02-01",
+                "expected_award_date": "2027-02-04"
+            }
+        },
+        {
+            "id": "badge_evl_305",
+            "is_allocated": False,
+            "code": "EVL-305",
+            "title": "AI Evaluation & Safety Guardrails",
+            "category": "Advanced AI",
+            "description": "Construct automated golden evaluation suites, groundedness judges, prompt-injection defenses, and PII redaction filters.",
+            "learning_outcomes": [
+                "Measure faithfulness, relevance, and regression baselines",
+                "Block indirect prompt injection and jailbreak vectors",
+                "Validate output schemas and PII redaction SLAs"
+            ],
+            "learning_topics": ["Golden Eval Sets", "LLM-as-Judge", "Prompt Injection", "Output Guardrails"],
+            "prerequisites": ["badge_agt_304"],
+            "project_requirements": "Author an automated CI evaluation harness and guardrail policy suite for production AI endpoints.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-10",
+                "publication_date": "2027-01-10",
+                "learning_start_date": "2027-01-11",
+                "learning_end_date": "2027-01-21",
+                "project_start_date": "2027-01-22",
+                "project_end_date": "2027-01-31",
+                "submission_deadline": "2027-02-03",
+                "review_date": "2027-02-06",
+                "expected_award_date": "2027-02-09"
+            }
+        },
+        {
+            "id": "badge_inf_306",
+            "is_allocated": False,
+            "code": "INF-306",
+            "title": "High-Throughput Model Inference",
+            "category": "Advanced AI",
+            "description": "Scale GPU model serving with continuous batching, KV-cache quantization, speculative decoding, and latency SLO routing.",
+            "learning_outcomes": [
+                "Optimize tokens-per-second via continuous batching",
+                "Quantize weights cleanly without quality degradation",
+                "Design multi-tier model routing for cost/latency optimization"
+            ],
+            "learning_topics": ["Continuous Batching", "KV-Cache Tuning", "Quantization", "Model Routing"],
+            "prerequisites": ["badge_ai_301"],
+            "project_requirements": "Produce a serving architecture benchmark comparing quantized vs FP16 throughput under P99 SLOs.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-15",
+                "publication_date": "2027-01-15",
+                "learning_start_date": "2027-01-16",
+                "learning_end_date": "2027-01-26",
+                "project_start_date": "2027-01-27",
+                "project_end_date": "2027-02-05",
+                "submission_deadline": "2027-02-08",
+                "review_date": "2027-02-11",
+                "expected_award_date": "2027-02-14"
+            }
+        },
+        {
+            "id": "badge_k8s_307",
+            "is_allocated": False,
+            "code": "K8S-307",
+            "title": "Kubernetes Workload Scaling",
+            "category": "Infrastructure",
+            "description": "Orchestrate containerized workloads with HPA/KEDA autoscaling, pod disruption budgets, network policies, and GitOps sync.",
+            "learning_outcomes": [
+                "Configure GPU and queue-depth autoscaling policies",
+                "Harden namespace isolation with Kubernetes NetworkPolicies",
+                "Automate progressive canary rollouts via GitOps"
+            ],
+            "learning_topics": ["KEDA Autoscaling", "NetworkPolicies", "Canary Rollouts", "Pod Resilience"],
+            "prerequisites": ["badge_cld_202", "badge_net_203"],
+            "project_requirements": "Deliver hardened Kubernetes manifests with autoscaling triggers and zero-downtime canary probes.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-20",
+                "publication_date": "2027-01-20",
+                "learning_start_date": "2027-01-21",
+                "learning_end_date": "2027-01-31",
+                "project_start_date": "2027-02-01",
+                "project_end_date": "2027-02-10",
+                "submission_deadline": "2027-02-13",
+                "review_date": "2027-02-16",
+                "expected_award_date": "2027-02-19"
+            }
+        },
+        {
+            "id": "badge_iac_308",
+            "is_allocated": False,
+            "code": "IAC-308",
+            "title": "Infrastructure as Code & GitOps",
+            "category": "Infrastructure",
+            "description": "Manage reproducible multi-environment cloud platforms via modular Terraform state locking, drift detection, and policy checks.",
+            "learning_outcomes": [
+                "Structure composable IaC modules across dev/stage/prod",
+                "Enforce OPA/Conftest guardrails on terraform plans",
+                "Automate drift reconciliation and state-locking pipelines"
+            ],
+            "learning_topics": ["Terraform Modules", "OPA Policy Checks", "State Locking", "Drift Detection"],
+            "prerequisites": ["badge_cld_202", "badge_k8s_307"],
+            "project_requirements": "Submit a modular IaC repository blueprint with automated policy checks and drift remediation.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-01-25",
+                "publication_date": "2027-01-25",
+                "learning_start_date": "2027-01-26",
+                "learning_end_date": "2027-02-05",
+                "project_start_date": "2027-02-06",
+                "project_end_date": "2027-02-15",
+                "submission_deadline": "2027-02-18",
+                "review_date": "2027-02-21",
+                "expected_award_date": "2027-02-24"
+            }
+        },
+        {
+            "id": "badge_mon_309",
+            "is_allocated": False,
+            "code": "MON-309",
+            "title": "Production Telemetry & SRE",
+            "category": "Infrastructure",
+            "description": "Operationalize golden-signal dashboards, error-budget burn alerts, chaos experiments, and automated incident runbooks.",
+            "learning_outcomes": [
+                "Define multi-window SLO burn-rate alerting policies",
+                "Correlate metrics, structured logs, and flamegraph traces",
+                "Execute automated game-day fault injection drills"
+            ],
+            "learning_topics": ["SLO Burn Alerts", "Prometheus/Grafana", "Chaos Engineering", "Incident Runbooks"],
+            "prerequisites": ["badge_net_203", "badge_k8s_307"],
+            "project_requirements": "Build a complete SRE observability stack with error-budget alerts and failure-recovery playbooks.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-02-01",
+                "publication_date": "2027-02-01",
+                "learning_start_date": "2027-02-02",
+                "learning_end_date": "2027-02-12",
+                "project_start_date": "2027-02-13",
+                "project_end_date": "2027-02-22",
+                "submission_deadline": "2027-02-25",
+                "review_date": "2027-02-28",
+                "expected_award_date": "2027-03-03"
+            }
+        },
+        {
+            "id": "badge_gov_401",
+            "is_allocated": False,
+            "code": "GOV-401",
+            "title": "Enterprise AI Compliance & Audit",
+            "category": "Governance",
+            "description": "Implement immutable audit trails, model cards, bias fairness telemetry, and GDPR/AI Act regulatory readiness controls.",
+            "learning_outcomes": [
+                "Construct cryptographic tamper-evident decision audit logs",
+                "Author standardized model risk cards and impact assessments",
+                "Enforce automated right-to-erasure across data & vector stores"
+            ],
+            "learning_topics": ["AI Governance", "Model Risk Cards", "Immutable Audit", "Privacy Erasure"],
+            "prerequisites": ["badge_gov_101", "badge_sec_204", "badge_evl_305"],
+            "project_requirements": "Produce an enterprise AI compliance framework covering immutable audit logging and automated erasure.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-02-05",
+                "publication_date": "2027-02-05",
+                "learning_start_date": "2027-02-06",
+                "learning_end_date": "2027-02-16",
+                "project_start_date": "2027-02-17",
+                "project_end_date": "2027-02-26",
+                "submission_deadline": "2027-03-01",
+                "review_date": "2027-03-04",
+                "expected_award_date": "2027-03-07"
+            }
+        },
+        {
+            "id": "badge_arc_402",
+            "is_allocated": False,
+            "code": "ARC-402",
+            "title": "Multi-Region System Architecture",
+            "category": "Core Engineering",
+            "description": "Architect active-active multi-region platforms balancing CAP consistency tradeoffs, geo-failover, and disaster recovery RTO/RPO.",
+            "learning_outcomes": [
+                "Model global replication topologies and conflict resolution",
+                "Engineer sub-minute automated DNS/traffic failover",
+                "Verify RPO/RTO targets through regional evacuation tests"
+            ],
+            "learning_topics": ["Active-Active Geo", "Conflict Resolution", "Disaster Recovery", "Global Failover"],
+            "prerequisites": ["badge_k8s_307", "badge_mon_309"],
+            "project_requirements": "Design an active-active two-region platform architecture achieving sub-60s failover recovery.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-02-10",
+                "publication_date": "2027-02-10",
+                "learning_start_date": "2027-02-11",
+                "learning_end_date": "2027-02-21",
+                "project_start_date": "2027-02-22",
+                "project_end_date": "2027-03-03",
+                "submission_deadline": "2027-03-06",
+                "review_date": "2027-03-09",
+                "expected_award_date": "2027-03-12"
+            }
+        },
+        {
+            "id": "badge_cap_500",
+            "is_allocated": False,
+            "code": "CAP-500",
+            "title": "Grand Orbit Capstone Defense",
+            "category": "Capstone",
+            "description": "Integrate governance, real-time lakehouse pipelines, agentic AI, Kubernetes resilience, and SRE telemetry in a full academy defense.",
+            "learning_outcomes": [
+                "Synthesize end-to-end data, AI, and cloud architecture under real constraints",
+                "Demonstrate live resilience, observability, and compliance evidence",
+                "Defend architectural tradeoffs before the Guardian Evaluation Board"
+            ],
+            "learning_topics": ["System Integration", "Architecture Defense", "Production Readiness", "Full-Stack AIOS"],
+            "prerequisites": ["badge_gov_401", "badge_arc_402"],
+            "project_requirements": "Present and defend a production-grade end-to-end AI & Data platform uniting all academy disciplines.",
+            "is_published": True,
+            "assigned_cosmonaut_ids": [],
+            "default_timeline": {
+                "assignment_date": "2027-02-15",
+                "publication_date": "2027-02-15",
+                "learning_start_date": "2027-02-16",
+                "learning_end_date": "2027-02-28",
+                "project_start_date": "2027-03-01",
+                "project_end_date": "2027-03-15",
+                "submission_deadline": "2027-03-18",
+                "review_date": "2027-03-22",
+                "expected_award_date": "2027-03-25"
+            }
         }
     ]
 

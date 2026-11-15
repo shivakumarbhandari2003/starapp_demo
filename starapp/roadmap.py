@@ -9,6 +9,8 @@ and dynamic unlocking when the Guardian creates new badges for the cohort.
 from typing import List, Dict, Any, Optional
 from starapp.models import Badge, AssessmentMarksheet
 
+TOTAL_ROADMAP_MILESTONES = 25
+
 CANONICAL_ORDER = [
     "badge_gov_101",
     "badge_cur_102",
@@ -18,8 +20,23 @@ CANONICAL_ORDER = [
     "badge_ai_301",
     "badge_cld_202",
     "badge_net_203",
-    "badge_sft_105",
-    "badge_hrd_106"
+    "badge_sec_204",
+    "badge_str_205",
+    "badge_dbt_206",
+    "badge_lkh_207",
+    "badge_orc_208",
+    "badge_dq_209",
+    "badge_ml_302",
+    "badge_rag_303",
+    "badge_agt_304",
+    "badge_evl_305",
+    "badge_inf_306",
+    "badge_k8s_307",
+    "badge_iac_308",
+    "badge_mon_309",
+    "badge_gov_401",
+    "badge_arc_402",
+    "badge_cap_500",
 ]
 
 def compute_milestone_state(
@@ -77,72 +94,73 @@ def generate_roadmap_graph(
             return (0, CANONICAL_ORDER.index(b.id))
         return (1, b.id)
 
-    # Filter published badges assigned to this Cosmonaut
-    assigned_badges = [b for b in badges if b.is_published and cosmo_id in b.assigned_cosmonaut_ids]
-    ordered_assigned = sorted(assigned_badges, key=sort_key)
+    # Partition into Candy Crush progression tiers while preserving canonical ordering:
+    # 1. Completed milestones (approved)
+    # 2. Unlocked / published & allocated milestones available to the Cosmonaut
+    # 3. Remaining locked catalog milestones up to TOTAL_ROADMAP_MILESTONES (25)
+    ordered_all = sorted(badges, key=sort_key)
+    completed_badges = []
+    active_badges = []
+    locked_badges = []
 
-    # Sequence of roadmap badges
-    roadmap_badges = list(ordered_assigned)
+    for b in ordered_all:
+        if b.id in approved_badge_ids:
+            completed_badges.append(b)
+        elif getattr(b, "is_allocated", False) and b.is_published and cosmo_id in b.assigned_cosmonaut_ids:
+            active_badges.append(b)
+        else:
+            locked_badges.append(b)
 
-    # Check if the last badge in assigned sequence is unallocated (e.g. SQL-201 in seed data)
-    has_locked_badge = False
-    if roadmap_badges:
-        last_b = roadmap_badges[-1]
-        if not getattr(last_b, "is_allocated", True):
-            has_locked_badge = True
+    unlocked_badges = completed_badges + active_badges
+    remaining_locked_slots = max(0, TOTAL_ROADMAP_MILESTONES - len(unlocked_badges))
+    roadmap_badges = unlocked_badges + locked_badges[:remaining_locked_slots]
 
-    # If the last assigned badge IS allocated (e.g. Guardian published/allocated AI-301),
-    # or all assigned badges are completed, the newly allocated badge must be AVAILABLE (active),
-    # and the NEXT unallocated curriculum badge must show as the new LOCKED route!
-    if not has_locked_badge and roadmap_badges:
-        assigned_ids = {b.id for b in roadmap_badges}
-        unallocated_badges = [b for b in sorted(badges, key=sort_key) if b.id not in assigned_ids and b.is_published]
-        if unallocated_badges:
-            next_locked_badge = unallocated_badges[0]
-            roadmap_badges.append(next_locked_badge)
-        elif len(roadmap_badges) < len(CANONICAL_ORDER):
-            next_idx = len(roadmap_badges) + 1
-            next_code = CANONICAL_ORDER[len(roadmap_badges)].replace("badge_", "").upper().replace("_", "-")
-            placeholder_locked = Badge(
+    # If fewer than 25 badges exist in a minimal test fixture, pad with locked placeholder levels
+    while len(roadmap_badges) < TOTAL_ROADMAP_MILESTONES:
+        next_idx = len(roadmap_badges) + 1
+        code_hint = (
+            CANONICAL_ORDER[len(roadmap_badges)].replace("badge_", "").upper().replace("_", "-")
+            if len(roadmap_badges) < len(CANONICAL_ORDER)
+            else f"LVL-{next_idx:03d}"
+        )
+        roadmap_badges.append(
+            Badge(
                 id=f"placeholder_milestone_{next_idx}",
-                code=next_code,
+                code=code_hint,
                 title=f"Milestone {next_idx} (Classified)",
                 category="Advanced Specialization",
-                description="Upcoming curriculum milestone. Requirements will unlock upon Guardian directive.",
+                description="Upcoming curriculum milestone. Requirements will unlock upon Guardian publication.",
                 learning_outcomes=["Advanced engineering competency"],
                 learning_topics=["Curriculum Pipeline"],
-                prerequisites=[roadmap_badges[-1].id],
+                prerequisites=[roadmap_badges[-1].id] if roadmap_badges else [],
                 project_requirements="Classified capstone deliverable.",
-                is_published=True,
-                assigned_cosmonaut_ids=[cosmo_id],
-                is_allocated=False
+                is_published=False,
+                assigned_cosmonaut_ids=[],
+                is_allocated=False,
             )
-            roadmap_badges.append(placeholder_locked)
+        )
 
-    total_count = len(roadmap_badges)
     nodes = []
     found_first_active = False
 
     for idx, badge in enumerate(roadmap_badges):
-        # Progression state:
-        # 1. If badge is approved -> 'completed'
-        # 2. If not approved:
-        #    - If it is the last badge in roadmap sequence -> 'locked'
-        #    - Otherwise -> 'active' (AVAILABLE!)
+        # Candy Crush progression state:
+        # 1. Approved -> 'completed'
+        # 2. Published & allocated to Cosmonaut -> 'active' (unlocked)
+        # 3. Unallocated / unpublished -> 'locked'
         if badge.id in approved_badge_ids:
             state = "completed"
             is_current_active = False
-        else:
-            if idx == total_count - 1:
-                state = "locked"
-                is_current_active = False
+        elif getattr(badge, "is_allocated", False) and badge.is_published and cosmo_id in badge.assigned_cosmonaut_ids:
+            state = "active"
+            if not found_first_active:
+                is_current_active = True
+                found_first_active = True
             else:
-                state = "active"
-                if not found_first_active:
-                    is_current_active = True
-                    found_first_active = True
-                else:
-                    is_current_active = False
+                is_current_active = False
+        else:
+            state = "locked"
+            is_current_active = False
 
         # Serpentine container x-positions across 100% space (1000-unit SVG viewBox):
         # 1st badge: Left (190)

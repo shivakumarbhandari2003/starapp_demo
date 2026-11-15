@@ -95,6 +95,9 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
                 <div class="brand-title">STARAPP</div>
                 <div class="brand-subtitle">COSMONAUT PORTAL</div>
             </div>
+            <button type="button" class="sidebar-collapse-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Collapse Sidebar">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
         </div>
 
         <div class="role-badge-pill">
@@ -996,7 +999,8 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
 
 def render_gamified_roadmap(
     current_user: User,
-    roadmap_nodes: List[Dict[str, Any]]
+    roadmap_nodes: List[Dict[str, Any]],
+    is_guardian: bool = False
 ) -> str:
     """
     Renders the Candy Crush-inspired learning roadmap using standalone liquid-glass containers.
@@ -1094,10 +1098,9 @@ def render_gamified_roadmap(
                 "color: var(--frost-navy-50);"
             )
             lock_ic_12 = get_icon("lock", 12, "margin-right:4px;")
-            lock_ic_13 = get_icon("lock", 13, "margin-right:5px;")
-            code = f"{lock_ic_12} {escape(node['code'])}"
-            title = f"{escape(node['title'])}"
-            category = escape(node.get("category", "Foundations"))
+            code = f"{lock_ic_12} LEVEL {idx + 1:02d}"
+            title = "Milestone locked"
+            category = "Unlocks on Guardian Publish"
             code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 11.5px;"
             title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.85;"
             desc_style = "color: var(--frost-navy-50); font-size: 11px;"
@@ -1127,11 +1130,34 @@ def render_gamified_roadmap(
             )
         )
 
+    total_nodes = len(roadmap_nodes)
+    completed_count = sum(1 for n in roadmap_nodes if n["state"] == "completed")
+    active_count = sum(1 for n in roadmap_nodes if n["state"] == "active")
+    unlocked_count = completed_count + active_count
+    locked_count = total_nodes - unlocked_count
+    unlock_pct = round((unlocked_count / max(1, total_nodes)) * 100)
+
+    heading_title = "Curriculum Milestone Roadmap" if is_guardian else "Cosmonaut Learning Pathway"
+    heading_desc = (
+        "Track cohort progress across the 25-level Candy Crush curriculum. Publish badges one by one in Badge Allotment or click any locked level to unlock it."
+        if is_guardian else
+        "Progress level by level across the 25-milestone curriculum pathway. Each locked level unlocks as your Guardian publishes the next milestone."
+    )
+
     return """
     <div>
         <div style="text-align:center;margin-bottom:28px;">
-            <h2 style="font-size:1.6rem;font-weight:800;color:var(--frost-navy);">Cosmonaut Learning Pathway</h2>
-            <p style="font-size:13.5px;color:var(--frost-navy-50);">Follow the gamified curriculum pathway. Each level unlocks as prerequisites and training milestones are approved by your Guardian.</p>
+            <h2 style="font-size:1.6rem;font-weight:800;color:var(--frost-navy);">{heading_title}</h2>
+            <p style="font-size:13.5px;color:var(--frost-navy-50);margin-bottom:14px;">{heading_desc}</p>
+            <div class="liquid-glass-card" style="display:inline-flex;flex-direction:column;gap:8px;padding:12px 20px;border-radius:var(--radius-md);min-width:300px;max-width:560px;width:100%;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;font-weight:700;color:var(--frost-navy);flex-wrap:wrap;">
+                    <span>Level Progress: <strong>{unlocked_count} / {total_nodes} Unlocked</strong> ({unlock_pct}%)</span>
+                    <span style="color:var(--frost-navy-50);font-weight:600;">{completed_count} Cleared &bull; {active_count} Active &bull; {locked_count} Locked</span>
+                </div>
+                <div style="width:100%;height:7px;border-radius:999px;background:rgba(157,183,213,0.3);overflow:hidden;">
+                    <div style="width:{unlock_pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg, var(--deep-frozen-midnight), #3B6CA8);transition:width 0.35s ease;"></div>
+                </div>
+            </div>
         </div>
         <div style="width:100%;display:flex;justify-content:center;overflow-x:auto;">
             <div style="width:100%;max-width:{CW}px;position:relative;min-height:{th}px;">
@@ -1160,6 +1186,14 @@ def render_gamified_roadmap(
         </div>
     </div>
     """.format(
+        heading_title=heading_title,
+        heading_desc=heading_desc,
+        unlocked_count=unlocked_count,
+        total_nodes=total_nodes,
+        unlock_pct=unlock_pct,
+        completed_count=completed_count,
+        active_count=active_count,
+        locked_count=locked_count,
         CW=CW, th=total_height,
         fcd=full_curve_d,
         cmpsvg=completed_svg,
@@ -1254,6 +1288,12 @@ def render_badge_detail_modal_content(
     # Contextual action buttons
     actions = []
     if is_guardian:
+        if state == "locked":
+            actions.append(f"""
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('publish_and_unlock_badge', '{badge.id}')">
+                {get_icon("rocket", 13, "margin-right:4px;")} Publish & Unlock Milestone
+            </button>
+            """)
         actions.append(f"""
         <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{badge.id}')">
             Decide / Edit Timelines
@@ -1271,13 +1311,16 @@ def render_badge_detail_modal_content(
     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('close_modal', '{}')">Close Window</button>
     """)
 
+    display_code = "LOCKED" if (not is_guardian and state == "locked") else badge.code
+    display_title = "Milestone locked" if (not is_guardian and state == "locked") else badge.title
+
     return f"""
     <div style="padding: 2px 0 0 0;">
         <!-- Clean Subheader with Badge Code, Title and Status -->
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(badge.code)}</span>
-                <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(badge.title)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(display_code)}</span>
+                <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(display_title)}</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <span style="font-size:11.5px; font-weight:600; color:var(--frost-navy-50);">Decided by Guardian Dr. Elena Vance</span>
