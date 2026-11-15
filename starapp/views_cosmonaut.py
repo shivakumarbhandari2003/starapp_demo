@@ -95,6 +95,9 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
                 <div class="brand-title">STARAPP</div>
                 <div class="brand-subtitle">COSMONAUT PORTAL</div>
             </div>
+            <button type="button" class="sidebar-collapse-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Collapse Sidebar">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
         </div>
 
         <div class="role-badge-pill">

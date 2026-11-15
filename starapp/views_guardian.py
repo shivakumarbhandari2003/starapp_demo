@@ -13,6 +13,13 @@ from starapp.views_common import (
 )
 from starapp.assessment import RUBRIC_CRITERIA
 from starapp.analytics import get_kpi_popover
+from starapp.mapping_data import (
+    BANDS, BAND_CODES, ROLES, ROLE_CONFIG, DUMMY_MEMBERS, MEMBERS_MAP,
+    MAPPING_BADGES, BADGES_MAP, get_band_info, get_higher_bands,
+    filter_members_by_band_and_roles, filter_reviewers_by_band_and_roles,
+    generate_calendar_month_grid, get_consecutive_review_days,
+    format_review_date_human, parse_iso_date
+)
 
 def render_metric_info_popover(key: str, data: Dict[str, Any], scope: str = "cohort", align: str = "") -> str:
     """Renders an interactive liquid-glass information trigger (i) with detailed calculation popover."""
@@ -59,6 +66,7 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
         {"id": "g_dashboard", "label": "Batch Dashboard", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>', "badge": 0},
         {"id": "g_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
         {"id": "g_allotment", "label": "Badge Allotment", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
+        {"id": "g_mapping", "label": "Mapping", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>', "badge": 0},
         {"id": "g_reviews", "label": "Project Reviews", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
         {"id": "g_materials", "label": "Learning Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
         {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count}
@@ -91,6 +99,9 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
                 <div class="brand-title">STARAPP</div>
                 <div class="brand-subtitle">GUARDIAN PORTAL</div>
             </div>
+            <button type="button" class="sidebar-collapse-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Collapse Sidebar">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
         </div>
 
         <div class="role-badge-pill">
@@ -2326,4 +2337,711 @@ def render_guardian_announcements(announcements: List[Announcement], cosmonauts:
         </div>
     </div>
     """
+
+# ==============================================================================
+# 7.8 GUARDIAN BAND & ROLE MAPPING WORKSPACE
+# ==============================================================================
+
+def render_guardian_mapping(
+    selected_band: str = "B1",
+    selected_roles: Optional[List[str]] = None,
+    selected_badge: str = "AIOS",
+    selected_cosmonauts: Optional[List[str]] = None,
+    selected_reviewer_band: str = "B2",
+    selected_reviewers: Optional[List[str]] = None,
+    review_dates: Optional[List[str]] = None,
+    review_anchor: str = "2026-11-18",
+    review_direction: str = "after",
+    calendar_year: int = 2026,
+    calendar_month: int = 11,
+    editing_mapping_id: Optional[str] = None,
+    cosmo_search: str = "",
+    reviewer_search: str = "",
+    badge_search: str = "",
+    all_mappings: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    """
+    Renders the Guardian Mapping Workspace:
+    1. 6 cards for Bands B1 to B6.
+    2. Dynamic heading displaying the chosen Band (e.g. B1).
+    3. 'Create Badge' box containing 4 cards:
+       - Card 1: Select Roles (multiselect with radio/select buttons)
+       - Card 2: Select Badge (dropdown with search for AIOS, Network, Data Modelling, etc.)
+       - Card 3: Select Cosmonaut (dropdown with hover effect for 6 dummy members of selected band, single/multiselect, search)
+       - Card 4: Select Reviewers (dropdown of higher bands than selected band, displays people of selected role in chosen reviewer band, search)
+    4. 'Select Estimated Review Date':
+       - Calendar with 3 consecutive dates selection.
+       - Highlights the 3 selected review days.
+       - Greys out Saturday and Sunday (disabled non-review days).
+       - Selects 2 days either before or after anchor date.
+    5. 'Active Band & Milestone Mappings' table showing properly WHO is mapped to WHOM with visual pairing chips,
+       review dates, and an 'Edit Mapping' button.
+    """
+    selected_band = selected_band if selected_band in BAND_CODES else "B1"
+    active_roles = list(selected_roles) if selected_roles is not None else list(ROLES)
+    selected_cosmonauts = list(selected_cosmonauts) if selected_cosmonauts is not None else []
+    selected_reviewers = list(selected_reviewers) if selected_reviewers is not None else []
+    all_mappings = all_mappings or []
+    review_anchor = review_anchor or "2026-11-18"
+    review_direction = review_direction if review_direction in ("after", "before") else "after"
+
+    # Default review dates calculation if empty
+    if not review_dates:
+        review_dates = get_consecutive_review_days(review_anchor, review_direction, 3)
+    else:
+        review_dates = sorted(review_dates)
+
+    # Higher bands for reviewer selection
+    higher_bands = get_higher_bands(selected_band)
+    if selected_reviewer_band not in higher_bands:
+        selected_reviewer_band = higher_bands[0]
+
+    band_info = get_band_info(selected_band)
+    reviewer_band_info = get_band_info(selected_reviewer_band)
+
+    # Filter cosmonauts of the selected band by active roles and search
+    filtered_cosmonauts = filter_members_by_band_and_roles(selected_band, active_roles, cosmo_search)
+
+    # Filter reviewers of the chosen higher band by active roles and search
+    filtered_reviewers = filter_reviewers_by_band_and_roles(selected_reviewer_band, active_roles, reviewer_search)
+
+    # Filter badges by search query
+    b_query = badge_search.strip().lower()
+    filtered_badges = [
+        b for b in MAPPING_BADGES
+        if not b_query or b_query in b["name"].lower() or b_query in b["code"].lower() or b_query in b["category"].lower()
+    ]
+
+    # Calendar Grid calculation
+    cal_grid = generate_calendar_month_grid(calendar_year, calendar_month, review_dates, review_anchor)
+    after_dates = get_consecutive_review_days(review_anchor, "after", 3)
+    before_dates = get_consecutive_review_days(review_anchor, "before", 3)
+
+    after_label = "2 Days After: " + ", ".join([d[5:] for d in after_dates])
+    before_label = "2 Days Before: " + ", ".join([d[5:] for d in before_dates])
+
+    # --------------------------------------------------------------------------
+    # 1. RENDER THE 6 BAND CARDS (B1 to B6)
+    # --------------------------------------------------------------------------
+    band_cards_html = []
+    for b in BANDS:
+        code = b["code"]
+        is_sel = (code == selected_band)
+        card_cls = "mapping-band-card active" if is_sel else "mapping-band-card"
+        active_indicator = '<span style="position:absolute; top:7px; right:8px; width:8px; height:8px; border-radius:999px; background:#10B981; box-shadow:0 0 6px #10B981;" title="Selected Band"></span>' if is_sel else ''
+        band_cards_html.append(f"""
+        <div class="{card_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_band', '{code}')">
+            {active_indicator}
+            <div style="font-size:1.45rem; font-weight:900; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight);">{code}</div>
+            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-top:2px;">{escape(b['title'])}</div>
+            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:3px;">6 Members &bull; 3 Roles</div>
+            <div style="margin-top:6px; display:flex; justify-content:center; gap:4px; font-size:9.5px; font-weight:800; color:var(--frost-navy-50);">
+                <span style="background:rgba(79,70,229,0.1); color:#4F46E5; padding:1px 5px; border-radius:4px;">SD</span>
+                <span style="background:rgba(5,150,105,0.1); color:#059669; padding:1px 5px; border-radius:4px;">AIE</span>
+                <span style="background:rgba(2,132,199,0.1); color:#0284C7; padding:1px 5px; border-radius:4px;">SE</span>
+            </div>
+        </div>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 2. CARD 1: SELECT ROLES (Multiselect with Radio/Select Buttons)
+    # --------------------------------------------------------------------------
+    role_toggles_html = []
+    for r in ROLES:
+        cfg = ROLE_CONFIG[r]
+        is_r_sel = (r in active_roles)
+        toggle_cls = "mapping-role-toggle active" if is_r_sel else "mapping-role-toggle"
+        check_icon = (
+            f'<div style="width:20px; height:20px; border-radius:999px; background:{cfg["color"]}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:900;">✓</div>'
+            if is_r_sel else
+            '<div style="width:20px; height:20px; border-radius:999px; border:2px solid var(--icy-steel-50); background:transparent;"></div>'
+        )
+        role_member_count = len([m for m in DUMMY_MEMBERS if m["band"] == selected_band and m["role"] == r])
+        role_toggles_html.append(f"""
+        <div class="{toggle_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_role', '{r}')" title="Toggle {escape(r)} filter">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:{cfg['bg']}; color:{cfg['color']}; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">
+                    {cfg['short']}
+                </div>
+                <div>
+                    <div style="font-size:13px; font-weight:700; color:var(--frost-navy);">{escape(r)}</div>
+                    <div style="font-size:11px; color:var(--frost-navy-50);">{role_member_count} Members in {selected_band}</div>
+                </div>
+            </div>
+            {check_icon}
+        </div>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 3. CARD 2: SELECT BADGE (Dropdown with Search)
+    # --------------------------------------------------------------------------
+    badges_list_html = []
+    for b in filtered_badges:
+        is_b_sel = (b["name"] == selected_badge)
+        b_cls = "mapping-badge-item selected" if is_b_sel else "mapping-badge-item"
+        b_check = '<span style="color:#10B981; font-weight:900; font-size:13px;">✓</span>' if is_b_sel else ''
+        badges_list_html.append(f"""
+        <div class="{b_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_badge', '{b['name']}')" data-badge-name="{escape(b['name'].lower())}">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:28px; height:28px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px; color:var(--deep-frozen-midnight);">
+                    {b['code'][:3]}
+                </div>
+                <div>
+                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(b['name'])}</div>
+                    <div style="font-size:10.5px; color:var(--frost-navy-50);">{escape(b['category'])}</div>
+                </div>
+            </div>
+            {b_check}
+        </div>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 4. CARD 3: SELECT COSMONAUT (Dummy 6 Members of Selected Band)
+    # --------------------------------------------------------------------------
+    cosmo_list_html = []
+    for m in filtered_cosmonauts:
+        is_c_sel = (m["id"] in selected_cosmonauts)
+        c_cls = "mapping-member-item selected" if is_c_sel else "mapping-member-item"
+        c_cfg = ROLE_CONFIG.get(m["role"], {})
+        check_box = (
+            '<div style="width:18px; height:18px; border-radius:4px; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900;">✓</div>'
+            if is_c_sel else
+            '<div style="width:18px; height:18px; border-radius:4px; border:1.5px solid var(--icy-steel-50); background:#fff;"></div>'
+        )
+        cosmo_list_html.append(f"""
+        <div class="{c_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_cosmonaut', '{m['id']}')" data-member-name="{escape(m['name'].lower())}" data-member-role="{escape(m['role'].lower())}">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.12), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">
+                    {m['avatar']}
+                </div>
+                <div>
+                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m['name'])}</div>
+                    <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                        <span style="font-size:10px; font-weight:700; color:{c_cfg.get('color', '#17345C')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 6px; border-radius:3px;">
+                            {escape(m['role'])}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {check_box}
+        </div>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 5. CARD 4: SELECT REVIEWERS (Higher Bands than Selected Band)
+    # --------------------------------------------------------------------------
+    higher_bands_pills = []
+    for hb in higher_bands:
+        is_hb_active = (hb == selected_reviewer_band)
+        pill_cls = "mapping-higher-band-pill active" if is_hb_active else "mapping-higher-band-pill"
+        higher_bands_pills.append(f"""
+        <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_reviewer_band', '{hb}')" title="Inspect {hb} Reviewers">
+            {hb}
+        </button>
+        """)
+
+    reviewers_list_html = []
+    for m in filtered_reviewers:
+        is_r_sel = (m["id"] in selected_reviewers)
+        r_cls = "mapping-member-item selected" if is_r_sel else "mapping-member-item"
+        r_cfg = ROLE_CONFIG.get(m["role"], {})
+        r_check = (
+            '<div style="width:18px; height:18px; border-radius:4px; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900;">✓</div>'
+            if is_r_sel else
+            '<div style="width:18px; height:18px; border-radius:4px; border:1.5px solid var(--icy-steel-50); background:#fff;"></div>'
+        )
+        reviewers_list_html.append(f"""
+        <div class="{r_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer', '{m['id']}')" data-member-name="{escape(m['name'].lower())}" data-member-role="{escape(m['role'].lower())}">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg, rgba(5,150,105,0.15), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#059669;">
+                    {m['avatar']}
+                </div>
+                <div>
+                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m['name'])}</div>
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
+                        <span style="font-size:9.5px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 5px; border-radius:3px;">{m['band']}</span>
+                        <span style="font-size:10px; font-weight:700; color:{r_cfg.get('color', '#17345C')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 6px; border-radius:3px;">
+                            {escape(m['role'])}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {r_check}
+        </div>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 6. ESTIMATED REVIEW DATE CALENDAR (3 Consecutive Days, Weekends Greyed Out)
+    # --------------------------------------------------------------------------
+    cal_days_cells = []
+    for week in cal_grid["weeks"]:
+        for d in week:
+            if not d["is_current_month"]:
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell other-month">
+                    <span class="cal-day-num">{d['day']}</span>
+                </div>
+                """)
+            elif d["is_weekend"]:
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell weekend" title="Weekend — Non-Review Day (Disabled)">
+                    <span class="cal-day-num">{d['day']}</span>
+                    <span style="font-size:8px; opacity:0.7;">Off</span>
+                </div>
+                """)
+            elif d["is_selected"]:
+                order_tag = f"Day {d['order_idx']}" if d["order_idx"] else "Selected"
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell selected-review-day" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Selected Review Day ({d['date']})">
+                    <span class="cal-day-num">{d['day']}</span>
+                    <span class="cal-day-order-badge">{order_tag}</span>
+                </div>
+                """)
+            else:
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Click to anchor 3-day review window starting from {d['date']}">
+                    <span class="cal-day-num">{d['day']}</span>
+                </div>
+                """)
+
+    human_dates_list = [format_review_date_human(d) for d in review_dates]
+    human_dates_str = " ➔ ".join(human_dates_list) if human_dates_list else "None selected"
+
+    dir_after_active = "active" if review_direction == "after" else ""
+    dir_before_active = "active" if review_direction == "before" else ""
+
+    # --------------------------------------------------------------------------
+    # 7. ACTIVE MAPPINGS TABLE (Visual Mapping: Who is mapped to whom + Edit Button)
+    # --------------------------------------------------------------------------
+    table_rows = []
+    for mp in all_mappings:
+        m_id = mp.get("id", "")
+        m_band = mp.get("band", "B1")
+        m_badge = mp.get("badge", "AIOS")
+        m_roles = mp.get("roles", [])
+        m_cosmo_ids = mp.get("cosmonauts", [])
+        m_rev_band = mp.get("reviewer_band", "B2")
+        m_rev_ids = mp.get("reviewers", [])
+        m_dates = mp.get("review_dates", [])
+
+        # Build visual who-is-mapped-to-whom pairs
+        pair_items_html = []
+        if m_cosmo_ids and m_rev_ids:
+            for idx, cid in enumerate(m_cosmo_ids):
+                cosmo = MEMBERS_MAP.get(cid)
+                # Assign reviewer (cycling if fewer reviewers than cosmonauts)
+                rid = m_rev_ids[idx % len(m_rev_ids)]
+                rev = MEMBERS_MAP.get(rid)
+
+                if cosmo and rev:
+                    c_cfg = ROLE_CONFIG.get(cosmo["role"], {})
+                    r_cfg = ROLE_CONFIG.get(rev["role"], {})
+                    pair_items_html.append(f"""
+                    <div class="mapping-pair-item">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px;">{cosmo['avatar']}</div>
+                            <span style="font-weight:700; font-size:12px; color:var(--frost-navy);">{escape(cosmo['name'])}</span>
+                            <span style="font-size:9.5px; font-weight:700; color:{c_cfg.get('color', '#17345C')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 5px; border-radius:3px;">
+                                {escape(cosmo['role'])}
+                            </span>
+                        </div>
+                        <div class="mapping-connector-arrow">
+                            <span>── mapped to ──►</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px; background:#059669;">{rev['avatar']}</div>
+                            <span style="font-weight:700; font-size:12px; color:#059669;">{escape(rev['name'])}</span>
+                            <span style="font-size:9px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 4px; border-radius:3px;">{rev['band']}</span>
+                            <span style="font-size:9.5px; font-weight:700; color:{r_cfg.get('color', '#17345C')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 5px; border-radius:3px;">
+                                {escape(rev['role'])}
+                            </span>
+                        </div>
+                    </div>
+                    """)
+        elif m_cosmo_ids:
+            for cid in m_cosmo_ids:
+                cosmo = MEMBERS_MAP.get(cid)
+                if cosmo:
+                    pair_items_html.append(f"""
+                    <div class="mapping-pair-item">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px;">{cosmo['avatar']}</div>
+                            <span style="font-weight:700; font-size:12px; color:var(--frost-navy);">{escape(cosmo['name'])}</span>
+                        </div>
+                        <span style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">(Pending higher-band reviewer assignment)</span>
+                    </div>
+                    """)
+
+        roles_badges = "".join([f'<span style="display:inline-block; margin:2px 4px 2px 0; font-size:10px; font-weight:700; color:{ROLE_CONFIG.get(r, {}).get("color", "#17345C")}; background:{ROLE_CONFIG.get(r, {}).get("bg", "rgba(23,52,92,0.08)")}; padding:2px 6px; border-radius:4px;">{escape(r)}</span>' for r in m_roles])
+
+        dates_badge = (
+            f'<div style="font-size:11.5px; font-weight:700; color:#059669; display:flex; align-items:center; gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>{m_dates[0][5:]} to {m_dates[-1][5:]} (3 Days)</div>'
+            if m_dates and len(m_dates) >= 3 else
+            '<span style="font-size:11px; color:var(--frost-navy-50);">Not scheduled</span>'
+        )
+
+        table_rows.append(f"""
+        <tr>
+            <td style="vertical-align:top; padding-top:14px;">
+                <span style="font-family:var(--font-family-mono); font-size:13px; font-weight:900; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">
+                    {escape(m_band)}
+                </span>
+            </td>
+            <td style="vertical-align:top; padding-top:14px;">
+                <div style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(m_badge)}</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-bottom:4px;">{escape(BADGES_MAP.get(m_badge, {}).get('category', 'Curriculum Milestone'))}</div>
+                {dates_badge}
+            </td>
+            <td style="vertical-align:top; padding-top:14px;">
+                {roles_badges}
+            </td>
+            <td style="vertical-align:top;">
+                <!-- VISUAL MAPPING WHO IS MAPPED TO WHOM -->
+                <div style="display:flex; flex-direction:column; gap:4px; max-width:540px;">
+                    {"".join(pair_items_html) if pair_items_html else "<span style='color:var(--frost-navy-50); font-size:12px;'>No active pairs.</span>"}
+                </div>
+            </td>
+            <td style="vertical-align:top; padding-top:14px;">
+                <span class="status-pill status-active" style="font-size:10.5px;">Active Mapping</span>
+            </td>
+            <td style="vertical-align:top; padding-top:14px;">
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('edit_band_mapping', '{m_id}')" title="Edit this mapping" style="padding:4px 10px; font-size:11px;">
+                        Edit
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_band_mapping', '{m_id}')" title="Delete mapping" style="padding:4px 8px; font-size:11px; color:#DC2626;">
+                        Delete
+                    </button>
+                </div>
+            </td>
+        </tr>
+        """)
+
+    roles_summary_display = ", ".join(active_roles) if active_roles else "None (select at least one)"
+
+    # Edit mode header banner
+    edit_mode_badge = (
+        f'<span style="background:#F59E0B; color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:var(--radius-full); margin-left:8px;">EDITING MODE</span>'
+        if editing_mapping_id else ""
+    )
+    box_heading = (
+        f"Edit Badge Mapping: {escape(selected_badge)} ({selected_band})"
+        if editing_mapping_id else
+        "Create Badge"
+    )
+    submit_btn_text = "Update Badge Mapping" if editing_mapping_id else "Create Badge Mapping"
+
+    return f"""
+    <div>
+        <!-- Top Title & Navigation Context -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+            <div>
+                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
+                    Role & Competency Mapping Matrix
+                </h2>
+                <p style="font-size:13px; color:var(--frost-navy-50);">
+                    Assign curriculum badges, map Cosmonaut cohorts across Bands B1–B6, and allot higher-band technical reviewers.
+                </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <span class="status-pill status-active" style="font-weight:700;">Guardian Portal</span>
+                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700;">6 Bands &bull; 36 Members</span>
+            </div>
+        </div>
+
+        <!-- 1. The 6 Band Cards (B1 to B6) -->
+        <div style="margin-bottom:22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                    Select Cohort Band (B1 – B6)
+                </div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                    Click any band card to inspect & map badges
+                </div>
+            </div>
+            <div class="mapping-bands-grid">
+                {"".join(band_cards_html)}
+            </div>
+        </div>
+
+        <!-- 2. Band Selected Heading -->
+        <div class="liquid-glass-card" style="padding:16px 20px; margin-bottom:24px; border-left:4px solid var(--deep-frozen-midnight); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:14px;">
+                <span style="font-family:var(--font-family-mono); font-size:1.8rem; font-weight:900; color:var(--deep-frozen-midnight); line-height:1;">
+                    {selected_band}
+                </span>
+                <div>
+                    <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
+                        {selected_band} &bull; {escape(band_info['title'])}
+                    </h3>
+                    <div style="font-size:12px; color:var(--frost-navy-50);">
+                        {escape(band_info['description'])}
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span class="status-pill" style="background:rgba(234,244,255,0.85); color:var(--frost-navy); font-weight:600; font-size:11px;">
+                    {escape(band_info['level'])} ({escape(band_info['experience'])})
+                </span>
+                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">
+                    6 Cosmonauts in Band
+                </span>
+                <span class="status-pill" style="background:rgba(5,150,105,0.1); color:#059669; font-weight:700; font-size:11px;">
+                    Eligible Reviewers: {", ".join(higher_bands)}
+                </span>
+            </div>
+        </div>
+
+        <!-- 3. Create Badge Box -->
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        {box_heading}
+                    </h3>
+                    {edit_mode_badge}
+                </div>
+                <div style="display:flex; gap:8px;">
+                    {f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="font-size:11.5px; padding:6px 12px;">Cancel Edit</button>' if editing_mapping_id else ''}
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reset_mapping_selection', '{{}}')" style="font-size:11.5px; padding:6px 12px;">
+                        Reset
+                    </button>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="font-size:11.5px; padding:6px 14px;">
+                        {submit_btn_text}
+                    </button>
+                </div>
+            </div>
+
+            <!-- The 4 Cards in Box -->
+            <div class="mapping-grid-4">
+
+                <!-- CARD 1: SELECT ROLES -->
+                <div class="liquid-glass-panel mapping-card">
+                    <div class="mapping-card-header">
+                        <div class="mapping-card-title">
+                            <span>1. Select Roles</span>
+                            <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{len(active_roles)} / 3 Active</span>
+                        </div>
+                        <div class="mapping-card-subtitle">
+                            Multiselect options for cohort roles
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px; margin-bottom:10px;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_roles', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Select All</button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_roles', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
+                    </div>
+                    <div class="mapping-scroll-list">
+                        {"".join(role_toggles_html)}
+                    </div>
+                    <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
+                        Filters Cosmonauts & Reviewers below
+                    </div>
+                </div>
+
+                <!-- CARD 2: SELECT BADGE -->
+                <div class="liquid-glass-panel mapping-card">
+                    <div class="mapping-card-header">
+                        <div class="mapping-card-title">
+                            <span>2. Select Badge</span>
+                            <span style="font-size:11px; font-weight:700; color:#10B981;">{escape(selected_badge)}</span>
+                        </div>
+                        <div class="mapping-card-subtitle">
+                            Milestone badge from curriculum
+                        </div>
+                    </div>
+                    <input type="text" id="mapping-badge-search-input" class="form-control form-control-sm" placeholder="Search badge (AIOS, Network...)" oninput="window.StarAppBridge.filterBadgeList(this.value)" value="{escape(badge_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
+                    <div id="mapping-badges-scroll" class="mapping-scroll-list">
+                        {"".join(badges_list_html)}
+                    </div>
+                    <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
+                        Selected: <strong>{escape(selected_badge)}</strong> ({escape(BADGES_MAP.get(selected_badge, {}).get('code', ''))})
+                    </div>
+                </div>
+
+                <!-- CARD 3: SELECT COSMONAUT -->
+                <div class="liquid-glass-panel mapping-card">
+                    <div class="mapping-card-header">
+                        <div class="mapping-card-title">
+                            <span>3. Select Cosmonaut</span>
+                            <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{len(selected_cosmonauts)} Selected</span>
+                        </div>
+                        <div class="mapping-card-subtitle">
+                            Dummy 6 members of {selected_band} ({len(filtered_cosmonauts)} visible)
+                        </div>
+                    </div>
+                    <input type="text" id="mapping-cosmo-search-input" class="form-control form-control-sm" placeholder="Search {selected_band} cosmonauts..." oninput="window.StarAppBridge.filterCosmoList(this.value)" value="{escape(cosmo_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
+                    <div style="display:flex; gap:6px; margin-bottom:8px;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_cosmonauts', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Select Filtered</button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_cosmonauts', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
+                    </div>
+                    <div id="mapping-cosmo-scroll" class="mapping-scroll-list">
+                        {"".join(cosmo_list_html) if cosmo_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_band} members match active roles/search.</div>"}
+                    </div>
+                    <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
+                        Hover to inspect &bull; Single or multi-select
+                    </div>
+                </div>
+
+                <!-- CARD 4: SELECT REVIEWERS -->
+                <div class="liquid-glass-panel mapping-card">
+                    <div class="mapping-card-header">
+                        <div class="mapping-card-title">
+                            <span>4. Select Reviewers</span>
+                            <span style="font-size:11px; font-weight:700; color:#059669;">{len(selected_reviewers)} Selected</span>
+                        </div>
+                        <div class="mapping-card-subtitle">
+                            Higher bands ({", ".join(higher_bands)}) &bull; Active: {selected_reviewer_band}
+                        </div>
+                    </div>
+                    <!-- Higher Bands Selector Pills -->
+                    <div style="display:flex; align-items:center; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); margin-right:2px;">Bands:</span>
+                        {"".join(higher_bands_pills)}
+                    </div>
+                    <input type="text" id="mapping-reviewer-search-input" class="form-control form-control-sm" placeholder="Search {selected_reviewer_band} reviewers..." oninput="window.StarAppBridge.filterReviewerList(this.value)" value="{escape(reviewer_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
+                    <div style="display:flex; gap:6px; margin-bottom:8px;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_reviewers', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Select Filtered</button>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_reviewers', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
+                    </div>
+                    <div id="mapping-reviewer-scroll" class="mapping-scroll-list">
+                        {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_reviewer_band} reviewers match active roles/search.</div>"}
+                    </div>
+                    <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
+                        Higher band than {selected_band} &bull; Matches active role
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 5. SELECT ESTIMATED REVIEW DATE (Interactive 3-Consecutive-Day Calendar) -->
+            <div class="mapping-calendar-box">
+                <div class="cal-header-bar">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <h4 style="font-size:1.05rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                                Select Estimated Review Date (3-Day Consecutive Review Window)
+                            </h4>
+                            <span class="status-pill status-active" style="font-size:10px; font-weight:700;">Working Days Only</span>
+                        </div>
+                        <p style="font-size:12px; color:var(--frost-navy-50); margin:3px 0 0 0;">
+                            Click any weekday to anchor the schedule. Weekends (Sat & Sun) are strictly disabled non-review days.
+                        </p>
+                    </div>
+                    <!-- Calendar Month Navigator -->
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <button type="button" class="cal-month-nav-btn" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['prev_year']}, \"month\": {cal_grid['prev_month']}}}')" title="Previous Month">
+                            &lt;
+                        </button>
+                        <span style="font-size:13px; font-weight:800; color:var(--frost-navy); min-width:125px; text-align:center;">
+                            {cal_grid['month_name']} {cal_grid['year']}
+                        </span>
+                        <button type="button" class="cal-month-nav-btn" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['next_year']}, \"month\": {cal_grid['next_month']}}}')" title="Next Month">
+                            &gt;
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2 Days After / 2 Days Before Direction Selector Options -->
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Choose 3-Day Window from Anchor:</span>
+                        <button type="button" class="cal-direction-btn {dir_after_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'after')">
+                            ✓ {escape(after_label)}
+                        </button>
+                        <button type="button" class="cal-direction-btn {dir_before_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'before')">
+                            ✓ {escape(before_label)}
+                        </button>
+                    </div>
+                    <div style="font-size:11px; color:var(--frost-navy-50);">
+                        Selected Anchor: <strong>{escape(review_anchor)}</strong>
+                    </div>
+                </div>
+
+                <!-- Weekdays Header Row (Mon - Sun) -->
+                <div class="cal-weekdays-row">
+                    <div>Mon</div>
+                    <div>Tue</div>
+                    <div>Wed</div>
+                    <div>Thu</div>
+                    <div>Fri</div>
+                    <div class="weekend-header" title="Weekend non-review day">Sat ✕</div>
+                    <div class="weekend-header" title="Weekend non-review day">Sun ✕</div>
+                </div>
+
+                <!-- Calendar Days Grid -->
+                <div class="cal-days-grid">
+                    {"".join(cal_days_cells)}
+                </div>
+
+                <!-- Highlighted Review Window Confirmation Strip -->
+                <div style="margin-top:14px; padding:10px 14px; border-radius:var(--radius-sm); background:rgba(5,150,105,0.09); border:1px solid rgba(5,150,105,0.25); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span style="font-size:12.5px; font-weight:800; color:#065F46;">
+                            Locked 3-Day Review Window:
+                        </span>
+                        <span style="font-size:12.5px; font-weight:700; color:#047857;">
+                            {escape(human_dates_str)}
+                        </span>
+                    </div>
+                    <span class="status-pill status-approved" style="font-size:10.5px;">3 Business Days Locked</span>
+                </div>
+            </div>
+
+            <!-- Mapping Summary & Action Bar -->
+            <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--frost-navy);">
+                    <span><strong>Band:</strong> <span class="status-pill" style="font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">{selected_band}</span></span>
+                    <span><strong>Roles:</strong> <span style="font-weight:600;">{escape(roles_summary_display)}</span></span>
+                    <span><strong>Badge:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(selected_badge)}</span></span>
+                    <span><strong>Cosmonauts:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{len(selected_cosmonauts)} selected</span></span>
+                    <span><strong>Reviewers:</strong> <span style="font-weight:700; color:#059669;">{len(selected_reviewers)} selected ({selected_reviewer_band})</span></span>
+                    <span><strong>Review Dates:</strong> <span style="font-weight:700; color:#059669;">{", ".join(review_dates)}</span></span>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    {f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="padding:8px 14px; font-size:12.5px;">Cancel Edit</button>' if editing_mapping_id else ''}
+                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="padding:8px 18px; font-size:12.5px;">
+                        {submit_btn_text}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Active Mappings Table (Shows clearly WHO is mapped to WHOM + Edit Button) -->
+        <div class="liquid-glass-card" style="padding:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
+                        Active Band & Milestone Mappings
+                    </h3>
+                    <p style="font-size:12px; color:var(--frost-navy-50); margin:0;">
+                        Inspect paired Cosmonaut-to-Reviewer allotments, milestone badges, and scheduled 3-day review windows.
+                    </p>
+                </div>
+                <span class="status-pill" style="font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">
+                    {len(all_mappings)} Mappings Defined
+                </span>
+            </div>
+            <div class="table-responsive">
+                <table class="star-table">
+                    <thead>
+                        <tr>
+                            <th style="width:70px;">Band</th>
+                            <th style="width:200px;">Milestone & Review Window</th>
+                            <th style="width:160px;">Applicable Roles</th>
+                            <th>Who is Mapped to Whom (Cosmonaut ➔ Higher-Band Reviewer)</th>
+                            <th style="width:105px;">Status</th>
+                            <th style="width:130px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(table_rows) if table_rows else "<tr><td colspan='6' style='text-align:center; padding:30px; color:var(--frost-navy-50);'>No active mappings created yet. Select a band and map your first badge above.</td></tr>"}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    """
+
+
 

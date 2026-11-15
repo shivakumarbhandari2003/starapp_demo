@@ -396,6 +396,76 @@
       }
     },
 
+    // Instant client-side DOM filter for Mapping Badge dropdown list
+    filterBadgeList(query) {
+      const q = (query || "").trim().toLowerCase();
+      const container = document.getElementById("mapping-badges-scroll");
+      if (!container) return;
+      const items = container.querySelectorAll(".mapping-badge-item");
+      items.forEach((item) => {
+        const text = (item.innerText || item.textContent || "").toLowerCase();
+        if (!q || text.includes(q)) {
+          item.style.display = "flex";
+        } else {
+          item.style.display = "none";
+        }
+      });
+    },
+
+    // Instant client-side DOM filter for Mapping Cosmonauts dropdown list
+    filterCosmoList(query) {
+      const q = (query || "").trim().toLowerCase();
+      const container = document.getElementById("mapping-cosmo-scroll");
+      if (!container) return;
+      const items = container.querySelectorAll(".mapping-member-item");
+      items.forEach((item) => {
+        const text = (item.innerText || item.textContent || "").toLowerCase();
+        if (!q || text.includes(q)) {
+          item.style.display = "flex";
+        } else {
+          item.style.display = "none";
+        }
+      });
+    },
+
+    // Instant client-side DOM filter for Mapping Reviewers dropdown list
+    filterReviewerList(query) {
+      const q = (query || "").trim().toLowerCase();
+      const container = document.getElementById("mapping-reviewer-scroll");
+      if (!container) return;
+      const items = container.querySelectorAll(".mapping-member-item");
+      items.forEach((item) => {
+        const text = (item.innerText || item.textContent || "").toLowerCase();
+        if (!q || text.includes(q)) {
+          item.style.display = "flex";
+        } else {
+          item.style.display = "none";
+        }
+      });
+    },
+
+    // Toggle sidebar collapsed / expanded state with local persistence
+    toggleSidebar() {
+      const sb = document.getElementById("starapp-shell-sidebar");
+      if (!sb) return;
+      const isCollapsed = sb.classList.toggle("collapsed");
+      try {
+        localStorage.setItem("starapp_sidebar_collapsed", isCollapsed ? "1" : "0");
+      } catch (e) {}
+    },
+
+    // Apply persisted sidebar collapsed state
+    applyPersistedSidebarState() {
+      try {
+        if (localStorage.getItem("starapp_sidebar_collapsed") === "1") {
+          const sb = document.getElementById("starapp-shell-sidebar");
+          if (sb && !sb.classList.contains("collapsed")) {
+            sb.classList.add("collapsed");
+          }
+        }
+      } catch (e) {}
+    },
+
     // In-memory array for multiple selected PDFs
     bulkPdfs: [],
 
@@ -749,11 +819,13 @@
         renderState.modalKind = payload.activeModal || "";
         renderState.modalKey = payload.modalKey || "";
         renderState.modalHtml = payload.modalHtml || "";
+        this.applyPersistedSidebarState();
         return;
       }
 
       // Region 1: Persistent Sidebar (update active link + badge counts in place)
       this._updateSidebarInPlace(existingSidebar, payload.activeNavId, payload.sidebarBadges);
+      this.applyPersistedSidebarState();
       renderState.regionSkipCounts.sidebarSkipped += 1;
 
       // Region 2: Main Page Content

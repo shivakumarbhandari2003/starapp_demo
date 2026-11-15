@@ -57,7 +57,102 @@ body::before {
   box-shadow: 4px 0 24px rgba(7, 22, 41, 0.35);
   z-index: 100;
   position: relative;
-  transition: width var(--transition-normal);
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Collapsed sidebar state */
+.app-sidebar.collapsed {
+  width: 72px;
+  min-width: 72px;
+}
+
+.app-sidebar.collapsed .brand-title,
+.app-sidebar.collapsed .brand-subtitle,
+.app-sidebar.collapsed .role-badge-pill,
+.app-sidebar.collapsed .nav-link span,
+.app-sidebar.collapsed .user-details,
+.app-sidebar.collapsed .user-mini-card button {
+  display: none !important;
+}
+
+.app-sidebar.collapsed .sidebar-header {
+  padding: 0 16px;
+  justify-content: center;
+}
+
+.app-sidebar.collapsed .brand-badge {
+  margin: 0;
+}
+
+.app-sidebar.collapsed .nav-link {
+  justify-content: center;
+  padding: 12px 0;
+  position: relative;
+}
+
+.app-sidebar.collapsed .nav-link svg {
+  margin: 0;
+}
+
+.app-sidebar.collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
+.app-sidebar.collapsed .sidebar-footer {
+  padding: 14px 8px;
+}
+
+.app-sidebar.collapsed .user-mini-card {
+  justify-content: center;
+}
+
+.sidebar-collapse-btn {
+  background: rgba(157, 183, 213, 0.12);
+  border: 1px solid rgba(157, 183, 213, 0.25);
+  border-radius: var(--radius-sm);
+  color: var(--icy-steel);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: auto;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(157, 183, 213, 0.25);
+  color: var(--snow-white);
+}
+
+.app-sidebar.collapsed .sidebar-collapse-btn {
+  display: none;
+}
+
+.topbar-sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: rgba(23, 52, 92, 0.06);
+  border: 1px solid var(--icy-steel-50);
+  color: var(--frost-navy);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.topbar-sidebar-toggle-btn:hover {
+  background: rgba(23, 52, 92, 0.12);
+  color: var(--deep-frozen-midnight);
+  border-color: var(--deep-frozen-midnight);
 }
 
 .sidebar-header {

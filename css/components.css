@@ -925,4 +925,420 @@
   }
 }
 
+/* ==========================================================================
+   11. GUARDIAN BAND & ROLE MAPPING WORKSPACE
+   ========================================================================== */
+
+.mapping-bands-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 992px) {
+  .mapping-bands-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .mapping-bands-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.mapping-band-card {
+  position: relative;
+  padding: 14px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid var(--icy-steel-30);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  user-select: none;
+}
+
+.mapping-band-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--deep-frozen-midnight);
+  background: rgba(234, 244, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(7, 22, 41, 0.08);
+}
+
+.mapping-band-card.active {
+  border-color: var(--deep-frozen-midnight);
+  border-width: 2px;
+  background: linear-gradient(135deg, rgba(234, 244, 255, 0.95) 0%, rgba(255, 255, 255, 0.92) 100%);
+  box-shadow: 0 6px 20px rgba(7, 22, 41, 0.12), inset 0 0 0 1px var(--deep-frozen-midnight);
+}
+
+.mapping-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1200px) {
+  .mapping-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mapping-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mapping-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
+  max-height: 520px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--icy-steel-50);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82) 0%, rgba(234, 244, 255, 0.55) 100%);
+  overflow: hidden;
+}
+
+.mapping-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--icy-steel-30);
+  flex-shrink: 0;
+}
+
+.mapping-card-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--frost-navy);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mapping-card-subtitle {
+  font-size: 11.5px;
+  color: var(--frost-navy-50);
+}
+
+.mapping-scroll-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 330px;
+}
+
+.mapping-scroll-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.mapping-scroll-list::-webkit-scrollbar-track {
+  background: rgba(157, 183, 213, 0.15);
+  border-radius: 999px;
+}
+
+.mapping-scroll-list::-webkit-scrollbar-thumb {
+  background: var(--icy-steel-50);
+  border-radius: 999px;
+}
+
+.mapping-member-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--icy-steel-30);
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+}
+
+.mapping-member-item:hover {
+  transform: translateX(3px);
+  background: linear-gradient(90deg, rgba(234, 244, 255, 0.95) 0%, rgba(255, 255, 255, 0.95) 100%);
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.08);
+}
+
+.mapping-member-item.selected {
+  border-color: var(--deep-frozen-midnight);
+  border-width: 1.5px;
+  background: rgba(234, 244, 255, 0.95);
+}
+
+.mapping-role-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--icy-steel-30);
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  margin-bottom: 10px;
+  user-select: none;
+}
+
+.mapping-role-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--deep-frozen-midnight);
+  background: rgba(234, 244, 255, 0.85);
+}
+
+.mapping-role-toggle.active {
+  border-color: var(--deep-frozen-midnight);
+  border-width: 2px;
+  background: linear-gradient(135deg, rgba(234, 244, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%);
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.08);
+}
+
+.mapping-badge-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--icy-steel-30);
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+}
+
+.mapping-badge-item:hover {
+  transform: translateX(3px);
+  background: linear-gradient(90deg, rgba(234, 244, 255, 0.95) 0%, rgba(255, 255, 255, 0.95) 100%);
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 2px 10px rgba(7, 22, 41, 0.08);
+}
+
+.mapping-badge-item.selected {
+  border-color: var(--deep-frozen-midnight);
+  border-width: 1.5px;
+  background: rgba(234, 244, 255, 0.95);
+}
+
+.mapping-higher-band-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--icy-steel-50);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--frost-navy);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+
+.mapping-higher-band-pill:hover {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-color: var(--deep-frozen-midnight);
+}
+
+.mapping-higher-band-pill.active {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 2px 6px rgba(7, 22, 41, 0.2);
+}
+
+/* ==========================================================================
+   12. ESTIMATED REVIEW DATE CALENDAR & PAIRED MAPPING VISUALIZATION
+   ========================================================================== */
+
+.mapping-calendar-box {
+  margin-top: 18px;
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--icy-steel-50);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.85) 0%, rgba(234, 244, 255, 0.6) 100%);
+}
+
+.cal-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cal-month-nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--icy-steel-50);
+  color: var(--frost-navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+
+.cal-month-nav-btn:hover {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-color: var(--deep-frozen-midnight);
+}
+
+.cal-weekdays-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--frost-navy-50);
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+.cal-weekdays-row .weekend-header {
+  color: #DC2626;
+  opacity: 0.65;
+}
+
+.cal-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.cal-day-cell {
+  padding: 8px 4px;
+  min-height: 52px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--icy-steel-30);
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  user-select: none;
+  position: relative;
+}
+
+.cal-day-cell:not(.weekend):not(.other-month):hover {
+  transform: translateY(-2px);
+  border-color: var(--deep-frozen-midnight);
+  background: rgba(234, 244, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(7, 22, 41, 0.08);
+}
+
+.cal-day-cell.weekend {
+  opacity: 0.35;
+  background: rgba(157, 183, 213, 0.12);
+  cursor: not-allowed;
+  text-decoration: line-through;
+  pointer-events: none;
+  border-color: rgba(157, 183, 213, 0.2);
+}
+
+.cal-day-cell.other-month {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.cal-day-cell.selected-review-day {
+  background: linear-gradient(135deg, var(--deep-frozen-midnight) 0%, #059669 100%);
+  color: #fff;
+  border-color: #10B981;
+  border-width: 1.5px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  font-weight: 800;
+  transform: translateY(-1px);
+}
+
+.cal-day-num {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cal-day-order-badge {
+  font-size: 8.5px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 999px;
+  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.cal-direction-btn {
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--icy-steel-50);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--frost-navy);
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  user-select: none;
+}
+
+.cal-direction-btn:hover {
+  border-color: var(--deep-frozen-midnight);
+  background: rgba(234, 244, 255, 0.95);
+}
+
+.cal-direction-btn.active {
+  background: var(--deep-frozen-midnight);
+  color: var(--snow-white);
+  border-color: var(--deep-frozen-midnight);
+  box-shadow: 0 2px 8px rgba(7, 22, 41, 0.15);
+}
+
+.mapping-pair-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(234, 244, 255, 0.7);
+  border: 1px solid var(--icy-steel-30);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.mapping-connector-arrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #059669;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+
+
 

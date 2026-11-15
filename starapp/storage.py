@@ -30,6 +30,7 @@ class DataStore:
         self.announcements: Dict[str, Announcement] = {}
         self.activities: List[ActivityEvent] = []
         self.notifications: List[Notification] = []
+        self.band_mappings: List[Dict[str, Any]] = []
         self.is_loaded = False
         self.version: int = 1
         self.dirty: bool = False
@@ -59,6 +60,7 @@ class DataStore:
         
         self.activities = [ActivityEvent.from_dict(act) for act in data.get("activities", [])]
         self.notifications = [Notification.from_dict(n) for n in data.get("notifications", [])]
+        self.band_mappings = data.get("band_mappings", self._get_initial_band_mappings())
         self.is_loaded = True
         self.version += 1
         self.dirty = False
@@ -77,7 +79,8 @@ class DataStore:
             "extensions": [e.to_dict() for e in self.extensions.values()],
             "announcements": [a.to_dict() for a in self.announcements.values()],
             "activities": [act.to_dict() for act in self.activities],
-            "notifications": [n.to_dict() for n in self.notifications]
+            "notifications": [n.to_dict() for n in self.notifications],
+            "band_mappings": self.band_mappings
         }
 
     def to_json(self) -> str:
@@ -328,6 +331,60 @@ class DataStore:
             if n.recipient_id == user_id:
                 n.is_read = True
         self.mark_dirty()
+
+    # --- Band Mappings ---
+    def _get_initial_band_mappings(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": "map_1",
+                "band": "B1",
+                "badge": "AIOS",
+                "roles": ["Solutions Designer", "AI Engineer"],
+                "cosmonauts": ["m_b1_1", "m_b1_2"],
+                "reviewer_band": "B2",
+                "reviewers": ["m_b2_1", "m_b2_2"],
+                "review_dates": ["2026-11-18", "2026-11-19", "2026-11-20"],
+                "created_at": "2026-11-14T10:00:00Z",
+                "status": "active"
+            },
+            {
+                "id": "map_2",
+                "band": "B3",
+                "badge": "Data Modelling",
+                "roles": ["Solutions Designer", "Systems Engineer"],
+                "cosmonauts": ["m_b3_2", "m_b3_3"],
+                "reviewer_band": "B4",
+                "reviewers": ["m_b4_2", "m_b4_3"],
+                "review_dates": ["2026-11-23", "2026-11-24", "2026-11-25"],
+                "created_at": "2026-11-14T11:30:00Z",
+                "status": "active"
+            }
+        ]
+
+    def get_band_mappings(self) -> List[Dict[str, Any]]:
+        if not hasattr(self, "band_mappings") or not self.band_mappings:
+            self.band_mappings = self._get_initial_band_mappings()
+        return self.band_mappings
+
+    def save_band_mapping(self, mapping: Dict[str, Any]):
+        if not hasattr(self, "band_mappings") or self.band_mappings is None:
+            self.band_mappings = []
+        # Replace if existing or prepend
+        m_id = mapping.get("id")
+        replaced = False
+        for idx, m in enumerate(self.band_mappings):
+            if m.get("id") == m_id:
+                self.band_mappings[idx] = mapping
+                replaced = True
+                break
+        if not replaced:
+            self.band_mappings.insert(0, mapping)
+        self.mark_dirty()
+
+    def delete_band_mapping(self, mapping_id: str):
+        if hasattr(self, "band_mappings") and self.band_mappings:
+            self.band_mappings = [m for m in self.band_mappings if m.get("id") != mapping_id]
+            self.mark_dirty()
 
 # Global store instance
 store = DataStore()
