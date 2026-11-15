@@ -88,16 +88,11 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
     return f"""
     <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="cosmonaut" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
-            <div class="brand-badge">
-                <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </div>
-            <div>
-                <div class="brand-title">STARAPP</div>
+            <div class="brand-text-wrap">
+                <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
                 <div class="brand-subtitle">COSMONAUT PORTAL</div>
             </div>
-            <button type="button" class="sidebar-collapse-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Collapse Sidebar">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
+            <button type="button" class="sidebar-collapse-btn" style="display:none;" onclick="window.StarAppBridge.toggleSidebar()" aria-hidden="true"></button>
         </div>
 
         <div class="role-badge-pill">

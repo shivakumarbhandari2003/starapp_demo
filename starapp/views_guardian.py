@@ -92,16 +92,11 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
     return f"""
     <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="guardian" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
-            <div class="brand-badge">
-                <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </div>
-            <div>
-                <div class="brand-title">STARAPP</div>
+            <div class="brand-text-wrap">
+                <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
                 <div class="brand-subtitle">GUARDIAN PORTAL</div>
             </div>
-            <button type="button" class="sidebar-collapse-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Collapse Sidebar">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
+            <button type="button" class="sidebar-collapse-btn" style="display:none;" onclick="window.StarAppBridge.toggleSidebar()" aria-hidden="true"></button>
         </div>
 
         <div class="role-badge-pill">
@@ -2348,6 +2343,7 @@ def render_guardian_mapping(
     selected_badge: str = "AIOS",
     selected_cosmonauts: Optional[List[str]] = None,
     selected_reviewer_band: str = "B2",
+    selected_reviewer_bands: Optional[List[str]] = None,
     selected_reviewers: Optional[List[str]] = None,
     review_dates: Optional[List[str]] = None,
     review_anchor: str = "2026-11-18",
@@ -2358,7 +2354,9 @@ def render_guardian_mapping(
     cosmo_search: str = "",
     reviewer_search: str = "",
     badge_search: str = "",
-    all_mappings: Optional[List[Dict[str, Any]]] = None
+    all_mappings: Optional[List[Dict[str, Any]]] = None,
+    all_requests: Optional[List[Dict[str, Any]]] = None,
+    show_final_stage: bool = False
 ) -> str:
     """
     Renders the Guardian Mapping Workspace:
@@ -2367,15 +2365,16 @@ def render_guardian_mapping(
     3. 'Create Badge' box containing 4 cards:
        - Card 1: Select Roles (multiselect with radio/select buttons)
        - Card 2: Select Badge (dropdown with search for AIOS, Network, Data Modelling, etc.)
-       - Card 3: Select Cosmonaut (dropdown with hover effect for 6 dummy members of selected band, single/multiselect, search)
-       - Card 4: Select Reviewers (dropdown of higher bands than selected band, displays people of selected role in chosen reviewer band, search)
+       - Card 3: Select Cosmonaut (checkboxes, single/multiselect, search)
+       - Card 4: Select Reviewers across MULTIPLE higher bands (checkboxes, search)
     4. 'Select Estimated Review Date':
        - Calendar with 3 consecutive dates selection.
        - Highlights the 3 selected review days.
        - Greys out Saturday and Sunday (disabled non-review days).
-       - Selects 2 days either before or after anchor date.
-    5. 'Active Band & Milestone Mappings' table showing properly WHO is mapped to WHOM with visual pairing chips,
-       review dates, and an 'Edit Mapping' button.
+    5. Guardian Review Requests & Decisions (Accept / Reject).
+    6. Final Candidate Cosmonauts & Accepted Guardians preview table.
+    7. Master Mapped Allocations (One reviewer per row, mapped cosmonauts properly grouped).
+    8. Reset Everything demo button.
     """
     selected_band = selected_band if selected_band in BAND_CODES else "B1"
     active_roles = list(selected_roles) if selected_roles is not None else list(ROLES)
@@ -2393,17 +2392,21 @@ def render_guardian_mapping(
 
     # Higher bands for reviewer selection
     higher_bands = get_higher_bands(selected_band)
-    if selected_reviewer_band not in higher_bands:
-        selected_reviewer_band = higher_bands[0]
+    if selected_reviewer_bands:
+        active_reviewer_bands = [b for b in selected_reviewer_bands if b in higher_bands]
+    else:
+        active_reviewer_bands = [selected_reviewer_band] if selected_reviewer_band in higher_bands else ([higher_bands[0]] if higher_bands else [])
+
+    if not active_reviewer_bands and higher_bands:
+        active_reviewer_bands = [higher_bands[0]]
 
     band_info = get_band_info(selected_band)
-    reviewer_band_info = get_band_info(selected_reviewer_band)
 
     # Filter cosmonauts of the selected band by active roles and search
     filtered_cosmonauts = filter_members_by_band_and_roles(selected_band, active_roles, cosmo_search)
 
-    # Filter reviewers of the chosen higher band by active roles and search
-    filtered_reviewers = filter_reviewers_by_band_and_roles(selected_reviewer_band, active_roles, reviewer_search)
+    # Filter reviewers of ALL active higher reviewer bands by active roles and search
+    filtered_reviewers = filter_reviewers_by_band_and_roles(active_reviewer_bands, active_roles, reviewer_search)
 
     # Filter badges by search query
     b_query = badge_search.strip().lower()
@@ -2434,7 +2437,7 @@ def render_guardian_mapping(
             {active_indicator}
             <div style="font-size:1.45rem; font-weight:900; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight);">{code}</div>
             <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-top:2px;">{escape(b['title'])}</div>
-            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:3px;">6 Members &bull; 3 Roles</div>
+            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:3px;">27 Members &bull; 3 Roles (9/Domain)</div>
             <div style="margin-top:6px; display:flex; justify-content:center; gap:4px; font-size:9.5px; font-weight:800; color:var(--frost-navy-50);">
                 <span style="background:rgba(79,70,229,0.1); color:#4F46E5; padding:1px 5px; border-radius:4px;">SD</span>
                 <span style="background:rgba(5,150,105,0.1); color:#059669; padding:1px 5px; border-radius:4px;">AIE</span>
@@ -2531,12 +2534,19 @@ def render_guardian_mapping(
     # 5. CARD 4: SELECT REVIEWERS (Higher Bands than Selected Band)
     # --------------------------------------------------------------------------
     higher_bands_pills = []
+    is_all_active = len(active_reviewer_bands) == len(higher_bands)
+    all_pill_cls = "mapping-higher-band-pill active" if is_all_active else "mapping-higher-band-pill"
+    higher_bands_pills.append(f"""
+    <button type="button" class="{all_pill_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_reviewer_band', 'ALL')" title="Select all higher bands">
+        All Higher Bands
+    </button>
+    """)
     for hb in higher_bands:
-        is_hb_active = (hb == selected_reviewer_band)
+        is_hb_active = (hb in active_reviewer_bands)
         pill_cls = "mapping-higher-band-pill active" if is_hb_active else "mapping-higher-band-pill"
         higher_bands_pills.append(f"""
-        <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_reviewer_band', '{hb}')" title="Inspect {hb} Reviewers">
-            {hb}
+        <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer_band', '{hb}')" title="Toggle {hb} Reviewers">
+            {hb}{' ✓' if is_hb_active else ''}
         </button>
         """)
 
@@ -2611,108 +2621,201 @@ def render_guardian_mapping(
     dir_before_active = "active" if review_direction == "before" else ""
 
     # --------------------------------------------------------------------------
-    # 7. ACTIVE MAPPINGS TABLE (Visual Mapping: Who is mapped to whom + Edit Button)
+    # 7. GUARDIAN REVIEW REQUESTS & DECISIONS DATA
     # --------------------------------------------------------------------------
-    table_rows = []
-    for mp in all_mappings:
-        m_id = mp.get("id", "")
-        m_band = mp.get("band", "B1")
-        m_badge = mp.get("badge", "AIOS")
-        m_roles = mp.get("roles", [])
-        m_cosmo_ids = mp.get("cosmonauts", [])
-        m_rev_band = mp.get("reviewer_band", "B2")
-        m_rev_ids = mp.get("reviewers", [])
-        m_dates = mp.get("review_dates", [])
+    all_requests = all_requests or []
+    band_requests = [r for r in all_requests if r.get("band") == selected_band]
+    accepted_band_requests = [r for r in band_requests if r.get("status") == "accepted"]
+    pending_band_requests = [r for r in band_requests if r.get("status") == "pending"]
+    rejected_band_requests = [r for r in band_requests if r.get("status") == "rejected"]
 
-        # Build visual who-is-mapped-to-whom pairs
-        pair_items_html = []
-        if m_cosmo_ids and m_rev_ids:
-            for idx, cid in enumerate(m_cosmo_ids):
-                cosmo = MEMBERS_MAP.get(cid)
-                # Assign reviewer (cycling if fewer reviewers than cosmonauts)
-                rid = m_rev_ids[idx % len(m_rev_ids)]
-                rev = MEMBERS_MAP.get(rid)
+    num_accepted = len(accepted_band_requests)
+    num_selected_cosmo = len(selected_cosmonauts)
 
-                if cosmo and rev:
-                    c_cfg = ROLE_CONFIG.get(cosmo["role"], {})
-                    r_cfg = ROLE_CONFIG.get(rev["role"], {})
-                    pair_items_html.append(f"""
-                    <div class="mapping-pair-item">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px;">{cosmo['avatar']}</div>
-                            <span style="font-weight:700; font-size:12px; color:var(--frost-navy);">{escape(cosmo['name'])}</span>
-                            <span style="font-size:9.5px; font-weight:700; color:{c_cfg.get('color', '#17345C')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 5px; border-radius:3px;">
-                                {escape(cosmo['role'])}
-                            </span>
-                        </div>
-                        <div class="mapping-connector-arrow">
-                            <span>── mapped to ──►</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px; background:#059669;">{rev['avatar']}</div>
-                            <span style="font-weight:700; font-size:12px; color:#059669;">{escape(rev['name'])}</span>
-                            <span style="font-size:9px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 4px; border-radius:3px;">{rev['band']}</span>
-                            <span style="font-size:9.5px; font-weight:700; color:{r_cfg.get('color', '#17345C')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 5px; border-radius:3px;">
-                                {escape(rev['role'])}
-                            </span>
-                        </div>
+    request_cards_html = []
+    for req in band_requests:
+        r_id = req.get("id", "")
+        r_status = req.get("status", "pending")
+        g_name = req.get("reviewer_name", "Guardian")
+        g_band = req.get("reviewer_band", "B2")
+        g_role = req.get("reviewer_role", "Reviewer")
+        g_avatar = req.get("reviewer_avatar", "REV")
+        req_badge = req.get("badge", selected_badge)
+        req_dates = req.get("review_dates", [])
+        req_cosmo_count = len(req.get("cosmonaut_ids", []))
+
+        cfg = ROLE_CONFIG.get(g_role, {})
+
+        if r_status == "accepted":
+            status_badge = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Request Accepted</span>'
+            action_buttons = f"""
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3);">
+                ✕ Reject / Revoke
+            </button>
+            """
+            card_border = "border:1.5px solid #059669; background:rgba(5,150,105,0.03);"
+        elif r_status == "rejected":
+            status_badge = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">✕ Request Declined</span>'
+            action_buttons = f"""
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px;">
+                ✓ Accept
+            </button>
+            """
+            card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
+        else:  # pending
+            status_badge = '<span class="status-pill status-pending" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ Awaiting Guardian Decision</span>'
+            action_buttons = f"""
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 14px; background:#059669; border-color:#059669; color:#fff;">
+                ✓ Accept
+            </button>
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3);">
+                ✕ Reject
+            </button>
+            """
+            card_border = "border:1px solid var(--icy-steel-30); background:rgba(255,255,255,0.85);"
+
+        human_dates = [format_review_date_human(d) for d in req_dates]
+        dates_disp = " ➔ ".join(human_dates) if human_dates else "Schedule pending"
+
+        request_cards_html.append(f"""
+        <div class="liquid-glass-card" style="padding:14px 18px; {card_border} display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+            <div style="display:flex; align-items:center; gap:14px;">
+                <div style="width:42px; height:42px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.15), rgba(5,150,105,0.2)); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:var(--deep-frozen-midnight);">
+                    {escape(g_avatar)}
+                </div>
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:0;">
+                            {escape(g_name)}
+                        </h4>
+                        <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:1px 6px; border-radius:3px;">
+                            {escape(g_band)}
+                        </span>
+                        <span style="font-size:10px; font-weight:700; color:{cfg.get('color', '#17345C')}; background:{cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 6px; border-radius:3px;">
+                            {escape(g_role)}
+                        </span>
                     </div>
-                    """)
-        elif m_cosmo_ids:
-            for cid in m_cosmo_ids:
-                cosmo = MEMBERS_MAP.get(cid)
-                if cosmo:
-                    pair_items_html.append(f"""
-                    <div class="mapping-pair-item">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <div class="user-avatar" style="width:24px; height:24px; font-size:10px;">{cosmo['avatar']}</div>
-                            <span style="font-weight:700; font-size:12px; color:var(--frost-navy);">{escape(cosmo['name'])}</span>
-                        </div>
-                        <span style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">(Pending higher-band reviewer assignment)</span>
-                    </div>
-                    """)
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                {status_badge}
+                {action_buttons}
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_mapping_request', '{r_id}')" title="Delete request record" style="padding:5px 8px; font-size:11px; color:var(--frost-navy-50);">
+                    ✕
+                </button>
+            </div>
+        </div>
+        """)
 
-        roles_badges = "".join([f'<span style="display:inline-block; margin:2px 4px 2px 0; font-size:10px; font-weight:700; color:{ROLE_CONFIG.get(r, {}).get("color", "#17345C")}; background:{ROLE_CONFIG.get(r, {}).get("bg", "rgba(23,52,92,0.08)")}; padding:2px 6px; border-radius:4px;">{escape(r)}</span>' for r in m_roles])
-
-        dates_badge = (
-            f'<div style="font-size:11.5px; font-weight:700; color:#059669; display:flex; align-items:center; gap:4px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>{m_dates[0][5:]} to {m_dates[-1][5:]} (3 Days)</div>'
-            if m_dates and len(m_dates) >= 3 else
-            '<span style="font-size:11px; color:var(--frost-navy-50);">Not scheduled</span>'
-        )
-
-        table_rows.append(f"""
+    # --------------------------------------------------------------------------
+    # PREVIEW STAGE: FINAL SELECTED COSMONAUTS & ACCEPTED REVIEWERS TABLES
+    # --------------------------------------------------------------------------
+    cosmo_table_rows = []
+    for idx, cid in enumerate(selected_cosmonauts):
+        c_info = MEMBERS_MAP.get(cid, {})
+        cosmo_table_rows.append(f"""
         <tr>
-            <td style="vertical-align:top; padding-top:14px;">
-                <span style="font-family:var(--font-family-mono); font-size:13px; font-weight:900; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">
-                    {escape(m_band)}
+            <td style="font-weight:700; width:45px; color:var(--deep-frozen-midnight);">{idx + 1}</td>
+            <td style="font-weight:700; color:var(--frost-navy); font-size:13px;">
+                {escape(c_info.get('name', cid))}
+            </td>
+            <td style="width:75px;">
+                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 6px; border-radius:3px;">
+                    {escape(c_info.get('band', selected_band))}
                 </span>
             </td>
-            <td style="vertical-align:top; padding-top:14px;">
-                <div style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(m_badge)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-50); margin-bottom:4px;">{escape(BADGES_MAP.get(m_badge, {}).get('category', 'Curriculum Milestone'))}</div>
-                {dates_badge}
+        </tr>
+        """)
+
+    accepted_reviewer_table_rows = []
+    for idx, req in enumerate(accepted_band_requests):
+        accepted_reviewer_table_rows.append(f"""
+        <tr>
+            <td style="font-weight:700; width:45px; color:#059669;">{idx + 1}</td>
+            <td style="font-weight:700; color:var(--frost-navy); font-size:13px;">
+                {escape(req.get('reviewer_name', 'Guardian'))}
             </td>
-            <td style="vertical-align:top; padding-top:14px;">
-                {roles_badges}
+            <td style="width:75px;">
+                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 6px; border-radius:3px;">
+                    {escape(req.get('reviewer_band', 'B2'))}
+                </span>
             </td>
-            <td style="vertical-align:top;">
-                <!-- VISUAL MAPPING WHO IS MAPPED TO WHOM -->
-                <div style="display:flex; flex-direction:column; gap:4px; max-width:540px;">
-                    {"".join(pair_items_html) if pair_items_html else "<span style='color:var(--frost-navy-50); font-size:12px;'>No active pairs.</span>"}
+        </tr>
+        """)
+
+    # --------------------------------------------------------------------------
+    # 8. LIVE MAPPED ALLOCATIONS (Readable Format: One Reviewer Per Row)
+    # --------------------------------------------------------------------------
+    band_active_mappings = [m for m in all_mappings if m.get("band") == selected_band]
+    master_mapping_rows = []
+
+    for mp in band_active_mappings:
+        m_id = mp.get("id", "")
+        m_badge = mp.get("badge", selected_badge)
+        m_cosmo_ids = mp.get("cosmonauts", [])
+        m_rev_ids = mp.get("reviewers", [])
+        m_rev_band = mp.get("reviewer_band", "B2")
+
+        # Guardian info
+        g_id = m_rev_ids[0] if m_rev_ids else ""
+        guardian = MEMBERS_MAP.get(g_id, {})
+        g_name = guardian.get("name", g_id)
+        g_role = guardian.get("role", "AI Engineer")
+        g_band = guardian.get("band", m_rev_band)
+        g_avatar = guardian.get("avatar", "REV")
+        g_cfg = ROLE_CONFIG.get(g_role, {})
+
+        # Cosmonaut chips mapped to this single reviewer (proper clean readable format with names & band)
+        cadet_cells = []
+        for c_idx, cid in enumerate(m_cosmo_ids):
+            cosmo = MEMBERS_MAP.get(cid, {})
+            c_name = cosmo.get("name", cid)
+            c_band = cosmo.get("band", selected_band)
+            c_avatar = cosmo.get("avatar", "CAD")
+
+            cadet_cells.append(f"""
+            <div class="mapped-cosmo-chip" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); box-shadow:0 1px 2px rgba(23,52,92,0.03);">
+                <div style="width:22px; height:22px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.12), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800; color:var(--deep-frozen-midnight);">
+                    {escape(c_avatar)}
+                </div>
+                <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(c_name)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:9px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:1px 5px; border-radius:3px;">{escape(c_band)}</span>
+            </div>
+            """)
+
+        master_mapping_rows.append(f"""
+        <tr>
+            <td style="vertical-align:middle; padding:16px 14px;">
+                <!-- ONE REVIEWER PER ROW -->
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:40px; height:40px; border-radius:999px; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13.5px; font-weight:800; flex-shrink:0;">
+                        {escape(g_avatar)}
+                    </div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:14px; font-weight:800; color:var(--frost-navy);">{escape(g_name)}</span>
+                            <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:1px 5px; border-radius:3px;">{escape(g_band)}</span>
+                        </div>
+                        <div style="font-size:11.5px; font-weight:700; color:{g_cfg.get('color', '#17345C')}; margin-top:3px;">
+                            {escape(g_role)}
+                        </div>
+                    </div>
                 </div>
             </td>
-            <td style="vertical-align:top; padding-top:14px;">
-                <span class="status-pill status-active" style="font-size:10.5px;">Active Mapping</span>
+            <td style="vertical-align:middle; padding:16px 14px;">
+                <div style="font-size:13px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(m_badge)}</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">{escape(BADGES_MAP.get(m_badge, {}).get('category', 'Milestone'))}</div>
             </td>
-            <td style="vertical-align:top; padding-top:14px;">
-                <div style="display:flex; gap:6px;">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('edit_band_mapping', '{m_id}')" title="Edit this mapping" style="padding:4px 10px; font-size:11px;">
-                        Edit
-                    </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_band_mapping', '{m_id}')" title="Delete mapping" style="padding:4px 8px; font-size:11px; color:#DC2626;">
-                        Delete
-                    </button>
+            <td style="vertical-align:middle; padding:16px 14px;">
+                <!-- ALL COSMONAUTS MAPPED TO THIS SINGLE REVIEWER -->
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    {"".join(cadet_cells)}
                 </div>
+            </td>
+            <td style="vertical-align:middle; padding:16px 14px; text-align:center;">
+                <span class="status-pill status-approved" style="font-size:12px; font-weight:900; padding:4px 10px;">
+                    {len(m_cosmo_ids)} Cadets
+                </span>
             </td>
         </tr>
         """)
@@ -2736,21 +2839,18 @@ def render_guardian_mapping(
         <!-- Top Title & Navigation Context -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
             <div>
-                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
+                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin:0;">
                     Role & Competency Mapping Matrix
                 </h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">
-                    Assign curriculum badges, map Cosmonaut cohorts across Bands B1–B6, and allot higher-band technical reviewers.
-                </p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <span class="status-pill status-active" style="font-weight:700;">Guardian Portal</span>
-                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700;">6 Bands &bull; 36 Members</span>
+                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700;">6 Bands &bull; 162 Members (27/Band)</span>
             </div>
         </div>
 
         <!-- 1. The 6 Band Cards (B1 to B6) -->
-        <div style="margin-bottom:22px;">
+        <div style="margin-bottom:24px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
                     Select Cohort Band (B1 – B6)
@@ -2761,34 +2861,6 @@ def render_guardian_mapping(
             </div>
             <div class="mapping-bands-grid">
                 {"".join(band_cards_html)}
-            </div>
-        </div>
-
-        <!-- 2. Band Selected Heading -->
-        <div class="liquid-glass-card" style="padding:16px 20px; margin-bottom:24px; border-left:4px solid var(--deep-frozen-midnight); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <div style="display:flex; align-items:center; gap:14px;">
-                <span style="font-family:var(--font-family-mono); font-size:1.8rem; font-weight:900; color:var(--deep-frozen-midnight); line-height:1;">
-                    {selected_band}
-                </span>
-                <div>
-                    <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
-                        {selected_band} &bull; {escape(band_info['title'])}
-                    </h3>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">
-                        {escape(band_info['description'])}
-                    </div>
-                </div>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <span class="status-pill" style="background:rgba(234,244,255,0.85); color:var(--frost-navy); font-weight:600; font-size:11px;">
-                    {escape(band_info['level'])} ({escape(band_info['experience'])})
-                </span>
-                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">
-                    6 Cosmonauts in Band
-                </span>
-                <span class="status-pill" style="background:rgba(5,150,105,0.1); color:#059669; font-weight:700; font-size:11px;">
-                    Eligible Reviewers: {", ".join(higher_bands)}
-                </span>
             </div>
         </div>
 
@@ -2866,7 +2938,7 @@ def render_guardian_mapping(
                             <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{len(selected_cosmonauts)} Selected</span>
                         </div>
                         <div class="mapping-card-subtitle">
-                            Dummy 6 members of {selected_band} ({len(filtered_cosmonauts)} visible)
+                            27 members of {selected_band} ({len(filtered_cosmonauts)} visible)
                         </div>
                     </div>
                     <input type="text" id="mapping-cosmo-search-input" class="form-control form-control-sm" placeholder="Search {selected_band} cosmonauts..." oninput="window.StarAppBridge.filterCosmoList(this.value)" value="{escape(cosmo_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
@@ -2890,7 +2962,7 @@ def render_guardian_mapping(
                             <span style="font-size:11px; font-weight:700; color:#059669;">{len(selected_reviewers)} Selected</span>
                         </div>
                         <div class="mapping-card-subtitle">
-                            Higher bands ({", ".join(higher_bands)}) &bull; Active: {selected_reviewer_band}
+                            Higher bands ({", ".join(active_reviewer_bands)}) &bull; {len(filtered_reviewers)} Available
                         </div>
                     </div>
                     <!-- Higher Bands Selector Pills -->
@@ -2898,7 +2970,7 @@ def render_guardian_mapping(
                         <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); margin-right:2px;">Bands:</span>
                         {"".join(higher_bands_pills)}
                     </div>
-                    <input type="text" id="mapping-reviewer-search-input" class="form-control form-control-sm" placeholder="Search {selected_reviewer_band} reviewers..." oninput="window.StarAppBridge.filterReviewerList(this.value)" value="{escape(reviewer_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
+                    <input type="text" id="mapping-reviewer-search-input" class="form-control form-control-sm" placeholder="Search reviewers across {', '.join(active_reviewer_bands)}..." oninput="window.StarAppBridge.filterReviewerList(this.value)" value="{escape(reviewer_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
                     <div style="display:flex; gap:6px; margin-bottom:8px;">
                         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_reviewers', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Select Filtered</button>
                         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_reviewers', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
@@ -2923,9 +2995,6 @@ def render_guardian_mapping(
                             </h4>
                             <span class="status-pill status-active" style="font-size:10px; font-weight:700;">Working Days Only</span>
                         </div>
-                        <p style="font-size:12px; color:var(--frost-navy-50); margin:3px 0 0 0;">
-                            Click any weekday to anchor the schedule. Weekends (Sat & Sun) are strictly disabled non-review days.
-                        </p>
                     </div>
                     <!-- Calendar Month Navigator -->
                     <div style="display:flex; align-items:center; gap:8px;">
@@ -2998,47 +3067,232 @@ def render_guardian_mapping(
                     <span><strong>Reviewers:</strong> <span style="font-weight:700; color:#059669;">{len(selected_reviewers)} selected ({selected_reviewer_band})</span></span>
                     <span><strong>Review Dates:</strong> <span style="font-weight:700; color:#059669;">{", ".join(review_dates)}</span></span>
                 </div>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:10px; align-items:center;">
                     {f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="padding:8px 14px; font-size:12.5px;">Cancel Edit</button>' if editing_mapping_id else ''}
-                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="padding:8px 18px; font-size:12.5px;">
+                    <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="padding:8px 14px; font-size:12.5px;">
                         {submit_btn_text}
+                    </button>
+                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('send_mapping_requests', '{{}}')" style="padding:8px 20px; font-size:12.5px; font-weight:800; display:flex; align-items:center; gap:6px; background:linear-gradient(135deg, #17345C, #2E5C9E); color:#fff;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        Send Request ({len(selected_reviewers)} Selected)
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- 4. Active Mappings Table (Shows clearly WHO is mapped to WHOM + Edit Button) -->
-        <div class="liquid-glass-card" style="padding:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+        <!-- 4. Guardian Review Requests & Decisions Container -->
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
-                        Active Band & Milestone Mappings
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
+                        Guardian Review Requests & Decisions &bull; Band {selected_band}
                     </h3>
                     <p style="font-size:12px; color:var(--frost-navy-50); margin:0;">
-                        Inspect paired Cosmonaut-to-Reviewer allotments, milestone badges, and scheduled 3-day review windows.
+                        Requests dispatched to higher-band guardians. Accept guardian participation to unlock automated equal cosmonaut distribution.
                     </p>
                 </div>
-                <span class="status-pill" style="font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">
-                    {len(all_mappings)} Mappings Defined
-                </span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span class="status-pill status-approved" style="font-weight:700; font-size:11px;">
+                        {num_accepted} Accepted
+                    </span>
+                    <span class="status-pill status-pending" style="font-weight:700; font-size:11px;">
+                        {len(pending_band_requests)} Pending
+                    </span>
+                    <span class="status-pill status-rejected" style="font-weight:700; font-size:11px;">
+                        {len(rejected_band_requests)} Declined
+                    </span>
+                </div>
             </div>
+
+            <!-- Request Cards List -->
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                {"".join(request_cards_html) if request_cards_html else f'''
+                <div style="text-align:center; padding:32px 20px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);">
+                    <div style="margin-bottom:8px; color:var(--frost-navy-50);">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    </div>
+                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">No Review Requests Dispatched Yet for Band {selected_band}</div>
+                    <div style="font-size:12px; color:var(--frost-navy-50); max-width:480px; margin:4px auto 14px auto;">
+                        Select candidate cosmonauts in Card 3, higher-band reviewers in Card 4, pick 3 review dates on the calendar, then click <strong>"Send Request"</strong> above.
+                    </div>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'send_mapping_requests\', \'{{}}\')" style="font-size:12px; padding:7px 18px; display:inline-flex; align-items:center; gap:6px;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        Send Review Request ({len(selected_reviewers)} Guardians Selected)
+                    </button>
+                </div>
+                '''}
+            </div>
+
+            <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="font-size:12px; color:var(--frost-navy-50);">
+                    Status: <strong>{num_accepted} Accepted</strong> &bull; <strong>{len(pending_band_requests)} Pending</strong> &bull; <strong>{len(rejected_band_requests)} Declined</strong>
+                </div>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_final_stage', '{{}}')" style="font-size:12px; padding:7px 16px; display:flex; align-items:center; gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    {"Hide Final Review Stage" if show_final_stage else "Show Final Cosmonauts & Accepted Reviewers Table"}
+                </button>
+            </div>
+        </div>
+
+        <!-- 5. Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers Table -->
+        {f'''
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px; border:1.5px solid var(--icy-steel-50);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers
+                    </h3>
+                    <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
+                        Ready for Equal Partition
+                    </span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span class="status-pill" style="font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">
+                        {num_selected_cosmo} Cadets Selected
+                    </span>
+                    <span class="status-pill status-approved" style="font-weight:700;">
+                        {num_accepted} Reviewers Confirmed
+                    </span>
+                </div>
+            </div>
+
+            <!-- Two Static Structured Tables Side-by-Side (Names and Band Only, No Timestamps) -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:18px; margin-bottom:20px;">
+                <!-- Table 1: Final Candidate Cosmonauts -->
+                <div class="liquid-glass-panel" style="padding:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:0;">
+                            1. Final Selected Cosmonauts ({num_selected_cosmo})
+                        </h4>
+                        <span class="status-pill" style="font-size:10px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">
+                            Band {selected_band}
+                        </span>
+                    </div>
+                    <div class="table-responsive" style="max-height:280px; overflow-y:auto;">
+                        <table class="star-table" style="font-size:12px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:45px;">#</th>
+                                    <th>Cosmonaut Name</th>
+                                    <th style="width:75px;">Band</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {"".join(cosmo_table_rows) if cosmo_table_rows else "<tr><td colspan='3' style='text-align:center; padding:24px; color:var(--frost-navy-50);'>No cosmonauts selected yet. Check cosmonauts in Card 3 above.</td></tr>"}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Table 2: Accepted Guardian Reviewers -->
+                <div class="liquid-glass-panel" style="padding:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="font-size:13.5px; font-weight:800; color:#059669; margin:0;">
+                            2. Accepted Reviewers ({num_accepted})
+                        </h4>
+                        <span class="status-pill status-approved" style="font-size:10px; font-weight:800;">
+                            Confirmed
+                        </span>
+                    </div>
+                    <div class="table-responsive" style="max-height:280px; overflow-y:auto;">
+                        <table class="star-table" style="font-size:12px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:45px;">#</th>
+                                    <th>Reviewer Name</th>
+                                    <th style="width:75px;">Band</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {"".join(accepted_reviewer_table_rows) if accepted_reviewer_table_rows else "<tr><td colspan='3' style='text-align:center; padding:24px; color:var(--frost-navy-50);'>No guardians accepted yet. Accept review requests in Section 4 above.</td></tr>"}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Equal Partition Summary Strip & Map Cosmonauts Button -->
+            <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(5,150,105,0.08), rgba(23,52,92,0.04)); border:1.5px solid rgba(5,150,105,0.3); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:14px; font-weight:800; color:var(--frost-navy);">
+                        Equal Partition Allocation
+                    </span>
+                    <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
+                        {num_accepted} Confirmed Reviewer(s) &bull; {num_selected_cosmo} Candidate(s)
+                    </span>
+                </div>
+                {f'''
+                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction(\'execute_cosmonaut_mapping\', \'{{}}\')" style="padding:10px 22px; font-size:13px; font-weight:800; background:linear-gradient(135deg, #059669, #047857); color:#fff; border:none; border-radius:var(--radius-sm); cursor:pointer; display:flex; align-items:center; gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Map Cosmonauts
+                </button>
+                ''' if num_accepted > 0 and num_selected_cosmo > 0 else f'''
+                <button type="button" class="btn-secondary" disabled style="opacity:0.5; padding:10px 20px; font-size:12.5px; font-weight:700; cursor:not-allowed;">
+                    Map Cosmonauts (Accept at least 1 Guardian)
+                </button>
+                '''}
+            </div>
+        </div>
+        ''' if (show_final_stage or num_accepted > 0) else ''}
+
+        <!-- 6. Live Mapped Allocations (One Reviewer Name per row, Cosmonauts mapped to the single reviewer) -->
+        {f'''
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px; border:1.5px solid rgba(5,150,105,0.4); box-shadow:0 6px 20px rgba(5,150,105,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                        <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                            Live Mapped Review Allocations &bull; Band {selected_band}
+                        </h3>
+                        <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
+                            Active
+                        </span>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'clear_band_mappings\', \'{selected_band}\')" style="font-size:11.5px; padding:6px 14px; color:#DC2626;" title="Clear mapping for this band">
+                        ✕ Clear Mapping
+                    </button>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'execute_cosmonaut_mapping\', \'{{}}\')" style="font-size:11.5px; padding:6px 16px; background:#059669; border-color:#059669; color:#fff; display:flex; align-items:center; gap:5px;" title="Re-distribute equally">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Re-Map
+                    </button>
+                </div>
+            </div>
+
+            <!-- Highly Readable Master Table: One Reviewer Per Row -->
             <div class="table-responsive">
-                <table class="star-table">
+                <table class="star-table" style="background:#fff; border-radius:var(--radius-sm); overflow:hidden;">
                     <thead>
                         <tr>
-                            <th style="width:70px;">Band</th>
-                            <th style="width:200px;">Milestone & Review Window</th>
-                            <th style="width:160px;">Applicable Roles</th>
-                            <th>Who is Mapped to Whom (Cosmonaut ➔ Higher-Band Reviewer)</th>
-                            <th style="width:105px;">Status</th>
-                            <th style="width:130px;">Action</th>
+                            <th style="width:260px; padding:12px 16px;">Guardian Reviewer</th>
+                            <th style="width:180px; padding:12px 16px;">Milestone</th>
+                            <th style="padding:12px 16px;">Mapped Cosmonauts</th>
+                            <th style="width:90px; text-align:center; padding:12px 16px;">Cadets</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {"".join(table_rows) if table_rows else "<tr><td colspan='6' style='text-align:center; padding:30px; color:var(--frost-navy-50);'>No active mappings created yet. Select a band and map your first badge above.</td></tr>"}
+                        {"".join(master_mapping_rows)}
                     </tbody>
                 </table>
             </div>
+        </div>
+        ''' if band_active_mappings else ''}
+
+        <!-- 7. Reset Everything Container (Demo Mode) -->
+        <div style="margin-top:28px; padding:18px 24px; background:rgba(23,52,92,0.03); border:1.5px dashed var(--icy-steel-50); border-radius:var(--radius-md); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--frost-navy);"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <h4 style="font-size:14px; font-weight:800; color:var(--frost-navy); margin:0;">
+                    Reset Workspace & Demo State
+                </h4>
+            </div>
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('reset_all_mapping_state', '{{}}')" style="padding:9px 20px; font-size:12.5px; font-weight:800; color:#DC2626; border-color:rgba(220,38,38,0.3); display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Reset Everything (Demo Mode)
+            </button>
         </div>
     </div>
     """

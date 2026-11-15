@@ -76,22 +76,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. Local StarApp assets: Stale-While-Revalidate strategy
+  // 2. Local StarApp assets: Network-First strategy (always get latest live files)
   if (url.origin === self.location.origin) {
-    // Only cache GET requests
     if (event.request.method !== "GET") return;
 
     event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const cachedResponse = await cache.match(event.request);
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(() => cachedResponse);
-
-        return cachedResponse || fetchPromise;
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const resClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+        }
+        return networkResponse;
+      }).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return cache.match(event.request);
       })
     );
   }

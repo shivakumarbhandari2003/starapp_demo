@@ -444,24 +444,29 @@
       });
     },
 
-    // Toggle sidebar collapsed / expanded state with local persistence
+    // Toggle sidebar pinned-expanded / collapsed state with local persistence
     toggleSidebar() {
       const sb = document.getElementById("starapp-shell-sidebar");
       if (!sb) return;
-      const isCollapsed = sb.classList.toggle("collapsed");
+      const isPinned = sb.classList.toggle("pinned-expanded");
+      sb.classList.toggle("collapsed", !isPinned);
       try {
-        localStorage.setItem("starapp_sidebar_collapsed", isCollapsed ? "1" : "0");
+        localStorage.setItem("starapp_sidebar_collapsed", isPinned ? "0" : "1");
       } catch (e) {}
     },
 
-    // Apply persisted sidebar collapsed state
+    // Apply persisted sidebar state
     applyPersistedSidebarState() {
       try {
-        if (localStorage.getItem("starapp_sidebar_collapsed") === "1") {
-          const sb = document.getElementById("starapp-shell-sidebar");
-          if (sb && !sb.classList.contains("collapsed")) {
-            sb.classList.add("collapsed");
-          }
+        const sb = document.getElementById("starapp-shell-sidebar");
+        if (!sb) return;
+        const isCollapsed = localStorage.getItem("starapp_sidebar_collapsed") === "1";
+        if (isCollapsed) {
+          sb.classList.remove("pinned-expanded");
+          sb.classList.add("collapsed");
+        } else if (localStorage.getItem("starapp_sidebar_collapsed") === "0") {
+          sb.classList.add("pinned-expanded");
+          sb.classList.remove("collapsed");
         }
       } catch (e) {}
     },

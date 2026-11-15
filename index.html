@@ -139,6 +139,7 @@ controller.initialize(stored_data, session_data)
     if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("sw.js").then((reg) => {
+          reg.update();
           console.log("[StarApp] Service Worker active, scope:", reg.scope);
         }).catch((err) => {
           console.warn("[StarApp] Service Worker registration skipped:", err);

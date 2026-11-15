@@ -63,7 +63,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(get_higher_bands("B1"), ["B2", "B3", "B4", "B5", "B6"])
         self.assertIn(self.ctrl.mapping_selected_reviewer_band, ["B2", "B3", "B4", "B5", "B6"])
         html = self.ctrl.render()
-        self.assertIn("B1 &bull; Foundation Associate", html)
+        self.assertIn("mapping-band-card active", html)
+        self.assertIn("Foundation Associate", html)
 
         # Test selecting B3
         self.ctrl.handle_event("select_mapping_band", "B3")
@@ -71,7 +72,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(get_higher_bands("B3"), ["B4", "B5", "B6"])
         self.assertIn(self.ctrl.mapping_selected_reviewer_band, ["B4", "B5", "B6"])
         html = self.ctrl.render()
-        self.assertIn("B3 &bull; Senior Specialist", html)
+        self.assertIn("Senior Specialist", html)
 
     def test_create_badge_4_cards_matrix(self):
         """Verify Create Badge box has the 4 cards: Roles, Badge, Cosmonaut, Reviewers."""
@@ -103,14 +104,14 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_mapping")
         self.ctrl.handle_event("select_mapping_band", "B1")
 
-        # When all roles active, 6 members of B1 should be returned
+        # When all roles active, 27 members of B1 should be returned (9 per role)
         all_b1 = filter_members_by_band_and_roles("B1", ["Solutions Designer", "AI Engineer", "Systems Engineer"])
-        self.assertEqual(len(all_b1), 6)
+        self.assertEqual(len(all_b1), 27)
 
         # Filter to only AI Engineer
         self.ctrl.mapping_selected_roles = ["AI Engineer"]
         ai_b1 = filter_members_by_band_and_roles("B1", self.ctrl.mapping_selected_roles)
-        self.assertEqual(len(ai_b1), 2)
+        self.assertEqual(len(ai_b1), 9)
         for m in ai_b1:
             self.assertEqual(m["role"], "AI Engineer")
 
@@ -122,7 +123,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(self.ctrl.mapping_selected_reviewer_band, "B3")
 
         revs_b3 = filter_reviewers_by_band_and_roles("B3", ["AI Engineer", "Solutions Designer", "Systems Engineer"])
-        self.assertEqual(len(revs_b3), 6)
+        self.assertEqual(len(revs_b3), 27)
         for r in revs_b3:
             self.assertEqual(r["band"], "B3")
 
@@ -194,31 +195,45 @@ class TestGuardianMappingFlow(unittest.TestCase):
 
     def test_visual_who_is_mapped_to_whom_and_edit_mapping_lifecycle(self):
         """
-        Verify the Active Mappings table displays the visual pairing (Cosmonaut ── mapped to ──► Reviewer),
-        and Guardian can click Edit, update fields, and save changes in place.
+        Verify the old table section is removed, and when mapping is created,
+        Live Mapped Allocations displays the visual pairing (Cosmonaut ── mapped to ──► Reviewer).
         """
         self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("select_mapping_band", "B1")
+        initial_html = self.ctrl.render()
+
+        # The old static table is completely removed
+        self.assertNotIn("Active Band & Milestone Mappings", initial_html)
+        self.assertNotIn("2 Mappings Defined", initial_html)
+
+        # 1. Create a mapping record for B1
+        mapping_record = {
+            "id": "map_test_b1",
+            "band": "B1",
+            "badge": "AIOS",
+            "roles": ["Solutions Designer", "AI Engineer"],
+            "cosmonauts": ["m_b1_1", "m_b1_2"],
+            "reviewer_band": "B2",
+            "reviewers": ["m_b2_1"],
+            "review_dates": ["2026-11-18", "2026-11-19", "2026-11-20"],
+            "created_at": "2026-11-15T12:00:00Z",
+            "status": "active"
+        }
+        store.save_band_mapping(mapping_record)
+
+        # Now render g_mapping with B1 selected: Live Mapped Allocations section appears
         html = self.ctrl.render()
+        self.assertIn("Live Mapped Review Allocations", html)
+        self.assertIn("Band B1", html)
+        self.assertIn("mapped-cosmo-chip", html)
+        self.assertIn("Leo Vance", html)
 
-        # Check visual pairing elements in active mappings table
-        self.assertIn("Active Band & Milestone Mappings", html)
-        self.assertIn("Who is Mapped to Whom (Cosmonaut ➔ Higher-Band Reviewer)", html)
-        self.assertIn("mapping-pair-item", html)
-        self.assertIn("mapping-connector-arrow", html)
-        self.assertIn("── mapped to ──►", html)
-        self.assertIn("edit_band_mapping", html)
-
-        # Retrieve first existing mapping to edit
-        mappings = store.get_band_mappings()
-        self.assertGreater(len(mappings), 0)
-        target = mappings[0]
-        target_id = target["id"]
-
-        # 1. Trigger Edit
+        # 2. Trigger Edit
+        target_id = "map_test_b1"
         self.ctrl.handle_event("edit_band_mapping", target_id)
         self.assertEqual(self.ctrl.editing_mapping_id, target_id)
-        self.assertEqual(self.ctrl.mapping_selected_band, target["band"])
-        self.assertEqual(self.ctrl.mapping_selected_badge, target["badge"])
+        self.assertEqual(self.ctrl.mapping_selected_band, "B1")
+        self.assertEqual(self.ctrl.mapping_selected_badge, "AIOS")
 
         # Verify editing UI indicators
         edit_html = self.ctrl.render()
@@ -226,15 +241,14 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("Update Badge Mapping", edit_html)
         self.assertIn("Cancel Edit", edit_html)
 
-        # 2. Modify badge and review dates in editing mode
+        # 3. Modify badge and review dates in editing mode
         self.ctrl.handle_event("select_mapping_badge", "Data Modelling")
         self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-25")
         self.ctrl.handle_event("set_mapping_review_direction", "after")
 
-        # 3. Save updated mapping
+        # Save updated mapping
         count_before = len(store.get_band_mappings())
         self.ctrl.handle_event("save_band_mapping", "{}")
-        # Ensure it updated the existing record, did not add duplicate
         self.assertEqual(len(store.get_band_mappings()), count_before)
         self.assertIsNone(self.ctrl.editing_mapping_id)
 
@@ -248,6 +262,10 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(self.ctrl.editing_mapping_id, target_id)
         self.ctrl.handle_event("cancel_edit_band_mapping", "{}")
         self.assertIsNone(self.ctrl.editing_mapping_id)
+
+        # 5. Test clear mapping
+        self.ctrl.handle_event("clear_band_mappings", "B1")
+        self.assertEqual(len([m for m in store.get_band_mappings() if m.get("band") == "B1"]), 0)
 
     def test_sidebar_collapsible_and_expandable_controls(self):
         """
@@ -290,6 +308,127 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("toggleSidebar", bridge_content)
         self.assertIn("applyPersistedSidebarState", bridge_content)
         self.assertIn("starapp_sidebar_collapsed", bridge_content)
+
+    def test_send_accept_reject_mapping_requests(self):
+        """Review requests can be sent to guardians, accepted, and rejected."""
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("select_mapping_band", "B1")
+        self.ctrl.handle_event("select_mapping_badge", "AIOS")
+        self.ctrl.mapping_selected_cosmonauts = ["m_b1_1", "m_b1_2", "m_b1_3"]
+        self.ctrl.mapping_selected_reviewers = ["m_b2_1", "m_b2_2"]
+
+        # Send request
+        self.ctrl.handle_event("send_mapping_requests", "{}")
+        reqs = store.get_mapping_requests()
+        self.assertTrue(len(reqs) >= 2)
+        b1_reqs = [r for r in reqs if r.get("band") == "B1"]
+        self.assertEqual(len(b1_reqs), 2)
+        for r in b1_reqs:
+            self.assertEqual(r["status"], "pending")
+            self.assertEqual(r["badge"], "AIOS")
+
+        # Accept one guardian request
+        target_req = b1_reqs[0]
+        self.ctrl.handle_event("accept_mapping_request", target_req["id"])
+        updated_req = next(r for r in store.get_mapping_requests() if r["id"] == target_req["id"])
+        self.assertEqual(updated_req["status"], "accepted")
+
+        # Reject the other guardian request
+        other_req = b1_reqs[1]
+        self.ctrl.handle_event("reject_mapping_request", other_req["id"])
+        updated_other = next(r for r in store.get_mapping_requests() if r["id"] == other_req["id"])
+        self.assertEqual(updated_other["status"], "rejected")
+
+        # Delete rejected request
+        self.ctrl.handle_event("delete_mapping_request", other_req["id"])
+        self.assertIsNone(next((r for r in store.get_mapping_requests() if r["id"] == other_req["id"]), None))
+
+    def test_execute_cosmonaut_mapping_equal_distribution_and_replacement(self):
+        """Execute equal partitioning of cosmonauts across accepted guardians and replace old mapping."""
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("select_mapping_band", "B1")
+        self.ctrl.handle_event("select_mapping_badge", "AIOS")
+        
+        # 6 cosmonauts selected
+        cosmo_ids = ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5", "m_b1_6"]
+        self.ctrl.mapping_selected_cosmonauts = list(cosmo_ids)
+        self.ctrl.mapping_selected_reviewers = ["m_b2_1", "m_b2_2"]
+
+        # 1. Dispatch requests and accept both guardians
+        self.ctrl.handle_event("send_mapping_requests", "{}")
+        self.ctrl.handle_event("accept_mapping_request", "req_B1_m_b2_1")
+        self.ctrl.handle_event("accept_mapping_request", "req_B1_m_b2_2")
+
+        # 2. Trigger equal cosmonaut mapping
+        self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")
+
+        # Verify mappings for B1
+        b1_mappings = [m for m in store.get_band_mappings() if m.get("band") == "B1"]
+        self.assertEqual(len(b1_mappings), 2)
+        # Check equal partition: 6 cosmonauts distributed to 2 guardians = 3 each
+        m1 = next(m for m in b1_mappings if "m_b2_1" in m.get("reviewers", []))
+        m2 = next(m for m in b1_mappings if "m_b2_2" in m.get("reviewers", []))
+        self.assertEqual(len(m1["cosmonauts"]), 3)
+        self.assertEqual(len(m2["cosmonauts"]), 3)
+        # All 6 accounted for with no duplicates
+        combined_cosmonauts = m1["cosmonauts"] + m2["cosmonauts"]
+        self.assertEqual(sorted(combined_cosmonauts), sorted(cosmo_ids))
+
+        # 3. Test that old mapping vanishes and is replaced when mapped again with new set
+        new_cosmo_ids = ["m_b1_7", "m_b1_8", "m_b1_9", "m_b1_10"]
+        self.ctrl.mapping_selected_cosmonauts = list(new_cosmo_ids)
+        self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")
+
+        # Old mappings must vanish
+        new_b1_mappings = [m for m in store.get_band_mappings() if m.get("band") == "B1"]
+        self.assertEqual(len(new_b1_mappings), 2)
+        new_combined = []
+        for m in new_b1_mappings:
+            new_combined.extend(m["cosmonauts"])
+        self.assertEqual(sorted(new_combined), sorted(new_cosmo_ids))
+        # Ensure previous cosmo_ids are completely gone from B1 mappings
+        for cid in cosmo_ids:
+            self.assertNotIn(cid, new_combined)
+
+    def test_multi_band_reviewer_selection_and_reset(self):
+        """Guardian can select reviewers across multiple bands and reset everything."""
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("select_mapping_band", "B1")
+
+        # B2 is active initially; toggle B3 to add B3 to active reviewer bands
+        self.ctrl.handle_event("toggle_mapping_reviewer_band", "B3")
+        self.assertIn("B2", self.ctrl.mapping_selected_reviewer_bands)
+        self.assertIn("B3", self.ctrl.mapping_selected_reviewer_bands)
+
+        # Select reviewers from B2 and B3
+        self.ctrl.handle_event("toggle_mapping_reviewer", "m_b2_1")
+        self.ctrl.handle_event("toggle_mapping_reviewer", "m_b3_1")
+        self.assertIn("m_b2_1", self.ctrl.mapping_selected_reviewers)
+        self.assertIn("m_b3_1", self.ctrl.mapping_selected_reviewers)
+
+        # Send request
+        self.ctrl.mapping_selected_cosmonauts = ["m_b1_1", "m_b1_2"]
+        self.ctrl.handle_event("send_mapping_requests", "{}")
+        self.ctrl.handle_event("accept_mapping_request", "req_B1_m_b2_1")
+
+        # Check that UI renders final review stage and master mapped table
+        html = self.ctrl.render()
+        self.assertIn("Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers", html)
+        self.assertIn("Reset Everything (Demo Mode)", html)
+
+        # Execute map
+        self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")
+        mapped_html = self.ctrl.render()
+        self.assertIn("Live Mapped Review Allocations", mapped_html)
+        self.assertIn("Guardian Reviewer", mapped_html)
+        self.assertIn("Mapped Cosmonauts", mapped_html)
+
+        # Test Reset
+        self.ctrl.handle_event("reset_all_mapping_state", "{}")
+        self.assertEqual(len(store.get_band_mappings()), 0)
+        self.assertEqual(len(store.get_mapping_requests()), 0)
+        self.assertEqual(len(self.ctrl.mapping_selected_cosmonauts), 0)
+        self.assertEqual(len(self.ctrl.mapping_selected_reviewers), 0)
 
 if __name__ == "__main__":
     unittest.main()

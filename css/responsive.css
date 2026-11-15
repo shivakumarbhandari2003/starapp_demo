@@ -5,11 +5,6 @@
 
 /* Laptop & Tablet landscape */
 @media (max-width: 1199px) {
-  .app-sidebar {
-    width: 220px;
-    min-width: 220px;
-  }
-
   .page-container {
     padding: var(--space-6);
   }

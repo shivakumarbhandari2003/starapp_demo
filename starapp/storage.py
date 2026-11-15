@@ -31,6 +31,7 @@ class DataStore:
         self.activities: List[ActivityEvent] = []
         self.notifications: List[Notification] = []
         self.band_mappings: List[Dict[str, Any]] = []
+        self.mapping_requests: List[Dict[str, Any]] = []
         self.is_loaded = False
         self.version: int = 1
         self.dirty: bool = False
@@ -60,7 +61,8 @@ class DataStore:
         
         self.activities = [ActivityEvent.from_dict(act) for act in data.get("activities", [])]
         self.notifications = [Notification.from_dict(n) for n in data.get("notifications", [])]
-        self.band_mappings = data.get("band_mappings", self._get_initial_band_mappings())
+        self.band_mappings = data.get("band_mappings", [])
+        self.mapping_requests = data.get("mapping_requests", [])
         self.is_loaded = True
         self.version += 1
         self.dirty = False
@@ -80,7 +82,8 @@ class DataStore:
             "announcements": [a.to_dict() for a in self.announcements.values()],
             "activities": [act.to_dict() for act in self.activities],
             "notifications": [n.to_dict() for n in self.notifications],
-            "band_mappings": self.band_mappings
+            "band_mappings": self.band_mappings,
+            "mapping_requests": getattr(self, "mapping_requests", [])
         }
 
     def to_json(self) -> str:
@@ -334,36 +337,11 @@ class DataStore:
 
     # --- Band Mappings ---
     def _get_initial_band_mappings(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "id": "map_1",
-                "band": "B1",
-                "badge": "AIOS",
-                "roles": ["Solutions Designer", "AI Engineer"],
-                "cosmonauts": ["m_b1_1", "m_b1_2"],
-                "reviewer_band": "B2",
-                "reviewers": ["m_b2_1", "m_b2_2"],
-                "review_dates": ["2026-11-18", "2026-11-19", "2026-11-20"],
-                "created_at": "2026-11-14T10:00:00Z",
-                "status": "active"
-            },
-            {
-                "id": "map_2",
-                "band": "B3",
-                "badge": "Data Modelling",
-                "roles": ["Solutions Designer", "Systems Engineer"],
-                "cosmonauts": ["m_b3_2", "m_b3_3"],
-                "reviewer_band": "B4",
-                "reviewers": ["m_b4_2", "m_b4_3"],
-                "review_dates": ["2026-11-23", "2026-11-24", "2026-11-25"],
-                "created_at": "2026-11-14T11:30:00Z",
-                "status": "active"
-            }
-        ]
+        return []
 
     def get_band_mappings(self) -> List[Dict[str, Any]]:
-        if not hasattr(self, "band_mappings") or not self.band_mappings:
-            self.band_mappings = self._get_initial_band_mappings()
+        if not hasattr(self, "band_mappings") or self.band_mappings is None:
+            self.band_mappings = []
         return self.band_mappings
 
     def save_band_mapping(self, mapping: Dict[str, Any]):
@@ -385,6 +363,51 @@ class DataStore:
         if hasattr(self, "band_mappings") and self.band_mappings:
             self.band_mappings = [m for m in self.band_mappings if m.get("id") != mapping_id]
             self.mark_dirty()
+
+    # --- Guardian Review Requests ---
+    def get_mapping_requests(self) -> List[Dict[str, Any]]:
+        if not hasattr(self, "mapping_requests") or self.mapping_requests is None:
+            self.mapping_requests = []
+        return self.mapping_requests
+
+    def add_mapping_request(self, req: Dict[str, Any]):
+        if not hasattr(self, "mapping_requests") or self.mapping_requests is None:
+            self.mapping_requests = []
+        # Replace if same ID or append
+        req_id = req.get("id")
+        replaced = False
+        for idx, r in enumerate(self.mapping_requests):
+            if r.get("id") == req_id:
+                self.mapping_requests[idx] = req
+                replaced = True
+                break
+        if not replaced:
+            self.mapping_requests.append(req)
+        self.mark_dirty()
+
+    def update_mapping_request_status(self, req_id: str, status: str):
+        if not hasattr(self, "mapping_requests") or not self.mapping_requests:
+            return
+        for r in self.mapping_requests:
+            if r.get("id") == req_id:
+                r["status"] = status
+                self.mark_dirty()
+                break
+
+    def delete_mapping_request(self, req_id: str):
+        if hasattr(self, "mapping_requests") and self.mapping_requests:
+            self.mapping_requests = [r for r in self.mapping_requests if r.get("id") != req_id]
+            self.mark_dirty()
+
+    def clear_mapping_requests(self, band: Optional[str] = None):
+        if not hasattr(self, "mapping_requests"):
+            self.mapping_requests = []
+            return
+        if band:
+            self.mapping_requests = [r for r in self.mapping_requests if r.get("band") != band]
+        else:
+            self.mapping_requests = []
+        self.mark_dirty()
 
 # Global store instance
 store = DataStore()

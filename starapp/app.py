@@ -84,6 +84,7 @@ class StarAppController:
         self.mapping_selected_roles: list = ["Solutions Designer", "AI Engineer", "Systems Engineer"]
         self.mapping_selected_badge: str = "AIOS"
         self.mapping_selected_cosmonauts: list = ["m_b1_1", "m_b1_2"]
+        self.mapping_selected_reviewer_bands: list = ["B2"]
         self.mapping_selected_reviewer_band: str = "B2"
         self.mapping_selected_reviewers: list = ["m_b2_1"]
         self.mapping_cosmo_search: str = ""
@@ -95,6 +96,7 @@ class StarAppController:
         self.mapping_review_direction: str = "after"
         self.mapping_review_dates: list = ["2026-11-18", "2026-11-19", "2026-11-20"]
         self.editing_mapping_id: Optional[str] = None
+        self.mapping_show_final_stage: bool = False
 
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
@@ -298,10 +300,13 @@ class StarAppController:
             band = payload if isinstance(payload, str) else (payload.get("band", "B1") if isinstance(payload, dict) else "B1")
             self.mapping_selected_band = band
             hb = get_higher_bands(band)
-            if self.mapping_selected_reviewer_band not in hb:
-                self.mapping_selected_reviewer_band = hb[0]
+            self.mapping_selected_reviewer_bands = [b for b in getattr(self, "mapping_selected_reviewer_bands", []) if b in hb]
+            if not self.mapping_selected_reviewer_bands and hb:
+                self.mapping_selected_reviewer_bands = [hb[0]]
+            self.mapping_selected_reviewer_band = self.mapping_selected_reviewer_bands[0] if self.mapping_selected_reviewer_bands else (hb[0] if hb else "")
             self.mapping_selected_cosmonauts = []
             self.mapping_selected_reviewers = []
+            self.mapping_show_final_stage = False
 
         elif action == "toggle_mapping_role":
             role = payload if isinstance(payload, str) else (payload.get("role") if isinstance(payload, dict) else "")
@@ -337,11 +342,29 @@ class StarAppController:
         elif action == "clear_mapping_cosmonauts":
             self.mapping_selected_cosmonauts = []
 
-        elif action == "select_mapping_reviewer_band":
-            r_band = payload if isinstance(payload, str) else (payload.get("band") if isinstance(payload, dict) else "")
+        elif action in ("select_mapping_reviewer_band", "toggle_mapping_reviewer_band"):
+            r_band = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("band", "") if isinstance(payload, dict) else "")
             if r_band:
-                self.mapping_selected_reviewer_band = r_band
-                self.mapping_selected_reviewers = []
+                hb = get_higher_bands(self.mapping_selected_band)
+                if not hasattr(self, "mapping_selected_reviewer_bands") or not self.mapping_selected_reviewer_bands:
+                    self.mapping_selected_reviewer_bands = [hb[0]] if hb else []
+
+                if r_band == "ALL":
+                    if len(self.mapping_selected_reviewer_bands) == len(hb):
+                        self.mapping_selected_reviewer_bands = [hb[0]] if hb else []
+                    else:
+                        self.mapping_selected_reviewer_bands = list(hb)
+                elif action == "toggle_mapping_reviewer_band":
+                    if r_band in self.mapping_selected_reviewer_bands:
+                        if len(self.mapping_selected_reviewer_bands) > 1:
+                            self.mapping_selected_reviewer_bands.remove(r_band)
+                    else:
+                        self.mapping_selected_reviewer_bands.append(r_band)
+                    self.mapping_selected_reviewer_band = r_band if r_band in hb else self.mapping_selected_reviewer_bands[0]
+                else: # select_mapping_reviewer_band
+                    self.mapping_selected_reviewer_band = r_band
+                    if r_band not in self.mapping_selected_reviewer_bands:
+                        self.mapping_selected_reviewer_bands.append(r_band)
 
         elif action == "toggle_mapping_reviewer":
             rid = payload if isinstance(payload, str) else (payload.get("member_id") if isinstance(payload, dict) else "")
@@ -352,11 +375,18 @@ class StarAppController:
                     self.mapping_selected_reviewers.append(rid)
 
         elif action == "select_all_mapping_reviewers":
-            reviewers = filter_reviewers_by_band_and_roles(self.mapping_selected_reviewer_band, self.mapping_selected_roles, getattr(self, "mapping_reviewer_search", ""))
-            self.mapping_selected_reviewers = [r["id"] for r in reviewers]
+            r_bands = getattr(self, "mapping_selected_reviewer_bands", [self.mapping_selected_reviewer_band])
+            reviewers = filter_reviewers_by_band_and_roles(r_bands, self.mapping_selected_roles, getattr(self, "mapping_reviewer_search", ""))
+            current_set = set(self.mapping_selected_reviewers)
+            for r in reviewers:
+                current_set.add(r["id"])
+            self.mapping_selected_reviewers = list(current_set)
 
         elif action == "clear_mapping_reviewers":
             self.mapping_selected_reviewers = []
+
+        elif action in ("toggle_mapping_final_stage", "show_mapping_final_stage"):
+            self.mapping_show_final_stage = not getattr(self, "mapping_show_final_stage", False)
 
         elif action == "reset_mapping_selection":
             self.editing_mapping_id = None
@@ -467,6 +497,144 @@ class StarAppController:
             if m_id:
                 store.delete_band_mapping(m_id)
                 self.set_flash("Band badge mapping deleted successfully.", "info")
+
+        elif action == "send_mapping_requests":
+            import time
+            from starapp.mapping_data import MEMBERS_MAP
+            if not self.mapping_selected_cosmonauts:
+                self.set_flash("Please select at least 1 cosmonaut before sending requests.", "warning")
+            elif not self.mapping_selected_reviewers:
+                self.set_flash("Please select at least 1 reviewer/guardian before sending requests.", "warning")
+            else:
+                created_count = 0
+                for r_id in self.mapping_selected_reviewers:
+                    rev_info = MEMBERS_MAP.get(r_id, {})
+                    req_id = f"req_{self.mapping_selected_band}_{r_id}"
+                    new_req = {
+                        "id": req_id,
+                        "band": self.mapping_selected_band,
+                        "badge": self.mapping_selected_badge,
+                        "reviewer_id": r_id,
+                        "reviewer_name": rev_info.get("name", r_id),
+                        "reviewer_role": rev_info.get("role", "AI Engineer"),
+                        "reviewer_band": rev_info.get("band", self.mapping_selected_reviewer_band),
+                        "reviewer_avatar": rev_info.get("avatar", "REV"),
+                        "cosmonaut_ids": list(self.mapping_selected_cosmonauts),
+                        "review_dates": list(self.mapping_review_dates),
+                        "status": "pending",
+                        "sent_at": current_iso_timestamp()
+                    }
+                    store.add_mapping_request(new_req)
+                    created_count += 1
+                self.mapping_show_final_stage = True
+                self.set_flash(f"Sent review request for '{self.mapping_selected_badge}' to {created_count} guardian(s). Please review and accept their participation below.", "success")
+
+        elif action == "accept_mapping_request":
+            req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
+            if req_id:
+                store.update_mapping_request_status(req_id, "accepted")
+                self.set_flash("Guardian review request accepted. You can now execute equal distribution mapping.", "success")
+
+        elif action == "reject_mapping_request":
+            req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
+            if req_id:
+                store.update_mapping_request_status(req_id, "rejected")
+                self.set_flash("Guardian review request declined / rejected.", "info")
+
+        elif action == "delete_mapping_request":
+            req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
+            if req_id:
+                store.delete_mapping_request(req_id)
+                self.set_flash("Review request removed.", "info")
+
+        elif action == "execute_cosmonaut_mapping":
+            import time
+            from starapp.mapping_data import MEMBERS_MAP
+            requests = store.get_mapping_requests()
+            accepted_reqs = [r for r in requests if r.get("band") == self.mapping_selected_band and r.get("status") == "accepted"]
+            if not accepted_reqs:
+                # Fallback to all accepted requests
+                accepted_reqs = [r for r in requests if r.get("status") == "accepted"]
+            
+            if not accepted_reqs:
+                self.set_flash("No accepted guardians available. Please accept at least one guardian request above first.", "warning")
+            elif not self.mapping_selected_cosmonauts:
+                self.set_flash("No cosmonauts selected for mapping. Please select cosmonauts above.", "warning")
+            else:
+                # 1. Old mapping vanishes and is replaced by new mapping
+                store.band_mappings = [m for m in store.band_mappings if m.get("band") != self.mapping_selected_band]
+
+                # 2. Distribute selected cosmonauts equally among accepted guardians
+                num_guardians = len(accepted_reqs)
+                guardian_buckets = {r["reviewer_id"]: [] for r in accepted_reqs}
+                
+                for idx, c_id in enumerate(self.mapping_selected_cosmonauts):
+                    target_g = accepted_reqs[idx % num_guardians]
+                    guardian_buckets[target_g["reviewer_id"]].append(c_id)
+
+                created_mappings = 0
+                for req in accepted_reqs:
+                    g_id = req["reviewer_id"]
+                    assigned = guardian_buckets.get(g_id, [])
+                    if not assigned:
+                        continue
+                    mapping_record = {
+                        "id": f"map_{self.mapping_selected_band}_{g_id}_{int(time.time() * 1000)}_{created_mappings}",
+                        "band": self.mapping_selected_band,
+                        "badge": self.mapping_selected_badge,
+                        "roles": list(self.mapping_selected_roles),
+                        "cosmonauts": assigned,
+                        "reviewer_band": req.get("reviewer_band", self.mapping_selected_reviewer_band),
+                        "reviewers": [g_id],
+                        "review_dates": list(self.mapping_review_dates),
+                        "created_at": current_iso_timestamp(),
+                        "status": "active"
+                    }
+                    store.save_band_mapping(mapping_record)
+                    created_mappings += 1
+
+                store.mark_dirty()
+                store.add_activity(
+                    event_type="badge_mapped",
+                    actor_id=self.current_user.id if self.current_user else "guardian_1",
+                    actor_name=self.current_user.name if self.current_user else "Guardian",
+                    cosmonaut_id="",
+                    badge_id="",
+                    summary=f"Equally Mapped {len(self.mapping_selected_cosmonauts)} Cosmonauts across {len(accepted_reqs)} Accepted Guardians for {self.mapping_selected_band}",
+                    details=f"Badge: {self.mapping_selected_badge} &bull; Review Dates: {', '.join(self.mapping_review_dates)}"
+                )
+                self.mapping_show_final_stage = True
+                store.mark_dirty()
+
+        elif action == "clear_band_mappings":
+            band = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("band", self.mapping_selected_band) if isinstance(payload, dict) else self.mapping_selected_band)
+            store.band_mappings = [m for m in store.band_mappings if m.get("band") != band]
+            store.mark_dirty()
+            self.set_flash(f"Active mappings for Band {band} cleared.", "info")
+
+        elif action in ("reset_all_mapping_state", "reset_mapping_demo"):
+            store.band_mappings = []
+            store.mapping_requests = []
+            store.mark_dirty()
+            self.mapping_selected_band = "B1"
+            from starapp.mapping_data import ROLES
+            self.mapping_selected_roles = list(ROLES)
+            self.mapping_selected_badge = "AIOS"
+            self.mapping_selected_cosmonauts = []
+            hb = get_higher_bands("B1")
+            self.mapping_selected_reviewer_bands = ["B2"]
+            self.mapping_selected_reviewer_band = "B2"
+            self.mapping_selected_reviewers = []
+            self.mapping_cosmo_search = ""
+            self.mapping_reviewer_search = ""
+            self.mapping_badge_search = ""
+            self.mapping_calendar_year = 2026
+            self.mapping_calendar_month = 11
+            self.mapping_review_anchor = "2026-11-18"
+            self.mapping_review_dates = ["2026-11-18", "2026-11-19", "2026-11-20"]
+            self.editing_mapping_id = None
+            self.mapping_show_final_stage = False
+            self.set_flash("Mapping workspace and demo state reset successfully. Ready for a clean demonstration run.", "info")
 
         elif action == "open_locked_milestone_notice":
             idx = payload if isinstance(payload, (str, int)) else payload.get("index", "5")
@@ -2264,6 +2432,7 @@ if __name__ == "__main__":
                     selected_badge=self.mapping_selected_badge,
                     selected_cosmonauts=self.mapping_selected_cosmonauts,
                     selected_reviewer_band=self.mapping_selected_reviewer_band,
+                    selected_reviewer_bands=getattr(self, "mapping_selected_reviewer_bands", [self.mapping_selected_reviewer_band]),
                     selected_reviewers=self.mapping_selected_reviewers,
                     review_dates=getattr(self, "mapping_review_dates", ["2026-11-18", "2026-11-19", "2026-11-20"]),
                     review_anchor=getattr(self, "mapping_review_anchor", "2026-11-18"),
@@ -2274,7 +2443,9 @@ if __name__ == "__main__":
                     cosmo_search=getattr(self, "mapping_cosmo_search", ""),
                     reviewer_search=getattr(self, "mapping_reviewer_search", ""),
                     badge_search=getattr(self, "mapping_badge_search", ""),
-                    all_mappings=store.get_band_mappings()
+                    all_mappings=store.get_band_mappings(),
+                    all_requests=store.get_mapping_requests(),
+                    show_final_stage=getattr(self, "mapping_show_final_stage", False)
                 )
 
             elif self.current_view == "g_reviews":
