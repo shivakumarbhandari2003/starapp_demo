@@ -317,14 +317,9 @@ class StarAppController:
                         link_section="c_roadmap"
                     )
 
-                # Assign next catalog milestone as new locked milestone
-                all_b = store.get_all_badges()
-                for nb in all_b:
-                    if nb.id != badge.id and not getattr(nb, "is_allocated", True):
-                        nb.is_published = True
-                        nb.assigned_cosmonaut_ids = all_cosmo_ids
-                        store.save_badge(nb)
-                        break
+                if self.active_modal == "badge_detail":
+                    self.active_modal = None
+                    self.modal_payload = {}
 
                 store.add_activity(
                     event_type="badge_published",
@@ -333,9 +328,9 @@ class StarAppController:
                     cosmonaut_id="",
                     badge_id=badge.id,
                     summary=f"Published & Unlocked Milestone {badge.code}: {badge.title}",
-                    details="Milestone unlocked on Cosmonaut roadmap; subsequent catalog milestone queued as locked."
+                    details="Milestone unlocked on both Guardian and Cosmonaut 25-level roadmaps."
                 )
-                self.set_flash(f"Successfully published and unlocked {badge.code}: {badge.title} for Cosmonauts! Next milestone queued as locked.", "success")
+                self.set_flash(f"Published and unlocked {badge.code}: {badge.title} across Guardian & Cosmonaut roadmaps!", "success")
 
         elif action == "revoke_badge":
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
@@ -1055,6 +1050,9 @@ if __name__ == "__main__":
         if is_new:
             badge_id = f"badge_{code.lower().replace('-', '_')}"
 
+        existing_badge = None if is_new else store.get_badge(badge_id)
+        default_alloc = False if is_new else getattr(existing_badge, "is_allocated", True)
+
         all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
         # Cohort requirement: When Guardian creates/updates a milestone, update for ALL Cosmonauts unless specific assignees provided
         if not assigned_ids:
@@ -1085,7 +1083,7 @@ if __name__ == "__main__":
             is_published=True,
             assigned_cosmonaut_ids=assigned_ids,
             default_timeline=default_tl,
-            is_allocated=payload.get("is_allocated", False if is_new else True)
+            is_allocated=payload.get("is_allocated", default_alloc)
         )
         store.save_badge(badge)
 
@@ -1332,7 +1330,10 @@ if __name__ == "__main__":
                 tl = store.get_timeline(badge.id, cosmo_id)
                 mats = store.get_materials(badge.id)
                 approved_ids = {a.badge_id for a in store.get_assessments_for_cosmonaut(cosmo_id) if a.decision == "approve"}
-                state = "completed" if badge.id in approved_ids else ("locked" if any(p not in approved_ids for p in badge.prerequisites) else "active")
+                is_unlocked_for_cosmo = getattr(badge, "is_allocated", False) and badge.is_published and cosmo_id in badge.assigned_cosmonaut_ids
+                state = "completed" if badge.id in approved_ids else ("active" if is_unlocked_for_cosmo else "locked")
+                if not is_guardian and state == "locked":
+                    title = "Milestone locked"
                 body = render_badge_detail_modal_content(badge, cosmo_id, tl, mats, state, is_guardian=is_guardian)
 
         elif self.active_modal == "marksheet_modal":
@@ -2053,7 +2054,7 @@ if __name__ == "__main__":
                 cosmo_asms = store.get_assessments_for_cosmonaut("cosmo_1")
                 cosmo_subs = store.get_submissions_for_cosmonaut("cosmo_1")
                 nodes = generate_roadmap_graph(badges, "cosmo_1", cosmo_asms, cosmo_subs)
-                main_content_html = render_gamified_roadmap(actual_cosmo, nodes)
+                main_content_html = render_gamified_roadmap(actual_cosmo, nodes, is_guardian=True)
 
             elif self.current_view == "g_allotment":
                 page_title = "Badge Allotment & Timeline Management"

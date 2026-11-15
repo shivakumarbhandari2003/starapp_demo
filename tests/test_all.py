@@ -109,52 +109,77 @@ class TestRoadmapPrerequisites(unittest.TestCase):
         state_completed = compute_milestone_state(b_cur, "cosmo_test", {"badge_gov_101", "badge_cur_102"})
         self.assertEqual(state_completed, "completed")
 
-    def test_5_badge_initial_and_dynamic_unlocking_chain(self):
+    def test_25_badge_candy_crush_roadmap_and_sequential_publish_unlocking(self):
         store.reset_to_seed()
         badges = store.get_all_badges()
         assessments = store.get_all_assessments()
         submissions = store.get_all_submissions()
 
-        # Check for Cosmonaut Astraea:
+        # Initially 25 badges total on roadmap: 3 completed, 1 active, 21 locked
         for cosmo in store.get_all_cosmonauts():
             graph = generate_roadmap_graph(badges, cosmo.id, assessments, submissions)
-            # Exactly 5 badges initially
-            self.assertEqual(len(graph), 5, f"Cosmonaut {cosmo.id} should have exactly 5 badges initially")
-            # 3 completed
-            self.assertEqual(graph[0]["state"], "completed")
-            self.assertEqual(graph[1]["state"], "completed")
-            self.assertEqual(graph[2]["state"], "completed")
-            # 1 at present
+            self.assertEqual(len(graph), 25, f"Cosmonaut {cosmo.id} should show 25 badges total")
+            self.assertEqual([n["state"] for n in graph[:3]], ["completed", "completed", "completed"])
             self.assertEqual(graph[3]["state"], "active")
             self.assertTrue(graph[3]["is_current_active"])
-            # 1 locked
-            self.assertEqual(graph[4]["state"], "locked")
-            self.assertFalse(graph[4]["is_current_active"])
+            for idx in range(4, 25):
+                self.assertEqual(graph[idx]["state"], "locked")
+                self.assertFalse(graph[idx]["is_current_active"])
 
-        # Guardian creates a new badge for cohort
-        controller.current_user = store.get_user_by_id("guardian_1")
-        controller.execute_save_badge({
-            "code": "ADV-300",
-            "title": "Autonomous Stream Processing",
-            "description": "Stateful streaming and windowed joins.",
-            "project_requirements": "Build real-time sliding window consumer.",
-            "prerequisites": ["badge_sql_201"]
-        })
+        # Guardian & Cosmonaut initial roadmaps both show "Milestone locked" and 4 / 25 Unlocked
+        controller.handle_event("select_demo_account", "guardian_1")
+        controller.handle_event("nav_guardian", "g_roadmap")
+        g_html_initial = controller.render()
+        self.assertIn("4 / 25 Unlocked", g_html_initial)
+        self.assertIn("Milestone locked", g_html_initial)
 
-        badges_updated = store.get_all_badges()
-        for cosmo in store.get_all_cosmonauts():
-            graph2 = generate_roadmap_graph(badges_updated, cosmo.id, assessments, submissions)
-            self.assertEqual(len(graph2), 6, f"Cosmonaut {cosmo.id} should have 6 badges now")
-            # 3 completed
-            self.assertEqual(graph2[0]["state"], "completed")
-            self.assertEqual(graph2[1]["state"], "completed")
-            self.assertEqual(graph2[2]["state"], "completed")
-            # 4th badge is still active
-            self.assertEqual(graph2[3]["state"], "active")
-            # 5th badge (SQL-201) is UNLOCKED (active) now!
-            self.assertEqual(graph2[4]["state"], "active", "Previously locked badge must be unlocked")
-            # 6th badge (ADV-300) is now locked!
-            self.assertEqual(graph2[5]["state"], "locked", "Newly created badge must be locked")
+        controller.handle_event("select_demo_account", "cosmo_1")
+        controller.handle_event("nav_cosmonaut", "c_roadmap")
+        c_html_initial = controller.render()
+        self.assertIn("4 / 25 Unlocked", c_html_initial)
+        self.assertIn("Milestone locked", c_html_initial)
+
+        # Guardian publishes badge #5 (SQL-201) -> unlocks immediately on BOTH roadmaps!
+        controller.handle_event("select_demo_account", "guardian_1")
+        controller.handle_event("publish_and_unlock_badge", "badge_sql_201")
+
+        badges_after_5 = store.get_all_badges()
+        graph2 = generate_roadmap_graph(badges_after_5, "cosmo_1", assessments, submissions)
+        self.assertEqual(len(graph2), 25)
+        self.assertEqual([n["state"] for n in graph2[:3]], ["completed", "completed", "completed"])
+        self.assertEqual(graph2[3]["state"], "active")
+        self.assertEqual(graph2[4]["code"], "SQL-201")
+        self.assertEqual(graph2[4]["state"], "active", "Published badge SQL-201 must unlock")
+        for idx in range(5, 25):
+            self.assertEqual(graph2[idx]["state"], "locked")
+
+        controller.handle_event("nav_guardian", "g_roadmap")
+        g_html_5 = controller.render()
+        self.assertIn("5 / 25 Unlocked", g_html_5)
+        self.assertIn("SQL-201", g_html_5)
+
+        controller.handle_event("select_demo_account", "cosmo_1")
+        controller.handle_event("nav_cosmonaut", "c_roadmap")
+        c_html_5 = controller.render()
+        self.assertIn("5 / 25 Unlocked", c_html_5)
+        self.assertIn("SQL-201", c_html_5)
+
+        # Guardian publishes badge #6 (AI-301) -> unlocks Level 6 on both roadmaps!
+        controller.handle_event("select_demo_account", "guardian_1")
+        controller.handle_event("publish_and_unlock_badge", "badge_ai_301")
+
+        badges_after_6 = store.get_all_badges()
+        graph3 = generate_roadmap_graph(badges_after_6, "cosmo_1", assessments, submissions)
+        self.assertEqual(len(graph3), 25)
+        self.assertEqual(graph3[5]["code"], "AI-301")
+        self.assertEqual(graph3[5]["state"], "active", "Published badge AI-301 must unlock next level")
+        self.assertEqual(sum(1 for n in graph3 if n["state"] == "locked"), 19)
+
+        controller.handle_event("nav_guardian", "g_roadmap")
+        self.assertIn("6 / 25 Unlocked", controller.render())
+        controller.handle_event("select_demo_account", "cosmo_1")
+        controller.handle_event("nav_cosmonaut", "c_roadmap")
+        self.assertIn("6 / 25 Unlocked", controller.render())
 
     def test_badge_lifecycle_timeline_window_and_guardian_decision(self):
         """Verify Guardian decision of all 6 timeline milestones and rendering in Cosmonaut timeline window."""
