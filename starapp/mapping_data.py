@@ -391,12 +391,11 @@ BADGES_MAP: Dict[str, Dict[str, Any]] = {b["name"]: b for b in MAPPING_BADGES}
 # 5. FILTERING AND ACCESSOR HELPERS
 # ==============================================================================
 
+BANDS_MAP: Dict[str, Dict[str, Any]] = {b["code"]: b for b in BANDS}
+
 def get_band_info(band_code: str) -> Dict[str, Any]:
-    """Retrieves metadata dictionary for a band code (e.g. 'B1')."""
-    for b in BANDS:
-        if b["code"] == band_code:
-            return b
-    return BANDS[0]
+    """Retrieves metadata dictionary for a band code in O(1) time."""
+    return BANDS_MAP.get(band_code, BANDS[0])
 
 def get_higher_bands(band_code: str) -> List[str]:
     """
@@ -461,11 +460,20 @@ def filter_reviewers_by_band_and_roles(
 import calendar
 import datetime
 
+_PARSED_DATE_CACHE: Dict[str, datetime.date] = {}
+
 def parse_iso_date(iso_str: str) -> datetime.date:
-    """Parses an ISO date string (YYYY-MM-DD) into a datetime.date object."""
+    """Parses an ISO date string (YYYY-MM-DD) into a datetime.date object with O(1) caching."""
+    if not iso_str:
+        return datetime.date(2026, 11, 18)
+    cached = _PARSED_DATE_CACHE.get(iso_str)
+    if cached is not None:
+        return cached
     try:
         parts = [int(p) for p in iso_str.strip().split("-")]
-        return datetime.date(parts[0], parts[1], parts[2])
+        d = datetime.date(parts[0], parts[1], parts[2])
+        _PARSED_DATE_CACHE[iso_str] = d
+        return d
     except Exception:
         return datetime.date(2026, 11, 18)
 

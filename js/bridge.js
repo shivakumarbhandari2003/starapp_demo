@@ -396,50 +396,61 @@
       }
     },
 
-    // Instant client-side DOM filter for Mapping Badge dropdown list
+    // Instant client-side DOM filter for Mapping Badge dropdown list (optimized, zero-reflow)
     filterBadgeList(query) {
       const q = (query || "").trim().toLowerCase();
       const container = document.getElementById("mapping-badges-scroll");
       if (!container) return;
-      const items = container.querySelectorAll(".mapping-badge-item");
-      items.forEach((item) => {
-        const text = (item.innerText || item.textContent || "").toLowerCase();
-        if (!q || text.includes(q)) {
-          item.style.display = "flex";
-        } else {
-          item.style.display = "none";
+      window.requestAnimationFrame(() => {
+        const items = container.querySelectorAll(".mapping-badge-item");
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const badgeName = item.getAttribute("data-badge-name") || (item.textContent || "").toLowerCase();
+          const matches = !q || badgeName.includes(q);
+          const targetDisplay = matches ? "flex" : "none";
+          if (item.style.display !== targetDisplay) {
+            item.style.display = targetDisplay;
+          }
         }
       });
     },
 
-    // Instant client-side DOM filter for Mapping Cosmonauts dropdown list
+    // Instant client-side DOM filter for Mapping Cosmonauts dropdown list (optimized, zero-reflow)
     filterCosmoList(query) {
       const q = (query || "").trim().toLowerCase();
       const container = document.getElementById("mapping-cosmo-scroll");
       if (!container) return;
-      const items = container.querySelectorAll(".mapping-member-item");
-      items.forEach((item) => {
-        const text = (item.innerText || item.textContent || "").toLowerCase();
-        if (!q || text.includes(q)) {
-          item.style.display = "flex";
-        } else {
-          item.style.display = "none";
+      window.requestAnimationFrame(() => {
+        const items = container.querySelectorAll(".mapping-member-item");
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const name = item.getAttribute("data-member-name") || "";
+          const role = item.getAttribute("data-member-role") || "";
+          const matches = !q || name.includes(q) || role.includes(q);
+          const targetDisplay = matches ? "flex" : "none";
+          if (item.style.display !== targetDisplay) {
+            item.style.display = targetDisplay;
+          }
         }
       });
     },
 
-    // Instant client-side DOM filter for Mapping Reviewers dropdown list
+    // Instant client-side DOM filter for Mapping Reviewers dropdown list (optimized, zero-reflow)
     filterReviewerList(query) {
       const q = (query || "").trim().toLowerCase();
       const container = document.getElementById("mapping-reviewer-scroll");
       if (!container) return;
-      const items = container.querySelectorAll(".mapping-member-item");
-      items.forEach((item) => {
-        const text = (item.innerText || item.textContent || "").toLowerCase();
-        if (!q || text.includes(q)) {
-          item.style.display = "flex";
-        } else {
-          item.style.display = "none";
+      window.requestAnimationFrame(() => {
+        const items = container.querySelectorAll(".mapping-member-item");
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const name = item.getAttribute("data-member-name") || "";
+          const role = item.getAttribute("data-member-role") || "";
+          const matches = !q || name.includes(q) || role.includes(q);
+          const targetDisplay = matches ? "flex" : "none";
+          if (item.style.display !== targetDisplay) {
+            item.style.display = targetDisplay;
+          }
         }
       });
     },

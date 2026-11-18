@@ -14,7 +14,7 @@ from starapp.views_common import (
 from starapp.assessment import RUBRIC_CRITERIA
 from starapp.analytics import get_kpi_popover
 from starapp.mapping_data import (
-    BANDS, BAND_CODES, ROLES, ROLE_CONFIG, DUMMY_MEMBERS, MEMBERS_MAP,
+    BANDS, BAND_CODES, ROLES, ROLE_CONFIG, DUMMY_MEMBERS, MEMBERS_MAP, MEMBERS_BY_BAND,
     MAPPING_BADGES, BADGES_MAP, get_band_info, get_higher_bands,
     filter_members_by_band_and_roles, filter_reviewers_by_band_and_roles,
     generate_calendar_month_grid, get_consecutive_review_days,
@@ -2423,6 +2423,19 @@ def render_guardian_mapping(
     after_label = "2 Days After: " + ", ".join([d[5:] for d in after_dates])
     before_label = "2 Days Before: " + ", ".join([d[5:] for d in before_dates])
 
+    # Performance optimization: pre-index lookups as sets for O(1) membership checks
+    selected_cosmonauts_set = set(selected_cosmonauts)
+    selected_reviewers_set = set(selected_reviewers)
+    active_reviewer_bands_set = set(active_reviewer_bands)
+
+    # Pre-count members per role for selected band in O(N) rather than repeated scans
+    band_members = MEMBERS_BY_BAND.get(selected_band, [])
+    role_counts = {r: 0 for r in ROLES}
+    for m in band_members:
+        m_r = m.get("role")
+        if m_r in role_counts:
+            role_counts[m_r] += 1
+
     # --------------------------------------------------------------------------
     # 1. RENDER THE 6 BAND CARDS (B1 to B6)
     # --------------------------------------------------------------------------
@@ -2459,7 +2472,7 @@ def render_guardian_mapping(
             if is_r_sel else
             '<div style="width:20px; height:20px; border-radius:999px; border:2px solid var(--icy-steel-50); background:transparent;"></div>'
         )
-        role_member_count = len([m for m in DUMMY_MEMBERS if m["band"] == selected_band and m["role"] == r])
+        role_member_count = role_counts.get(r, 0)
         role_toggles_html.append(f"""
         <div class="{toggle_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_role', '{r}')" title="Toggle {escape(r)} filter">
             <div style="display:flex; align-items:center; gap:10px;">
@@ -2503,7 +2516,7 @@ def render_guardian_mapping(
     # --------------------------------------------------------------------------
     cosmo_list_html = []
     for m in filtered_cosmonauts:
-        is_c_sel = (m["id"] in selected_cosmonauts)
+        is_c_sel = (m["id"] in selected_cosmonauts_set)
         c_cls = "mapping-member-item selected" if is_c_sel else "mapping-member-item"
         c_cfg = ROLE_CONFIG.get(m["role"], {})
         check_box = (
@@ -2542,7 +2555,7 @@ def render_guardian_mapping(
     </button>
     """)
     for hb in higher_bands:
-        is_hb_active = (hb in active_reviewer_bands)
+        is_hb_active = (hb in active_reviewer_bands_set)
         pill_cls = "mapping-higher-band-pill active" if is_hb_active else "mapping-higher-band-pill"
         higher_bands_pills.append(f"""
         <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer_band', '{hb}')" title="Toggle {hb} Reviewers">
@@ -2552,7 +2565,7 @@ def render_guardian_mapping(
 
     reviewers_list_html = []
     for m in filtered_reviewers:
-        is_r_sel = (m["id"] in selected_reviewers)
+        is_r_sel = (m["id"] in selected_reviewers_set)
         r_cls = "mapping-member-item selected" if is_r_sel else "mapping-member-item"
         r_cfg = ROLE_CONFIG.get(m["role"], {})
         r_check = (

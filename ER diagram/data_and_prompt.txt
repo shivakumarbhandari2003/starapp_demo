@@ -1,0 +1,1664 @@
+# MASTER IMPLEMENTATION PROMPT — STAR APP INTERACTIVE ER MIND MAP
+
+## 1. PROJECT OBJECTIVE
+
+I have an existing database Entity Relationship Diagram (ERD) for my STAR App.
+
+I want you to transform this existing ER diagram into a fully interactive, hierarchical ER Mind Map, inspired by the Mind Map experience in NotebookLM.
+
+The current ER diagram contains 29 database tables, their attributes, primary keys, foreign keys, and relationships.
+
+Your task is to implement a professional, modern, fully functional interactive mind map using my existing HTML, CSS, and JavaScript project.
+
+**This is an implementation task, not a redesign of the database architecture.**
+
+Preserve the existing database structure, all 29 tables, their attributes, and their relationships. Do not remove, rename, merge, invent, or silently modify any database entities or relationships.
+
+The final result must allow me to explore the entire database progressively, from the main database node down to individual modules, tables, columns, and relationships.
+
+---
+
+# 2. SOURCE MATERIAL AND DATABASE REFERENCE
+
+I will provide the following reference:
+
+1. `star_app_er_diagram.pdf` — Existing complete ER diagram.
+2. This prompt — Complete database schema, table attributes, and relationship definitions.
+
+Use both references.
+
+The schema documented in this prompt must be preserved exactly. If you find any discrepancy between the PDF and this prompt, report it instead of silently changing the database design.
+
+Do not assume that missing data types, constraints, or business rules exist.
+
+For data types that are not provided, display them as unspecified rather than inventing them.
+
+---
+
+# 3. COMPLETE DATABASE HIERARCHY
+
+The main root node must be:
+
+**STAR APP DATABASE**
+
+Organize the database using the following eight logical modules.
+
+```text
+STAR APP DATABASE
+│
+├── 01. ORGANIZATION & EMPLOYEE MANAGEMENT
+│   ├── Company Management
+│   │   ├── COMPANY
+│   │   └── BANDS
+│   │
+│   ├── Employee Management
+│   │   ├── EMPLOYEE_CATEGORIES
+│   │   └── EMPLOYEES
+│   │
+│   └── Application Role Management
+│       ├── SYSTEM_ROLES
+│       └── EMPLOYEE_ROLES
+│
+├── 02. POWERS, CAPABILITIES & SKILLS
+│   ├── Power Management
+│   │   └── POWERS
+│   │
+│   ├── Capability Management
+│   │   └── CAPABILITIES
+│   │
+│   └── Skill Management
+│       └── SKILLS
+│
+├── 03. BADGE MANAGEMENT
+│   ├── Badge Master
+│   │   └── BADGES
+│   │
+│   ├── Badge Version Management
+│   │   └── BADGE_VERSIONS
+│   │
+│   ├── Initial Badge Review
+│   │   └── BADGE_REVIEWS
+│   │
+│   ├── Badge Publication
+│   │   └── BADGE_PUBLICATIONS
+│   │
+│   └── Badge Eligibility
+│       └── BADGE_ELIGIBILITY
+│
+├── 04. BADGE ALLOCATION
+│   ├── Allocation Campaign Management
+│   │   └── BADGE_ALLOCATION_CAMPAIGNS
+│   │
+│   └── Cosmonaut Selection
+│       └── CAMPAIGN_COSMONAUTS
+│
+├── 05. REVIEWER REQUESTS & PYTHON MAPPING
+│   ├── Reviewer Request Management
+│   │   └── REVIEWER_REQUESTS
+│   │
+│   ├── Python Mapping Execution
+│   │   └── MAPPING_RUNS
+│   │
+│   └── Reviewer-Cosmonaut Mapping
+│       └── REVIEWER_COSMONAUT_MAPPING
+│
+├── 06. PROJECT MANAGEMENT
+│   ├── Project Creation
+│   │   └── PROJECTS
+│   │
+│   ├── Project Assessment Criteria
+│   │   └── PROJECT_CRITERIA
+│   │
+│   ├── Project Deliverables
+│   │   └── PROJECT_DELIVERABLES
+│   │
+│   └── Project Assignment
+│       └── PROJECT_ASSIGNMENTS
+│
+├── 07. ASSESSMENT MANAGEMENT
+│   ├── Assessment Attempts
+│   │   └── ASSESSMENT_ATTEMPTS
+│   │
+│   ├── Submission Management
+│   │   └── PROJECT_SUBMISSIONS
+│   │
+│   ├── Assessment Scoring
+│   │   └── ASSESSMENT_SCORES
+│   │
+│   └── Review Reports
+│       └── REVIEW_REPORTS
+│
+└── 08. GUARDIAN DECISIONS & BADGE AWARDS
+    ├── Guardian Decisions
+    │   └── GUARDIAN_DECISIONS
+    │
+    └── Badge Award Management
+        └── BADGE_AWARDS
+```
+
+This is the logical mind-map hierarchy.
+
+Important: The hierarchy is for visualization and navigation. It does not replace the actual foreign-key relationships between database tables.
+
+A table can belong to one logical module while maintaining relational connections to tables in other modules.
+
+---
+
+# 4. COMPLETE DATABASE TABLES AND ATTRIBUTES
+
+Implement all the following tables.
+
+Use the exact table names and attribute names.
+
+PK means Primary Key.
+
+FK means Foreign Key.
+
+DERIVED means the value should be calculated rather than independently edited.
+
+## MODULE 01 — ORGANIZATION & EMPLOYEE MANAGEMENT
+
+### TABLE 1: COMPANY
+
+Attributes:
+
+- PK: company_id
+- company_name
+- description
+- created_at
+
+### TABLE 2: BANDS
+
+Attributes:
+
+- PK: band_id
+- FK: company_id → COMPANY.company_id
+- band_name
+- band_level
+- description
+
+Band records:
+
+- B1
+- B2
+- B3
+- B4
+- B5
+- B6
+
+band_level represents employee seniority.
+
+### TABLE 3: EMPLOYEE_CATEGORIES
+
+Attributes:
+
+- PK: category_id
+- category_name
+- description
+
+Employee categories:
+
+- AI Engineer
+- Solution Designer
+- System Engineer
+
+### TABLE 4: EMPLOYEES
+
+Attributes:
+
+- PK: employee_id
+- FK: company_id → COMPANY.company_id
+- FK: band_id → BANDS.band_id
+- FK: category_id → EMPLOYEE_CATEGORIES.category_id
+- employee_name
+- email
+- employee_status
+- created_at
+
+### TABLE 5: SYSTEM_ROLES
+
+Attributes:
+
+- PK: role_id
+- role_name
+- description
+
+Application roles:
+
+- Guardian
+- Badge Reviewer
+- Project Reviewer
+- Cosmonaut
+
+### TABLE 6: EMPLOYEE_ROLES
+
+Attributes:
+
+- PK: employee_role_id
+- FK: employee_id → EMPLOYEES.employee_id
+- FK: role_id → SYSTEM_ROLES.role_id
+- assigned_at
+- FK: assigned_by → EMPLOYEES.employee_id
+
+Important business rule:
+
+One employee can have multiple application roles.
+
+A Badge Reviewer can also be a Project Reviewer.
+
+Do not create separate employee tables for each role.
+
+---
+
+## MODULE 02 — POWERS, CAPABILITIES & SKILLS
+
+### TABLE 7: POWERS
+
+Attributes:
+
+- PK: power_id
+- power_name
+- description
+
+Power records:
+
+- DOMAIN
+- TECH
+- LEADERSHIP
+
+### TABLE 8: CAPABILITIES
+
+Attributes:
+
+- PK: capability_id
+- FK: category_id → EMPLOYEE_CATEGORIES.category_id
+- FK: power_id → POWERS.power_id
+- capability_name
+- description
+
+### TABLE 9: SKILLS
+
+Attributes:
+
+- PK: skill_id
+- FK: capability_id → CAPABILITIES.capability_id
+- skill_name
+- description
+
+Important relationship:
+
+Each employee category has capabilities under the three powers.
+
+Each capability has its associated skills.
+
+Each skill can have multiple badges.
+
+---
+
+## MODULE 03 — BADGE MANAGEMENT
+
+### TABLE 10: BADGES
+
+Attributes:
+
+- PK: badge_id
+- FK: skill_id → SKILLS.skill_id
+- FK: created_by → EMPLOYEES.employee_id
+- badge_name
+- badge_description
+- current_version
+- badge_status
+- created_at
+- updated_at
+
+Possible badge statuses:
+
+- Draft
+- Under Review
+- Approved
+- Published
+- Archived
+
+### TABLE 11: BADGE_VERSIONS
+
+Attributes:
+
+- PK: version_id
+- FK: badge_id → BADGES.badge_id
+- version_number
+- badge_name
+- badge_description
+- badge_content
+- FK: created_by → EMPLOYEES.employee_id
+- created_at
+
+Purpose:
+
+Maintain historical versions of badges.
+
+Do not overwrite previous versions when a badge is edited.
+
+### TABLE 12: BADGE_REVIEWS
+
+Attributes:
+
+- PK: badge_review_id
+- FK: badge_id → BADGES.badge_id
+- FK: version_id → BADGE_VERSIONS.version_id
+- FK: reviewer_id → EMPLOYEES.employee_id
+- assigned_at
+- deadline_at
+- completed_at
+- review_status
+- reviewer_comments
+- decision
+
+The initial badge review has a 48-hour review window.
+
+Possible decisions:
+
+- Approved
+- Changes Requested
+
+### TABLE 13: BADGE_PUBLICATIONS
+
+Attributes:
+
+- PK: publication_id
+- FK: badge_id → BADGES.badge_id
+- FK: version_id → BADGE_VERSIONS.version_id
+- FK: published_by → EMPLOYEES.employee_id
+- published_at
+- publication_status
+
+The Guardian publishes the approved badge.
+
+### TABLE 14: BADGE_ELIGIBILITY
+
+Attributes:
+
+- PK: eligibility_id
+- FK: badge_id → BADGES.badge_id
+- FK: band_id → BANDS.band_id
+- FK: category_id → EMPLOYEE_CATEGORIES.category_id
+- is_active
+
+Purpose:
+
+Define which bands and employee categories are eligible for a particular badge.
+
+---
+
+## MODULE 04 — BADGE ALLOCATION
+
+### TABLE 15: BADGE_ALLOCATION_CAMPAIGNS
+
+Attributes:
+
+- PK: campaign_id
+- FK: badge_id → BADGES.badge_id
+- FK: publication_id → BADGE_PUBLICATIONS.publication_id
+- FK: band_id → BANDS.band_id
+- FK: category_id → EMPLOYEE_CATEGORIES.category_id
+- FK: guardian_id → EMPLOYEES.employee_id
+- campaign_name
+- campaign_status
+- estimated_review_start_date
+- estimated_review_end_date
+- created_at
+
+Purpose:
+
+Represent one badge allocation activity initiated by the Guardian.
+
+### TABLE 16: CAMPAIGN_COSMONAUTS
+
+Attributes:
+
+- PK: campaign_cosmonaut_id
+- FK: campaign_id → BADGE_ALLOCATION_CAMPAIGNS.campaign_id
+- FK: cosmonaut_id → EMPLOYEES.employee_id
+- selected_at
+- assignment_status
+
+Purpose:
+
+Maintain the Cosmonauts selected for each allocation campaign.
+
+---
+
+## MODULE 05 — REVIEWER REQUESTS & PYTHON MAPPING
+
+### TABLE 17: REVIEWER_REQUESTS
+
+Attributes:
+
+- PK: request_id
+- FK: campaign_id → BADGE_ALLOCATION_CAMPAIGNS.campaign_id
+- FK: reviewer_id → EMPLOYEES.employee_id
+- FK: requested_by → EMPLOYEES.employee_id
+- sent_at
+- response_deadline
+- responded_at
+- response_status
+- rejection_reason
+
+Possible response statuses:
+
+- Pending
+- Accepted
+- Declined
+- No Response
+
+Business rule:
+
+Reviewers have 24 hours to accept or decline.
+
+If they do not respond within 24 hours, their request is automatically considered NO.
+
+The Guardian proceeds without that reviewer.
+
+Do not automatically select another reviewer.
+
+Only accepted reviewers are eligible for Python mapping.
+
+### TABLE 18: MAPPING_RUNS
+
+Attributes:
+
+- PK: mapping_batch_id
+- FK: campaign_id → BADGE_ALLOCATION_CAMPAIGNS.campaign_id
+- algorithm_version
+- started_at
+- completed_at
+- run_status
+- input_cosmonaut_count
+- approved_reviewer_count
+
+Purpose:
+
+Maintain the history of Python mapping executions.
+
+### TABLE 19: REVIEWER_COSMONAUT_MAPPING
+
+Attributes:
+
+- PK: mapping_id
+- FK: campaign_id → BADGE_ALLOCATION_CAMPAIGNS.campaign_id
+- FK: mapping_batch_id → MAPPING_RUNS.mapping_batch_id
+- FK: cosmonaut_id → EMPLOYEES.employee_id
+- FK: reviewer_id → EMPLOYEES.employee_id
+- mapped_at
+- mapping_status
+
+Business rules:
+
+- Only accepted reviewers can receive assignments.
+- Reviewers must belong to higher bands than their assigned Cosmonauts.
+- Python distributes Cosmonauts as equally as possible among accepted reviewers.
+- Each Cosmonaut has one assigned reviewer within a campaign.
+
+Reviewer band eligibility:
+
+| Cosmonaut band | Eligible reviewer bands |
+|---|---|
+| B1 | B2, B3, B4, B5, B6 |
+| B2 | B3, B4, B5, B6 |
+| B3 | B4, B5, B6 |
+| B4 | B5, B6 |
+| B5 | B6 |
+| B6 | No higher band available |
+
+Do not hardcode six separate eligibility tables. The band_level attribute determines seniority.
+
+---
+
+## MODULE 06 — PROJECT MANAGEMENT
+
+### TABLE 20: PROJECTS
+
+Attributes:
+
+- PK: project_id
+- FK: campaign_id → BADGE_ALLOCATION_CAMPAIGNS.campaign_id
+- FK: reviewer_id → EMPLOYEES.employee_id
+- project_title
+- project_description
+- project_prompt
+- difficulty_level
+- badge_details
+- creation_started_at
+- creation_deadline
+- created_at
+- submitted_at
+- project_status
+
+Purpose:
+
+The Project Reviewer creates the assessment project.
+
+The project creation timeline is initially three days (72 hours), but can be changed.
+
+### TABLE 21: PROJECT_CRITERIA
+
+Attributes:
+
+- PK: criterion_id
+- FK: project_id → PROJECTS.project_id
+- criterion_name
+- criterion_description
+- maximum_marks
+- display_order
+
+A project can contain multiple assessment criteria.
+
+### TABLE 22: PROJECT_DELIVERABLES
+
+Attributes:
+
+- PK: deliverable_id
+- FK: project_id → PROJECTS.project_id
+- deliverable_name
+- deliverable_description
+- submission_format
+- is_mandatory
+
+Purpose:
+
+Define the required project deliverables.
+
+### TABLE 23: PROJECT_ASSIGNMENTS
+
+Attributes:
+
+- PK: project_assignment_id
+- FK: project_id → PROJECTS.project_id
+- FK: mapping_id → REVIEWER_COSMONAUT_MAPPING.mapping_id (UNIQUE)
+- assigned_at
+- assignment_status
+
+Purpose:
+
+Connect a project with an individual mapped Cosmonaut.
+
+A reviewer may create a project for multiple Cosmonauts.
+
+Use project assignments to maintain individual assignment records without unnecessarily duplicating project definitions.
+
+---
+
+## MODULE 07 — ASSESSMENT MANAGEMENT
+
+### TABLE 24: ASSESSMENT_ATTEMPTS
+
+Attributes:
+
+- PK: attempt_id
+- FK: project_assignment_id → PROJECT_ASSIGNMENTS.project_assignment_id
+- attempt_number
+- preparation_start_at
+- preparation_deadline
+- assessment_date
+- assessment_start_time
+- assessment_end_time
+- FK: scheduled_by → EMPLOYEES.employee_id
+- attempt_status
+- started_at
+- completed_at
+
+Purpose:
+
+Maintain every initial assessment and reattempt.
+
+Each attempt can have different preparation and assessment schedules.
+
+The three-day preparation period is configurable.
+
+Important:
+
+Reattempts must use the same Project Reviewer associated with the original project assignment.
+
+A new assessment attempt must not create a new reviewer mapping.
+
+### TABLE 25: PROJECT_SUBMISSIONS
+
+Attributes:
+
+- PK: submission_id
+- FK: attempt_id → ASSESSMENT_ATTEMPTS.attempt_id
+- submission_version
+- submission_content
+- submission_file_url
+- submitted_at
+- submission_status
+
+Purpose:
+
+Store individual submissions and their versions.
+
+Previous submissions must remain available during reattempts.
+
+### TABLE 26: ASSESSMENT_SCORES
+
+Attributes:
+
+- PK: score_id
+- FK: attempt_id → ASSESSMENT_ATTEMPTS.attempt_id
+- FK: criterion_id → PROJECT_CRITERIA.criterion_id
+- marks_obtained
+- reviewer_comments
+- evaluated_at
+
+Purpose:
+
+Store marks for individual assessment criteria.
+
+Example assessment structure:
+
+- Business Understanding — 10 marks
+- Architecture / Report — 10 marks
+- Technical Knowledge — 10 marks
+- Presentation — 10 marks
+- Question & Answering — 10 marks
+
+Total: 50 marks.
+
+Do not hardcode these five criteria into the database schema. They should be stored as project criteria.
+
+### TABLE 27: REVIEW_REPORTS
+
+Attributes:
+
+- PK: report_id
+- FK: attempt_id → ASSESSMENT_ATTEMPTS.attempt_id
+- total_marks [DERIVED FROM ASSESSMENT_SCORES]
+- strengths
+- areas_of_improvement
+- reviewer_recommendation
+- reviewer_comments
+- submitted_at
+
+Reviewer recommendations:
+
+- Award Badge
+- Reattempt
+
+The reviewer submits the completed report to the Guardian.
+
+Do not independently edit total_marks when it is calculated from assessment scores.
+
+---
+
+## MODULE 08 — GUARDIAN DECISIONS & BADGE AWARDS
+
+### TABLE 28: GUARDIAN_DECISIONS
+
+Attributes:
+
+- PK: decision_id
+- FK: attempt_id → ASSESSMENT_ATTEMPTS.attempt_id
+- FK: guardian_id → EMPLOYEES.employee_id
+- decision
+- decision_comments
+- decided_at
+
+Possible decisions:
+
+- Award Badge
+- Reattempt
+
+The Guardian is the final administrator and makes the final decision.
+
+The Guardian can approve or reject the reviewer's recommendation.
+
+### TABLE 29: BADGE_AWARDS
+
+Attributes:
+
+- PK: award_id
+- FK: project_assignment_id → PROJECT_ASSIGNMENTS.project_assignment_id
+- FK: badge_id → BADGES.badge_id
+- FK: cosmonaut_id → EMPLOYEES.employee_id
+- FK: guardian_id → EMPLOYEES.employee_id
+- FK: decision_id → GUARDIAN_DECISIONS.decision_id (UNIQUE)
+- awarded_at
+- award_status
+
+Purpose:
+
+Store successfully awarded badges.
+
+Only approved Cosmonauts should receive badge awards.
+
+---
+
+# 5. COMPLETE TABLE RELATIONSHIPS
+
+Implement all relationships below.
+
+These are actual database relationships, not merely visual groupings.
+
+Use the PK and FK information to identify the correct relationship direction.
+
+## ORGANIZATION RELATIONSHIPS
+
+```text
+COMPANY 1:N BANDS
+
+COMPANY 1:N EMPLOYEES
+
+BANDS 1:N EMPLOYEES
+
+EMPLOYEE_CATEGORIES 1:N EMPLOYEES
+
+EMPLOYEES 1:N EMPLOYEE_ROLES
+
+SYSTEM_ROLES 1:N EMPLOYEE_ROLES
+```
+
+EMPLOYEE_ROLES resolves the many-to-many relationship between EMPLOYEES and SYSTEM_ROLES.
+
+## POWERS, CAPABILITIES & SKILLS RELATIONSHIPS
+
+```text
+EMPLOYEE_CATEGORIES 1:N CAPABILITIES
+
+POWERS 1:N CAPABILITIES
+
+CAPABILITIES 1:N SKILLS
+```
+
+## BADGE MANAGEMENT RELATIONSHIPS
+
+```text
+SKILLS 1:N BADGES
+
+EMPLOYEES 1:N BADGES
+(through created_by)
+
+BADGES 1:N BADGE_VERSIONS
+
+BADGES 1:N BADGE_REVIEWS
+
+BADGE_VERSIONS 1:N BADGE_REVIEWS
+
+BADGES 1:N BADGE_PUBLICATIONS
+
+BADGE_VERSIONS 1:N BADGE_PUBLICATIONS
+
+BADGES 1:N BADGE_ELIGIBILITY
+
+BANDS 1:N BADGE_ELIGIBILITY
+
+EMPLOYEE_CATEGORIES 1:N BADGE_ELIGIBILITY
+```
+
+## BADGE ALLOCATION RELATIONSHIPS
+
+```text
+BADGES 1:N BADGE_ALLOCATION_CAMPAIGNS
+
+BADGE_PUBLICATIONS 1:N BADGE_ALLOCATION_CAMPAIGNS
+
+BANDS 1:N BADGE_ALLOCATION_CAMPAIGNS
+
+EMPLOYEE_CATEGORIES 1:N BADGE_ALLOCATION_CAMPAIGNS
+
+BADGE_ALLOCATION_CAMPAIGNS 1:N CAMPAIGN_COSMONAUTS
+```
+
+## REVIEWER REQUEST & PYTHON MAPPING RELATIONSHIPS
+
+```text
+BADGE_ALLOCATION_CAMPAIGNS 1:N REVIEWER_REQUESTS
+
+BADGE_ALLOCATION_CAMPAIGNS 1:N MAPPING_RUNS
+
+BADGE_ALLOCATION_CAMPAIGNS 1:N REVIEWER_COSMONAUT_MAPPING
+
+MAPPING_RUNS 1:N REVIEWER_COSMONAUT_MAPPING
+```
+
+## PROJECT MANAGEMENT RELATIONSHIPS
+
+```text
+BADGE_ALLOCATION_CAMPAIGNS 1:N PROJECTS
+
+PROJECTS 1:N PROJECT_CRITERIA
+
+PROJECTS 1:N PROJECT_DELIVERABLES
+
+PROJECTS 1:N PROJECT_ASSIGNMENTS
+
+REVIEWER_COSMONAUT_MAPPING 1:1 PROJECT_ASSIGNMENTS
+```
+
+The mapping_id in PROJECT_ASSIGNMENTS is UNIQUE.
+
+## ASSESSMENT MANAGEMENT RELATIONSHIPS
+
+```text
+PROJECT_ASSIGNMENTS 1:N ASSESSMENT_ATTEMPTS
+
+ASSESSMENT_ATTEMPTS 1:N PROJECT_SUBMISSIONS
+
+ASSESSMENT_ATTEMPTS 1:N ASSESSMENT_SCORES
+
+PROJECT_CRITERIA 1:N ASSESSMENT_SCORES
+
+ASSESSMENT_ATTEMPTS 1:0..1 REVIEW_REPORTS
+```
+
+The assessment attempt can have one review report.
+
+## GUARDIAN DECISION & AWARD RELATIONSHIPS
+
+```text
+ASSESSMENT_ATTEMPTS 1:N GUARDIAN_DECISIONS
+
+PROJECT_ASSIGNMENTS 1:0..1 BADGE_AWARDS
+
+GUARDIAN_DECISIONS 1:0..1 BADGE_AWARDS
+
+BADGES 1:N BADGE_AWARDS
+```
+
+---
+
+# 6. PRIMARY KEY AND FOREIGN KEY VISUALIZATION
+
+When a user expands a table node, display the schema in a clear and structured format.
+
+Example:
+
+```text
+┌────────────────────────────────────────────┐
+│ EMPLOYEES                                  │
+├────────────────────────────────────────────┤
+│ PK  employee_id                            │
+│ FK  company_id                              │
+│ FK  band_id                                 │
+│ FK  category_id                             │
+│     employee_name                           │
+│     email                                   │
+│     employee_status                         │
+│     created_at                              │
+└────────────────────────────────────────────┘
+```
+
+Use the following visual indicators:
+
+- PK — Primary Key
+- FK — Foreign Key
+- DERIVED — Calculated attribute
+
+Do not invent column data types.
+
+If data types are not available, display the column name and key classification without a fabricated type.
+
+When clicking an FK attribute, allow the user to navigate to the referenced table.
+
+When clicking a PK attribute, highlight all tables that reference that primary key.
+
+---
+
+# 7. INTERACTIVE MIND MAP REQUIREMENTS
+
+This is the most important part of the implementation.
+
+The ER diagram must behave like an interactive hierarchical mind map.
+
+## 7.1 Initial View
+
+When the user opens the HTML file:
+
+Display only the main root node:
+
+STAR APP DATABASE
+
+Alternatively, you may show a clean overview with the eight main module nodes, but do not display all 29 tables and their attributes immediately.
+
+The initial view must be clean and uncluttered.
+
+## 7.2 Expand and Collapse
+
+Every expandable node must have its own independent expand/collapse control.
+
+Use:
+
+- (+) to expand.
+- (-) to collapse.
+
+Expected behavior:
+
+```text
+STAR APP DATABASE
+       |
+       + ORGANIZATION & EMPLOYEE MANAGEMENT
+       |
+       + POWERS, CAPABILITIES & SKILLS
+       |
+       + BADGE MANAGEMENT
+       |
+       + BADGE ALLOCATION
+       |
+       + REVIEWER REQUESTS & PYTHON MAPPING
+       |
+       + PROJECT MANAGEMENT
+       |
+       + ASSESSMENT MANAGEMENT
+       |
+       + GUARDIAN DECISIONS & BADGE AWARDS
+```
+
+When the user expands BADGE MANAGEMENT:
+
+```text
+BADGE MANAGEMENT
+       |
+       + Badge Master
+       + Badge Version Management
+       + Initial Badge Review
+       + Badge Publication
+       + Badge Eligibility
+```
+
+When the user expands Badge Master:
+
+```text
+Badge Master
+       |
+       + BADGES
+```
+
+When the user expands BADGES:
+
+```text
+BADGES
+       |
+       + badge_id (PK)
+       + skill_id (FK)
+       + created_by (FK)
+       + badge_name
+       + badge_description
+       + current_version
+       + badge_status
+       + created_at
+       + updated_at
+```
+
+This must continue for every table and every module.
+
+## 7.3 Independent Branch Expansion
+
+Multiple branches must remain expanded simultaneously.
+
+Example:
+
+The user should be able to expand:
+
+- Organization Management
+- Badge Management
+- Project Management
+
+All three branches must remain open.
+
+Expanding one branch must not automatically collapse another branch.
+
+Collapsing one branch must hide only its descendants.
+
+Do not reset the entire diagram when a single branch is collapsed.
+
+## 7.4 Table Details
+
+When clicking a table node, open a detailed schema panel.
+
+The panel should display:
+
+1. Table name.
+2. Module name.
+3. All columns.
+4. Primary key attributes.
+5. Foreign key attributes.
+6. Data types, if available.
+7. Referenced tables.
+8. Referencing tables.
+9. Relationship cardinalities.
+10. Short table description.
+
+Use a clean side panel or expandable detail card.
+
+The detailed panel should not force the entire mind map to reload.
+
+## 7.5 Relationship Exploration
+
+The mind map hierarchy and database relationships are two different things.
+
+Implement both.
+
+**Hierarchical relationships:**
+
+These connect the database root, modules, submodules, tables, and table attributes.
+
+**Relational relationships:**
+
+These connect actual database tables through their primary and foreign keys.
+
+For example:
+
+```text
+EMPLOYEES
+   |
+   | 1:N
+   |
+EMPLOYEE_ROLES
+   |
+   | N:1
+   |
+SYSTEM_ROLES
+```
+
+When selecting a table, highlight its directly connected tables and their relationship lines.
+
+Provide a way to navigate to related tables.
+
+Do not confuse a logical module parent-child connection with an actual database foreign-key relationship.
+
+For readability, relational connectors should be visually distinguishable from hierarchical connectors.
+
+Consider a toggle:
+
+- Show/Hide Database Relationships.
+
+This will prevent the diagram from becoming cluttered when many branches are expanded.
+
+---
+
+# 8. DYNAMIC LAYOUT ENGINE
+
+Dynamic layout is critical.
+
+Do not implement a static layout where nodes overlap when expanded.
+
+The system must automatically reposition nodes.
+
+Requirements:
+
+1. Newly expanded children must appear in the correct hierarchical position.
+2. Existing nodes must reposition smoothly.
+3. Connecting lines must update automatically.
+4. No overlapping nodes.
+5. No broken connectors.
+6. No clipped labels.
+7. No nodes appearing outside the visible workspace unexpectedly.
+8. Layout must remain readable with all 29 tables expanded.
+9. Collapsing nodes must reclaim unnecessary space.
+10. Multiple expanded branches must remain organized.
+
+Use a recursive, data-driven layout.
+
+The implementation should calculate node positions based on the visible hierarchy.
+
+Choose an appropriate layout direction:
+
+- Left-to-right mind map.
+- Top-to-bottom hierarchical layout.
+
+Prefer left-to-right if it provides better readability.
+
+The layout must support large expanded branches.
+
+## Smooth animation
+
+Implement:
+
+- Smooth expansion.
+- Smooth collapse.
+- Smooth repositioning.
+- Smooth connector updates.
+- No sudden page-wide flickering.
+- No excessive re-rendering.
+
+Animations should be subtle and professional.
+
+Avoid expensive effects that reduce performance.
+
+---
+
+# 9. ZOOM, PAN AND NAVIGATION
+
+Implement the following controls:
+
+- Zoom in.
+- Zoom out.
+- Reset zoom.
+- Fit to screen.
+- Drag to pan.
+- Mouse-wheel zoom.
+- Optional minimap for large diagrams.
+
+The diagram must remain usable even when many modules and tables are expanded.
+
+The user must be able to navigate the entire database without losing their position.
+
+Keep controls accessible and clearly visible.
+
+Add a search feature.
+
+Search should support:
+
+- Table names.
+- Column names.
+- Module names.
+- Attribute names.
+
+When a result is selected:
+
+- Navigate to the corresponding node.
+- Expand its parent branches if necessary.
+- Highlight the matching node.
+- Open its table details when appropriate.
+
+---
+
+# 10. EXPAND ALL AND COLLAPSE ALL
+
+Provide two global controls:
+
+**Expand All**
+
+Expands all modules, submodules and tables.
+
+Table attributes may remain collapsed until the user chooses to reveal them, or be included as a separate deeper expansion level.
+
+**Collapse All**
+
+Returns the diagram to the initial root view.
+
+These actions must not remove any underlying data.
+
+Add a confirmation or warning if expanding every attribute would create a very large view.
+
+---
+
+# 11. VISUAL DESIGN REQUIREMENTS
+
+Take inspiration from NotebookLM's Mind Map interface.
+
+Do not directly copy its branding or exact interface.
+
+Create a professional database visualization.
+
+## Design principles
+
+- Clean and modern interface.
+- Rounded rectangular nodes.
+- Clear hierarchy.
+- Consistent typography.
+- Proper spacing.
+- Visible connectors.
+- Professional hover effects.
+- Smooth transitions.
+- No unnecessary decorations.
+- No overcrowded layout.
+- No excessive shadows or gradients.
+
+## Node types
+
+Use visually distinguishable node types:
+
+1. Root database node.
+2. Main module nodes.
+3. Submodule nodes.
+4. Database table nodes.
+5. Attribute/column nodes.
+
+Each node type should have a consistent design.
+
+Table nodes should visually identify whether they contain primary keys or foreign keys.
+
+Use small, clear PK and FK labels.
+
+Use icons only when they improve understanding.
+
+## Relationship connectors
+
+Connectors must be:
+
+- Clearly visible.
+- Properly aligned.
+- Attached to node boundaries.
+- Updated dynamically.
+- Free from unnecessary crossing where possible.
+
+Use different connector styles for:
+
+- Hierarchical parent-child connections.
+- Actual foreign-key relationships.
+
+Do not draw every relational connection permanently if it makes the interface unreadable. Allow users to toggle relational connections or highlight them on selection.
+
+---
+
+# 12. TECHNICAL IMPLEMENTATION REQUIREMENTS
+
+Work with my existing HTML, CSS and JavaScript files.
+
+Before modifying anything:
+
+1. Inspect the complete existing project.
+2. Identify the existing ER diagram implementation.
+3. Understand how its data is stored.
+4. Identify reusable functions and components.
+5. Inspect the existing styling and dependencies.
+6. Determine the best way to integrate the mind map.
+
+Do not create a separate unrelated project.
+
+Do not unnecessarily rewrite existing files.
+
+Preserve the original database schema and its information.
+
+## Data-driven architecture
+
+Store the database schema in a structured JavaScript data object or JSON file.
+
+Use a recursive hierarchy.
+
+Example structure:
+
+```javascript
+{
+  id: "database",
+  name: "STAR APP DATABASE",
+  type: "root",
+  children: [
+    {
+      id: "organization",
+      name: "ORGANIZATION & EMPLOYEE MANAGEMENT",
+      type: "module",
+      children: [
+        {
+          id: "employee-management",
+          name: "Employee Management",
+          type: "submodule",
+          children: [
+            {
+              id: "employees",
+              name: "EMPLOYEES",
+              type: "table",
+              columns: [
+                {
+                  name: "employee_id",
+                  key: "PK"
+                },
+                {
+                  name: "company_id",
+                  key: "FK",
+                  references: "COMPANY.company_id"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+This is an illustrative structure.
+
+Implement the complete data for all 29 actual tables.
+
+Do not manually hardcode individual click handlers for every table.
+
+All nodes should be generated from the structured data.
+
+Keep these responsibilities separate:
+
+- Database schema data.
+- Hierarchical mind map data.
+- Relational relationship data.
+- Node rendering.
+- Expansion and collapse state.
+- Layout calculation.
+- Connector rendering.
+- Search and navigation.
+- Table details.
+
+## Dependencies
+
+Prefer the existing project dependencies.
+
+Do not introduce unnecessary libraries.
+
+If you need a graph layout library, first examine the existing implementation and determine whether it can handle the required dynamic positioning.
+
+If an additional library is genuinely necessary:
+
+1. Explain why it is needed.
+2. Explain what problem it solves.
+3. Select the smallest suitable dependency.
+4. Avoid adding multiple libraries that perform the same function.
+
+Do not introduce an unnecessary framework migration.
+
+## Performance
+
+Ensure:
+
+- Efficient rendering.
+- No unnecessary full-page re-rendering.
+- Independent branch state.
+- Stable node identities.
+- Efficient connector updates.
+- No memory leaks.
+- No repeated event listeners.
+- No continuous unnecessary animation.
+- No UI flickering.
+- No layout recalculation loops.
+
+---
+
+# 13. USER INTERFACE STRUCTURE
+
+Create a professional workspace.
+
+Suggested layout:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ STAR APP — DATABASE MIND MAP                                │
+│                                                             │
+│ Search tables / columns         Expand All   Collapse All   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│                                                             │
+│                  INTERACTIVE MIND MAP                       │
+│                                                             │
+│                                                             │
+│                                                             │
+│                                                             │
+│                                                             │
+│                                                             │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│ Zoom -     Zoom +      Fit to Screen      Reset View        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+When a table is selected, show a detail panel:
+
+```text
+┌─────────────────────────────────────────────┐
+│ TABLE DETAILS                               │
+├─────────────────────────────────────────────┤
+│ Table: EMPLOYEES                            │
+│ Module: ORGANIZATION & EMPLOYEE MANAGEMENT │
+│                                             │
+│ COLUMNS                                     │
+│                                             │
+│ PK  employee_id                             │
+│ FK  company_id                              │
+│ FK  band_id                                 │
+│ FK  category_id                             │
+│     employee_name                           │
+│     email                                   │
+│     employee_status                         │
+│     created_at                              │
+│                                             │
+│ RELATIONSHIPS                               │
+│                                             │
+│ COMPANY → EMPLOYEES                         │
+│ BANDS → EMPLOYEES                           │
+│ EMPLOYEE_CATEGORIES → EMPLOYEES             │
+│                                             │
+│ [View Related Tables]                       │
+└─────────────────────────────────────────────┘
+```
+
+This is a suggested layout. You can improve the UI while preserving the required functionality.
+
+---
+
+# 14. IMPORTANT DATABASE INTEGRITY REQUIREMENTS
+
+Do not alter these business rules.
+
+1. An employee can hold multiple application roles.
+2. Badge Reviewer can also become Project Reviewer.
+3. Guardian is the administrator and makes the final badge decision.
+4. Only published badges should be available for allocation.
+5. Cosmonauts belong to the selected band and employee category.
+6. Project Reviewers must belong to higher bands than their assigned Cosmonauts.
+7. Reviewer invitations have a 24-hour response deadline.
+8. No response after 24 hours is treated as NO.
+9. The Guardian proceeds without reviewers who decline or do not respond.
+10. Only accepted reviewers participate in Python mapping.
+11. Python distributes Cosmonauts as equally as possible.
+12. Each Cosmonaut receives one reviewer per campaign.
+13. A reviewer creates and submits the project.
+14. Project creation initially has a 72-hour timeline.
+15. Cosmonauts initially receive 72 hours to study.
+16. Timings can be changed.
+17. Projects contain criteria and deliverables.
+18. Each Cosmonaut has an individual project assignment.
+19. Assessment attempts must be maintained historically.
+20. Reattempts use the same original Project Reviewer.
+21. Reattempts can have new preparation and assessment schedules.
+22. Previous submissions and assessment results must not be overwritten.
+23. The reviewer submits marks and feedback to the Guardian.
+24. The Guardian makes the final Award Badge or Reattempt decision.
+25. Badge awards must only be created for approved Cosmonauts.
+
+The mind map is a visualization of the database. Do not implement new business rules or modify the actual database design as part of this task.
+
+---
+
+# 15. TESTING AND VALIDATION
+
+After implementation, test the complete mind map.
+
+## Hierarchy tests
+
+- Root node appears correctly.
+- All eight modules are present.
+- All submodules are present.
+- All 29 database tables are present.
+- Every table contains all its specified attributes.
+
+## Expansion tests
+
+- Every expandable node has an independent control.
+- Expand works.
+- Collapse works.
+- Multiple branches remain expanded.
+- Collapsing one branch does not affect unrelated branches.
+- Nested expansion works at every level.
+
+## Relationship tests
+
+- All PK attributes are identified correctly.
+- All FK attributes are identified correctly.
+- All specified table relationships are represented.
+- Correct relationship cardinalities are displayed.
+- Selecting a table highlights its related tables.
+- FK navigation works.
+- Hierarchical and relational connectors are distinguishable.
+
+## Layout tests
+
+- No overlapping nodes.
+- No broken connectors.
+- No clipped text.
+- Layout adjusts after expansion.
+- Layout adjusts after collapse.
+- Multiple expanded branches remain readable.
+- Large diagrams remain navigable.
+
+## Interaction tests
+
+- Search works.
+- Table details open.
+- Zoom works.
+- Pan works.
+- Fit to screen works.
+- Expand All works.
+- Collapse All works.
+- Hover highlighting works.
+
+## Browser tests
+
+Test the final HTML file in the browser.
+
+Check for:
+
+- JavaScript errors.
+- Console errors.
+- Missing assets.
+- Broken interactions.
+- Incorrect node positioning.
+- Performance problems.
+
+The implementation must work as a real interactive application, not just a static illustration.
+
+---
+
+# 16. EXPECTED FINAL OUTPUT
+
+I want a complete, working implementation.
+
+Deliver the following:
+
+### A. Interactive ER Mind Map
+
+A fully functional HTML-based mind map containing:
+
+- One root database node.
+- Eight logical modules.
+- All submodules.
+- All 29 database tables.
+- All table attributes.
+- PK and FK classifications.
+- Database relationship connectors.
+- Expand and collapse functionality.
+- Table detail exploration.
+- Search.
+- Zoom and pan.
+- Expand All and Collapse All.
+
+### B. Source Code
+
+Provide the complete implementation files.
+
+Use an organized structure similar to:
+
+```text
+STAR-APP-ER-MINDMAP/
+│
+├── index.html
+│
+├── css/
+│   └── mindmap.css
+│
+├── js/
+│   ├── schema-data.js
+│   ├── relationships.js
+│   ├── mindmap-renderer.js
+│   ├── layout-engine.js
+│   ├── interactions.js
+│   ├── search.js
+│   └── app.js
+│
+└── README.md
+```
+
+This is a suggested structure. Reuse my existing project structure wherever possible.
+
+Do not create unnecessary files.
+
+### C. Documentation
+
+Provide a README explaining:
+
+- How to open the application.
+- How the hierarchy is organized.
+- How expansion and collapse work.
+- How database relationships are represented.
+- How the layout engine works.
+- How to add a new database table.
+- How to add a new relationship.
+- Any dependencies introduced.
+
+### D. Final Verification Report
+
+After completing the implementation, provide a report containing:
+
+1. Files inspected.
+2. Files created or modified.
+3. Number of modules implemented.
+4. Number of tables implemented.
+5. Number of attributes implemented.
+6. Number of relationships implemented.
+7. Interactive features completed.
+8. Testing performed.
+9. Any known limitations.
+
+Do not claim that a feature is complete unless you have actually tested it.
+
+---
+
+# 17. FINAL IMPLEMENTATION INSTRUCTIONS
+
+Follow these instructions strictly.
+
+**1. Preserve the database design.**
+
+All 29 tables, attributes, primary keys, foreign keys, and specified relationships must remain intact.
+
+**2. Build a real interactive mind map.**
+
+Do not simply display the existing ER diagram as an image.
+
+**3. Use progressive information disclosure.**
+
+Do not display all table attributes immediately. Reveal them when users expand the relevant nodes or select a table.
+
+**4. Prioritize dynamic layout.**
+
+The layout must automatically adjust to expansion and collapse without overlapping nodes or breaking connectors.
+
+**5. Maintain independent branches.**
+
+Users must be able to explore different database modules simultaneously.
+
+**6. Keep the visualization data-driven.**
+
+The mind map must be generated from structured database schema data, not individually hardcoded nodes.
+
+**7. Preserve the existing project.**
+
+Inspect before modifying. Reuse existing implementation wherever possible.
+
+**8. Do not stop at a visual prototype.**
+
+All interactions must work.
+
+**9. Do not omit any database information.**
+
+Verify the final implementation against all 29 tables and the complete relationship list in this prompt.
+
+**10. Do not provide only instructions or a code suggestion.**
+
+Actually implement the changes in the existing project, test them, and provide the final working HTML application and source files.
+
+## FINAL GOAL
+
+Transform my current static STAR App ER diagram into a professional, interactive, dynamically expanding database mind map inspired by NotebookLM.
+
+I should be able to start from STAR APP DATABASE, progressively explore every module and submodule, expand all 29 tables, inspect every attribute, understand PK/FK relationships, navigate between related tables, and explore the entire database through a clean, responsive, smoothly animated interface.
+
+The result must be accurate, complete, maintainable, and ready to use in my browser.
+
+**Database accuracy and functional correctness are more important than decorative visual effects.**

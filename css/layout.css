@@ -70,6 +70,8 @@ body::before {
               max-width 0.26s cubic-bezier(0.2, 0, 0, 1),
               box-shadow 0.26s ease;
   will-change: width;
+  contain: layout;
+  transform: translateZ(0);
 }
 
 /* Backward-compatibility support for .app-sidebar.collapsed */
