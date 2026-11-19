@@ -74,6 +74,16 @@ body::before {
   transform: translateZ(0);
 }
 
+/* Hidden sidebar state for the 6 Bands Selection Landing Page */
+.app-sidebar.band-selection-hidden,
+.band-selection-hidden {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+}
+
 /* Backward-compatibility support for .app-sidebar.collapsed */
 .app-sidebar.collapsed {
   width: 72px;
@@ -235,6 +245,53 @@ body::before {
   padding: 2px 8px;
   border-radius: var(--radius-xs);
   white-space: nowrap !important;
+}
+
+/* Active Band Workspace Switcher in Guardian Sidebar */
+.sidebar-band-switcher {
+  margin: 6px 12px;
+  overflow: hidden;
+  white-space: nowrap !important;
+}
+
+.sidebar-band-switcher .band-switcher-mini {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 0;
+  opacity: 1;
+}
+
+.sidebar-band-switcher .band-switcher-content {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  padding: 0 10px;
+  background: rgba(234, 244, 255, 0.08);
+  border: 1.5px solid rgba(6, 182, 212, 0.35);
+  border-radius: var(--radius-sm);
+  transition: opacity 0.12s ease 0s,
+              max-height 0.26s cubic-bezier(0.2, 0, 0, 1),
+              padding 0.26s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.app-sidebar:hover .sidebar-band-switcher .band-switcher-mini,
+.app-sidebar.pinned-expanded .sidebar-band-switcher .band-switcher-mini,
+.app-sidebar.collapsed:hover .sidebar-band-switcher .band-switcher-mini {
+  display: none !important;
+}
+
+.app-sidebar:hover .sidebar-band-switcher .band-switcher-content,
+.app-sidebar.pinned-expanded .sidebar-band-switcher .band-switcher-content,
+.app-sidebar.collapsed:hover .sidebar-band-switcher .band-switcher-content {
+  opacity: 1;
+  max-height: 80px;
+  padding: 8px 10px;
+  pointer-events: auto;
+  transition: opacity 0.22s cubic-bezier(0.2, 0, 0, 1) 0.08s,
+              max-height 0.26s cubic-bezier(0.2, 0, 0, 1),
+              padding 0.26s cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Nav links list */

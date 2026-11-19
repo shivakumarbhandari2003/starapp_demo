@@ -14,10 +14,28 @@ from starapp.models import (
 )
 from starapp.seed_data import get_initial_seed_data
 from starapp.database import db, DatabaseManager, SCHEMA_VERSION
+try:
+    from starapp.repositories import (
+        UserRepository, BadgeRepository, TimelineRepository, AssessmentRepository,
+        MappingRepository, MaterialRepository, ExtensionRepository, AnnouncementRepository
+    )
+except ImportError:
+    UserRepository = BadgeRepository = TimelineRepository = AssessmentRepository = None
+    MappingRepository = MaterialRepository = ExtensionRepository = AnnouncementRepository = None
 
 class DataStore:
     def __init__(self, db_manager: Optional[DatabaseManager] = None):
         self.db = db_manager or db
+        # Modular SQLite repositories (resilient initialization)
+        self.user_repo = UserRepository(self.db) if UserRepository else None
+        self.badge_repo = BadgeRepository(self.db) if BadgeRepository else None
+        self.timeline_repo = TimelineRepository(self.db) if TimelineRepository else None
+        self.assessment_repo = AssessmentRepository(self.db) if AssessmentRepository else None
+        self.mapping_repo = MappingRepository(self.db) if MappingRepository else None
+        self.material_repo = MaterialRepository(self.db) if MaterialRepository else None
+        self.extension_repo = ExtensionRepository(self.db) if ExtensionRepository else None
+        self.announcement_repo = AnnouncementRepository(self.db) if AnnouncementRepository else None
+
         self.users: Dict[str, User] = {}
         self.profiles: Dict[str, CosmonautProfile] = {}
         self.badges: Dict[str, Badge] = {}
@@ -276,6 +294,14 @@ class DataStore:
             self.db.conn.execute("DELETE FROM badge_prerequisites WHERE badge_id = ?", (badge.id,))
             for prereq in badge.prerequisites:
                 self.db.conn.execute("INSERT OR IGNORE INTO badge_prerequisites (badge_id, prerequisite_badge_id) VALUES (?, ?)", (badge.id, prereq))
+
+            # Update normalized power, capability, skill associations
+            if getattr(badge, "power", None):
+                self.db.conn.execute("INSERT OR REPLACE INTO badge_powers (badge_id, power_name) VALUES (?, ?)", (badge.id, badge.power))
+            if getattr(badge, "capability", None):
+                self.db.conn.execute("INSERT OR REPLACE INTO badge_capabilities (badge_id, capability_name, is_custom) VALUES (?, ?, 0)", (badge.id, badge.capability))
+            if getattr(badge, "skill", None):
+                self.db.conn.execute("INSERT OR REPLACE INTO badge_skills (badge_id, skill_name, is_custom) VALUES (?, ?, 0)", (badge.id, badge.skill))
         self.mark_dirty()
 
     def get_badges_for_cosmonaut(self, cosmo_id: str) -> List[Badge]:
@@ -718,8 +744,7 @@ class DataStore:
         return self.db.get_custom_capabilities()
 
     def get_members_by_band(self, band: str) -> List[Dict[str, Any]]:
-        from starapp.mapping_data import DUMMY_MEMBERS
-        return [m for m in DUMMY_MEMBERS if m.get("band") == band]
+        return self.db.get_members_by_band(band)
 
     def add_custom_capability(self, name: str, user_id: str = "guardian_1", created_by: Optional[str] = None) -> Tuple[bool, str]:
         u_id = created_by or user_id
@@ -728,12 +753,12 @@ class DataStore:
             self.mark_dirty()
         return ok, res
 
-    def get_custom_skills(self) -> List[str]:
-        return self.db.get_custom_skills()
+    def get_custom_skills(self, capability_name: Optional[str] = None) -> List[str]:
+        return self.db.get_custom_skills(capability_name)
 
-    def add_custom_skill(self, name: str, user_id: str = "guardian_1", created_by: Optional[str] = None) -> Tuple[bool, str]:
+    def add_custom_skill(self, name: str, capability_name: str = "", user_id: str = "guardian_1", created_by: Optional[str] = None) -> Tuple[bool, str]:
         u_id = created_by or user_id
-        ok, res = self.db.add_custom_skill(name, u_id)
+        ok, res = self.db.add_custom_skill(name, capability_name=capability_name, user_id=u_id)
         if ok:
             self.mark_dirty()
         return ok, res
@@ -748,10 +773,12 @@ class DataStore:
     def verify_reviewer_eligibility(self, reviewer_id: str, target_band: str) -> Tuple[bool, str]:
         return self.db.verify_reviewer_eligibility(reviewer_id, target_band)
 
-    def get_pending_badge_approvals(self, reviewer_id: Optional[str] = None) -> List[Badge]:
+    def get_pending_badge_approvals(self, reviewer_id: Optional[str] = None, target_band: Optional[str] = None) -> List[Badge]:
         pending = [b for b in self.badges.values() if getattr(b, "workflow_status", "approved") == "pending_review"]
         if reviewer_id:
             pending = [b for b in pending if getattr(b, "assigned_reviewer_id", "") == reviewer_id]
+        if target_band:
+            pending = [b for b in pending if getattr(b, "target_band", "") == target_band]
         return pending
 
     def create_badge_for_review(self, *args, **kwargs) -> Tuple[bool, str, Optional[str]]:
@@ -853,15 +880,23 @@ class DataStore:
 
     def save_generated_badge(self, badge_dict: Dict[str, Any], creator_id: str = "guardian_1") -> Tuple[bool, str, Optional[Badge]]:
         b_id = badge_dict.get("id") or f"badge_{badge_dict.get('target_band', 'b1').lower()}_{int(time.time())}"
-        title = badge_dict.get("title", "Generated Badge")
+        title = badge_dict.get("title", "Generated Badge").strip()
         band = badge_dict.get("target_band", "B1")
         power = badge_dict.get("power", "Tech")
         cap = badge_dict.get("capability", "Data & Machine")
-        skill = badge_dict.get("skill", "Hardware")
+        skill = badge_dict.get("skill", "Hardware").strip()
         desc = badge_dict.get("description", "")
         outcomes = badge_dict.get("outcomes", [])
         topics = [t["title"] if isinstance(t, dict) else str(t) for t in badge_dict.get("learning_topics", [])]
         code = badge_dict.get("code") or f"{band}-{skill[:3].upper()}-01"
+
+        # Deduplication check: cannot create 2 same badges in the same curriculum graph / band
+        for existing in self.badges.values():
+            if getattr(existing, "target_band", "") == band and existing.id != b_id:
+                if existing.title.strip().lower() == title.lower():
+                    return False, f"A badge with title '{title}' already exists for Band {band}. Duplicate badges are not allowed.", None
+                if getattr(existing, "skill", "").strip().lower() == skill.lower():
+                    return False, f"A badge for skill '{skill}' already exists for Band {band} ('{existing.title}'). Duplicate badges are not allowed in the same band.", None
 
         badge = Badge(
             id=b_id,
@@ -890,7 +925,7 @@ class DataStore:
             actor_name="Guardian",
             cosmonaut_id="",
             badge_id=b_id,
-            summary=f"Saved badge '{title}' under {skill}, under {cap}, under {power}, under Band {band}."
+            summary=f"Saved badge '{title}' -> {skill} -> {cap} -> {power} -> Band {band}."
         )
         self.mark_dirty()
         return True, "Badge saved successfully!", badge
@@ -908,7 +943,7 @@ class DataStore:
                         badge_json = json.loads(b.prompt_json)
                     except Exception:
                         pass
-                loc = badge_json.get("location") or f"{b.title} under {getattr(b, 'skill', 'General')}, under {getattr(b, 'capability', 'Core')}, under {getattr(b, 'power', 'Tech')}, under Band {getattr(b, 'target_band', 'B1')}"
+                loc = badge_json.get("location") or f"{b.title} -> {getattr(b, 'skill', 'General')} -> {getattr(b, 'capability', 'Core')} -> {getattr(b, 'power', 'Tech')} -> Band {getattr(b, 'target_band', 'B1')}"
                 results.append({
                     "id": b.id,
                     "code": b.code,

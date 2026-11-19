@@ -79,6 +79,7 @@ class StarAppController:
         self.active_modal: Optional[str] = None
         self.modal_payload: Dict[str, Any] = {}
         self.flash_message: Optional[str] = None
+        self.last_flash_message: Optional[str] = None
         self.flash_type: str = "info"
         self.render_generation: int = 0
         self._last_render_source: str = "init"
@@ -228,6 +229,7 @@ class StarAppController:
 
     def set_flash(self, message: str, ftype: str = "info"):
         self.flash_message = message
+        self.last_flash_message = message
         self.flash_type = ftype
 
     # ==========================================================================
@@ -250,7 +252,11 @@ class StarAppController:
             user = store.get_user_by_username(username)
             if user:
                 self.current_user = user
-                self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
+                if user.role == "guardian" or user.has_role("guardian"):
+                    self.current_view = "g_create_badge"
+                    self.create_badge_band = None
+                else:
+                    self.current_view = "c_dashboard"
                 self.set_flash(f"Welcome back, {user.name}!", "success")
             else:
                 self.set_flash("Invalid demo username. Please choose from the demo credentials below.", "error")
@@ -355,6 +361,31 @@ class StarAppController:
         elif action == "toggle_edit_badge":
             self.is_editing_badge = not self.is_editing_badge
 
+        elif action == "toggle_topic_completion":
+            topic_idx = None
+            if isinstance(payload, int):
+                topic_idx = payload
+            elif isinstance(payload, str):
+                try:
+                    p_obj = json.loads(payload)
+                    if isinstance(p_obj, dict):
+                        topic_idx = p_obj.get("index")
+                    elif isinstance(p_obj, int):
+                        topic_idx = p_obj
+                except Exception:
+                    if payload.isdigit():
+                        topic_idx = int(payload)
+            elif isinstance(payload, dict):
+                topic_idx = payload.get("index")
+
+            if topic_idx is not None and self.created_badge_data and "learning_topics" in self.created_badge_data:
+                topics = self.created_badge_data["learning_topics"]
+                if 0 <= topic_idx < len(topics):
+                    curr = topics[topic_idx]
+                    curr_completed = curr.get("completed", False) or curr.get("status", "").lower() == "completed"
+                    curr["completed"] = not curr_completed
+                    curr["status"] = "Completed" if not curr_completed else "In Progress"
+
         elif action == "save_badge_edits":
             if isinstance(payload, str):
                 try: payload = json.loads(payload)
@@ -376,7 +407,7 @@ class StarAppController:
                 if "topics" in payload and isinstance(payload["topics"], list):
                     self.created_badge_data["learning_topics"] = payload["topics"]
                 t = self.created_badge_data.get("title", "")
-                self.created_badge_data["location"] = f"{t} under {self.create_badge_skill}, under {self.create_badge_capability}, under {self.create_badge_power}, under Band {self.create_badge_band}"
+                self.created_badge_data["location"] = f"{t} -> {self.create_badge_skill} -> {self.create_badge_capability} -> {self.create_badge_power} -> Band {self.create_badge_band}"
                 self.is_editing_badge = False
                 self.set_flash("Badge edits applied successfully.", "info")
 
@@ -395,8 +426,11 @@ class StarAppController:
                 creator_id=self.current_user.id if self.current_user else "guardian_1"
             )
             if success:
-                loc = self.created_badge_data.get("location", f"{self.created_badge_data.get('title')} under {self.create_badge_skill}, under {self.create_badge_capability}, under {self.create_badge_power}, under Band {self.create_badge_band}")
-                self.set_flash(f"Badge '{self.created_badge_data.get('title')}' saved to Saved Badges ({loc})!", "success")
+                saved_title = self.created_badge_data.get('title')
+                loc = self.created_badge_data.get("location", f"{saved_title} -> {self.create_badge_skill} -> {self.create_badge_capability} -> {self.create_badge_power} -> Band {self.create_badge_band}")
+                self.created_badge_data = None  # Hide badge preview until another is created or viewed!
+                self.is_editing_badge = False
+                self.set_flash(f"Badge '{saved_title}' saved successfully! View it anytime under Saved Badges below.", "success")
             else:
                 self.set_flash(msg, "error")
 
@@ -426,7 +460,16 @@ class StarAppController:
                 self.set_flash(f"Loaded saved badge '{b.title}'", "info")
 
         elif action == "add_custom_capability":
-            cap_name = payload if isinstance(payload, str) else payload.get("name", "")
+            if isinstance(payload, str):
+                try:
+                    p_obj = json.loads(payload)
+                    cap_name = p_obj.get("name", payload) if isinstance(p_obj, dict) else payload
+                except Exception:
+                    cap_name = payload
+            elif isinstance(payload, dict):
+                cap_name = payload.get("name", "")
+            else:
+                cap_name = ""
             cap_name = cap_name.strip()
             if not cap_name:
                 self.set_flash("Capability name cannot be empty.", "warning")
@@ -434,7 +477,9 @@ class StarAppController:
                 success, msg = store.add_custom_capability(cap_name, created_by=self.current_user.id if self.current_user else "guardian_1")
                 if success:
                     self.create_badge_capability = cap_name
-                    self.set_flash(f"Custom capability '{cap_name}' added successfully.", "success")
+                    skills = store.get_custom_skills(cap_name)
+                    self.create_badge_skill = skills[0] if skills else f"{cap_name} Core"
+                    self.set_flash(f"Custom capability '{cap_name}' added and saved to database.", "success")
                 else:
                     self.set_flash(msg, "warning")
 
@@ -443,15 +488,32 @@ class StarAppController:
             self.create_badge_skill = skill
 
         elif action == "add_custom_skill":
-            skill_name = payload if isinstance(payload, str) else payload.get("name", "")
+            target_cap = self.create_badge_capability or "Data & Machine"
+            if isinstance(payload, str):
+                try:
+                    p_obj = json.loads(payload)
+                    if isinstance(p_obj, dict):
+                        skill_name = p_obj.get("name", payload)
+                        target_cap = p_obj.get("capability") or target_cap
+                    else:
+                        skill_name = payload
+                except Exception:
+                    skill_name = payload
+            elif isinstance(payload, dict):
+                skill_name = payload.get("name", "")
+                target_cap = payload.get("capability") or target_cap
+            else:
+                skill_name = ""
+
             skill_name = skill_name.strip()
             if not skill_name:
                 self.set_flash("Skill name cannot be empty.", "warning")
             else:
-                success, msg = store.add_custom_skill(skill_name, created_by=self.current_user.id if self.current_user else "guardian_1")
+                success, msg = store.add_custom_skill(skill_name, capability_name=target_cap, created_by=self.current_user.id if self.current_user else "guardian_1")
                 if success:
+                    self.create_badge_capability = target_cap
                     self.create_badge_skill = skill_name
-                    self.set_flash(f"Custom skill '{skill_name}' added successfully.", "success")
+                    self.set_flash(f"Custom skill '{skill_name}' added under '{target_cap}' and saved to database.", "success")
                 else:
                     self.set_flash(msg, "warning")
 
@@ -559,10 +621,20 @@ class StarAppController:
                 prompt_json = draft.get("prompt_json", self.create_badge_prompt_json)
 
                 all_b = store.get_all_badges()
-                if any(b.code.lower() == code.lower() for b in all_b):
-                    code = f"{code}-{int(time.time()) % 1000}"
+                existing_badge_id = draft.get("badge_id") or draft.get("id")
+                if not existing_badge_id:
+                    # Check if there is an existing pending_review badge with this code
+                    matching_pending = [b for b in all_b if b.code.lower() == code.lower() and getattr(b, "workflow_status", "") == "pending_review"]
+                    if matching_pending:
+                        existing_badge_id = matching_pending[0].id
+                    else:
+                        # If a published badge already uses this code, add a clean numeric increment
+                        published_matching = [b for b in all_b if b.code.lower() == code.lower() and getattr(b, "workflow_status", "") != "pending_review"]
+                        if published_matching:
+                            code = f"{code}-{len(published_matching) + 1}"
+                        existing_badge_id = f"badge_{code.lower().replace('-', '_')}"
 
-                badge_id = f"badge_{code.lower().replace('-', '_')}_{int(time.time()) % 1000}"
+                badge_id = existing_badge_id
                 raw_outcomes = draft.get("learning_outcomes", "")
                 outcomes = [o.strip() for o in raw_outcomes.replace("\n", ",").split(",") if o.strip()]
                 raw_topics = draft.get("learning_topics", "")
@@ -2472,13 +2544,28 @@ if __name__ == "__main__":
             review_date_val = dt.get("review_date") or "2026-12-18"
             award_date_val = dt.get("expected_award_date") or "2026-12-20"
 
-            cosmo_checks = []
-            for c in store.get_all_cosmonauts():
+            cosmo_cards = []
+            all_cosmonauts = store.get_all_cosmonauts()
+            for c in all_cosmonauts:
                 chk = " checked" if c.id in assigned else ""
-                cosmo_checks.append(f"""
-                <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; margin-right:12px;">
-                    <input type="checkbox" name="badge-assignee" value="{c.id}"{chk}>
-                    <span>{escape(c.name)}</span>
+                c_band = getattr(c, "band", "B1")
+                c_track = getattr(c, "learning_track", "General")
+                initials = "".join([part[0] for part in c.name.split()[:2]]).upper() or "C"
+                cosmo_cards.append(f"""
+                <label class="liquid-glass-card cosmo-assignee-card" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-30); background:rgba(255,255,255,0.9); cursor:pointer; transition:all 0.15s ease;">
+                    <div style="display:flex; align-items:center; gap:9px; min-width:0;">
+                        <span style="width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg, #17345C 0%, #3B82F6 100%); color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            {escape(initials)}
+                        </span>
+                        <div style="min-width:0;">
+                            <div style="font-size:12px; font-weight:800; color:var(--frost-navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{escape(c.name)}</div>
+                            <div style="display:flex; align-items:center; gap:4px; margin-top:1px;">
+                                <span style="font-size:9.5px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:1px 5px; border-radius:8px;">{escape(c_band)}</span>
+                                <span style="font-size:9.5px; color:var(--frost-navy-50);">{escape(c_track)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="checkbox" name="badge-assignee" value="{c.id}"{chk} style="width:16px; height:16px; accent-color:var(--deep-frozen-midnight); cursor:pointer; flex-shrink:0;">
                 </label>
                 """)
 
@@ -2486,76 +2573,88 @@ if __name__ == "__main__":
             <form onsubmit="event.preventDefault(); const c=document.getElementById('badge-code').value; const t=document.getElementById('badge-title').value; const d=document.getElementById('badge-desc').value; const r=document.getElementById('badge-reqs').value; const al=document.getElementById('tl-alloc-date').value; const ls=document.getElementById('tl-learn-start').value; const le=document.getElementById('tl-learn-end').value; const ps=document.getElementById('tl-proj-start').value; const pe=document.getElementById('tl-proj-end').value; const sd=document.getElementById('tl-sub-deadline').value; const rd=document.getElementById('tl-review-date').value; const aw=document.getElementById('tl-award-date').value; const boxes=document.querySelectorAll('input[name=badge-assignee]:checked'); const sel=[]; boxes.forEach(x=>sel.push(x.value)); window.StarAppBridge.dispatchAction('save_badge_form', JSON.stringify({{badge_id:'{b_id}', code:c, title:t, description:d, project_requirements:r, assigned_cosmonaut_ids:sel, assignment_date:al, learning_start_date:ls, learning_end_date:le, project_start_date:ps, project_end_date:pe, submission_deadline:sd, review_date:rd, expected_award_date:aw}}));">
                 <div style="display:grid; grid-template-columns:1fr 2fr; gap:12px;">
                     <div class="form-group">
-                        <label class="form-label">Badge Code</label>
-                        <input type="text" id="badge-code" class="form-control" value="{escape(code)}" placeholder="e.g. SQL-201" required>
+                        <label class="form-label" style="font-size:12px; font-weight:700;">Badge Code</label>
+                        <input type="text" id="badge-code" class="form-control" value="{escape(code)}" placeholder="e.g. SQL-201" required style="font-size:13px; font-weight:700;">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Badge Title</label>
-                        <input type="text" id="badge-title" class="form-control" value="{escape(b_title)}" placeholder="e.g. Distributed Ingestion" required>
+                        <label class="form-label" style="font-size:12px; font-weight:700;">Badge Title</label>
+                        <input type="text" id="badge-title" class="form-control" value="{escape(b_title)}" placeholder="e.g. Distributed Ingestion" required style="font-size:13px; font-weight:700;">
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Milestone Description</label>
-                    <textarea id="badge-desc" class="form-textarea" rows="2" required>{escape(desc)}</textarea>
+                <div class="form-group" style="margin-top:10px;">
+                    <label class="form-label" style="font-size:12px; font-weight:700;">Milestone Description</label>
+                    <textarea id="badge-desc" class="form-textarea" rows="2" required style="font-size:12.5px; line-height:1.5;">{escape(desc)}</textarea>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Project Deliverable Requirements</label>
-                    <textarea id="badge-reqs" class="form-textarea" rows="2" required>{escape(reqs)}</textarea>
+                <div class="form-group" style="margin-top:10px;">
+                    <label class="form-label" style="font-size:12px; font-weight:700;">Project Deliverable Requirements</label>
+                    <textarea id="badge-reqs" class="form-textarea" rows="2" required style="font-size:12.5px; line-height:1.5;">{escape(reqs)}</textarea>
                 </div>
 
                 <!-- Guardian Milestone Timeline Decisions -->
-                <div style="background:rgba(234,244,255,0.45); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:16px;">
-                    <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:10px;">
-                        Guardian Timeline Decisions (Milestones for Roadmap):
+                <div style="background:rgba(234,244,255,0.45); padding:16px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-30); margin-top:14px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                            Guardian Timeline Decisions (Milestones for Roadmap):
+                        </span>
+                        <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">6 Sequential Gates</span>
                     </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">1. Badge & Project Allocated Date</label>
-                            <input type="date" id="tl-alloc-date" class="form-control" value="{escape(alloc_val)}" required>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">1. Badge &amp; Project Allocated Date</label>
+                            <input type="date" id="tl-alloc-date" class="form-control" value="{escape(alloc_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">4. Official Submission Date</label>
-                            <input type="date" id="tl-sub-deadline" class="form-control" value="{escape(sub_deadline_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">4. Official Submission Date</label>
+                            <input type="date" id="tl-sub-deadline" class="form-control" value="{escape(sub_deadline_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">2. Learning Time (Start)</label>
-                            <input type="date" id="tl-learn-start" class="form-control" value="{escape(learn_start_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">2. Learning Time (Start)</label>
+                            <input type="date" id="tl-learn-start" class="form-control" value="{escape(learn_start_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">2. Learning Time (End)</label>
-                            <input type="date" id="tl-learn-end" class="form-control" value="{escape(learn_end_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">2. Learning Time (End)</label>
+                            <input type="date" id="tl-learn-end" class="form-control" value="{escape(learn_end_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">3. Project Time (Start)</label>
-                            <input type="date" id="tl-proj-start" class="form-control" value="{escape(proj_start_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">3. Project Time (Start)</label>
+                            <input type="date" id="tl-proj-start" class="form-control" value="{escape(proj_start_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">3. Project Time (End)</label>
-                            <input type="date" id="tl-proj-end" class="form-control" value="{escape(proj_end_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">3. Project Time (End)</label>
+                            <input type="date" id="tl-proj-end" class="form-control" value="{escape(proj_end_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">5. Review & Defense Date</label>
-                            <input type="date" id="tl-review-date" class="form-control" value="{escape(review_date_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">5. Review &amp; Defense Date</label>
+                            <input type="date" id="tl-review-date" class="form-control" value="{escape(review_date_val)}" required style="font-size:12px;">
                         </div>
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:11.5px;">6. Badge Earned Date (Target)</label>
-                            <input type="date" id="tl-award-date" class="form-control" value="{escape(award_date_val)}" required>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:11.5px; font-weight:700;">6. Badge Earned Date (Target)</label>
+                            <input type="date" id="tl-award-date" class="form-control" value="{escape(award_date_val)}" required style="font-size:12px;">
                         </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Assign To Cosmonauts</label>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px; background:rgba(234,244,255,0.4); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        {"".join(cosmo_checks)}
                     </div>
                 </div>
 
-                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+                <!-- Structured Assignee Section with Search/Actions -->
+                <div class="form-group" style="margin-top:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                        <label class="form-label" style="font-size:12px; font-weight:800; color:var(--frost-navy); margin:0;">
+                            Assign To Cosmonauts ({len(assigned)} / {len(all_cosmonauts)} Allocated)
+                        </label>
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" class="btn-secondary btn-sm" onclick="document.querySelectorAll('input[name=badge-assignee]').forEach(x => x.checked = true);" style="font-size:11px; padding:3px 9px;">Select All</button>
+                            <button type="button" class="btn-secondary btn-sm" onclick="document.querySelectorAll('input[name=badge-assignee]').forEach(x => x.checked = false);" style="font-size:11px; padding:3px 9px;">Clear All</button>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; max-height:220px; overflow-y:auto; padding:10px; background:rgba(234,244,255,0.4); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
+                        {"".join(cosmo_cards)}
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px; border-top:1px solid var(--icy-steel-30); padding-top:14px;">
                     <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
-                    <button type="submit" class="btn-metal">Save Allotment & Timeline</button>
+                    <button type="submit" class="btn-metal" style="font-weight:800; padding:8px 22px;">Save Allotment &amp; Timeline &rarr;</button>
                 </div>
             </form>
             """
@@ -2903,12 +3002,24 @@ if __name__ == "__main__":
         is_guardian_or_reviewer = ("guardian" in user_roles or "badge_reviewer" in user_roles or self.current_user.role in ("guardian", "badge_reviewer"))
 
         if is_guardian_or_reviewer:
+            hide_sidebar = (self.current_view == "g_create_badge" and not self.create_badge_band)
             pending_reviews = len([s for s in all_subs if s.status == "pending"])
             pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
-            pending_badge_approvals = len(store.get_pending_badge_approvals(reviewer_id=self.current_user.id if "badge_reviewer" in user_roles and "guardian" not in user_roles else None))
+            pending_badge_approvals = len(store.get_pending_badge_approvals(
+                reviewer_id=self.current_user.id if "badge_reviewer" in user_roles and "guardian" not in user_roles else None,
+                target_band=self.create_badge_band
+            ))
             sidebar_badges = {"g_reviews": pending_reviews, "g_extensions": pending_exts, "g_badge_approval": pending_badge_approvals}
             active_nav_id = "g_reviews" if self.current_view == "g_review_detail" else self.current_view
-            sidebar_html = render_guardian_sidebar(self.current_view, self.current_user, pending_reviews, pending_exts, pending_badge_approvals)
+            sidebar_html = render_guardian_sidebar(
+                self.current_view,
+                self.current_user,
+                pending_reviews,
+                pending_exts,
+                pending_badge_approvals,
+                active_band=self.create_badge_band,
+                hidden=hide_sidebar
+            )
 
             if self.current_view == "g_create_badge":
                 page_title = "Create Badge — StarApp"
@@ -2938,6 +3049,8 @@ if __name__ == "__main__":
             elif self.current_view == "g_badge_approval":
                 page_title = "Reviewer Badge Approval — StarApp"
                 all_badges = store.get_all_badges()
+                if self.create_badge_band:
+                    all_badges = [b for b in all_badges if getattr(b, "target_band", "") == self.create_badge_band]
                 main_content_html = render_guardian_badge_approval_queue(
                     badges=all_badges,
                     current_user=self.current_user,
@@ -2978,12 +3091,22 @@ if __name__ == "__main__":
 
             elif self.current_view == "g_allotment":
                 page_title = "Badge Allotment & Timeline Management"
-                main_content_html = render_guardian_badge_allotment(badges, cosmonauts, getattr(self, 'guardian_allotment_filter', 'all'))
+                scoped_badges = badges
+                scoped_cosmonauts = cosmonauts
+                if self.create_badge_band:
+                    b_filtered = [b for b in badges if getattr(b, "target_band", "") == self.create_badge_band]
+                    if b_filtered:
+                        scoped_badges = b_filtered
+                    c_filtered = [c for c in cosmonauts if getattr(c, "band", "") == self.create_badge_band]
+                    if c_filtered:
+                        scoped_cosmonauts = c_filtered
+                main_content_html = render_guardian_badge_allotment(scoped_badges, scoped_cosmonauts, getattr(self, 'guardian_allotment_filter', 'all'))
 
             elif self.current_view == "g_mapping":
                 page_title = "Cosmonaut & Reviewer Competency Mapping"
+                active_mapping_band = self.create_badge_band if self.create_badge_band else self.mapping_selected_band
                 main_content_html = render_guardian_mapping(
-                    selected_band=self.mapping_selected_band,
+                    selected_band=active_mapping_band,
                     selected_roles=self.mapping_selected_roles,
                     selected_badge=self.mapping_selected_badge,
                     selected_cosmonauts=self.mapping_selected_cosmonauts,
@@ -3007,7 +3130,12 @@ if __name__ == "__main__":
             elif self.current_view == "g_reviews":
                 page_title = "Project Deliverable Assessment Queue"
                 asms_by_sub = {a.submission_id: a for a in all_asms}
-                main_content_html = render_guardian_review_queue(all_subs, asms_by_sub, badges_map, cosmo_map, self.guardian_review_filter)
+                scoped_subs = all_subs
+                if self.create_badge_band:
+                    b_subs = [s for s in all_subs if (cosmo_map.get(s.cosmonaut_id) and cosmo_map[s.cosmonaut_id].band == self.create_badge_band) or (badges_map.get(s.badge_id) and getattr(badges_map[s.badge_id], "target_band", "") == self.create_badge_band)]
+                    if b_subs:
+                        scoped_subs = b_subs
+                main_content_html = render_guardian_review_queue(scoped_subs, asms_by_sub, badges_map, cosmo_map, self.guardian_review_filter)
 
             elif self.current_view == "g_review_detail":
                 page_title = "Project Deliverable Technical Inspection & Assessment"
@@ -3028,9 +3156,18 @@ if __name__ == "__main__":
 
             elif self.current_view == "g_materials":
                 page_title = "Learning Resources & Materials Manager"
+                scoped_materials = store.get_materials()
+                scoped_badges = badges
+                if self.create_badge_band:
+                    band_b_ids = {b.id for b in badges if getattr(b, "target_band", "") == self.create_badge_band}
+                    if band_b_ids:
+                        scoped_badges = [b for b in badges if b.id in band_b_ids]
+                        m_filtered = [m for m in scoped_materials if getattr(m, "badge_id", "") in band_b_ids]
+                        if m_filtered:
+                            scoped_materials = m_filtered
                 main_content_html = render_guardian_materials(
-                    materials=store.get_materials(),
-                    badges=badges,
+                    materials=scoped_materials,
+                    badges=scoped_badges,
                     badges_map=badges_map,
                     selected_badge_filter=self.materials_badge_filter,
                     selected_type_filter=self.materials_type_filter
@@ -3038,7 +3175,12 @@ if __name__ == "__main__":
 
             elif self.current_view == "g_extensions":
                 page_title = "Milestone Deadline Extensions"
-                main_content_html = render_guardian_extensions(store.get_all_extensions(), cosmo_map, badges_map)
+                scoped_exts = store.get_all_extensions()
+                if self.create_badge_band:
+                    ext_filtered = [e for e in scoped_exts if (cosmo_map.get(e.cosmonaut_id) and cosmo_map[e.cosmonaut_id].band == self.create_badge_band) or (badges_map.get(e.badge_id) and getattr(badges_map[e.badge_id], "target_band", "") == self.create_badge_band)]
+                    if ext_filtered:
+                        scoped_exts = ext_filtered
+                main_content_html = render_guardian_extensions(scoped_exts, cosmo_map, badges_map)
 
             elif self.current_view == "g_announcements":
                 page_title = "Academy Announcement Broadcaster"

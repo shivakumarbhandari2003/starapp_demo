@@ -289,9 +289,8 @@ def generate_badge_data(
     else:
         outcomes = raw_outcomes[:4]
 
-    # Location breadcrumb string
-    # "badge name under skill, under this capability, under this power, under this band"
-    location_str = f"{title} under {skill_clean}, under {cap_clean}, under {power_clean}, under Band {band_clean}"
+    # Location breadcrumb string: Badge name -> skill name -> capability name -> power name -> Band number
+    location_str = f"{title} -> {skill_clean} -> {cap_clean} -> {power_clean} -> Band {band_clean}"
 
     # Build topics description bullets for LLM prompts
     topics_bullets = "\n".join([f"- {t['title']}: {t['description']}" for t in topics])
@@ -341,7 +340,8 @@ def generate_badge_data(
         "learning_topics": [
             {
                 "title": t["title"],
-                "status": "Completed",
+                "status": "In Progress",
+                "completed": False,
                 "description": t["description"]
             }
             for t in topics

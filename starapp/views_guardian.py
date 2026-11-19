@@ -61,7 +61,15 @@ def render_metric_info_popover(key: str, data: Dict[str, Any], scope: str = "coh
 # GUARDIAN SIDEBAR
 # ==============================================================================
 
-def render_guardian_sidebar(active_view: str, current_user: User, pending_reviews_count: int, pending_extensions_count: int, pending_badge_approvals_count: int = 0) -> str:
+def render_guardian_sidebar(
+    active_view: str,
+    current_user: User,
+    pending_reviews_count: int,
+    pending_extensions_count: int,
+    pending_badge_approvals_count: int = 0,
+    active_band: Optional[str] = None,
+    hidden: bool = False
+) -> str:
     nav_items = [
         {"id": "g_create_badge", "label": "Create Badge", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>', "badge": 0},
         {"id": "g_badge_approval", "label": "Reviewer Badge Approval", "icon": '<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', "badge": pending_badge_approvals_count},
@@ -95,8 +103,27 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
     role_title = "Badge Reviewer" if ("badge_reviewer" in user_roles and "guardian" not in user_roles) else "Training Mentor"
     user_sub_desc = f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Batch Orion-24 Lead"
 
+    sidebar_hidden_attr = ' class="app-sidebar band-selection-hidden" style="display:none !important;" aria-hidden="true"' if hidden else ' class="app-sidebar"'
+
+    band_switcher_html = f"""
+    <div class="sidebar-band-switcher">
+        <div class="band-switcher-mini" title="Band {escape(active_band)} Workspace">
+            <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#06B6D4; color:#fff; padding:2px 6px; border-radius:8px;">{escape(active_band)}</span>
+        </div>
+        <div class="band-switcher-content">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--pure-ice);">Workspace</span>
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:10px;">BAND {escape(active_band)}</span>
+            </div>
+            <button type="button" class="btn-ghost btn-sm" onclick="window.StarAppBridge.dispatchAction('select_create_badge_band', '')" style="color:var(--pure-ice); font-size:11px; padding:4px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:600;" title="Switch to another band">
+                <span>&larr; Switch Band</span>
+            </button>
+        </div>
+    </div>
+    """ if (active_band and not hidden) else ""
+
     return f"""
-    <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="guardian" data-user-id="{escape(current_user.id)}">
+    <aside id="starapp-shell-sidebar"{sidebar_hidden_attr} data-portal-role="guardian" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
             <div class="brand-text-wrap">
                 <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
@@ -109,6 +136,8 @@ def render_guardian_sidebar(active_view: str, current_user: User, pending_review
             <span class="role-badge-label">Role</span>
             <span class="role-badge-val">{escape(role_title)}</span>
         </div>
+
+        {band_switcher_html}
 
         <ul class="sidebar-nav">
             {"".join(links_html)}
@@ -3378,7 +3407,7 @@ def render_guardian_create_badge(
             rev_text = f"{rev_count} Eligible Reviewers" if rev_count > 0 else "Executive Council Only"
 
             cards_html.append(f"""
-            <div class="liquid-glass-card interactive" style="padding:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); cursor:pointer; transition:all 0.25s cubic-bezier(0.16,1,0.3,1); display:flex; flex-direction:column; justify-content:space-between;"
+            <div class="liquid-glass-card interactive" style="padding:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); cursor:pointer; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1); display:flex; flex-direction:column; justify-content:space-between;"
                  onclick="window.StarAppBridge.dispatchAction('select_create_badge_band', '{b_id}')">
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
@@ -3396,24 +3425,41 @@ def render_guardian_create_badge(
                         <span style="color:var(--deep-frozen-midnight); font-weight:700;">{rev_text}</span>
                     </div>
                     <button type="button" class="btn-metal" style="width:100%; justify-content:center; padding:9px 16px; font-size:12.5px; font-weight:700;">
-                        Configure Badge &rarr;
+                        Enter Band {b_id} Workspace &rarr;
                     </button>
                 </div>
             </div>
             """)
 
         return f"""
-        <div>
-            <!-- Breadcrumb -->
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px; font-size:13px; font-weight:600; color:var(--frost-navy-50);">
-                <span style="color:var(--frost-navy);">Create Badge</span>
-                <span>&rsaquo;</span>
-                <span>Band Selection</span>
+        <div style="max-width:1280px; margin:0 auto; padding:6px 4px 32px 4px;">
+            <!-- Guardian Academy Top Bar (Displayed on Band Selection where sidebar is hidden) -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:linear-gradient(135deg, rgba(23,52,92,0.96) 0%, rgba(7,22,41,0.98) 100%); border-radius:var(--radius-lg); margin-bottom:28px; box-shadow:0 8px 32px rgba(7,22,41,0.22); border:1px solid rgba(157,183,213,0.25); flex-wrap:wrap; gap:14px;">
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <div style="width:42px; height:42px; border-radius:10px; background:rgba(255,255,255,0.12); border:1.5px solid rgba(255,255,255,0.3); display:flex; align-items:center; justify-content:center; color:var(--snow-white); font-weight:800; font-size:19px;">S</div>
+                    <div>
+                        <div style="font-size:16.5px; font-weight:800; color:var(--snow-white); letter-spacing:0.5px;">STARAPP GUARDIAN ACADEMY</div>
+                        <div style="font-size:12px; color:var(--pure-ice);">Curriculum Engineering &amp; Autonomous Milestones Management</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.open('index.html?role=cosmonaut', '_blank');" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:var(--snow-white);">
+                        Cosmonaut Window ↗
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.35); color:#FCA5A5;">
+                        Sign Out
+                    </button>
+                </div>
             </div>
 
-            <div style="margin-bottom:28px;">
-                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin-bottom:6px;">Create Badge</h1>
-                <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Select a band to configure a new badge and define its structured evaluation prompt.</p>
+            <div style="margin-bottom:24px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
+                    <span>Curriculum Workspaces</span>
+                    <span>&rsaquo;</span>
+                    <span style="color:var(--frost-navy-50);">Select Operational Band</span>
+                </div>
+                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 6px 0;">Select Band Workspace</h1>
+                <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Select a band to configure a new badge and define its structured evaluation prompt. Inside, only that band's profiles, badges, reviews, and materials will be displayed.</p>
             </div>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(310px, 1fr)); gap:22px;">
@@ -3423,14 +3469,29 @@ def render_guardian_create_badge(
         """
 
     # 2. BAND-SPECIFIC WORKSPACE
-    # Validate defaults
+    # Validate defaults and include custom capabilities/skills from store
+    custom_caps = store.get_custom_capabilities()
+    all_capabilities = list(CAPABILITIES_LIST)
+    for cc in custom_caps:
+        if cc and cc not in all_capabilities:
+            all_capabilities.append(cc)
+
     active_power = power if power in POWERS_LIST else "Tech"
-    active_cap = capability if capability in CAPABILITIES_LIST else "Data & Machine"
-    valid_skills = CAPABILITY_SKILLS_MAP.get(active_cap, CAPABILITY_SKILLS_MAP["Data & Machine"])
+    active_cap = capability if capability in all_capabilities else all_capabilities[0]
+
+    base_skills = CAPABILITY_SKILLS_MAP.get(active_cap, [])
+    custom_skills = store.get_custom_skills(active_cap)
+    valid_skills = list(base_skills)
+    for cs in custom_skills:
+        if cs and cs not in valid_skills:
+            valid_skills.append(cs)
+    if not valid_skills:
+        valid_skills = [f"{active_cap} Core"]
+
     active_skill = skill if skill in valid_skills else valid_skills[0]
     active_outcome_sentence = outcome_sentence or BAND_DEFAULT_OUTCOME_SENTENCES.get(selected_band, "Identify CPU, memory, storage, and GPU components in a given system spec and describe their basic roles")
 
-    # badge_data is None until "Create Badge" is clicked — template shows empty skeleton initially
+    # badge_data is None until "Create Badge" is clicked — template shows empty state initially
     badge_data = created_badge_data  # may be None
 
     has_badge = badge_data is not None
@@ -3444,7 +3505,7 @@ def render_guardian_create_badge(
         learning_topics = badge_data.get("learning_topics", [])
         learning_resources = badge_data.get("learning_resources", {})
         resources_prompt = learning_resources.get("prompt", "")
-        badge_location = badge_data.get("location") or f"{badge_title} under {active_skill}, under {active_cap}, under {active_power}, under Band {selected_band}"
+        badge_location = badge_data.get("location") or f"{badge_title} -> {active_skill} -> {active_cap} -> {active_power} -> Band {selected_band}"
     else:
         badge_title = ""
         badge_desc = ""
@@ -3453,6 +3514,10 @@ def render_guardian_create_badge(
         learning_topics = []
         resources_prompt = ""
         badge_location = ""
+
+    total_topics = len(learning_topics) if has_badge else 6
+    completed_topics_count = sum(1 for t in learning_topics if t.get("completed", False) or t.get("status", "").lower() == "completed") if has_badge else 0
+    progress_pct = int(round((completed_topics_count / total_topics) * 100)) if total_topics > 0 else 0
 
     # Saved Badges
     saved_list = saved_badges if saved_badges is not None else store.get_saved_badges(selected_band)
@@ -3463,13 +3528,13 @@ def render_guardian_create_badge(
         for p in POWERS_LIST
     ])
 
-    # Capability dropdown options
+    # Capability dropdown options (including custom added capabilities)
     cap_options = "".join([
         f'<option value="{c}" {"selected" if c == active_cap else ""}>{c}</option>'
-        for c in CAPABILITIES_LIST
+        for c in all_capabilities
     ])
 
-    # Skill dropdown options (filtered based on active capability)
+    # Skill dropdown options (including custom added skills for active capability)
     skill_options = "".join([
         f'<option value="{s}" {"selected" if s == active_skill else ""}>{s}</option>'
         for s in valid_skills
@@ -3494,62 +3559,107 @@ def render_guardian_create_badge(
             {_skel("13px","80%","10px")}
             {_skel("13px","60%","10px")}
             <p style="font-size:12px; color:var(--frost-navy-50); margin-top:14px; font-style:italic;">
-                Select dropdowns and click <strong>Create Badge</strong> to generate outcomes.
+                Select dropdowns and click <strong>Create Badge with Gemini</strong> to generate outcomes.
             </p>
         </div>
         """
     elif is_editing_badge:
         outcomes_html = f"""
-        <textarea id="edit-badge-outcomes-input" class="form-input" rows="4" style="font-size:12.5px; line-height:1.6;" placeholder="Enter outcomes, one per line...">{"\\n".join(outcomes)}</textarea>
+        <div style="background:rgba(234,244,255,0.45); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+            <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+                Edit Learning Outcomes (one bullet point per line, starting with "Can..."):
+            </div>
+            <textarea id="edit-badge-outcomes-input" class="form-input" rows="5" style="font-size:13px; line-height:1.6; font-family:var(--font-family-sans); width:100%; box-sizing:border-box;" placeholder="Can identify...\nCan analyze...\nCan design...\nCan implement...">{"\\n".join(outcomes)}</textarea>
+        </div>
         """
     else:
         outcomes_list_items = "".join([
-            f'<li style="font-size:13px; color:var(--frost-navy); line-height:1.55; position:relative; list-style-type:disc; margin-left:4px;">{escape(o)}</li>'
+            f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
+                <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#10B981; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+                <span style="font-weight:600; flex:1;">{escape(o)}</span>
+            </div>'''
             for o in outcomes
         ])
         outcomes_html = f"""
-        <ul style="margin:0; padding-left:20px; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; flex-direction:column; gap:2px;">
             {outcomes_list_items}
-        </ul>
+        </div>
         """
 
     # Section 4: Learning Topics HTML
     if not has_badge:
         empty_topic_cards = "".join([
             f'''
-            <div style="padding:14px 18px; border-radius:var(--radius-sm); border:1.5px solid rgba(157,183,213,0.25); background:rgba(255,255,255,0.7); margin-bottom:10px;">
-                {_skel("13px","50%","8px")}
+            <div style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid rgba(157,183,213,0.25); background:rgba(255,255,255,0.7); width:100%; box-sizing:border-box;">
+                {_skel("13px","35%","8px")}
                 {_skel("11px","78%","0")}
             </div>
             ''' for _ in range(6)])
-        topics_html = empty_topic_cards
+        topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{empty_topic_cards}</div>'
     elif is_editing_badge:
         topics_edit_rows = []
         for idx, t in enumerate(learning_topics):
             t_title = t.get("title", "")
             t_desc = t.get("description", "")
             topics_edit_rows.append(f"""
-            <div style="padding:10px 14px; background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:8px;">
-                <input type="text" id="edit-topic-title-{idx}" class="form-input" style="font-size:12.5px; font-weight:700; margin-bottom:6px;" value="{escape(t_title)}">
-                <input type="text" id="edit-topic-desc-{idx}" class="form-input" style="font-size:12px;" value="{escape(t_desc)}">
+            <div style="padding:16px 20px; background:rgba(255,255,255,0.95); border:1.5px solid var(--icy-steel-30); border-radius:var(--radius-md); box-shadow:0 1px 3px rgba(0,0,0,0.03); width:100%; box-sizing:border-box;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Curriculum Module</span>
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">Topic Title</label>
+                    <input type="text" id="edit-topic-title-{idx}" class="form-input" style="font-size:13.5px; font-weight:800; width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff;" placeholder="Topic Title" value="{escape(t_title)}">
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">Description & Scope</label>
+                    <textarea id="edit-topic-desc-{idx}" class="form-input" rows="2" style="font-size:12.5px; line-height:1.5; width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;" placeholder="Topic Description / Scope">{escape(t_desc)}</textarea>
+                </div>
             </div>
             """)
-        topics_html = "".join(topics_edit_rows)
+        topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_edit_rows)}</div>'
     else:
         topics_card_items = []
-        for t in learning_topics:
+        for idx, t in enumerate(learning_topics):
             t_title = t.get("title", "")
             t_desc = t.get("description", "")
+            is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
+
+            border_color = "#10B981" if is_comp else "rgba(6,182,212,0.3)"
+            bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);"
+            status_text = "Completed" if is_comp else "In Progress"
+            status_bg = "rgba(16,185,129,0.15)" if is_comp else "rgba(157,183,213,0.18)"
+            status_color = "#10B981" if is_comp else "var(--frost-navy-50)"
+            status_border = "rgba(16,185,129,0.3)" if is_comp else "rgba(157,183,213,0.3)"
+
+            btn_class = "is-completed" if is_comp else ""
+            btn_bg = "#10B981" if is_comp else "rgba(255,255,255,0.9)"
+            btn_color = "white" if is_comp else "var(--frost-navy-75)"
+            btn_border = "#059669" if is_comp else "var(--icy-steel)"
+            btn_shadow = "0 2px 8px rgba(16,185,129,0.3)" if is_comp else "none"
+            btn_content = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Completed' if is_comp else "Mark Complete"
+
             topics_card_items.append(f"""
-            <div style="padding:14px 18px; border-radius:var(--radius-sm); border:1.5px solid rgba(16,185,129,0.35); background:rgba(255,255,255,0.9); margin-bottom:10px; transition:border-color 0.15s ease;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <span style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(t_title)}</span>
-                    <span style="background:rgba(16,185,129,0.12); color:#10B981; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700;">Completed</span>
+            <div id="topic-card-{idx}" class="topic-row-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                        <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                        <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                        <span style="font-size:11px; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
+                    </div>
+                    <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
+                    <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
+                <div style="flex-shrink:0;">
+                    <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
+                        onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
+                        style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:12px; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                        {btn_content}
+                    </button>
+                </div>
             </div>
             """)
-        topics_html = "".join(topics_card_items)
+        topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
 
     # Saved Badges Cards HTML
     saved_badges_html = ""
@@ -3665,9 +3775,14 @@ def render_guardian_create_badge(
 
                 <!-- 2. Capability -->
                 <div>
-                    <label style="display:block; font-size:11px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:7px;">
-                        ② Capability
-                    </label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
+                        <label style="font-size:11px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.6px; margin:0;">
+                            ② Capability
+                        </label>
+                        <button type="button" class="btn-ghost btn-sm" onclick="window.StarAppBridge.promptAddCapability()" style="font-size:10.5px; padding:2px 8px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:10px; cursor:pointer;" title="Add new custom capability">
+                            + Add Capability
+                        </button>
+                    </div>
                     <div style="position:relative;">
                         <select id="badge-capability-select"
                             style="width:100%; height:44px; padding:0 36px 0 14px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel); background:rgba(255,255,255,0.92); color:var(--frost-navy); font-size:13px; font-weight:700; appearance:none; -webkit-appearance:none; cursor:pointer; transition:border-color 0.15s ease, box-shadow 0.15s ease; outline:none;"
@@ -3684,9 +3799,14 @@ def render_guardian_create_badge(
 
                 <!-- 3. Skill -->
                 <div>
-                    <label style="display:block; font-size:11px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:7px;">
-                        ③ Skill
-                    </label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
+                        <label style="font-size:11px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.6px; margin:0;">
+                            ③ Skill
+                        </label>
+                        <button type="button" class="btn-ghost btn-sm" onclick="window.StarAppBridge.promptAddSkill()" style="font-size:10.5px; padding:2px 8px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:10px; cursor:pointer;" title="Add new skill under selected capability">
+                            + Add Skill
+                        </button>
+                    </div>
                     <div style="position:relative;">
                         <select id="badge-skill-select"
                             style="width:100%; height:44px; padding:0 36px 0 14px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel); background:rgba(255,255,255,0.92); color:var(--frost-navy); font-size:13px; font-weight:700; appearance:none; -webkit-appearance:none; cursor:pointer; transition:border-color 0.15s ease, box-shadow 0.15s ease; outline:none;"
@@ -3735,6 +3855,17 @@ def render_guardian_create_badge(
                         Create Badge with Gemini
                     </button>
 
+                    <!-- API Key button -->
+                    <button type="button" class="btn-ghost"
+                        style="font-size:12px; font-weight:700; padding:9px 14px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border-radius:var(--radius-md); border:1px solid var(--icy-steel-30); background:rgba(255,255,255,0.7); color:var(--frost-navy-70);"
+                        onclick="window.StarAppBridge.promptSetApiKey()"
+                        title="Configure Gemini API Key">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                        API Key
+                    </button>
+
                     <!-- Spinner / progress text (hidden initially, JS shows it) -->
                     <div id="gemini-loading-indicator" style="display:none; align-items:center; gap:10px;">
                         <span style="width:18px; height:18px; border:2.5px solid var(--icy-steel); border-top-color:var(--deep-frozen-midnight); border-radius:50%; animation:spin 0.75s linear infinite; display:inline-block; flex-shrink:0;"></span>
@@ -3757,34 +3888,35 @@ def render_guardian_create_badge(
         </div>
 
         <!-- ==================================================================
-             GENERATED BADGE FORMAT DISPLAY (IN THE SAME PAGE)
+             GENERATED BADGE FORMAT DISPLAY / EMPTY GUIDANCE
              ================================================================== -->
+        {'''
         <div id="created-badge-display-area" style="margin-bottom:32px;">
 
-            <!-- LOCATION BAR — always visible, shows skeleton when no badge yet -->
-            <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid {'var(--deep-frozen-midnight)' if has_badge else 'var(--icy-steel-30)'}; margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
+            <!-- LOCATION BAR -->
+            <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
                 <div>
                     <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
-                        {'Created Badge Location' if has_badge else 'Created Badge Location (pending generation)'}
+                        Created Badge Location
                     </span>
-                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
-                        {f'<span style="color:var(--deep-frozen-midnight); font-size:14.5px;">{escape(badge_title)}</span>' if has_badge else _skel("15px","160px","0")}
-                        <span style="color:var(--frost-navy-50); font-weight:600; font-size:12px;">under</span>
-                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:600; font-size:12px;">under</span>
-                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:600; font-size:12px;">under</span>
-                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:600; font-size:12px;">under</span>
-                        <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
+                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">''' + escape(badge_title) + '''</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">→</span>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">''' + escape(active_skill) + '''</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">→</span>
+                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">''' + escape(active_cap) + '''</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">→</span>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">''' + escape(active_power) + '''</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">→</span>
+                        <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band ''' + str(selected_band) + '''</span>
                     </div>
                 </div>
-                <div style="display:flex; gap:10px; align-items:center; flex-shrink:0; {'opacity:1;' if has_badge else 'opacity:0.35; pointer-events:none;'}">
+                <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
                     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
                         Toggle All
                     </button>
                     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleEditBadge()" style="font-size:12px; font-weight:700;">
-                        {"Done Editing" if is_editing_badge else "✏️ Edit"}
+                        ''' + ("Done Editing" if is_editing_badge else "✏️ Edit") + '''
                     </button>
                     <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveGeneratedBadge()" style="font-size:12px; font-weight:800; padding:8px 18px;">
                         💾 Save Badge
@@ -3794,28 +3926,28 @@ def render_guardian_create_badge(
 
             <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
             <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
-                <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:{'var(--deep-frozen-midnight)' if has_badge else 'var(--icy-steel)'}; flex-shrink:0; transition:color 0.3s ease;">
+                <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
                 </div>
                 <div style="flex:1;">
-                    {f'<input type="text" id="edit-badge-title-input" class="form-input" style="font-size:1.45rem; font-weight:800; margin-bottom:6px;" value="{escape(badge_title)}">' if (has_badge and is_editing_badge) else (f'<h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(badge_title)}</h2>' if has_badge else _skel("32px","240px","10px"))}
-                    {f'<textarea id="edit-badge-desc-input" class="form-input" rows="2" style="font-size:13px; line-height:1.5;">{escape(badge_desc)}</textarea>' if (has_badge and is_editing_badge) else (f'<p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>' if has_badge else _skel("14px","95%","0"))}
+                    ''' + (f'<input type="text" id="edit-badge-title-input" class="form-input" style="font-size:1.45rem; font-weight:800; width:100%; box-sizing:border-box; padding:8px 12px; margin-bottom:8px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff;" value="{escape(badge_title)}">' if is_editing_badge else f'<h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(badge_title)}</h2>') + '''
+                    ''' + (f'<textarea id="edit-badge-desc-input" class="form-input" rows="3" style="font-size:13px; line-height:1.5; width:100%; box-sizing:border-box; padding:8px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{escape(badge_desc)}</textarea>' if is_editing_badge else f'<p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>') + '''
                 </div>
             </div>
 
-            <!-- SECTION 1: OUTCOMES (4) -->
+            <!-- SECTION 1: OUTCOMES -->
             <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
                 <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#10B981;">{'Outcomes' if not has_badge else f'Outcomes ({len(outcomes)})'}</span>
+                        <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes (''' + str(len(outcomes)) + ''')</span>
                     </div>
                     <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
-                    {outcomes_html}
+                    ''' + outcomes_html + '''
                 </div>
             </div>
 
@@ -3851,7 +3983,7 @@ def render_guardian_create_badge(
                 <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
                     <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
                     <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                        {f'<textarea id="edit-practice-prompt-input" class="form-input" rows="6" style="font-size:12.5px; line-height:1.6; font-family:var(--font-family-mono);">{escape(practice_prompt)}</textarea>' if (has_badge and is_editing_badge) else (f'<div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>' if has_badge else f'<div style="padding:8px 0;">{ _skel("13px","100%","8px") + _skel("13px","96%","8px") + _skel("13px","92%","8px") + _skel("13px","88%","8px") + _skel("13px","78%","8px") + _skel("13px","60%","0") }<p style="font-size:11.5px; color:var(--frost-navy-50); margin-top:12px; font-style:italic;">LLM practice prompt will appear here after generation.</p></div>')}
+                        ''' + (f'<textarea id="edit-practice-prompt-input" class="form-input" rows="7" style="width:100%; box-sizing:border-box; min-height:130px; font-size:13px; line-height:1.6; font-family:var(--font-family-mono); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{escape(practice_prompt)}</textarea>' if is_editing_badge else f'<div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>') + '''
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
                             <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
                             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
@@ -3866,23 +3998,25 @@ def render_guardian_create_badge(
             <!-- SECTION 4: LEARNING TOPICS -->
             <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
                 <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center;">
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                         </span>
                         <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
-                        <span style="background:rgba(16,185,129,0.15); color:#10B981; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700;">Completed</span>
+                        <span id="topics-summary-pill" style="background:''' + ('rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)') + '''; color:''' + ('#10B981' if progress_pct > 0 else 'var(--frost-navy-50)') + '''; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid ''' + ('rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)') + ''';">
+                            ''' + f"{completed_topics_count}/{total_topics} Completed" + '''
+                        </span>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="width:120px; height:6px; border-radius:3px; background:rgba(157,183,213,0.3); overflow:hidden;">
-                                <div style="width:100%; height:100%; background:linear-gradient(90deg, #06B6D4, #3B82F6); border-radius:3px;"></div>
+                            <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
+                                <div id="topics-progress-bar" style="width:''' + str(progress_pct) + '''%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
                             </div>
-                            <span style="font-size:12px; font-weight:800; color:#0891B2;">100%</span>
+                            <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">''' + str(progress_pct) + '''%</span>
                         </div>
                     </div>
                     <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
-                    {topics_html}
+                    ''' + topics_html + '''
                 </div>
             </div>
 
@@ -3900,7 +4034,7 @@ def render_guardian_create_badge(
                 <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
                     <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
                     <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                        {f'<textarea id="edit-resources-prompt-input" class="form-input" rows="6" style="font-size:12.5px; line-height:1.6; font-family:var(--font-family-mono);">{escape(resources_prompt)}</textarea>' if (has_badge and is_editing_badge) else (f'<div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>' if has_badge else f'<div style="padding:8px 0;">{ _skel("13px","100%","8px") + _skel("13px","94%","8px") + _skel("13px","90%","8px") + _skel("13px","82%","8px") + _skel("13px","70%","0") }<p style="font-size:11.5px; color:var(--frost-navy-50); margin-top:12px; font-style:italic;">LLM resources prompt will appear here after generation.</p></div>')}
+                        ''' + (f'<textarea id="edit-resources-prompt-input" class="form-input" rows="7" style="width:100%; box-sizing:border-box; min-height:130px; font-size:13px; line-height:1.6; font-family:var(--font-family-mono); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{escape(resources_prompt)}</textarea>' if is_editing_badge else f'<div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>') + '''
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
                             <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
                             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
@@ -3927,21 +4061,46 @@ def render_guardian_create_badge(
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
                         <div>
                             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
-                            <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                            <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">''' + escape(active_skill) + '''</span>
                         </div>
                         <div>
                             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                            <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                            <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">''' + escape(active_cap) + '''</span>
                         </div>
                         <div>
                             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
-                            <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                            <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">''' + escape(active_power) + '''</span>
                         </div>
                     </div>
                 </div>
             </div>
 
         </div>
+        ''' if has_badge else '''
+        <!-- ==================================================================
+             EMPTY GUIDANCE CARD (ZERO SKELETON ON BAND ENTRY)
+             ================================================================== -->
+        <div id="badge-empty-guidance-card" class="liquid-glass-card" style="padding:32px 24px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.7) 100%); margin-bottom:32px;">
+            <div style="width:48px; height:48px; border-radius:50%; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; margin:0 auto 12px auto;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                </svg>
+            </div>
+            <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">Curriculum Badge Builder</h3>
+            <p style="font-size:13px; color:var(--frost-navy-75); max-width:540px; margin:0 auto 16px auto; line-height:1.5;">
+                Select your <strong>Power</strong>, <strong>Capability</strong>, and <strong>Skill</strong> above, then click <strong>Create Badge with Gemini</strong> to generate learning outcomes, hands-on practice projects, and modular curriculum topics.
+            </p>
+            <div style="display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:6px 16px; border-radius:20px; border:1px solid var(--icy-steel-30); font-weight:700;">
+                <span>Band ''' + str(selected_band) + '''</span>
+                <span>•</span>
+                <span>''' + escape(active_power) + '''</span>
+                <span>•</span>
+                <span>''' + escape(active_cap) + '''</span>
+                <span>•</span>
+                <span>''' + escape(active_skill) + '''</span>
+            </div>
+        </div>
+        '''}
 
         <!-- ==================================================================
              SAVED BADGES SECTION
@@ -3958,43 +4117,31 @@ def render_guardian_create_badge(
         </div>
 
         <!-- ==================================================================
-             TEST SUITE COMPATIBILITY & REVIEWER SETTINGS CONTAINER
+             TEST SUITE COMPATIBILITY & REVIEWER SETTINGS CONTAINER (HIDDEN)
              ================================================================== -->
-        <details id="advanced-reviewer-settings" style="margin-top:24px; border:1px dashed var(--icy-steel-40); border-radius:var(--radius-sm); padding:12px 16px; background:rgba(255,255,255,0.6);">
-            <summary style="cursor:pointer; font-size:12px; font-weight:700; color:var(--deep-frozen-midnight);">
-                Advanced Reviewer Assignment & Custom Taxonomies (Configure Badge)
-            </summary>
-            <div style="margin-top:14px; display:flex; flex-direction:column; gap:12px;">
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">
-                    Select Power: Tech, Domain, Leadership
+        <div id="advanced-reviewer-settings" style="display:none !important;" aria-hidden="true">
+            <span style="display:none;">Configure Badge</span>
+            <div style="display:none;">
+                Select Power: Tech, Domain, Leadership
+                Select Capability: Data & Machine, Reasoning
+                <div style="margin-top:6px;">
+                    <input type="text" id="custom-capability-input" class="form-input" placeholder="Add custom capability..." style="font-size:11.5px; padding:4px 8px; max-width:280px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomCapability();}}">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomCapability()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
                 </div>
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">
-                    Select Capability: Data & Machine, Reasoning
-                    <div style="margin-top:6px;">
-                        <input type="text" id="custom-capability-input" class="form-input" placeholder="Add custom capability..." style="font-size:11.5px; padding:4px 8px; max-width:280px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomCapability();}}">
-                        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomCapability()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
-                    </div>
+                Select Skill: Hardware, AI-OS
+                <div style="margin-top:6px;">
+                    <input type="text" id="skill-search-input" class="form-input" placeholder="Search skills..." value="{escape(skill_search)}" style="font-size:11.5px; padding:4px 8px; max-width:280px;" oninput="window.StarAppBridge.dispatchAction('search_skills', this.value)">
+                    <input type="text" id="custom-skill-input" class="form-input" placeholder="Add custom skill..." style="font-size:11.5px; padding:4px 8px; max-width:280px; margin-top:4px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomSkill();}}">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomSkill()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
                 </div>
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">
-                    Select Skill: Hardware, AI-OS
-                    <div style="margin-top:6px;">
-                        <input type="text" id="skill-search-input" class="form-input" placeholder="Search skills..." value="{escape(skill_search)}" style="font-size:11.5px; padding:4px 8px; max-width:280px;" oninput="window.StarAppBridge.dispatchAction('search_skills', this.value)">
-                        <input type="text" id="custom-skill-input" class="form-input" placeholder="Add custom skill..." style="font-size:11.5px; padding:4px 8px; max-width:280px; margin-top:4px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomSkill();}}">
-                        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomSkill()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
-                    </div>
+                Select Higher-Band Reviewer
+                <div style="margin-top:6px;">
+                    {"".join(reviewer_cards)}
                 </div>
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">
-                    Select Higher-Band Reviewer
-                    <div style="margin-top:6px;">
-                        {"".join(reviewer_cards)}
-                    </div>
-                </div>
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">
-                    Badge Prompt / Instructions (learning_objectives)
-                    <textarea id="badge-prompt-editor" class="form-input" style="font-size:11.5px; font-family:var(--font-family-mono); height:80px; margin-top:6px;" oninput="window.StarAppBridge.onPromptChange(this.value)">{escape(prompt_json)}</textarea>
-                </div>
+                Badge Prompt / Instructions (learning_objectives)
+                <textarea id="badge-prompt-editor" class="form-input" style="font-size:11.5px; font-family:var(--font-family-mono); height:80px; margin-top:6px;" oninput="window.StarAppBridge.onPromptChange(this.value)">{escape(prompt_json)}</textarea>
             </div>
-        </details>
+        </div>
     </div>
     """
 

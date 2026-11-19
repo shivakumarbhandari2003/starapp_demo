@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS custom_capabilities (
 
 CREATE TABLE IF NOT EXISTS custom_skills (
     id TEXT PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    capability_name TEXT DEFAULT '',
     created_by TEXT REFERENCES users(id),
     created_at TEXT NOT NULL
 );
@@ -448,6 +449,10 @@ class DatabaseManager:
         if not SQLITE_AVAILABLE or self.conn is None:
             return
         self.conn.executescript(DDL_SCHEMA)
+        try:
+            self.conn.execute("ALTER TABLE custom_skills ADD COLUMN capability_name TEXT DEFAULT '';")
+        except Exception:
+            pass
         self.conn.commit()
 
     def clear_all_tables(self):
@@ -1136,6 +1141,14 @@ class DatabaseManager:
         }
 
     # ==========================================================================
+    # BAND-SPECIFIC SCOPED MEMBERS & DATA QUERIES
+    # ==========================================================================
+
+    def get_members_by_band(self, band: str) -> List[Dict[str, Any]]:
+        from starapp.mapping_data import DUMMY_MEMBERS
+        return [m for m in DUMMY_MEMBERS if m.get("band") == band]
+
+    # ==========================================================================
     # CUSTOM CAPABILITIES & SKILLS QUERIES
     # ==========================================================================
 
@@ -1162,25 +1175,57 @@ class DatabaseManager:
         self.conn.commit()
         return True, name_clean
 
-    def get_custom_skills(self) -> List[str]:
+    def get_custom_skills(self, capability_name: Optional[str] = None) -> List[str]:
         if not SQLITE_AVAILABLE or self.conn is None:
             return []
-        rows = self.conn.execute("SELECT name FROM custom_skills ORDER BY name COLLATE NOCASE").fetchall()
+        if capability_name:
+            cap_clean = capability_name.strip()
+            rows = self.conn.execute(
+                "SELECT name FROM custom_skills WHERE lower(capability_name) = lower(?) OR capability_name = '' ORDER BY name COLLATE NOCASE",
+                (cap_clean,)
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT name FROM custom_skills ORDER BY name COLLATE NOCASE").fetchall()
         return [r[0] for r in rows]
 
-    def add_custom_skill(self, name: str, user_id: str = "guardian_1") -> Tuple[bool, str]:
+    def add_custom_skill(self, name: str, user_id_or_cap: str = "guardian_1", capability_name: str = "", user_id: str = "guardian_1", created_by: Optional[str] = None) -> Tuple[bool, str]:
         name_clean = name.strip()
         if not name_clean:
             return False, "Skill name cannot be empty."
+
+        target_cap = capability_name
+        target_user = user_id
+        if created_by:
+            target_user = created_by
+
+        if user_id_or_cap and user_id_or_cap != "guardian_1":
+            if user_id_or_cap.startswith("guardian_") or user_id_or_cap.startswith("cosmonaut_") or user_id_or_cap.startswith("user_") or user_id_or_cap.startswith("m_"):
+                target_user = user_id_or_cap
+            else:
+                if not target_cap:
+                    target_cap = user_id_or_cap
+
         if not SQLITE_AVAILABLE or self.conn is None:
             return True, name_clean
-        existing = self.conn.execute("SELECT id FROM custom_skills WHERE lower(name) = lower(?)", (name_clean,)).fetchone()
+
+        if target_cap:
+            existing = self.conn.execute(
+                "SELECT id FROM custom_skills WHERE lower(name) = lower(?) AND (lower(capability_name) = lower(?) OR capability_name = '')",
+                (name_clean, target_cap)
+            ).fetchone()
+        else:
+            existing = self.conn.execute(
+                "SELECT id FROM custom_skills WHERE lower(name) = lower(?)",
+                (name_clean,)
+            ).fetchone()
+
         if existing:
             return False, f"Skill '{name_clean}' already exists."
+
         s_id = f"skill_custom_{int(datetime.datetime.now().timestamp() * 1000)}"
         self.conn.execute(
-            "INSERT INTO custom_skills (id, name, created_by, created_at) VALUES (?, ?, ?, ?)",
-            (s_id, name_clean, user_id, current_iso_timestamp())
+            "INSERT INTO custom_skills (id, name, capability_name, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+            (s_id, name_clean, target_cap, target_user, current_iso_timestamp())
         )
         self.conn.commit()
         return True, name_clean
@@ -1308,37 +1353,69 @@ class DatabaseManager:
 
         try:
             with self.conn:
-                # 1. Insert Badge Record (workflow_status = 'pending_review', is_published = 0, is_allocated = 0)
-                self.conn.execute(
-                    """
-                    INSERT INTO badges (
-                        id, code, title, category, description,
-                        learning_outcomes_json, learning_topics_json, project_requirements,
-                        is_published, is_allocated, target_band, power, capability, skill,
-                        prompt_json, workflow_status, creator_id, assigned_reviewer_id,
-                        assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'pending_review', ?, ?, '[]', '{}', ?, ?)
-                    """,
-                    (
-                        b_id,
-                        badge_data["code"],
-                        badge_data["title"],
-                        badge_data.get("category", "Architecture"),
-                        badge_data.get("description", ""),
-                        json.dumps(badge_data.get("learning_outcomes", [])),
-                        json.dumps(badge_data.get("learning_topics", [])),
-                        badge_data.get("project_requirements", ""),
-                        target_band,
-                        badge_data.get("power", ""),
-                        badge_data.get("capability", ""),
-                        badge_data.get("skill", ""),
-                        badge_data.get("prompt_json", "{}"),
-                        creator_id,
-                        reviewer_id,
-                        now_iso,
-                        now_iso
+                # 1. Insert or Update Badge Record (workflow_status = 'pending_review', is_published = 0, is_allocated = 0)
+                existing_b = self.conn.execute("SELECT id FROM badges WHERE id = ?", (b_id,)).fetchone()
+                if existing_b:
+                    self.conn.execute(
+                        """
+                        UPDATE badges SET
+                            code = ?, title = ?, category = ?, description = ?,
+                            learning_outcomes_json = ?, learning_topics_json = ?, project_requirements = ?,
+                            target_band = ?, power = ?, capability = ?, skill = ?,
+                            prompt_json = ?, workflow_status = 'pending_review', creator_id = ?, assigned_reviewer_id = ?,
+                            updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            badge_data["code"],
+                            badge_data["title"],
+                            badge_data.get("category", "Architecture"),
+                            badge_data.get("description", ""),
+                            json.dumps(badge_data.get("learning_outcomes", [])),
+                            json.dumps(badge_data.get("learning_topics", [])),
+                            badge_data.get("project_requirements", ""),
+                            target_band,
+                            badge_data.get("power", ""),
+                            badge_data.get("capability", ""),
+                            badge_data.get("skill", ""),
+                            badge_data.get("prompt_json", "{}"),
+                            creator_id,
+                            reviewer_id,
+                            now_iso,
+                            b_id
+                        )
                     )
-                )
+                else:
+                    self.conn.execute(
+                        """
+                        INSERT INTO badges (
+                            id, code, title, category, description,
+                            learning_outcomes_json, learning_topics_json, project_requirements,
+                            is_published, is_allocated, target_band, power, capability, skill,
+                            prompt_json, workflow_status, creator_id, assigned_reviewer_id,
+                            assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'pending_review', ?, ?, '[]', '{}', ?, ?)
+                        """,
+                        (
+                            b_id,
+                            badge_data["code"],
+                            badge_data["title"],
+                            badge_data.get("category", "Architecture"),
+                            badge_data.get("description", ""),
+                            json.dumps(badge_data.get("learning_outcomes", [])),
+                            json.dumps(badge_data.get("learning_topics", [])),
+                            badge_data.get("project_requirements", ""),
+                            target_band,
+                            badge_data.get("power", ""),
+                            badge_data.get("capability", ""),
+                            badge_data.get("skill", ""),
+                            badge_data.get("prompt_json", "{}"),
+                            creator_id,
+                            reviewer_id,
+                            now_iso,
+                            now_iso
+                        )
+                    )
 
                 # 2. Normalized Associations
                 if badge_data.get("power"):

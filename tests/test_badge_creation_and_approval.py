@@ -307,12 +307,16 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.ctrl.handle_event("on_badge_generated", {"badge_data": badge_data})
         html = self.ctrl.render()
 
-        # Verify location hierarchy string
-        expected_loc = "Hardware Foundations under Hardware, under Data & Machine, under Tech, under Band B1"
+        # Verify location hierarchy string: Badge name -> skill name -> capability name -> power name -> Band number
+        expected_loc = "Hardware Foundations -> Hardware -> Data & Machine -> Tech -> Band B1"
         self.assertIn("Created Badge Location", html)
         self.assertIn("Hardware Foundations", html)
-        self.assertIn("under", html)
+        self.assertTrue("→" in html or "->" in html or "-&gt;" in html)
         self.assertIn("Band B1", html)
+
+        # Verify advanced reviewer assignment section is hidden from visible view
+        self.assertNotIn("<summary>Advanced Reviewer Assignment", html)
+        self.assertIn("id=\"advanced-reviewer-settings\" style=\"display:none !important;\"", html)
 
     def test_all_six_badge_accordion_sections(self):
         """Verify all 6 accordion cards matching screenshots: Outcomes, Earn the Badge, Practice Project, Learning Topics, Learning Resources, Related."""
@@ -344,9 +348,9 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.assertIn("Want some hands-on practice?", html)
         self.assertIn("This is a prompt which should be provided to an LLM", html)
 
-        # Section 4: Learning Topics with 100% progress
+        # Section 4: Learning Topics with real-time completion support
         self.assertIn("Learning Topics", html)
-        self.assertIn("100%", html)
+        self.assertTrue("0%" in html or "100%" in html)
         self.assertIn("Completed", html)
         self.assertIn("CPU &amp; processor architecture", html)
 
@@ -372,10 +376,70 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         saved_titles = [b["title"] for b in saved]
         self.assertIn("Hardware Foundations", saved_titles)
 
-        # Verify rendered view shows Saved Badges section
+        # Verify rendered view shows Saved Badges section with -> mapping
         html = self.ctrl.render()
         self.assertIn("Saved Badges for Band B1", html)
-        self.assertIn("Hardware Foundations under Hardware", html)
+        self.assertTrue("Hardware Foundations -> Hardware" in html or "Hardware Foundations -&gt; Hardware" in html or "Hardware Foundations → Hardware" in html)
+
+    def test_no_skeleton_on_band_entry_and_hides_preview_after_save(self):
+        """Verify band entry displays clean guidance card with zero skeleton shimmer, and save hides preview."""
+        self.ctrl.handle_event("select_create_badge_band", "B2")
+        html = self.ctrl.render()
+
+        # 1. On entry: no skeleton, clean guidance card
+        self.assertIn('id="badge-empty-guidance-card"', html)
+        self.assertNotIn('id="created-badge-display-area"', html)
+        self.assertNotIn('skeleton-shimmer', html)
+
+        # 2. After generation: badge structure displays
+        from starapp.badge_generator import generate_badge_data
+        b_data = generate_badge_data("B2", "Tech", "Data & Machine", "Hardware", "Learn system hardware")
+        self.ctrl.handle_event("on_badge_generated", {"badge_data": b_data})
+        html_gen = self.ctrl.render()
+        self.assertIn('id="created-badge-display-area"', html_gen)
+        self.assertNotIn('id="badge-empty-guidance-card"', html_gen)
+
+        # 3. After save: preview hidden again, saved in catalog
+        self.ctrl.handle_event("save_generated_badge", {})
+        self.assertIsNone(self.ctrl.created_badge_data)
+        html_saved = self.ctrl.render()
+        self.assertNotIn('id="created-badge-display-area"', html_saved)
+        self.assertIn('id="badge-empty-guidance-card"', html_saved)
+        self.assertIn("Saved Badges for Band B2", html_saved)
+
+    def test_deduplication_enforcement_in_same_band(self):
+        """Verify deduplication prevents saving 2 identical badges in the same band."""
+        from starapp.badge_generator import generate_badge_data
+        self.ctrl.handle_event("select_create_badge_band", "B3")
+        b1 = generate_badge_data("B3", "Tech", "Data & Machine", "AI-OS", "Master AI-OS fundamentals")
+        b1["id"] = "test_dup_badge_1"
+        self.ctrl.handle_event("on_badge_generated", {"badge_data": b1})
+        self.ctrl.handle_event("save_generated_badge", {})
+        self.assertEqual(self.ctrl.flash_type, "success")
+
+        # Attempt to save a second badge with the same skill in the same band
+        b2 = generate_badge_data("B3", "Tech", "Data & Machine", "AI-OS", "Master AI-OS advanced")
+        b2["id"] = "test_dup_badge_2"
+        self.ctrl.handle_event("on_badge_generated", {"badge_data": b2})
+        self.ctrl.handle_event("save_generated_badge", {})
+        self.assertEqual(self.ctrl.flash_type, "error")
+        self.assertIn("Duplicate badges are not allowed", self.ctrl.last_flash_message)
+
+    def test_custom_capability_and_skill_sqlite_roundtrip(self):
+        """Verify custom capability and skill addition persists in SQLite and updates dropdowns."""
+        self.ctrl.handle_event("select_create_badge_band", "B1")
+        self.ctrl.handle_event("add_custom_capability", '{"name": "Quantum Systems"}')
+        self.assertEqual(self.ctrl.flash_type, "success")
+        self.assertEqual(self.ctrl.create_badge_capability, "Quantum Systems")
+
+        # Add skill under that capability
+        self.ctrl.handle_event("add_custom_skill", '{"name": "Qubits & Gates", "capability": "Quantum Systems"}')
+        self.assertEqual(self.ctrl.flash_type, "success")
+        self.assertEqual(self.ctrl.create_badge_skill, "Qubits & Gates")
+
+        html = self.ctrl.render()
+        self.assertIn("Quantum Systems", html)
+        self.assertIn("Qubits &amp; Gates", html)
 
 
 if __name__ == "__main__":

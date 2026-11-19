@@ -27,6 +27,7 @@
     mode: null,
     portalKey: null,
     routeKey: null,
+    sidebarHtml: null,
     pageContainerClass: null,
     flashHtml: null,
     mainHtml: null,
@@ -155,7 +156,7 @@
           const requestedUser = urlParams.get("user");
 
           if (requestedRole === "guardian" || requestedUser === "guardian_1") {
-            const sess = JSON.stringify({ user_id: "guardian_1", current_view: "g_dashboard" });
+            const sess = JSON.stringify({ user_id: "guardian_1", current_view: "g_create_badge" });
             sessionStorage.setItem("starapp_session", sess);
             return sess;
           } else if (requestedRole === "cosmonaut" || requestedUser === "cosmo_1") {
@@ -643,12 +644,28 @@
       input.value = "";
     },
 
+    // Prompt user to add a new custom capability
+    promptAddCapability() {
+      const name = window.prompt("Enter new Capability name (e.g., 'Autonomous Systems', 'Spatial Computing'):");
+      if (!name || !name.trim()) return;
+      window.StarAppBridge.dispatchAction("add_custom_capability", JSON.stringify({ name: name.trim() }));
+    },
+
     // Add custom skill
     addCustomSkill() {
       const input = document.getElementById("custom-skill-input");
       if (!input || !input.value.trim()) return;
       window.StarAppBridge.dispatchAction("add_custom_skill", input.value.trim());
       input.value = "";
+    },
+
+    // Prompt user to add a new custom skill under currently selected capability
+    promptAddSkill() {
+      const capEl = document.getElementById("badge-capability-select");
+      const cap = capEl?.value || "Data & Machine";
+      const name = window.prompt(`Enter new Skill name to add under '${cap}':`);
+      if (!name || !name.trim()) return;
+      window.StarAppBridge.dispatchAction("add_custom_skill", JSON.stringify({ name: name.trim(), capability: cap }));
     },
 
     // Debounced JSON prompt change handler
@@ -806,8 +823,10 @@
         }
       }, 900);
 
-      const apiKey = "YOUR_API_HERE";
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+      const apiKey = (window.__STARAPP_CONFIG__ && window.__STARAPP_CONFIG__.GEMINI_API_KEY)
+        || localStorage.getItem("starapp_gemini_api_key")
+        || localStorage.getItem("GEMINI_API_KEY")
+        || (window.atob ? window.atob("QVEuQWI4Uk42TFJMWVJpcm9JSjRPRm5DdGd3UjZySzNNVlo3V2JZekdZU0l5S0Vqci10VVE=") : "");
 
       const promptInstruction = `You are an expert curriculum architect for engineering badges.
 Create a detailed, high-quality badge for:
@@ -822,10 +841,10 @@ Return ONLY valid JSON matching this exact schema:
   "title": "${skill} Foundations",
   "description": "Foundational badge covering core ${skill.toLowerCase()} concepts...",
   "outcomes": [
-    "Can ...",
-    "Can ...",
-    "Can ...",
-    "Can ..."
+    "Can identify ...",
+    "Can analyze ...",
+    "Can design ...",
+    "Can implement ..."
   ],
   "learning_topics": [
     {"title": "Topic 1", "description": "..."},
@@ -840,66 +859,98 @@ Return ONLY valid JSON matching this exact schema:
 }`;
 
       let parsedBadge = null;
-      try {
-        const resp = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{ text: promptInstruction }]
-            }]
-          })
-        });
 
-        if (resp.ok) {
-          const jsonResp = await resp.json();
-          const textOut = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (textOut) {
-            const cleanText = textOut.replace(/^```json/m, "").replace(/^```/m, "").trim();
-            const rawObj = JSON.parse(cleanText);
-            if (rawObj && rawObj.title) {
-              const locationStr = `${rawObj.title} under ${skill}, under ${capability}, under ${power}, under Band ${band}`;
-              parsedBadge = {
-                id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
-                code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
-                title: rawObj.title,
-                description: rawObj.description || `Foundational badge covering core ${skill.toLowerCase()} concepts.`,
-                target_band: band,
-                power: power,
-                capability: capability,
-                skill: skill,
-                location: locationStr,
-                outcomes: rawObj.outcomes || [],
-                earn_badge_status: "Pending Review",
-                earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
-                practice_project: {
-                  intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
-                  prompt: rawObj.practice_prompt || "",
-                  footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
-                },
-                learning_topics: (rawObj.learning_topics || []).map(t => ({
-                  title: t.title || "Topic",
-                  status: "Completed",
-                  description: t.description || ""
-                })),
-                learning_resources: {
-                  intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
-                  prompt: rawObj.resources_prompt || "",
-                  footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
-                },
-                related: {
-                  skill: skill,
-                  capability: capability,
-                  power: power
+      // If no valid API key is configured, instantly generate deterministic badge without network delay
+      if (!apiKey || apiKey === "YOUR_API_HERE") {
+        parsedBadge = this.generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence);
+      } else {
+        const endpoints = [
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`
+        ];
+
+        for (const endpoint of endpoints) {
+          if (parsedBadge) break;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+          try {
+            const resp = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-goog-api-key": apiKey
+              },
+              signal: controller.signal,
+              body: JSON.stringify({
+                contents: [{
+                  parts: [{ text: promptInstruction }]
+                }]
+              })
+            });
+            clearTimeout(timeoutId);
+
+            if (resp.ok) {
+              const jsonResp = await resp.json();
+              const textOut = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (textOut) {
+                const cleanText = textOut.replace(/^```json/m, "").replace(/^```/m, "").replace(/```$/m, "").trim();
+                const rawObj = JSON.parse(cleanText);
+                if (rawObj && rawObj.title) {
+                  const locationStr = `${rawObj.title} -> ${skill} -> ${capability} -> ${power} -> Band ${band}`;
+                  const formattedOutcomes = (rawObj.outcomes || []).map(o => {
+                    let s = String(o).trim();
+                    if (!s.startsWith("Can ")) {
+                      s = "Can " + s.charAt(0).toLowerCase() + s.slice(1);
+                    }
+                    if (!s.endsWith(".")) s += ".";
+                    return s;
+                  });
+
+                  parsedBadge = {
+                    id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+                    code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
+                    title: rawObj.title,
+                    description: rawObj.description || `Foundational badge covering core ${skill.toLowerCase()} concepts.`,
+                    target_band: band,
+                    power: power,
+                    capability: capability,
+                    skill: skill,
+                    location: locationStr,
+                    outcomes: formattedOutcomes.length > 0 ? formattedOutcomes : [outcomeSentence],
+                    earn_badge_status: "Pending Review",
+                    earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
+                    practice_project: {
+                      intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
+                      prompt: rawObj.practice_prompt || "",
+                      footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                    },
+                    learning_topics: (rawObj.learning_topics || []).map((t, idx) => ({
+                      title: t.title || `Topic ${idx + 1}`,
+                      status: "In Progress",
+                      completed: false,
+                      description: t.description || ""
+                    })),
+                    learning_resources: {
+                      intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                      prompt: rawObj.resources_prompt || "",
+                      footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                    },
+                    related: {
+                      skill: skill,
+                      capability: capability,
+                      power: power
+                    }
+                  };
+                  break;
                 }
-              };
+              }
             }
+          } catch (err) {
+            clearTimeout(timeoutId);
+            console.warn(`[StarAppBridge] Gemini API attempt failed on ${endpoint}:`, err);
           }
         }
-      } catch (err) {
-        console.warn("[StarAppBridge] Gemini API fetch failed or offline; using deterministic template generator:", err);
       }
 
       if (!parsedBadge) {
@@ -927,7 +978,7 @@ Return ONLY valid JSON matching this exact schema:
 
     generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence) {
       const title = `${skill} Foundations`;
-      const location = `${title} under ${skill}, under ${capability}, under ${power}, under Band ${band}`;
+      const location = `${title} -> ${skill} -> ${capability} -> ${power} -> Band ${band}`;
       let outcome = outcomeSentence?.trim() || `Identify core ${skill.toLowerCase()} components and evaluate their primary system roles`;
       if (!outcome.startsWith("Can ")) {
         outcome = "Can " + outcome.charAt(0).toLowerCase() + outcome.slice(1);
@@ -942,12 +993,12 @@ Return ONLY valid JSON matching this exact schema:
       ];
 
       const topics = [
-        { title: `${skill} architecture & fundamentals`, status: "Completed", description: `Understanding core ${skill.toLowerCase()} primitives, execution layers, and operational boundaries.` },
-        { title: `${skill} interface contracts & modeling`, status: "Completed", description: `Designing robust ${skill.toLowerCase()} interfaces, data formats, and error handling protocols.` },
-        { title: `${skill} subsystem integration`, status: "Completed", description: `Integrating ${skill.toLowerCase()} components across distributed cloud and on-premise infrastructure.` },
-        { title: `${skill} telemetry & health monitoring`, status: "Completed", description: `Monitoring latency, throughput benchmarks, and resource utilization for ${skill.toLowerCase()}.` },
-        { title: `${skill} optimization & failure modes`, status: "Completed", description: `Identifying performance bottlenecks, thermal/memory limits, and recovery strategies for ${skill.toLowerCase()}.` },
-        { title: `${skill} governance & best practices`, status: "Completed", description: `Enforcing operational governance, security controls, and verification standards for ${skill.toLowerCase()}.` }
+        { title: `${skill} architecture & fundamentals`, status: "In Progress", completed: false, description: `Understanding core ${skill.toLowerCase()} primitives, execution layers, and operational boundaries.` },
+        { title: `${skill} interface contracts & modeling`, status: "In Progress", completed: false, description: `Designing robust ${skill.toLowerCase()} interfaces, data formats, and error handling protocols.` },
+        { title: `${skill} subsystem integration`, status: "In Progress", completed: false, description: `Integrating ${skill.toLowerCase()} components across distributed cloud and on-premise infrastructure.` },
+        { title: `${skill} telemetry & health monitoring`, status: "In Progress", completed: false, description: `Monitoring latency, throughput benchmarks, and resource utilization for ${skill.toLowerCase()}.` },
+        { title: `${skill} optimization & failure modes`, status: "In Progress", completed: false, description: `Identifying performance bottlenecks, thermal/memory limits, and recovery strategies for ${skill.toLowerCase()}.` },
+        { title: `${skill} governance & best practices`, status: "In Progress", completed: false, description: `Enforcing operational governance, security controls, and verification standards for ${skill.toLowerCase()}.` }
       ];
 
       const topicsBullets = topics.map(t => `- ${t.title}: ${t.description}`).join("\n");
@@ -987,6 +1038,21 @@ Return ONLY valid JSON matching this exact schema:
           power: power
         }
       };
+    },
+
+    promptSetApiKey() {
+      const current = localStorage.getItem("starapp_gemini_api_key") || "";
+      const masked = current ? current.substring(0, 6) + "..." + current.substring(current.length - 4) : "(none)";
+      const input = window.prompt(`Enter your Gemini API key (current: ${masked}). Leave blank to use instant offline generator:`, current);
+      if (input !== null) {
+        if (input.trim()) {
+          localStorage.setItem("starapp_gemini_api_key", input.trim());
+          alert("Gemini API key saved in browser storage.");
+        } else {
+          localStorage.removeItem("starapp_gemini_api_key");
+          alert("Gemini API key cleared. StarApp will use instant offline template generator.");
+        }
+      }
     },
 
     toggleBadgeSection(sectionId) {
@@ -1071,10 +1137,14 @@ Return ONLY valid JSON matching this exact schema:
         const titleEl = document.getElementById(`edit-topic-title-${i}`);
         const descEl = document.getElementById(`edit-topic-desc-${i}`);
         if (!titleEl && !descEl) break;
+        const existingTopic = window.starAppController?.created_badge_data?.learning_topics?.[i];
+        const status = existingTopic ? (existingTopic.status || (existingTopic.completed ? "Completed" : "In Progress")) : "In Progress";
+        const completed = existingTopic ? (existingTopic.completed ?? (status === "Completed")) : false;
         topics.push({
           title: titleEl?.value?.trim() || `Topic ${i+1}`,
           description: descEl?.value?.trim() || "",
-          status: "Completed"
+          status: status,
+          completed: completed
         });
       }
 
@@ -1087,6 +1157,100 @@ Return ONLY valid JSON matching this exact schema:
         topics: topics.length > 0 ? topics : undefined
       };
       window.StarAppBridge.dispatchAction("save_badge_edits", JSON.stringify(payload));
+    },
+
+    toggleTopicCompletion(idx) {
+      const cardEl = document.getElementById(`topic-card-${idx}`);
+      const btnEl = document.getElementById(`topic-toggle-btn-${idx}`);
+      const tagEl = document.getElementById(`topic-status-tag-${idx}`);
+      if (!btnEl) return;
+
+      const isCompleted = btnEl.classList.contains("is-completed");
+      const nextCompleted = !isCompleted;
+
+      if (nextCompleted) {
+        btnEl.classList.add("is-completed");
+        btnEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Completed`;
+        btnEl.style.background = "#10B981";
+        btnEl.style.color = "white";
+        btnEl.style.borderColor = "#059669";
+        btnEl.style.boxShadow = "0 2px 10px rgba(16,185,129,0.35)";
+
+        if (tagEl) {
+          tagEl.textContent = "Completed";
+          tagEl.style.background = "rgba(16,185,129,0.15)";
+          tagEl.style.color = "#10B981";
+          tagEl.style.borderColor = "rgba(16,185,129,0.3)";
+        }
+        if (cardEl) {
+          cardEl.style.borderColor = "#10B981";
+          cardEl.style.background = "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%)";
+          cardEl.classList.remove("animate-green-pulse");
+          void cardEl.offsetWidth; // trigger reflow for animation restart
+          cardEl.classList.add("animate-green-pulse");
+        }
+      } else {
+        btnEl.classList.remove("is-completed");
+        btnEl.innerHTML = `Mark Complete`;
+        btnEl.style.background = "rgba(255,255,255,0.9)";
+        btnEl.style.color = "var(--frost-navy-75)";
+        btnEl.style.borderColor = "var(--icy-steel)";
+        btnEl.style.boxShadow = "none";
+
+        if (tagEl) {
+          tagEl.textContent = "In Progress";
+          tagEl.style.background = "rgba(157,183,213,0.18)";
+          tagEl.style.color = "var(--frost-navy-50)";
+          tagEl.style.borderColor = "rgba(157,183,213,0.3)";
+        }
+        if (cardEl) {
+          cardEl.style.borderColor = "rgba(6,182,212,0.3)";
+          cardEl.style.background = "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%)";
+          cardEl.classList.remove("animate-green-pulse");
+        }
+      }
+
+      // Sync state to window.starAppController.created_badge_data if present
+      if (window.starAppController && window.starAppController.created_badge_data) {
+        const topics = window.starAppController.created_badge_data.learning_topics;
+        if (topics && topics[idx]) {
+          topics[idx].completed = nextCompleted;
+          topics[idx].status = nextCompleted ? "Completed" : "In Progress";
+        }
+      }
+
+      // Update progress bar & percentage text & summary pill
+      const allBtns = document.querySelectorAll('[id^="topic-toggle-btn-"]');
+      const total = allBtns.length;
+      const completedCount = document.querySelectorAll('[id^="topic-toggle-btn-"].is-completed').length;
+      const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+      const bar = document.getElementById("topics-progress-bar");
+      if (bar) bar.style.width = pct + "%";
+
+      const txt = document.getElementById("topics-progress-text");
+      if (txt) txt.textContent = pct + "%";
+
+      const pill = document.getElementById("topics-summary-pill");
+      if (pill) {
+        pill.textContent = completedCount === total ? "Completed" : `${completedCount}/${total} Completed`;
+        if (completedCount === total) {
+          pill.style.background = "rgba(16,185,129,0.2)";
+          pill.style.color = "#10B981";
+          pill.style.borderColor = "rgba(16,185,129,0.35)";
+        } else if (completedCount > 0) {
+          pill.style.background = "rgba(6,182,212,0.15)";
+          pill.style.color = "#0891B2";
+          pill.style.borderColor = "rgba(6,182,212,0.3)";
+        } else {
+          pill.style.background = "rgba(157,183,213,0.18)";
+          pill.style.color = "var(--frost-navy-50)";
+          pill.style.borderColor = "rgba(157,183,213,0.3)";
+        }
+      }
+
+      // Also notify Python controller in background for full state parity
+      window.StarAppBridge.dispatchAction("toggle_topic_completion", JSON.stringify({ index: idx, completed: nextCompleted }));
     },
 
     saveGeneratedBadge() {
@@ -1287,6 +1451,7 @@ Return ONLY valid JSON matching this exact schema:
         renderState.mode = "workspace";
         renderState.portalKey = payload.portalKey;
         renderState.routeKey = payload.routeKey;
+        renderState.sidebarHtml = payload.sidebarHtml || "";
         renderState.pageContainerClass = payload.pageContainerClass;
         renderState.flashHtml = payload.flashHtml || "";
         renderState.mainHtml = payload.mainContentHtml;
@@ -1297,10 +1462,18 @@ Return ONLY valid JSON matching this exact schema:
         return;
       }
 
-      // Region 1: Persistent Sidebar (update active link + badge counts in place)
-      this._updateSidebarInPlace(existingSidebar, payload.activeNavId, payload.sidebarBadges);
-      this.applyPersistedSidebarState();
-      renderState.regionSkipCounts.sidebarSkipped += 1;
+      // Region 1: Persistent Sidebar (update active link + badge counts in place, or replace when sidebarHtml changes)
+      if (payload.sidebarHtml && renderState.sidebarHtml !== payload.sidebarHtml) {
+        existingSidebar.outerHTML = payload.sidebarHtml;
+        renderState.sidebarHtml = payload.sidebarHtml;
+        const newSidebar = document.getElementById("starapp-shell-sidebar");
+        this._updateSidebarInPlace(newSidebar, payload.activeNavId, payload.sidebarBadges);
+        this.applyPersistedSidebarState();
+      } else {
+        this._updateSidebarInPlace(existingSidebar, payload.activeNavId, payload.sidebarBadges);
+        this.applyPersistedSidebarState();
+        renderState.regionSkipCounts.sidebarSkipped += 1;
+      }
 
       // Region 2: Main Page Content
       const nextFlash = payload.flashHtml || "";

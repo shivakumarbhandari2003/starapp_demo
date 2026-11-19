@@ -12,6 +12,12 @@
   <link rel="stylesheet" href="css/components.css?v=9">
   <link rel="stylesheet" href="css/responsive.css?v=9">
 
+  <!-- App Configuration -->
+  <script>
+    window.__STARAPP_CONFIG__ = window.__STARAPP_CONFIG__ || {};
+    window.__STARAPP_CONFIG__.GEMINI_API_KEY = window.atob ? window.atob("QVEuQWI4Uk42TFJMWVJpcm9JSjRPRm5DdGd3UjZySzNNVlo3V2JZekdZU0l5S0Vqci10VVE=") : "";
+  </script>
+
   <!-- Pyodide WebAssembly Python Runtime -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
 
@@ -99,13 +105,46 @@
         }
 
         // Mount StarApp Python modules directly into Pyodide virtual filesystem
-        try { pyodide.FS.mkdir("starapp"); } catch (e) {}
-        try { pyodide.FS.mkdir("/home/pyodide/starapp"); } catch (e) {}
+        function ensureFsDir(fullPath) {
+          if (!fullPath || fullPath === "/" || fullPath === ".") return;
+          try {
+            if (typeof pyodide.FS.mkdirTree === "function") {
+              pyodide.FS.mkdirTree(fullPath);
+              return;
+            }
+          } catch (e) {}
+          const isAbs = fullPath.startsWith("/");
+          const parts = fullPath.replace(/\\/g, "/").split("/").filter(Boolean);
+          let curr = "";
+          for (const part of parts) {
+            curr = curr ? `${curr}/${part}` : (isAbs ? `/${part}` : part);
+            try {
+              pyodide.FS.mkdir(curr);
+            } catch (e) {}
+          }
+        }
+
+        ensureFsDir("starapp");
+        ensureFsDir("/home/pyodide/starapp");
 
         for (const [vpath, sourceCode] of Object.entries(window.__STARAPP_PYTHON_MODULES__)) {
           const fname = vpath.replace(/^starapp\//, "");
-          try { pyodide.FS.writeFile("starapp/" + fname, sourceCode); } catch (e) {}
-          try { pyodide.FS.writeFile("/home/pyodide/starapp/" + fname, sourceCode); } catch (e) {}
+          const targetPaths = [
+            "starapp/" + fname,
+            "/home/pyodide/starapp/" + fname
+          ];
+
+          for (const targetPath of targetPaths) {
+            const lastSlash = targetPath.lastIndexOf("/");
+            if (lastSlash > 0) {
+              ensureFsDir(targetPath.substring(0, lastSlash));
+            }
+            try {
+              pyodide.FS.writeFile(targetPath, sourceCode);
+            } catch (e) {
+              console.error("[StarApp] Error writing virtual file:", targetPath, e);
+            }
+          }
         }
 
         if (progressBar) progressBar.style.width = "85%";
