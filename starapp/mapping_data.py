@@ -101,189 +101,291 @@ ROLE_CONFIG: Dict[str, Dict[str, str]] = {
 }
 
 # ==============================================================================
-# 3. 36 DUMMY MEMBERS (6 DISTINCT INDIAN MEMBERS PER BAND, 2 PER ROLE)
+# ==============================================================================
+# 3. 36 CORPORATE HIERARCHY DEMO MEMBERS ACROSS B1 TO B6 & CEO
 # ==============================================================================
 
 DUMMY_MEMBERS: List[Dict[str, Any]] = [
-    # Band B1 (Foundation Associate) - 27 Members (9 per Domain)
-    {"id": "m_b1_1", "band": "B1", "name": "Rohan Verma", "role": "Solutions Designer", "username": "rohan.verma.b1", "avatar": "RV", "email": "rohan.verma.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_2", "band": "B1", "name": "Ananya Iyer", "role": "Solutions Designer", "username": "ananya.iyer.b1", "avatar": "AI", "email": "ananya.iyer.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_3", "band": "B1", "name": "Ishan Kulkarni", "role": "AI Engineer", "username": "ishan.kulkarni.b1", "avatar": "IK", "email": "ishan.kulkarni.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_4", "band": "B1", "name": "Meera Nair", "role": "AI Engineer", "username": "meera.nair.b1", "avatar": "MN", "email": "meera.nair.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_5", "band": "B1", "name": "Siddharth Rao", "role": "Systems Engineer", "username": "siddharth.rao.b1", "avatar": "SR", "email": "siddharth.rao.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_6", "band": "B1", "name": "Kavya Patel", "role": "Systems Engineer", "username": "kavya.patel.b1", "avatar": "KP", "email": "kavya.patel.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_7", "band": "B1", "name": "Maya Lin", "role": "Solutions Designer", "avatar": "ML", "email": "maya.lin.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_8", "band": "B1", "name": "Lucas Silva", "role": "Solutions Designer", "avatar": "LS", "email": "lucas.silva.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_9", "band": "B1", "name": "Clara Oswald", "role": "Solutions Designer", "avatar": "CO", "email": "clara.oswald.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_10", "band": "B1", "name": "Aiden Shaw", "role": "Solutions Designer", "avatar": "AS", "email": "aiden.shaw.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_11", "band": "B1", "name": "Naomi Nagata", "role": "Solutions Designer", "avatar": "NN", "email": "naomi.nagata.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_12", "band": "B1", "name": "Tariq Vance", "role": "Solutions Designer", "avatar": "TV", "email": "tariq.vance.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_13", "band": "B1", "name": "Felix Richter", "role": "Solutions Designer", "avatar": "FR", "email": "felix.richter.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_14", "band": "B1", "name": "Leo Vance", "role": "AI Engineer", "avatar": "LV", "email": "leo.vance.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_15", "band": "B1", "name": "Priya Sharma", "role": "AI Engineer", "avatar": "PS", "email": "priya.sharma.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_16", "band": "B1", "name": "Rowan Chen", "role": "AI Engineer", "avatar": "RC", "email": "rowan.chen.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_17", "band": "B1", "name": "Anya Petrova", "role": "AI Engineer", "avatar": "AP", "email": "anya.petrova.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_18", "band": "B1", "name": "Mateo Gomez", "role": "AI Engineer", "avatar": "MG", "email": "mateo.gomez.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_19", "band": "B1", "name": "Zara Al-Mansoor", "role": "AI Engineer", "avatar": "ZA", "email": "zara.al.mansoor.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_20", "band": "B1", "name": "Julian Hayes", "role": "AI Engineer", "avatar": "JH", "email": "julian.hayes.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_21", "band": "B1", "name": "Kai Chen", "role": "Systems Engineer", "avatar": "KC", "email": "kai.chen.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_22", "band": "B1", "name": "Zoe Martinez", "role": "Systems Engineer", "avatar": "ZM", "email": "zoe.martinez.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_23", "band": "B1", "name": "Eric Hansen", "role": "Systems Engineer", "avatar": "EH", "email": "eric.hansen.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_24", "band": "B1", "name": "Samira Khan", "role": "Systems Engineer", "avatar": "SK", "email": "samira.khan.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_25", "band": "B1", "name": "Tobias Becker", "role": "Systems Engineer", "avatar": "TB", "email": "tobias.becker.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_26", "band": "B1", "name": "Hana Takahashi", "role": "Systems Engineer", "avatar": "HT", "email": "hana.takahashi.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b1_27", "band": "B1", "name": "Caleb Miller", "role": "Systems Engineer", "avatar": "CM", "email": "caleb.miller.b1@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
+    # Band B1 (Foundation Associate) - 6 Members
+    {
+        "id": "m_b1_1", "band": "B1", "name": "Aarav Sharma", "age": 26, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "aarav.sharma",
+        "avatar": "AS", "email": "aarav.sharma@starapp.io", "password": "12345678",
+        "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b1_2", "band": "B1", "name": "Ananya Iyer", "age": 25, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "ananya.iyer",
+        "avatar": "AI", "email": "ananya.iyer@starapp.io", "password": "12345678",
+        "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b1_3", "band": "B1", "name": "Vivaan Patel", "age": 27, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "vivaan.patel",
+        "avatar": "VP", "email": "vivaan.patel@starapp.io", "password": "12345678",
+        "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b1_4", "band": "B1", "name": "Kavya Reddy", "age": 26, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "kavya.reddy",
+        "avatar": "KR", "email": "kavya.reddy@starapp.io", "password": "12345678",
+        "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b1_5", "band": "B1", "name": "Ishaan Gupta", "age": 28, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "ishaan.gupta",
+        "avatar": "IG", "email": "ishaan.gupta@starapp.io", "password": "12345678",
+        "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b1_6", "band": "B1", "name": "Diya Chatterjee", "age": 25, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "diya.chatterjee",
+        "avatar": "DC", "email": "diya.chatterjee@starapp.io", "password": "12345678",
+        "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+    },
 
-    # Band B2 (Specialist) - 27 Members (9 per Domain)
-    {"id": "m_b2_1", "band": "B2", "name": "Aditya Deshmukh", "role": "Solutions Designer", "username": "aditya.deshmukh.b2", "avatar": "AD", "email": "aditya.deshmukh.b2@starapp.io", "application_roles": ["cosmonaut", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_2", "band": "B2", "name": "Sneha Reddy", "role": "Solutions Designer", "username": "sneha.reddy.b2", "avatar": "SR", "email": "sneha.reddy.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_3", "band": "B2", "name": "Varun Sengupta", "role": "AI Engineer", "username": "varun.sengupta.b2", "avatar": "VS", "email": "varun.sengupta.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_4", "band": "B2", "name": "Ritu Menon", "role": "AI Engineer", "username": "ritu.menon.b2", "avatar": "RM", "email": "ritu.menon.b2@starapp.io", "application_roles": ["cosmonaut", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_5", "band": "B2", "name": "Pranav Joshi", "role": "Systems Engineer", "username": "pranav.joshi.b2", "avatar": "PJ", "email": "pranav.joshi.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_6", "band": "B2", "name": "Tanvi Bhatt", "role": "Systems Engineer", "username": "tanvi.bhatt.b2", "avatar": "TB", "email": "tanvi.bhatt.b2@starapp.io", "application_roles": ["cosmonaut", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_7", "band": "B2", "name": "Aria Stark", "role": "Solutions Designer", "avatar": "AS", "email": "aria.stark.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_8", "band": "B2", "name": "Liam O'Connor", "role": "Solutions Designer", "avatar": "LO", "email": "liam.o.connor.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_9", "band": "B2", "name": "Thomas Shelby", "role": "Solutions Designer", "avatar": "TS", "email": "thomas.shelby.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_10", "band": "B2", "name": "Arthur Dent", "role": "Solutions Designer", "avatar": "AD", "email": "arthur.dent.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_11", "band": "B2", "name": "Ford Prefect", "role": "Solutions Designer", "avatar": "FP", "email": "ford.prefect.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_12", "band": "B2", "name": "Tricia McMillan", "role": "Solutions Designer", "avatar": "TM", "email": "tricia.mcmillan.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_13", "band": "B2", "name": "Dirk Gently", "role": "Solutions Designer", "avatar": "DG", "email": "dirk.gently.b2@starapp.io", "application_roles": ["cosmonaut"], "status": "active", "is_demo": True},
-    {"id": "m_b2_14", "band": "B2", "name": "Ethan Hunt", "role": "AI Engineer", "avatar": "EH", "email": "ethan.hunt.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_15", "band": "B2", "name": "Chloe Dubois", "role": "AI Engineer", "avatar": "CD", "email": "chloe.dubois.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_16", "band": "B2", "name": "Neil Armstrong", "role": "AI Engineer", "avatar": "NA", "email": "neil.armstrong.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_17", "band": "B2", "name": "Alan Turing", "role": "AI Engineer", "avatar": "AT", "email": "alan.turing.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_18", "band": "B2", "name": "Ada Lovelace", "role": "AI Engineer", "avatar": "AL", "email": "ada.lovelace.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_19", "band": "B2", "name": "Grace Hopper", "role": "AI Engineer", "avatar": "GH", "email": "grace.hopper.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_20", "band": "B2", "name": "Geoffrey Hinton", "role": "AI Engineer", "avatar": "GH", "email": "geoffrey.hinton.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_21", "band": "B2", "name": "Noah Williams", "role": "Systems Engineer", "avatar": "NW", "email": "noah.williams.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_22", "band": "B2", "name": "Sophia Rossi", "role": "Systems Engineer", "avatar": "SR", "email": "sophia.rossi.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_23", "band": "B2", "name": "James Kirk", "role": "Systems Engineer", "avatar": "JK", "email": "james.kirk.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_24", "band": "B2", "name": "Spock", "role": "Systems Engineer", "avatar": "SP", "email": "spock.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_25", "band": "B2", "name": "Montgomery Scott", "role": "Systems Engineer", "avatar": "MS", "email": "montgomery.scott.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_26", "band": "B2", "name": "Hikaru Sulu", "role": "Systems Engineer", "avatar": "HS", "email": "hikaru.sulu.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b2_27", "band": "B2", "name": "Pavel Chekov", "role": "Systems Engineer", "avatar": "PC", "email": "pavel.chekov.b2@starapp.io", "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True},
+    # Band B2 (Specialist) - 6 Members (2 Managers, 4 ICs)
+    {
+        "id": "m_b2_1", "band": "B2", "name": "Rohan Deshmukh", "age": 31, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "rohan.deshmukh",
+        "avatar": "RD", "email": "rohan.deshmukh@starapp.io", "password": "12345678",
+        "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
+        "direct_reports": ["m_b1_1", "m_b1_2", "m_b1_3"],
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b2_2", "band": "B2", "name": "Meera Nair", "age": 29, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "meera.nair",
+        "avatar": "MN", "email": "meera.nair@starapp.io", "password": "12345678",
+        "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b2_3", "band": "B2", "name": "Aditya Kulkarni", "age": 32, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "aditya.kulkarni",
+        "avatar": "AK", "email": "aditya.kulkarni@starapp.io", "password": "12345678",
+        "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
+        "direct_reports": ["m_b1_4", "m_b1_5", "m_b1_6"],
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b2_4", "band": "B2", "name": "Nisha Menon", "age": 30, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "nisha.menon",
+        "avatar": "NM", "email": "nisha.menon@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b2_5", "band": "B2", "name": "Karthik Subramanian", "age": 33, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "karthik.subramanian",
+        "avatar": "KS", "email": "karthik.subramanian@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b2_6", "band": "B2", "name": "Pooja Joshi", "age": 28, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "pooja.joshi",
+        "avatar": "PJ", "email": "pooja.joshi@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
 
-    # Band B3 (Senior Specialist) - 27 Members (9 per Domain)
-    {"id": "m_b3_1", "band": "B3", "name": "Kunal Saxena", "role": "Solutions Designer", "username": "kunal.saxena.b3", "avatar": "KS", "email": "kunal.saxena.b3@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_2", "band": "B3", "name": "Pooja Hegde", "role": "Solutions Designer", "username": "pooja.hegde.b3", "avatar": "PH", "email": "pooja.hegde.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_3", "band": "B3", "name": "Aarav Sharma", "role": "AI Engineer", "username": "reviewer_aarav", "avatar": "AS", "email": "aarav.sharma.b3@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_4", "band": "B3", "name": "Neha Singhania", "role": "AI Engineer", "username": "neha.singhania.b3", "avatar": "NS", "email": "neha.singhania.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_5", "band": "B3", "name": "Devansh Mehta", "role": "Systems Engineer", "username": "devansh.mehta.b3", "avatar": "DM", "email": "devansh.mehta.b3@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_6", "band": "B3", "name": "Shreya Nambiar", "role": "Systems Engineer", "username": "shreya.nambiar.b3", "avatar": "SN", "email": "shreya.nambiar.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_7", "band": "B3", "name": "Elena Rostova", "role": "Solutions Designer", "avatar": "ER", "email": "elena.rostova.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_8", "band": "B3", "name": "David Kim", "role": "Solutions Designer", "avatar": "DK", "email": "david.kim.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_9", "band": "B3", "name": "Sarah Connor", "role": "Solutions Designer", "avatar": "SC", "email": "sarah.connor.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_10", "band": "B3", "name": "Kyle Reese", "role": "Solutions Designer", "avatar": "KR", "email": "kyle.reese.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_11", "band": "B3", "name": "John Connor", "role": "Solutions Designer", "avatar": "JC", "email": "john.connor.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_12", "band": "B3", "name": "Ellen Ripley", "role": "Solutions Designer", "avatar": "ER", "email": "ellen.ripley.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_13", "band": "B3", "name": "Marty McFly", "role": "Solutions Designer", "avatar": "MM", "email": "marty.mcfly.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_14", "band": "B3", "name": "Marcus Thorne", "role": "AI Engineer", "avatar": "MT", "email": "marcus.thorne.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_15", "band": "B3", "name": "Natasha Roman", "role": "AI Engineer", "avatar": "NR", "email": "natasha.roman.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_16", "band": "B3", "name": "Yann LeCun", "role": "AI Engineer", "avatar": "YL", "email": "yann.lecun.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_17", "band": "B3", "name": "Yoshua Bengio", "role": "AI Engineer", "avatar": "YB", "email": "yoshua.bengio.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_18", "band": "B3", "name": "Demis Hassabis", "role": "AI Engineer", "avatar": "DH", "email": "demis.hassabis.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_19", "band": "B3", "name": "Fei-Fei Li", "role": "AI Engineer", "avatar": "FL", "email": "fei.fei.li.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_20", "band": "B3", "name": "Andrew Ng", "role": "AI Engineer", "avatar": "AN", "email": "andrew.ng.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_21", "band": "B3", "name": "Jason Bourne", "role": "Systems Engineer", "avatar": "JB", "email": "jason.bourne.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_22", "band": "B3", "name": "Amara Okafor", "role": "Systems Engineer", "avatar": "AO", "email": "amara.okafor.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_23", "band": "B3", "name": "Luke Skywalker", "role": "Systems Engineer", "avatar": "LS", "email": "luke.skywalker.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_24", "band": "B3", "name": "Leia Organa", "role": "Systems Engineer", "avatar": "LO", "email": "leia.organa.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_25", "band": "B3", "name": "Han Solo", "role": "Systems Engineer", "avatar": "HS", "email": "han.solo.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_26", "band": "B3", "name": "Chewbacca", "role": "Systems Engineer", "avatar": "CH", "email": "chewbacca.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b3_27", "band": "B3", "name": "Lando Calrissian", "role": "Systems Engineer", "avatar": "LC", "email": "lando.calrissian.b3@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
+    # Band B3 (Senior Specialist) - 6 Members (2 Managers, 4 ICs)
+    {
+        "id": "m_b3_1", "band": "B3", "name": "Vikram Rao", "age": 36, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "vikram.rao",
+        "avatar": "VR", "email": "vikram.rao@starapp.io", "password": "12345678",
+        "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
+        "direct_reports": ["m_b2_1", "m_b2_2", "m_b2_3"],
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b3_2", "band": "B3", "name": "Sneha Kapoor", "age": 35, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "sneha.kapoor",
+        "avatar": "SK", "email": "sneha.kapoor@starapp.io", "password": "12345678",
+        "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b3_3", "band": "B3", "name": "Arjun Malhotra", "age": 37, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "arjun.malhotra",
+        "avatar": "AM", "email": "arjun.malhotra@starapp.io", "password": "12345678",
+        "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
+        "direct_reports": ["m_b2_4", "m_b2_5", "m_b2_6"],
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b3_4", "band": "B3", "name": "Divya Krishnan", "age": 34, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "divya.krishnan",
+        "avatar": "DK", "email": "divya.krishnan@starapp.io", "password": "12345678",
+        "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b3_5", "band": "B3", "name": "Sandeep Bhat", "age": 38, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "sandeep.bhat",
+        "avatar": "SB", "email": "sandeep.bhat@starapp.io", "password": "12345678",
+        "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b3_6", "band": "B3", "name": "Tanvi Shah", "age": 35, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "tanvi.shah",
+        "avatar": "TS", "email": "tanvi.shah@starapp.io", "password": "12345678",
+        "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
+        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+    },
 
-    # Band B4 (Lead Engineer) - 27 Members (9 per Domain)
-    {"id": "m_b4_1", "band": "B4", "name": "Arjun Kapoor", "role": "Solutions Designer", "username": "arjun.kapoor.b4", "avatar": "AK", "email": "arjun.kapoor.b4@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_2", "band": "B4", "name": "Divya Pillai", "role": "Solutions Designer", "username": "divya.pillai.b4", "avatar": "DP", "email": "divya.pillai.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_3", "band": "B4", "name": "Tarun Chawla", "role": "AI Engineer", "username": "tarun.chawla.b4", "avatar": "TC", "email": "tarun.chawla.b4@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_4", "band": "B4", "name": "Sunita Raman", "role": "AI Engineer", "username": "sunita.raman.b4", "avatar": "SR", "email": "sunita.raman.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_5", "band": "B4", "name": "Nikhil Banerjee", "role": "Systems Engineer", "username": "nikhil.banerjee.b4", "avatar": "NB", "email": "nikhil.banerjee.b4@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_6", "band": "B4", "name": "Shalini Das", "role": "Systems Engineer", "username": "shalini.das.b4", "avatar": "SD", "email": "shalini.das.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_7", "band": "B4", "name": "Samantha Reed", "role": "Solutions Designer", "avatar": "SR", "email": "samantha.reed.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_8", "band": "B4", "name": "Bruce Wayne", "role": "Solutions Designer", "avatar": "BW", "email": "bruce.wayne.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_9", "band": "B4", "name": "Tony Stark", "role": "Solutions Designer", "avatar": "TS", "email": "tony.stark.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_10", "band": "B4", "name": "Pepper Potts", "role": "Solutions Designer", "avatar": "PP", "email": "pepper.potts.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_11", "band": "B4", "name": "Peter Parker", "role": "Solutions Designer", "avatar": "PP", "email": "peter.parker.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_12", "band": "B4", "name": "Stephen Strange", "role": "Solutions Designer", "avatar": "SS", "email": "stephen.strange.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_13", "band": "B4", "name": "Charles Xavier", "role": "Solutions Designer", "avatar": "CX", "email": "charles.xavier.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_14", "band": "B4", "name": "Victor Stone", "role": "AI Engineer", "avatar": "VS", "email": "victor.stone.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_15", "band": "B4", "name": "Cassandra Nova", "role": "AI Engineer", "avatar": "CN", "email": "cassandra.nova.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_16", "band": "B4", "name": "Dario Amodei", "role": "AI Engineer", "avatar": "DA", "email": "dario.amodei.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_17", "band": "B4", "name": "Mira Murati", "role": "AI Engineer", "avatar": "MM", "email": "mira.murati.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_18", "band": "B4", "name": "Sam Altman", "role": "AI Engineer", "avatar": "SA", "email": "sam.altman.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_19", "band": "B4", "name": "Greg Brockman", "role": "AI Engineer", "avatar": "GB", "email": "greg.brockman.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_20", "band": "B4", "name": "Andrej Karpathy", "role": "AI Engineer", "avatar": "AK", "email": "andrej.karpathy.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_21", "band": "B4", "name": "Arthur Pendelton", "role": "Systems Engineer", "avatar": "AP", "email": "arthur.pendelton.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_22", "band": "B4", "name": "Diana Prince", "role": "Systems Engineer", "avatar": "DP", "email": "diana.prince.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_23", "band": "B4", "name": "Clark Kent", "role": "Systems Engineer", "avatar": "CK", "email": "clark.kent.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_24", "band": "B4", "name": "Barry Allen", "role": "Systems Engineer", "avatar": "BA", "email": "barry.allen.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_25", "band": "B4", "name": "Hal Jordan", "role": "Systems Engineer", "avatar": "HJ", "email": "hal.jordan.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_26", "band": "B4", "name": "Din Djarin", "role": "Systems Engineer", "avatar": "DD", "email": "din.djarin.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b4_27", "band": "B4", "name": "Boba Fett", "role": "Systems Engineer", "avatar": "BF", "email": "boba.fett.b4@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
+    # Band B4 (Lead Engineer) - 6 Members (2 Managers, 4 ICs)
+    {
+        "id": "m_b4_1", "band": "B4", "name": "Rajiv Menon", "age": 42, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "rajiv.menon",
+        "avatar": "RM", "email": "rajiv.menon@starapp.io", "password": "12345678",
+        "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
+        "direct_reports": ["m_b3_1", "m_b3_2", "m_b3_3"],
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b4_2", "band": "B4", "name": "Shalini Desai", "age": 40, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "shalini.desai",
+        "avatar": "SD", "email": "shalini.desai@starapp.io", "password": "12345678",
+        "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b4_3", "band": "B4", "name": "Pranav Sethi", "age": 43, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "pranav.sethi",
+        "avatar": "PS", "email": "pranav.sethi@starapp.io", "password": "12345678",
+        "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
+        "direct_reports": ["m_b3_4", "m_b3_5", "m_b3_6"],
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b4_4", "band": "B4", "name": "Neha Pillai", "age": 39, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "neha.pillai",
+        "avatar": "NP", "email": "neha.pillai@starapp.io", "password": "12345678",
+        "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b4_5", "band": "B4", "name": "Gaurav Mukherjee", "age": 44, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "gaurav.mukherjee",
+        "avatar": "GM", "email": "gaurav.mukherjee@starapp.io", "password": "12345678",
+        "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b4_6", "band": "B4", "name": "Aditi Rao", "age": 41, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "aditi.rao",
+        "avatar": "AR", "email": "aditi.rao@starapp.io", "password": "12345678",
+        "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
+        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+    },
 
-    # Band B5 (Principal Architect) - 27 Members (9 per Domain)
-    {"id": "m_b5_1", "band": "B5", "name": "Vikram Malhotra", "role": "Solutions Designer", "username": "reviewer_vikram", "avatar": "VM", "email": "vikram.malhotra.b5@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_2", "band": "B5", "name": "Radhika Bose", "role": "Solutions Designer", "username": "radhika.bose.b5", "avatar": "RB", "email": "radhika.bose.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_3", "band": "B5", "name": "Sameer Trivedi", "role": "AI Engineer", "username": "sameer.trivedi.b5", "avatar": "ST", "email": "sameer.trivedi.b5@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_4", "band": "B5", "name": "Pallavi Gokhale", "role": "AI Engineer", "username": "pallavi.gokhale.b5", "avatar": "PG", "email": "pallavi.gokhale.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_5", "band": "B5", "name": "Harish Namboodiri", "role": "Systems Engineer", "username": "harish.namboodiri.b5", "avatar": "HN", "email": "harish.namboodiri.b5@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_6", "band": "B5", "name": "Deepa Sundaram", "role": "Systems Engineer", "username": "deepa.sundaram.b5", "avatar": "DS", "email": "deepa.sundaram.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_7", "band": "B5", "name": "Dr. Thalia Vance", "role": "Solutions Designer", "avatar": "TV", "email": "thalia.vance.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_8", "band": "B5", "name": "Xavier Morales", "role": "Solutions Designer", "avatar": "XM", "email": "xavier.morales.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_9", "band": "B5", "name": "Erik Lehnsherr", "role": "Solutions Designer", "avatar": "EL", "email": "erik.lehnsherr.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_10", "band": "B5", "name": "Jean Grey", "role": "Solutions Designer", "avatar": "JG", "email": "jean.grey.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_11", "band": "B5", "name": "Ororo Munroe", "role": "Solutions Designer", "avatar": "OM", "email": "ororo.munroe.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_12", "band": "B5", "name": "Hank McCoy", "role": "Solutions Designer", "avatar": "HM", "email": "hank.mccoy.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_13", "band": "B5", "name": "Emma Frost", "role": "Solutions Designer", "avatar": "EF", "email": "emma.frost.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_14", "band": "B5", "name": "Dr. Aris Thorne", "role": "AI Engineer", "avatar": "AT", "email": "aris.thorne.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_15", "band": "B5", "name": "Dr. Helena Troy", "role": "AI Engineer", "avatar": "HT", "email": "helena.troy.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_16", "band": "B5", "name": "Sanjay Ghemawat", "role": "AI Engineer", "avatar": "SG", "email": "sanjay.ghemawat.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_17", "band": "B5", "name": "Urs Holzle", "role": "AI Engineer", "avatar": "UH", "email": "urs.holzle.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_18", "band": "B5", "name": "Peter Norvig", "role": "AI Engineer", "avatar": "PN", "email": "peter.norvig.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_19", "band": "B5", "name": "Sebastian Thrun", "role": "AI Engineer", "avatar": "ST", "email": "sebastian.thrun.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_20", "band": "B5", "name": "Daphne Koller", "role": "AI Engineer", "avatar": "DK", "email": "daphne.koller.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_21", "band": "B5", "name": "Sterling Archer", "role": "Systems Engineer", "avatar": "SA", "email": "sterling.archer.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_22", "band": "B5", "name": "Seraphina Drake", "role": "Systems Engineer", "avatar": "SD", "email": "seraphina.drake.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_23", "band": "B5", "name": "Cobb Vanth", "role": "Systems Engineer", "avatar": "CV", "email": "cobb.vanth.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_24", "band": "B5", "name": "Greef Karga", "role": "Systems Engineer", "avatar": "GK", "email": "greef.karga.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_25", "band": "B5", "name": "Bo-Katan Kryze", "role": "Systems Engineer", "avatar": "BK", "email": "bo.katan.kryze.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_26", "band": "B5", "name": "Fennec Shand", "role": "Systems Engineer", "avatar": "FS", "email": "fennec.shand.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b5_27", "band": "B5", "name": "Carson Teva", "role": "Systems Engineer", "avatar": "CT", "email": "carson.teva.b5@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
+    # Band B5 (Principal Architect) - 6 Members (2 Managers, 4 ICs)
+    {
+        "id": "m_b5_1", "band": "B5", "name": "Anirudh Krishnan", "age": 48, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "anirudh.krishnan",
+        "avatar": "AK", "email": "anirudh.krishnan@starapp.io", "password": "12345678",
+        "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
+        "direct_reports": ["m_b4_1", "m_b4_2", "m_b4_3"],
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b5_2", "band": "B5", "name": "Kavita Shah", "age": 47, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "kavita.shah",
+        "avatar": "KS", "email": "kavita.shah@starapp.io", "password": "12345678",
+        "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b5_3", "band": "B5", "name": "Sameer Kulkarni", "age": 49, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "sameer.kulkarni",
+        "avatar": "SK", "email": "sameer.kulkarni@starapp.io", "password": "12345678",
+        "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
+        "direct_reports": ["m_b4_4", "m_b4_5", "m_b4_6"],
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b5_4", "band": "B5", "name": "Ritu Malhotra", "age": 46, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "ritu.malhotra",
+        "avatar": "RM", "email": "ritu.malhotra@starapp.io", "password": "12345678",
+        "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b5_5", "band": "B5", "name": "Harish Iyer", "age": 50, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "harish.iyer",
+        "avatar": "HI", "email": "harish.iyer@starapp.io", "password": "12345678",
+        "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b5_6", "band": "B5", "name": "Lakshmi Nambiar", "age": 47, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "lakshmi.nambiar",
+        "avatar": "LN", "email": "lakshmi.nambiar@starapp.io", "password": "12345678",
+        "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
 
-    # Band B6 (Chief / Distinguished Fellow) - 27 Members (9 per Domain)
-    {"id": "m_b6_1", "band": "B6", "name": "Prof. Alok Mukherjee", "role": "Solutions Designer", "username": "alok.mukherjee.b6", "avatar": "AM", "email": "alok.mukherjee.b6@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_2", "band": "B6", "name": "Dr. Rajeshwari Iyer", "role": "Solutions Designer", "username": "reviewer_rajeshwari", "avatar": "RI", "email": "rajeshwari.iyer.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_3", "band": "B6", "name": "Dr. Venkatraman Ramaswamy", "role": "AI Engineer", "username": "venkatraman.r.b6", "avatar": "VR", "email": "venkatraman.r.b6@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_4", "band": "B6", "name": "Shanti Swaminathan", "role": "AI Engineer", "username": "shanti.swaminathan.b6", "avatar": "SS", "email": "shanti.swaminathan.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_5", "band": "B6", "name": "Chief Arch. K. P. Nambiar", "role": "Systems Engineer", "username": "kp.nambiar.b6", "avatar": "KN", "email": "kp.nambiar.b6@starapp.io", "application_roles": ["badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_6", "band": "B6", "name": "Dr. Indrani Sen", "role": "Systems Engineer", "username": "indrani.sen.b6", "avatar": "IS", "email": "indrani.sen.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_7", "band": "B6", "name": "Dr. Vivienne Westwood", "role": "Solutions Designer", "avatar": "VW", "email": "vivienne.westwood.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_8", "band": "B6", "name": "Fellow Roland Chang", "role": "Solutions Designer", "avatar": "RC", "email": "roland.chang.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_9", "band": "B6", "name": "Stephen Hawking", "role": "Solutions Designer", "avatar": "SH", "email": "stephen.hawking.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_10", "band": "B6", "name": "Richard Feynman", "role": "Solutions Designer", "avatar": "RF", "email": "richard.feynman.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_11", "band": "B6", "name": "Carl Sagan", "role": "Solutions Designer", "avatar": "CS", "email": "carl.sagan.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_12", "band": "B6", "name": "Roger Penrose", "role": "Solutions Designer", "avatar": "RP", "email": "roger.penrose.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_13", "band": "B6", "name": "Freeman Dyson", "role": "Solutions Designer", "avatar": "FD", "email": "freeman.dyson.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_14", "band": "B6", "name": "Prof. Kenneth Drake", "role": "AI Engineer", "avatar": "KD", "email": "kenneth.drake.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_15", "band": "B6", "name": "Prof. Althea Blackwood", "role": "AI Engineer", "avatar": "AB", "email": "althea.blackwood.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_16", "band": "B6", "name": "Leslie Lamport", "role": "AI Engineer", "avatar": "LL", "email": "leslie.lamport.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_17", "band": "B6", "name": "Barbara Liskov", "role": "AI Engineer", "avatar": "BL", "email": "barbara.liskov.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_18", "band": "B6", "name": "Michael Stonebraker", "role": "AI Engineer", "avatar": "MS", "email": "michael.stonebraker.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_19", "band": "B6", "name": "Donald Knuth", "role": "AI Engineer", "avatar": "DK", "email": "donald.knuth.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_20", "band": "B6", "name": "Edsger Dijkstra", "role": "AI Engineer", "avatar": "ED", "email": "edsger.dijkstra.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_21", "band": "B6", "name": "Chief Arch. Jonathan Myers", "role": "Systems Engineer", "avatar": "JM", "email": "jonathan.myers.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_22", "band": "B6", "name": "Fellow Beatrice Bell", "role": "Systems Engineer", "avatar": "BB", "email": "beatrice.bell.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_23", "band": "B6", "name": "Linus Torvalds", "role": "Systems Engineer", "avatar": "LT", "email": "linus.torvalds.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_24", "band": "B6", "name": "Ken Thompson", "role": "Systems Engineer", "avatar": "KT", "email": "ken.thompson.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_25", "band": "B6", "name": "Dennis Ritchie", "role": "Systems Engineer", "avatar": "DR", "email": "dennis.ritchie.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_26", "band": "B6", "name": "Bjarne Stroustrup", "role": "Systems Engineer", "avatar": "BS", "email": "bjarne.stroustrup.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True},
-    {"id": "m_b6_27", "band": "B6", "name": "Guido van Rossum", "role": "Systems Engineer", "avatar": "GV", "email": "guido.van.rossum.b6@starapp.io", "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True}
+    # Band B6 (Chief / Distinguished Fellow) - Exactly 5 Employees (2 Managers, 3 ICs)
+    {
+        "id": "m_b6_1", "band": "B6", "name": "Devika Narayanan", "age": 53, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "devika.narayanan",
+        "avatar": "DN", "email": "devika.narayanan@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
+        "direct_reports": ["m_b5_1", "m_b5_2", "m_b5_3"],
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b6_2", "band": "B6", "name": "Siddharth Banerjee", "age": 54, "role": "Solutions Designer",
+        "learning_track": "Solutions Designer", "track_code": "SD", "username": "siddharth.banerjee",
+        "avatar": "SB", "email": "siddharth.banerjee@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b6_3", "band": "B6", "name": "Manish Bansal", "age": 53, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "manish.bansal",
+        "avatar": "MB", "email": "manish.bansal@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
+        "direct_reports": ["m_b5_4", "m_b5_5", "m_b5_6"],
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b6_4", "band": "B6", "name": "Farah Contractor", "age": 52, "role": "AI Engineer",
+        "learning_track": "AI Engineer", "track_code": "AIE", "username": "farah.contractor",
+        "avatar": "FC", "email": "farah.contractor@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+    {
+        "id": "m_b6_5", "band": "B6", "name": "Prakash Venkataraman", "age": 54, "role": "Systems Engineer",
+        "learning_track": "Systems Engineer", "track_code": "SE", "username": "prakash.venkataraman",
+        "avatar": "PV", "email": "prakash.venkataraman@starapp.io", "password": "12345678",
+        "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
+        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+    },
+
+    # Executive Leadership - CEO & Admin (Arjun Mehta)
+    {
+        "id": "guardian_1", "band": "CEO", "name": "Arjun Mehta", "age": 55, "role": "Chief Executive Officer",
+        "learning_track": "Executive Leadership", "track_code": "EXEC", "username": "arjun.mehta",
+        "avatar": "AM", "email": "arjun.mehta@starapp.io", "password": "12345678",
+        "reporting_manager": None, "reporting_manager_id": None, "reporting_manager_name": None, "reporting_manager_band": None,
+        "direct_reports": ["m_b6_1", "m_b6_2", "m_b6_3", "m_b6_4", "m_b6_5"],
+        "application_roles": ["guardian", "project_reviewer"], "status": "active", "is_demo": True
+    }
 ]
 
-# The 36 Indian Demonstration Profiles across B1-B6 (6 members per band: 2 SD, 2 AIE, 2 SE)
-INDIAN_DEMO_MEMBERS: List[Dict[str, Any]] = [
-    m for m in DUMMY_MEMBERS if int(m["id"].split("_")[-1]) <= 6
-]
+# The 36 Corporate Hierarchy Profiles across B1-B6 and CEO
+INDIAN_DEMO_MEMBERS: List[Dict[str, Any]] = DUMMY_MEMBERS
 
 # Quick lookup maps
 MEMBERS_MAP: Dict[str, Dict[str, Any]] = {m["id"]: m for m in DUMMY_MEMBERS}
@@ -291,6 +393,7 @@ MEMBERS_MAP: Dict[str, Dict[str, Any]] = {m["id"]: m for m in DUMMY_MEMBERS}
 MEMBERS_BY_BAND: Dict[str, List[Dict[str, Any]]] = {}
 for m in DUMMY_MEMBERS:
     MEMBERS_BY_BAND.setdefault(m["band"], []).append(m)
+
 
 # ==============================================================================
 # 4. BADGES CATALOG FOR MAPPING

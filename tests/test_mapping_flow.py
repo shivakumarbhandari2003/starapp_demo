@@ -104,14 +104,14 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_mapping")
         self.ctrl.handle_event("select_mapping_band", "B1")
 
-        # When all roles active, 27 members of B1 should be returned (9 per role)
+        # When all roles active, 6 members of B1 should be returned (2 per role)
         all_b1 = filter_members_by_band_and_roles("B1", ["Solutions Designer", "AI Engineer", "Systems Engineer"])
-        self.assertEqual(len(all_b1), 27)
+        self.assertEqual(len(all_b1), 6)
 
         # Filter to only AI Engineer
         self.ctrl.mapping_selected_roles = ["AI Engineer"]
         ai_b1 = filter_members_by_band_and_roles("B1", self.ctrl.mapping_selected_roles)
-        self.assertEqual(len(ai_b1), 9)
+        self.assertEqual(len(ai_b1), 2)
         for m in ai_b1:
             self.assertEqual(m["role"], "AI Engineer")
 
@@ -123,7 +123,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(self.ctrl.mapping_selected_reviewer_band, "B3")
 
         revs_b3 = filter_reviewers_by_band_and_roles("B3", ["AI Engineer", "Solutions Designer", "Systems Engineer"])
-        self.assertEqual(len(revs_b3), 27)
+        self.assertEqual(len(revs_b3), 6)
         for r in revs_b3:
             self.assertEqual(r["band"], "B3")
 
@@ -226,7 +226,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("Live Mapped Review Allocations", html)
         self.assertIn("Band B1", html)
         self.assertIn("mapped-cosmo-chip", html)
-        self.assertIn("Leo Vance", html)
+        self.assertIn("Rohan Deshmukh", html)
 
         # 2. Trigger Edit
         target_id = "map_test_b1"

@@ -21,7 +21,12 @@ class User:
         avatar: str = "",
         roles: Optional[List[str]] = None,
         band: str = "",
-        learning_track: str = ""
+        learning_track: str = "",
+        age: int = 30,
+        reporting_manager_id: Optional[str] = None,
+        reporting_manager_name: Optional[str] = None,
+        reporting_manager_band: Optional[str] = None,
+        password: str = "12345678"
     ):
         self.id = id
         self.username = username
@@ -34,6 +39,11 @@ class User:
             self.roles.append(role)
         self.band = band
         self.learning_track = learning_track
+        self.age = age
+        self.reporting_manager_id = reporting_manager_id
+        self.reporting_manager_name = reporting_manager_name
+        self.reporting_manager_band = reporting_manager_band
+        self.password = password
 
     def has_role(self, role_name: str) -> bool:
         if self.role == role_name:
@@ -50,7 +60,12 @@ class User:
             "name": self.name,
             "avatar": self.avatar,
             "band": getattr(self, "band", ""),
-            "learning_track": getattr(self, "learning_track", "")
+            "learning_track": getattr(self, "learning_track", ""),
+            "age": getattr(self, "age", 30),
+            "reporting_manager_id": getattr(self, "reporting_manager_id", None),
+            "reporting_manager_name": getattr(self, "reporting_manager_name", None),
+            "reporting_manager_band": getattr(self, "reporting_manager_band", None),
+            "password": getattr(self, "password", "12345678")
         }
 
     @classmethod
@@ -64,7 +79,12 @@ class User:
             avatar=data.get("avatar", ""),
             roles=data.get("roles"),
             band=data.get("band", ""),
-            learning_track=data.get("learning_track", "")
+            learning_track=data.get("learning_track", ""),
+            age=data.get("age", 30),
+            reporting_manager_id=data.get("reporting_manager_id"),
+            reporting_manager_name=data.get("reporting_manager_name"),
+            reporting_manager_band=data.get("reporting_manager_band"),
+            password=data.get("password", "12345678")
         )
 
 

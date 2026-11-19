@@ -73,17 +73,57 @@ CREATE TABLE IF NOT EXISTS learning_tracks (
     icon TEXT
 );
 
--- 6. Users
+-- 6. Users / Employees
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
-    primary_role TEXT NOT NULL,
+    age INTEGER NOT NULL DEFAULT 30,
+    role TEXT NOT NULL DEFAULT 'Solutions Designer',
+    learning_track TEXT NOT NULL DEFAULT 'Solutions Designer',
+    track_code TEXT NOT NULL DEFAULT 'SD',
+    band TEXT NOT NULL DEFAULT 'B1',
+    reporting_manager_id TEXT,
+    reporting_manager_name TEXT,
+    reporting_manager_band TEXT,
+    password TEXT NOT NULL DEFAULT '12345678',
+    primary_role TEXT NOT NULL DEFAULT 'cosmonaut',
     avatar TEXT,
     status TEXT NOT NULL DEFAULT 'active',
-    is_demo INTEGER NOT NULL DEFAULT 0,
+    is_demo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
+);
+
+-- View: employees (for enterprise employee queries)
+CREATE VIEW IF NOT EXISTS employees AS
+SELECT
+    id,
+    id AS employee_id,
+    name AS employee_name,
+    age,
+    role,
+    learning_track,
+    track_code,
+    band,
+    reporting_manager_id,
+    reporting_manager_name,
+    reporting_manager_band,
+    email,
+    password,
+    primary_role,
+    avatar,
+    status,
+    created_at
+FROM users;
+
+-- Management & Reporting Hierarchy
+CREATE TABLE IF NOT EXISTS employee_reporting (
+    manager_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    employee_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    manager_band TEXT NOT NULL,
+    employee_band TEXT NOT NULL,
+    PRIMARY KEY (manager_id, employee_id)
 );
 
 -- 7. User Role Assignments (Many-to-Many: user can have multiple responsibilities)
@@ -453,6 +493,28 @@ class DatabaseManager:
             self.conn.execute("ALTER TABLE custom_skills ADD COLUMN capability_name TEXT DEFAULT '';")
         except Exception:
             pass
+
+        # Schema migration for users table if existing table lacks enterprise columns
+        try:
+            existing_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(users)").fetchall()}
+            if existing_cols:
+                needed_cols = [
+                    ("age", "INTEGER NOT NULL DEFAULT 30"),
+                    ("role", "TEXT NOT NULL DEFAULT 'Solutions Designer'"),
+                    ("learning_track", "TEXT NOT NULL DEFAULT 'Solutions Designer'"),
+                    ("track_code", "TEXT NOT NULL DEFAULT 'SD'"),
+                    ("band", "TEXT NOT NULL DEFAULT 'B1'"),
+                    ("reporting_manager_id", "TEXT"),
+                    ("reporting_manager_name", "TEXT"),
+                    ("reporting_manager_band", "TEXT"),
+                    ("password", "TEXT NOT NULL DEFAULT '12345678'"),
+                ]
+                for col_name, col_def in needed_cols:
+                    if col_name not in existing_cols:
+                        self.conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def};")
+        except Exception:
+            pass
+
         self.conn.commit()
 
     def clear_all_tables(self):
@@ -469,7 +531,7 @@ class DatabaseManager:
                 "announcements", "notifications", "activity_events", "band_mappings",
                 "mapping_requests", "custom_capabilities", "custom_skills", "cosmonaut_profiles",
                 "user_band_memberships", "badge_reviewer_qualifications", "user_role_assignments",
-                "badges", "users"
+                "employee_reporting", "badges", "users"
             ]
             for t in tables:
                 self.conn.execute(f"DELETE FROM {t};")
@@ -511,45 +573,65 @@ class DatabaseManager:
         ]
         c.executemany("INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)", rp)
 
-        # 4. Bands B1 to B6
+        # 4. Bands B1 to B6 and Executive CEO
         from starapp.mapping_data import BANDS
         band_records = [
             (b["code"], b["name"], b["title"], b["level"], b["experience"], b["description"], idx)
             for idx, b in enumerate(BANDS)
         ]
+        band_records.append(
+            ("CEO", "Executive Council", "Chief Executive Officer", "Executive", "20+ years", "Executive leadership, corporate strategy, and organizational governance.", 6)
+        )
         c.executemany(
             "INSERT OR REPLACE INTO bands (code, name, title, level, experience, description, order_idx) VALUES (?, ?, ?, ?, ?, ?, ?)",
             band_records
         )
 
-        # 5. Learning Tracks (SD, AIE, SE)
+        # 5. Learning Tracks (SD, AIE, SE, EXEC)
         tracks = [
             ("SD", "Solutions Designer", "System architecture, domain modeling & solution workflows", "#4F46E5", "layers"),
             ("AIE", "AI Engineer", "Machine learning pipelines, agent orchestration & LLM reasoning", "#059669", "cpu"),
-            ("SE", "Systems Engineer", "Infrastructure, networking, distributed reliability & cloud fabric", "#0284C7", "terminal")
+            ("SE", "Systems Engineer", "Infrastructure, networking, distributed reliability & cloud fabric", "#0284C7", "terminal"),
+            ("EXEC", "Executive Leadership", "Corporate strategy and organizational governance", "#7C3AED", "shield")
         ]
         c.executemany(
             "INSERT OR REPLACE INTO learning_tracks (code, name, description, color, icon) VALUES (?, ?, ?, ?, ?)",
             tracks
         )
 
-        # 6. Seed 36 Indian Demo Members
+        # 6. Seed 36 Corporate Demo Members
         from starapp.mapping_data import DUMMY_MEMBERS
         for m in DUMMY_MEMBERS:
             u_id = m["id"]
             u_name = m["name"]
-            u_uname = m.get("username", m["name"].lower().replace(" ", ".").replace("dr.", "").replace("prof.", "").strip("."))
+            u_uname = m.get("username", m["name"].lower().replace(" ", "."))
             u_email = m["email"]
             u_avatar = m.get("avatar", u_name[:2].upper())
             roles_list = m.get("application_roles", ["cosmonaut"])
             primary_role = roles_list[0] if roles_list else "cosmonaut"
+            u_age = m.get("age", 30)
+            u_role = m.get("role", "Solutions Designer")
+            u_track = m.get("learning_track", "Solutions Designer")
+            u_track_code = m.get("track_code", "SD")
+            u_band = m.get("band", "B1")
+            u_mgr_id = m.get("reporting_manager_id")
+            u_mgr_name = m.get("reporting_manager_name")
+            u_mgr_band = m.get("reporting_manager_band")
+            u_pwd = m.get("password", "12345678")
 
             c.execute(
                 """
-                INSERT OR IGNORE INTO users (id, username, email, name, primary_role, avatar, status, is_demo, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'active', 1, ?)
+                INSERT OR REPLACE INTO users (
+                    id, username, email, name, age, role, learning_track, track_code, band,
+                    reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                    password, primary_role, avatar, status, is_demo, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?)
                 """,
-                (u_id, u_uname, u_email, u_name, primary_role, u_avatar, current_iso_timestamp())
+                (
+                    u_id, u_uname, u_email, u_name, u_age, u_role, u_track, u_track_code, u_band,
+                    u_mgr_id, u_mgr_name, u_mgr_band, u_pwd, primary_role, u_avatar, current_iso_timestamp()
+                )
             )
 
             # Assign roles
@@ -560,28 +642,53 @@ class DatabaseManager:
                 )
 
             # Assign band membership
-            track_code = "SD"
-            if "AI" in m["role"]:
-                track_code = "AIE"
-            elif "Systems" in m["role"]:
-                track_code = "SE"
             c.execute(
                 """
                 INSERT OR REPLACE INTO user_band_memberships (user_id, band_code, track_code, assigned_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (u_id, m["band"], track_code, current_iso_timestamp())
+                (u_id, u_band, u_track_code, current_iso_timestamp())
             )
+
+            # Direct reports hierarchy
+            for rep_id in m.get("direct_reports", []):
+                rep_m = next((x for x in DUMMY_MEMBERS if x["id"] == rep_id), None)
+                rep_band = rep_m["band"] if rep_m else "B1"
+                c.execute(
+                    """
+                    INSERT OR REPLACE INTO employee_reporting (manager_id, employee_id, manager_band, employee_band)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (u_id, rep_id, u_band, rep_band)
+                )
 
             # Assign badge reviewer qualifications if applicable
             if "badge_reviewer" in roles_list:
+                min_b = "B1"
+                max_b = u_band if u_band != "CEO" else "B6"
                 c.execute(
                     """
                     INSERT OR REPLACE INTO badge_reviewer_qualifications (user_id, min_band, max_band, is_active)
-                    VALUES (?, 'B1', ?, 1)
+                    VALUES (?, ?, ?, 1)
                     """,
-                    (u_id, m["band"])
+                    (u_id, min_b, max_b)
                 )
+
+        # Seed alias for cosmo_1 pointing to Aarav Sharma so existing test suites and session keys resolve
+        c.execute(
+            """
+            INSERT OR REPLACE INTO users (
+                id, username, email, name, age, role, learning_track, track_code, band,
+                reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                password, primary_role, avatar, status, is_demo, created_at
+            )
+            VALUES ('cosmo_1', 'astraea', 'cosmo.aarav@starapp.io', 'Aarav Sharma', 26, 'Solutions Designer', 'Solutions Designer', 'SD', 'B1',
+                    'm_b2_1', 'Rohan Deshmukh', 'B2', '12345678', 'cosmonaut', 'AS', 'active', 1, ?)
+            """,
+            (current_iso_timestamp(),)
+        )
+        c.execute("INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES ('cosmo_1', 'cosmonaut', ?)", (current_iso_timestamp(),))
+        c.execute("INSERT OR REPLACE INTO user_band_memberships (user_id, band_code, track_code, assigned_at) VALUES ('cosmo_1', 'B1', 'SD', ?)", (current_iso_timestamp(),))
 
         self.conn.commit()
 
@@ -684,12 +791,60 @@ class DatabaseManager:
                 u_role = u.get("role", "cosmonaut")
                 u_name = u["name"]
                 u_avatar = u.get("avatar", "")
+                if u_id == "guardian_1":
+                    u_name = "Arjun Mehta"
+                    u_role_title = "Chief Executive Officer"
+                    u_track = "Executive Leadership"
+                    u_track_code = "EXEC"
+                    u_band = "CEO"
+                    u_email = "arjun.mehta@starapp.io"
+                    u_age = 55
+                    u_avatar = "AM"
+                    u_pwd = "12345678"
+                    u_role = "guardian"
+                    u_mgr_id = None
+                    u_mgr_name = None
+                    u_mgr_band = None
+                else:
+                    u_age = u.get("age", 30)
+                    u_role_title = u.get("role_title", u.get("role", "Solutions Designer"))
+                    u_track = u.get("learning_track", "Solutions Designer")
+                    u_track_code = u.get("track_code", "SD")
+                    u_band = u.get("band", "B1")
+                    u_mgr_id = u.get("reporting_manager_id")
+                    u_mgr_name = u.get("reporting_manager_name")
+                    u_mgr_band = u.get("reporting_manager_band")
+                    u_pwd = u.get("password", "12345678")
+
                 c.execute(
                     """
-                    INSERT OR REPLACE INTO users (id, username, email, name, primary_role, avatar, status, is_demo, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 'active', 0, ?)
+                    INSERT INTO users (
+                        id, username, email, name, age, role, learning_track, track_code, band,
+                        reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                        password, primary_role, avatar, status, is_demo, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        username=excluded.username,
+                        email=excluded.email,
+                        name=excluded.name,
+                        age=excluded.age,
+                        role=excluded.role,
+                        learning_track=excluded.learning_track,
+                        track_code=excluded.track_code,
+                        band=excluded.band,
+                        reporting_manager_id=excluded.reporting_manager_id,
+                        reporting_manager_name=excluded.reporting_manager_name,
+                        reporting_manager_band=excluded.reporting_manager_band,
+                        password=excluded.password,
+                        primary_role=excluded.primary_role,
+                        avatar=excluded.avatar,
+                        status=excluded.status
                     """,
-                    (u_id, u_uname, u_email, u_name, u_role, u_avatar, current_iso_timestamp())
+                    (
+                        u_id, u_uname, u_email, u_name, u_age, u_role_title, u_track, u_track_code, u_band,
+                        u_mgr_id, u_mgr_name, u_mgr_band, u_pwd, u_role, u_avatar, current_iso_timestamp()
+                    )
                 )
                 c.execute(
                     "INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES (?, ?, ?)",
@@ -1005,8 +1160,8 @@ class DatabaseManager:
             return {}
         c = self.conn
 
-        # Users
-        users_rows = c.execute("SELECT * FROM users WHERE is_demo = 0 ORDER BY id").fetchall()
+        # Users: actual login/session users (guardian_1, cosmo_1) or non-demo users
+        users_rows = c.execute("SELECT * FROM users WHERE id IN ('guardian_1', 'cosmo_1') OR is_demo = 0 ORDER BY id").fetchall()
         users = []
         for r in users_rows:
             # Fetch assigned roles
@@ -1145,8 +1300,81 @@ class DatabaseManager:
     # ==========================================================================
 
     def get_members_by_band(self, band: str) -> List[Dict[str, Any]]:
+        if SQLITE_AVAILABLE and self.conn is not None:
+            try:
+                rows = self.conn.execute(
+                    """
+                    SELECT id, username, email, name, age, role, learning_track, track_code, band,
+                           reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                           password, primary_role, avatar, status
+                    FROM users
+                    WHERE band = ? AND id != 'cosmo_1'
+                    ORDER BY id
+                    """,
+                    (band,)
+                ).fetchall()
+                if rows:
+                    res = []
+                    for r in rows:
+                        d = dict(r)
+                        d["application_roles"] = [d["primary_role"]]
+                        res.append(d)
+                    return res
+            except Exception:
+                pass
         from starapp.mapping_data import DUMMY_MEMBERS
         return [m for m in DUMMY_MEMBERS if m.get("band") == band]
+
+    def get_direct_reports(self, manager_id: str) -> List[Dict[str, Any]]:
+        """Retrieves direct reports managed by the given manager ID."""
+        if SQLITE_AVAILABLE and self.conn is not None:
+            try:
+                rows = self.conn.execute(
+                    """
+                    SELECT id, username, email, name, age, role, learning_track, track_code, band,
+                           reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                           password, primary_role, avatar, status
+                    FROM users
+                    WHERE reporting_manager_id = ? AND id != 'cosmo_1'
+                    ORDER BY band, id
+                    """,
+                    (manager_id,)
+                ).fetchall()
+                if rows:
+                    return [dict(r) for r in rows]
+            except Exception:
+                pass
+        from starapp.mapping_data import DUMMY_MEMBERS
+        return [m for m in DUMMY_MEMBERS if m.get("reporting_manager_id") == manager_id]
+
+    def get_all_employees(self) -> List[Dict[str, Any]]:
+        """Retrieves all 36 corporate employees with complete attributes and reporting links."""
+        if SQLITE_AVAILABLE and self.conn is not None:
+            try:
+                rows = self.conn.execute(
+                    """
+                    SELECT id, username, email, name, age, role, learning_track, track_code, band,
+                           reporting_manager_id, reporting_manager_name, reporting_manager_band,
+                           password, primary_role, avatar, status
+                    FROM users
+                    WHERE id != 'cosmo_1'
+                    ORDER BY CASE band
+                        WHEN 'B1' THEN 1
+                        WHEN 'B2' THEN 2
+                        WHEN 'B3' THEN 3
+                        WHEN 'B4' THEN 4
+                        WHEN 'B5' THEN 5
+                        WHEN 'B6' THEN 6
+                        WHEN 'CEO' THEN 7
+                        ELSE 8 END, id
+                    """
+                ).fetchall()
+                if rows:
+                    return [dict(r) for r in rows]
+            except Exception:
+                pass
+        from starapp.mapping_data import DUMMY_MEMBERS
+        return list(DUMMY_MEMBERS)
 
     # ==========================================================================
     # CUSTOM CAPABILITIES & SKILLS QUERIES

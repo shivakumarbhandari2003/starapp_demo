@@ -24,7 +24,7 @@ class TestSQLitePersistence(unittest.TestCase):
         self.db.seed_system_metadata()
         with self.db.conn:
             self.db.conn.execute(
-                "INSERT INTO users (id, username, email, name, primary_role, created_at) VALUES ('guardian_1', 'guardian', 'g@starapp.io', 'Dr. Elena Vance', 'guardian', '2026-11-18')"
+                "INSERT OR REPLACE INTO users (id, username, email, name, primary_role, created_at) VALUES ('guardian_1', 'guardian', 'g@starapp.io', 'Dr. Elena Vance', 'guardian', '2026-11-18')"
             )
 
     def tearDown(self):
@@ -103,7 +103,7 @@ class TestSQLitePersistence(unittest.TestCase):
         self.assertTrue(any(s == "Prompt Tuning" for s in skills))
 
     def test_36_indian_demo_members_integrity(self):
-        """Verify all 36 demo profiles exist across 6 bands with exactly 2 SD, 2 AIE, 2 SE each."""
+        """Verify all 36 demo profiles exist across B1-B6 and CEO according to corporate hierarchy."""
         from starapp.mapping_data import INDIAN_DEMO_MEMBERS
         self.assertEqual(len(INDIAN_DEMO_MEMBERS), 36)
 
@@ -116,12 +116,20 @@ class TestSQLitePersistence(unittest.TestCase):
                 band_tracks[b] = {}
             band_tracks[b][t] = band_tracks[b].get(t, 0) + 1
 
-        self.assertEqual(len(band_tracks), 6, "Must have exactly 6 bands (B1 to B6)")
-        for b_code in ["B1", "B2", "B3", "B4", "B5", "B6"]:
+        self.assertIn("CEO", band_tracks)
+        self.assertEqual(band_tracks["CEO"].get("Chief Executive Officer"), 1)
+
+        for b_code in ["B1", "B2", "B3", "B4", "B5"]:
             self.assertIn(b_code, band_tracks)
             self.assertEqual(band_tracks[b_code].get("Solutions Designer"), 2, f"Band {b_code} must have 2 SD")
             self.assertEqual(band_tracks[b_code].get("AI Engineer"), 2, f"Band {b_code} must have 2 AIE")
             self.assertEqual(band_tracks[b_code].get("Systems Engineer"), 2, f"Band {b_code} must have 2 SE")
+
+        # B6 has exactly 5 members: 2 SD, 2 AIE, 1 SE
+        self.assertIn("B6", band_tracks)
+        self.assertEqual(band_tracks["B6"].get("Solutions Designer"), 2)
+        self.assertEqual(band_tracks["B6"].get("AI Engineer"), 2)
+        self.assertEqual(band_tracks["B6"].get("Systems Engineer"), 1)
 
 
 if __name__ == "__main__":
