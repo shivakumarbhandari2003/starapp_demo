@@ -1342,3 +1342,30 @@
 
 
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BADGE GENERATOR UTILITY ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Skeleton placeholder blocks (used in create-badge empty state) */
+.skeleton-block {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(157,183,213,0.18) 25%,
+    rgba(157,183,213,0.32) 50%,
+    rgba(157,183,213,0.18) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}

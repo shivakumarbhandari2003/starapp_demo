@@ -635,6 +635,464 @@
       window.StarAppBridge.dispatchAction("update_material", JSON.stringify(payload));
     },
 
+    // Add custom capability
+    addCustomCapability() {
+      const input = document.getElementById("custom-capability-input");
+      if (!input || !input.value.trim()) return;
+      window.StarAppBridge.dispatchAction("add_custom_capability", input.value.trim());
+      input.value = "";
+    },
+
+    // Add custom skill
+    addCustomSkill() {
+      const input = document.getElementById("custom-skill-input");
+      if (!input || !input.value.trim()) return;
+      window.StarAppBridge.dispatchAction("add_custom_skill", input.value.trim());
+      input.value = "";
+    },
+
+    // Debounced JSON prompt change handler
+    onPromptChange(val) {
+      if (this._promptTimer) clearTimeout(this._promptTimer);
+      this._promptTimer = setTimeout(() => {
+        window.StarAppBridge.dispatchAction("update_badge_prompt", val);
+      }, 350);
+    },
+
+    // Format badge prompt editor JSON
+    formatBadgePrompt() {
+      const editor = document.getElementById("badge-prompt-editor");
+      if (!editor) return;
+      try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+        window.StarAppBridge.dispatchAction("update_badge_prompt", editor.value);
+      } catch (err) {
+        window.StarAppBridge.dispatchAction("format_badge_prompt", "{}");
+      }
+    },
+
+    // Collect all inputs and preview new badge
+    collectAndPreviewBadge() {
+      const payload = {
+        code: document.getElementById("badge-code")?.value || "",
+        title: document.getElementById("badge-title")?.value || "",
+        category: document.getElementById("badge-category")?.value || "",
+        description: document.getElementById("badge-desc")?.value || "",
+        learning_outcomes: document.getElementById("badge-outcomes")?.value || "",
+        learning_topics: document.getElementById("badge-topics")?.value || "",
+        project_requirements: document.getElementById("badge-reqs")?.value || "",
+        prompt_json: document.getElementById("badge-prompt-editor")?.value || ""
+      };
+      window.StarAppBridge.dispatchAction("preview_new_badge", JSON.stringify(payload));
+    },
+
+    // Format prompt in reviewer edit modal
+    formatReviewedBadgePrompt() {
+      const editor = document.getElementById("edit-badge-prompt");
+      if (!editor) return;
+      try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+      } catch (err) {
+        alert("Cannot format: Invalid JSON syntax (" + err.message + ")");
+      }
+    },
+
+    // Submit reviewer badge edits
+    submitReviewedBadgeEdit(badgeId) {
+      const promptVal = document.getElementById("edit-badge-prompt")?.value || "{}";
+      try {
+        JSON.parse(promptVal);
+      } catch (err) {
+        alert("Invalid JSON Prompt: " + err.message);
+        return;
+      }
+      const payload = {
+        badge_id: badgeId,
+        title: document.getElementById("edit-badge-title")?.value || "",
+        power: document.getElementById("edit-badge-power")?.value || "Tech",
+        capability: document.getElementById("edit-badge-cap")?.value || "Data & Machine",
+        skill: document.getElementById("edit-badge-skill")?.value || "Hardware",
+        description: document.getElementById("edit-badge-desc")?.value || "",
+        project_requirements: document.getElementById("edit-badge-reqs")?.value || "",
+        prompt_json: promptVal
+      };
+      window.StarAppBridge.dispatchAction("save_reviewed_badge", JSON.stringify(payload));
+    },
+
+    // ------------------------------------------------------------------------
+    // CASCADING DROPDOWNS & GEMINI BADGE GENERATOR
+    // ------------------------------------------------------------------------
+    getCapabilitySkillsMap() {
+      return {
+        "Data & Machine": [
+          "Hardware", "Software", "Network", "Cloud", "AI-OS",
+          "Data Model", "Architecture", "Ingestion", "Curation", "Governance"
+        ],
+        "Reasoning": [
+          "Descriptive", "Diagnostic", "Predictive", "Prescriptive"
+        ],
+        "Action": [
+          "Agents", "Controls", "Signals", "Feedback"
+        ],
+        "Outcome": [
+          "Intelligent Apps", "HITL", "HOTL"
+        ],
+        "Trust": [
+          "Security", "Drift", "Audit", "Reliability"
+        ]
+      };
+    },
+
+    onCapabilitySelect(capability) {
+      const skillsMap = this.getCapabilitySkillsMap();
+      const skills = skillsMap[capability] || skillsMap["Data & Machine"];
+      const skillSelect = document.getElementById("badge-skill-select");
+      if (skillSelect) {
+        skillSelect.innerHTML = "";
+        skills.forEach((s) => {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s;
+          skillSelect.appendChild(opt);
+        });
+      }
+      window.StarAppBridge.dispatchAction("change_badge_capability", capability);
+      if (skills.length > 0) {
+        window.StarAppBridge.dispatchAction("change_badge_skill", skills[0]);
+      }
+    },
+
+    async triggerCreateBadgeGemini() {
+      const powerEl = document.getElementById("badge-power-select");
+      const capEl = document.getElementById("badge-capability-select");
+      const skillEl = document.getElementById("badge-skill-select");
+      const outcomeEl = document.getElementById("badge-outcome-sentence-input");
+      const btn = document.getElementById("create-badge-gemini-btn");
+      const spinner = document.getElementById("gemini-loading-indicator");
+
+      const power = powerEl?.value || "Tech";
+      const capability = capEl?.value || "Data & Machine";
+      const skill = skillEl?.value || "Hardware";
+      const outcomeSentence = outcomeEl?.value?.trim() || "";
+
+      let band = "B1";
+      if (window.starAppController && window.starAppController.create_badge_band) {
+        band = window.starAppController.create_badge_band;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = "0.6";
+        btn.style.cursor = "not-allowed";
+      }
+      if (spinner) spinner.style.display = "flex";
+
+      // Animated progress steps
+      const loadingSteps = [
+        `✦ Analysing ${skill} under ${capability}…`,
+        `✦ Crafting learning outcomes…`,
+        `✦ Building practice project prompt…`,
+        `✦ Generating learning topics…`,
+        `✦ Writing learning resources prompt…`,
+        `✦ Finalising badge structure…`
+      ];
+      let stepIdx = 0;
+      const loadingTextEl = document.getElementById("gemini-loading-text");
+      const stepInterval = setInterval(() => {
+        if (loadingTextEl && stepIdx < loadingSteps.length) {
+          loadingTextEl.textContent = loadingSteps[stepIdx++];
+        }
+      }, 900);
+
+      const apiKey = "YOUR_API_HERE";
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+
+      const promptInstruction = `You are an expert curriculum architect for engineering badges.
+Create a detailed, high-quality badge for:
+- Band: ${band}
+- Power: ${power}
+- Capability: ${capability}
+- Skill: ${skill}
+- Outcome Sentence: "${outcomeSentence}"
+
+Return ONLY valid JSON matching this exact schema:
+{
+  "title": "${skill} Foundations",
+  "description": "Foundational badge covering core ${skill.toLowerCase()} concepts...",
+  "outcomes": [
+    "Can ...",
+    "Can ...",
+    "Can ...",
+    "Can ..."
+  ],
+  "learning_topics": [
+    {"title": "Topic 1", "description": "..."},
+    {"title": "Topic 2", "description": "..."},
+    {"title": "Topic 3", "description": "..."},
+    {"title": "Topic 4", "description": "..."},
+    {"title": "Topic 5", "description": "..."},
+    {"title": "Topic 6", "description": "..."}
+  ],
+  "practice_prompt": "I'm working toward the \\"${skill} Foundations\\" badge (${skill} / ${capability} / ${power})...",
+  "resources_prompt": "I'm working toward the \\"${skill} Foundations\\" badge (${skill} / ${capability} / ${power})..."
+}`;
+
+      let parsedBadge = null;
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: promptInstruction }]
+            }]
+          })
+        });
+
+        if (resp.ok) {
+          const jsonResp = await resp.json();
+          const textOut = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textOut) {
+            const cleanText = textOut.replace(/^```json/m, "").replace(/^```/m, "").trim();
+            const rawObj = JSON.parse(cleanText);
+            if (rawObj && rawObj.title) {
+              const locationStr = `${rawObj.title} under ${skill}, under ${capability}, under ${power}, under Band ${band}`;
+              parsedBadge = {
+                id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+                code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
+                title: rawObj.title,
+                description: rawObj.description || `Foundational badge covering core ${skill.toLowerCase()} concepts.`,
+                target_band: band,
+                power: power,
+                capability: capability,
+                skill: skill,
+                location: locationStr,
+                outcomes: rawObj.outcomes || [],
+                earn_badge_status: "Pending Review",
+                earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
+                practice_project: {
+                  intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
+                  prompt: rawObj.practice_prompt || "",
+                  footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                },
+                learning_topics: (rawObj.learning_topics || []).map(t => ({
+                  title: t.title || "Topic",
+                  status: "Completed",
+                  description: t.description || ""
+                })),
+                learning_resources: {
+                  intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                  prompt: rawObj.resources_prompt || "",
+                  footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                },
+                related: {
+                  skill: skill,
+                  capability: capability,
+                  power: power
+                }
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[StarAppBridge] Gemini API fetch failed or offline; using deterministic template generator:", err);
+      }
+
+      if (!parsedBadge) {
+        parsedBadge = this.generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence);
+      }
+
+      clearInterval(stepInterval);
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = "";
+        btn.style.cursor = "";
+      }
+      if (spinner) spinner.style.display = "none";
+      if (loadingTextEl) loadingTextEl.textContent = "Generating badge with Gemini AI...";
+
+      window.StarAppBridge.dispatchAction("on_badge_generated", JSON.stringify({
+        band,
+        power,
+        capability,
+        skill,
+        outcome_sentence: outcomeSentence,
+        badge_data: parsedBadge
+      }));
+    },
+
+    generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence) {
+      const title = `${skill} Foundations`;
+      const location = `${title} under ${skill}, under ${capability}, under ${power}, under Band ${band}`;
+      let outcome = outcomeSentence?.trim() || `Identify core ${skill.toLowerCase()} components and evaluate their primary system roles`;
+      if (!outcome.startsWith("Can ")) {
+        outcome = "Can " + outcome.charAt(0).toLowerCase() + outcome.slice(1);
+      }
+      if (!outcome.endsWith(".")) outcome += ".";
+
+      const outcomes = [
+        outcome,
+        `Can explain how ${skill.toLowerCase()} architectures impact performance, throughput, and operational resilience.`,
+        `Can analyze and select appropriate ${skill.toLowerCase()} specifications for diverse engineering workloads.`,
+        `Can implement automated telemetry and quality verification for ${skill.toLowerCase()} components.`
+      ];
+
+      const topics = [
+        { title: `${skill} architecture & fundamentals`, status: "Completed", description: `Understanding core ${skill.toLowerCase()} primitives, execution layers, and operational boundaries.` },
+        { title: `${skill} interface contracts & modeling`, status: "Completed", description: `Designing robust ${skill.toLowerCase()} interfaces, data formats, and error handling protocols.` },
+        { title: `${skill} subsystem integration`, status: "Completed", description: `Integrating ${skill.toLowerCase()} components across distributed cloud and on-premise infrastructure.` },
+        { title: `${skill} telemetry & health monitoring`, status: "Completed", description: `Monitoring latency, throughput benchmarks, and resource utilization for ${skill.toLowerCase()}.` },
+        { title: `${skill} optimization & failure modes`, status: "Completed", description: `Identifying performance bottlenecks, thermal/memory limits, and recovery strategies for ${skill.toLowerCase()}.` },
+        { title: `${skill} governance & best practices`, status: "Completed", description: `Enforcing operational governance, security controls, and verification standards for ${skill.toLowerCase()}.` }
+      ];
+
+      const topicsBullets = topics.map(t => `- ${t.title}: ${t.description}`).join("\n");
+      const outcomesSemicolon = outcomes.join("; ");
+
+      const practicePrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}).\nI want to practice the following topics for this badge:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nDesign one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like.`;
+
+      const resourcesPrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}).\nI need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nPlease suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), and suggest one small hands-on project that lets me demonstrate all of the topics together.`;
+
+      return {
+        id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+        code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
+        title: title,
+        description: `Foundational badge covering core ${skill.toLowerCase()} concepts — architectural primitives, component design, telemetry, and system verification.`,
+        target_band: band,
+        power: power,
+        capability: capability,
+        skill: skill,
+        location: location,
+        outcomes: outcomes,
+        earn_badge_status: "Pending Review",
+        earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
+        practice_project: {
+          intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
+          prompt: practicePrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+        },
+        learning_topics: topics,
+        learning_resources: {
+          intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+          prompt: resourcesPrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+        },
+        related: {
+          skill: skill,
+          capability: capability,
+          power: power
+        }
+      };
+    },
+
+    toggleBadgeSection(sectionId) {
+      const content = document.getElementById(`content-${sectionId}`);
+      const chevron = document.getElementById(`chevron-${sectionId}`);
+      if (!content) return;
+      if (content.style.display === "none") {
+        content.style.display = "block";
+        if (chevron) chevron.textContent = "▲";
+      } else {
+        content.style.display = "none";
+        if (chevron) chevron.textContent = "▼";
+      }
+    },
+
+    toggleAllBadgeSections() {
+      const sections = ["outcomes", "practice", "topics", "resources", "related"];
+      let anyOpen = false;
+      for (const s of sections) {
+        const c = document.getElementById(`content-${s}`);
+        if (c && c.style.display !== "none") {
+          anyOpen = true;
+          break;
+        }
+      }
+      for (const s of sections) {
+        const c = document.getElementById(`content-${s}`);
+        const ch = document.getElementById(`chevron-${s}`);
+        if (c) {
+          c.style.display = anyOpen ? "none" : "block";
+        }
+        if (ch) {
+          ch.textContent = anyOpen ? "▼" : "▲";
+        }
+      }
+    },
+
+    async copyTextFromElement(elementId, btnElement) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const textToCopy = el.textContent || el.innerText || "";
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        const originalHtml = btnElement.innerHTML;
+        btnElement.innerHTML = `✓ Copied!`;
+        btnElement.style.background = "#10B981";
+        btnElement.style.color = "#FFFFFF";
+        setTimeout(() => {
+          btnElement.innerHTML = originalHtml;
+          btnElement.style.background = "";
+          btnElement.style.color = "";
+        }, 2000);
+      } catch (err) {
+        const ta = document.createElement("textarea");
+        ta.value = textToCopy;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        btnElement.textContent = "✓ Copied!";
+        setTimeout(() => { btnElement.textContent = "Copy"; }, 2000);
+      }
+    },
+
+    toggleEditBadge() {
+      if (window.starAppController && window.starAppController.is_editing_badge) {
+        this.saveBadgeEdits();
+      } else {
+        window.StarAppBridge.dispatchAction("toggle_edit_badge");
+      }
+    },
+
+    saveBadgeEdits() {
+      const title = document.getElementById("edit-badge-title-input")?.value;
+      const desc = document.getElementById("edit-badge-desc-input")?.value;
+      const outcomes = document.getElementById("edit-badge-outcomes-input")?.value;
+      const practicePrompt = document.getElementById("edit-practice-prompt-input")?.value;
+      const resourcesPrompt = document.getElementById("edit-resources-prompt-input")?.value;
+
+      const topics = [];
+      for (let i = 0; i < 20; i++) {
+        const titleEl = document.getElementById(`edit-topic-title-${i}`);
+        const descEl = document.getElementById(`edit-topic-desc-${i}`);
+        if (!titleEl && !descEl) break;
+        topics.push({
+          title: titleEl?.value?.trim() || `Topic ${i+1}`,
+          description: descEl?.value?.trim() || "",
+          status: "Completed"
+        });
+      }
+
+      const payload = {
+        title: title || "",
+        description: desc || "",
+        outcomes: outcomes ? outcomes.split("\n").filter(o => o.trim()) : [],
+        practice_prompt: practicePrompt || "",
+        resources_prompt: resourcesPrompt || "",
+        topics: topics.length > 0 ? topics : undefined
+      };
+      window.StarAppBridge.dispatchAction("save_badge_edits", JSON.stringify(payload));
+    },
+
+    saveGeneratedBadge() {
+      window.StarAppBridge.dispatchAction("save_generated_badge");
+    },
+
     // Read-only telemetry accessor for regression verification
     _getRenderState() {
       return renderState;

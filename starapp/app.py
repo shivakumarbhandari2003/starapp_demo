@@ -5,6 +5,7 @@ Works seamlessly in browser Pyodide runtime and in local Python test suites.
 """
 
 import json
+import time
 from typing import Optional, Dict, Any
 from starapp.models import (
     User, Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet,
@@ -36,7 +37,10 @@ from starapp.views_guardian import (
     render_guardian_review_detail,
     render_assessment_modal_content, render_guardian_materials,
     render_guardian_activity_feed, render_guardian_extensions,
-    render_guardian_announcements
+    render_guardian_announcements,
+    render_guardian_create_badge, render_guardian_badge_approval_queue,
+    render_badge_creation_preview_modal, render_badge_review_inspect_modal,
+    render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal
 )
 from starapp.mapping_data import (
     get_higher_bands, filter_members_by_band_and_roles, filter_reviewers_by_band_and_roles,
@@ -98,8 +102,53 @@ class StarAppController:
         self.editing_mapping_id: Optional[str] = None
         self.mapping_show_final_stage: bool = False
 
+        # Create Badge Workspace state
+        self.create_badge_band: Optional[str] = None
+        self.create_badge_power: str = "Tech"
+        self.create_badge_capability: str = "Data & Machine"
+        self.create_badge_skill: str = "Hardware"
+        self.create_badge_outcome_sentence: str = "Identify CPU, memory, storage, and GPU components in a given system spec and describe their basic roles"
+        self.created_badge_data: Optional[Dict[str, Any]] = None
+        self.is_editing_badge: bool = False
+        self.saved_badges: List[Dict[str, Any]] = []
+        self.create_badge_reviewer_id: Optional[str] = None
+        self.create_badge_prompt_json: str = json.dumps({
+            "prompt": "Identify CPU, memory, storage, and GPU components in a given system specification and describe their basic roles.",
+            "learning_objectives": [
+                "Identify hardware components",
+                "Understand their primary functions",
+                "Explain how the components work together"
+            ],
+            "expected_outcomes": [
+                "Component identification table",
+                "Functional architecture diagram",
+                "Tradeoff analysis summary"
+            ],
+            "evaluation_focus": [
+                "Technical accuracy",
+                "System integration reasoning",
+                "Clarity and completeness"
+            ]
+        }, indent=2)
+        self.create_badge_metadata: Dict[str, Any] = {
+            "code": "B1-HDW-01",
+            "title": "Foundational Hardware Architecture",
+            "category": "Systems Engineering",
+            "description": "Architectural overview of system hardware, processor components, bus architectures, memory hierarchy, and storage subsystems.",
+            "learning_outcomes": "Component identification table, Functional architecture diagram, Tradeoff analysis summary",
+            "learning_topics": "CPU Architecture, Memory Subsystems, Storage Systems, Accelerator Hardware",
+            "project_requirements": "Design a complete specification document analyzing hardware bottlenecks in a high-throughput processing pipeline."
+        }
+        self.create_badge_json_error: Optional[str] = None
+        self.create_badge_skill_search: str = ""
+
+        # Badge Approval Queue state
+        self.badge_approval_filter: str = "all"
+        self.badge_approval_search: str = ""
+
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
+        "g_create_badge", "g_badge_approval",
         "g_dashboard", "g_roadmap", "g_cosmonauts", "g_allotment", "g_badge_allotment", "g_mapping", "g_reviews", "g_review_detail",
         "g_materials", "g_extensions", "g_announcements", "g_activity"
     }
@@ -108,9 +157,9 @@ class StarAppController:
         "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity"
     }
 
-    def initialize(self, stored_json: Optional[str] = None, session_json: Optional[str] = None):
+    def initialize(self, stored_json: Optional[str] = None, session_json: Optional[str] = None, sqlite_b64: Optional[str] = None):
         """Loads data from storage and restores previous user session including the exact page."""
-        store.load_from_json(stored_json)
+        store.load_from_json(stored_json, sqlite_b64)
 
         # Restore session — including the exact page the user was on
         if session_json and session_json.strip():
@@ -122,13 +171,14 @@ class StarAppController:
                     user = store.get_user_by_id(user_id)
                     if user:
                         self.current_user = user
+                        is_guardian_user = (user.role in ("guardian", "badge_reviewer") or user.has_role("guardian") or user.has_role("badge_reviewer"))
                         # Restore the exact page if it is valid for the user's role
-                        if user.role == "guardian" and saved_view in self._GUARDIAN_VIEWS:
+                        if is_guardian_user and saved_view in self._GUARDIAN_VIEWS:
                             self.current_view = saved_view
                         elif user.role == "cosmonaut" and saved_view in self._COSMONAUT_VIEWS:
                             self.current_view = saved_view
                         else:
-                            self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
+                            self.current_view = "g_badge_approval" if user.has_role("badge_reviewer") and not user.has_role("guardian") else ("g_dashboard" if is_guardian_user else "c_dashboard")
             except Exception as e:
                 print(f"[Controller] Session restore error: {e}")
 
@@ -151,9 +201,14 @@ class StarAppController:
             if store.dirty or force_data:
                 json_data = store.to_json()
                 js.window.StarAppBridge.setStore("data", json_data)
+                try:
+                    sqlite_b64 = store.export_sqlite_base64()
+                    js.window.StarAppBridge.setStore("sqlite_db", sqlite_b64)
+                except Exception as e:
+                    print(f"[Controller] SQLite export error: {e}")
                 store.dirty = False
 
-    def reload_data(self, stored_json: Optional[str] = None, expected_generation: Optional[int] = None):
+    def reload_data(self, stored_json: Optional[str] = None, expected_generation: Optional[int] = None, sqlite_b64: Optional[str] = None):
         """
         Real-time multi-window synchronization callback.
         Called when another browser window updates the shared data store.
@@ -162,8 +217,8 @@ class StarAppController:
         """
         if expected_generation is not None and int(expected_generation) < self.render_generation:
             return
-        if stored_json and stored_json.strip():
-            store.load_from_json(stored_json)
+        if (stored_json and stored_json.strip()) or (sqlite_b64 and sqlite_b64.strip()):
+            store.load_from_json(stored_json, sqlite_b64)
             if self.current_user:
                 updated_user = store.get_user_by_id(self.current_user.id)
                 if updated_user:
@@ -180,10 +235,14 @@ class StarAppController:
     # ==========================================================================
 
     def handle_event(self, action: str, payload_json: str = "{}"):
-        try:
-            payload = json.loads(payload_json) if isinstance(payload_json, str) and payload_json.startswith("{") else payload_json
-        except Exception:
-            payload = {}
+        import time
+        if isinstance(payload_json, str) and payload_json.startswith("{") and action != "update_badge_prompt":
+            try:
+                payload = json.loads(payload_json)
+            except Exception:
+                payload = payload_json
+        else:
+            payload = payload_json
 
         # --- Authentication Actions ---
         if action == "login":
@@ -201,8 +260,431 @@ class StarAppController:
             user = store.get_user_by_id(user_id)
             if user:
                 self.current_user = user
-                self.current_view = "g_dashboard" if user.role == "guardian" else "c_dashboard"
-                self.set_flash(f"Logged in as {user.name} ({user.role.title()})", "success")
+                user_roles = getattr(user, "roles", [user.role])
+                is_guardian_user = (user.role in ("guardian", "badge_reviewer") or user.has_role("guardian") or user.has_role("badge_reviewer"))
+                if is_guardian_user:
+                    self.current_view = "g_badge_approval" if user.has_role("badge_reviewer") and not user.has_role("guardian") else "g_dashboard"
+                else:
+                    self.current_view = "c_dashboard"
+                self.set_flash(f"Logged in as {user.name} ({', '.join(user_roles).replace('_', ' ').title()})", "success")
+
+        # --- Create Badge & Reviewer Approval Workflow ---
+        elif action == "select_create_badge_band":
+            from starapp.badge_generator import BAND_DEFAULT_OUTCOME_SENTENCES
+            band = payload if isinstance(payload, str) else (payload.get("band", "") if isinstance(payload, dict) else "")
+            band = band.strip() if band else None
+            self.create_badge_band = band
+            self.current_view = "g_create_badge"
+            if band:
+                self.create_badge_metadata["code"] = f"{band}-HDW-01"
+                self.create_badge_metadata["title"] = f"Band {band} Systems & Hardware Architecture"
+                self.create_badge_outcome_sentence = BAND_DEFAULT_OUTCOME_SENTENCES.get(band, "Identify CPU, memory, storage, and GPU components in a given system spec and describe their basic roles")
+                # Do NOT pre-fill badge data — user must click "Create Badge" to generate via Gemini
+                self.created_badge_data = None
+                self.is_editing_badge = False
+                revs = store.get_eligible_badge_reviewers(band)
+                if revs:
+                    self.create_badge_reviewer_id = revs[0]["id"]
+                else:
+                    self.create_badge_reviewer_id = None
+            else:
+                self.created_badge_data = None
+            self.create_badge_json_error = None
+
+        elif action in ["update_badge_power", "change_badge_power"]:
+            from starapp.badge_generator import generate_badge_data
+            power = payload if isinstance(payload, str) else payload.get("power", "Tech")
+            self.create_badge_power = power
+            if self.create_badge_band and self.created_badge_data is not None:
+                self.created_badge_data = generate_badge_data(
+                    band=self.create_badge_band,
+                    power=self.create_badge_power,
+                    capability=self.create_badge_capability,
+                    skill=self.create_badge_skill,
+                    outcome_sentence=self.create_badge_outcome_sentence
+                )
+
+        elif action in ["update_badge_capability", "change_badge_capability"]:
+            from starapp.badge_generator import CAPABILITY_SKILLS_MAP, generate_badge_data
+            cap = payload if isinstance(payload, str) else payload.get("capability", "Data & Machine")
+            self.create_badge_capability = cap
+            valid_skills = CAPABILITY_SKILLS_MAP.get(cap, ["Hardware"])
+            if self.create_badge_skill not in valid_skills:
+                self.create_badge_skill = valid_skills[0]
+            if self.create_badge_band and self.created_badge_data is not None:
+                self.created_badge_data = generate_badge_data(
+                    band=self.create_badge_band,
+                    power=self.create_badge_power,
+                    capability=self.create_badge_capability,
+                    skill=self.create_badge_skill,
+                    outcome_sentence=self.create_badge_outcome_sentence
+                )
+
+        elif action in ["update_badge_skill", "change_badge_skill"]:
+            from starapp.badge_generator import generate_badge_data
+            skill = payload if isinstance(payload, str) else payload.get("skill", "Hardware")
+            self.create_badge_skill = skill
+            if self.create_badge_band and self.created_badge_data is not None:
+                self.created_badge_data = generate_badge_data(
+                    band=self.create_badge_band,
+                    power=self.create_badge_power,
+                    capability=self.create_badge_capability,
+                    skill=self.create_badge_skill,
+                    outcome_sentence=self.create_badge_outcome_sentence
+                )
+
+        elif action == "change_badge_outcome_sentence":
+            sent = payload if isinstance(payload, str) else payload.get("outcome_sentence", "")
+            self.create_badge_outcome_sentence = sent
+
+        elif action == "on_badge_generated":
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            if isinstance(payload, dict):
+                b_data = payload.get("badge_data", payload)
+                self.created_badge_data = b_data
+                if "power" in payload: self.create_badge_power = payload["power"]
+                if "capability" in payload: self.create_badge_capability = payload["capability"]
+                if "skill" in payload: self.create_badge_skill = payload["skill"]
+                if "outcome_sentence" in payload: self.create_badge_outcome_sentence = payload["outcome_sentence"]
+                self.set_flash("Badge created successfully with Gemini AI!", "success")
+
+        elif action == "toggle_edit_badge":
+            self.is_editing_badge = not self.is_editing_badge
+
+        elif action == "save_badge_edits":
+            if isinstance(payload, str):
+                try: payload = json.loads(payload)
+                except Exception: payload = {}
+            if isinstance(payload, dict) and self.created_badge_data:
+                if "title" in payload and payload["title"]:
+                    self.created_badge_data["title"] = payload["title"].strip()
+                if "description" in payload:
+                    self.created_badge_data["description"] = payload["description"].strip()
+                if "outcomes" in payload:
+                    if isinstance(payload["outcomes"], list):
+                        self.created_badge_data["outcomes"] = payload["outcomes"]
+                    elif isinstance(payload["outcomes"], str):
+                        self.created_badge_data["outcomes"] = [o.strip() for o in payload["outcomes"].split("\n") if o.strip()]
+                if "practice_prompt" in payload and "practice_project" in self.created_badge_data:
+                    self.created_badge_data["practice_project"]["prompt"] = payload["practice_prompt"]
+                if "resources_prompt" in payload and "learning_resources" in self.created_badge_data:
+                    self.created_badge_data["learning_resources"]["prompt"] = payload["resources_prompt"]
+                if "topics" in payload and isinstance(payload["topics"], list):
+                    self.created_badge_data["learning_topics"] = payload["topics"]
+                t = self.created_badge_data.get("title", "")
+                self.created_badge_data["location"] = f"{t} under {self.create_badge_skill}, under {self.create_badge_capability}, under {self.create_badge_power}, under Band {self.create_badge_band}"
+                self.is_editing_badge = False
+                self.set_flash("Badge edits applied successfully.", "info")
+
+        elif action == "save_generated_badge":
+            if not self.created_badge_data:
+                from starapp.badge_generator import generate_badge_data
+                self.created_badge_data = generate_badge_data(
+                    band=self.create_badge_band or "B1",
+                    power=self.create_badge_power,
+                    capability=self.create_badge_capability,
+                    skill=self.create_badge_skill,
+                    outcome_sentence=self.create_badge_outcome_sentence
+                )
+            success, msg, b_obj = store.save_generated_badge(
+                self.created_badge_data,
+                creator_id=self.current_user.id if self.current_user else "guardian_1"
+            )
+            if success:
+                loc = self.created_badge_data.get("location", f"{self.created_badge_data.get('title')} under {self.create_badge_skill}, under {self.create_badge_capability}, under {self.create_badge_power}, under Band {self.create_badge_band}")
+                self.set_flash(f"Badge '{self.created_badge_data.get('title')}' saved to Saved Badges ({loc})!", "success")
+            else:
+                self.set_flash(msg, "error")
+
+        elif action == "view_saved_badge":
+            badge_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            b = store.get_badge(badge_id)
+            if b:
+                if b.prompt_json:
+                    try:
+                        self.created_badge_data = json.loads(b.prompt_json)
+                    except Exception:
+                        self.created_badge_data = None
+                if not self.created_badge_data:
+                    from starapp.badge_generator import generate_badge_data
+                    self.created_badge_data = generate_badge_data(
+                        band=getattr(b, "target_band", "B1"),
+                        power=getattr(b, "power", "Tech"),
+                        capability=getattr(b, "capability", "Data & Machine"),
+                        skill=getattr(b, "skill", "Hardware"),
+                        outcome_sentence=self.create_badge_outcome_sentence
+                    )
+                self.create_badge_band = getattr(b, "target_band", "B1")
+                self.create_badge_power = getattr(b, "power", "Tech")
+                self.create_badge_capability = getattr(b, "capability", "Data & Machine")
+                self.create_badge_skill = getattr(b, "skill", "Hardware")
+                self.is_editing_badge = False
+                self.set_flash(f"Loaded saved badge '{b.title}'", "info")
+
+        elif action == "add_custom_capability":
+            cap_name = payload if isinstance(payload, str) else payload.get("name", "")
+            cap_name = cap_name.strip()
+            if not cap_name:
+                self.set_flash("Capability name cannot be empty.", "warning")
+            else:
+                success, msg = store.add_custom_capability(cap_name, created_by=self.current_user.id if self.current_user else "guardian_1")
+                if success:
+                    self.create_badge_capability = cap_name
+                    self.set_flash(f"Custom capability '{cap_name}' added successfully.", "success")
+                else:
+                    self.set_flash(msg, "warning")
+
+        elif action == "update_badge_skill":
+            skill = payload if isinstance(payload, str) else payload.get("skill", "Hardware")
+            self.create_badge_skill = skill
+
+        elif action == "add_custom_skill":
+            skill_name = payload if isinstance(payload, str) else payload.get("name", "")
+            skill_name = skill_name.strip()
+            if not skill_name:
+                self.set_flash("Skill name cannot be empty.", "warning")
+            else:
+                success, msg = store.add_custom_skill(skill_name, created_by=self.current_user.id if self.current_user else "guardian_1")
+                if success:
+                    self.create_badge_skill = skill_name
+                    self.set_flash(f"Custom skill '{skill_name}' added successfully.", "success")
+                else:
+                    self.set_flash(msg, "warning")
+
+        elif action == "search_skills":
+            self.create_badge_skill_search = payload if isinstance(payload, str) else payload.get("query", "")
+
+        elif action == "select_badge_reviewer":
+            rev_id = payload if isinstance(payload, str) else payload.get("reviewer_id", "")
+            if self.create_badge_band:
+                eligible, err_msg = store.verify_reviewer_eligibility(rev_id, self.create_badge_band)
+                if not eligible:
+                    self.set_flash(err_msg, "error")
+                else:
+                    self.create_badge_reviewer_id = rev_id
+            else:
+                self.create_badge_reviewer_id = rev_id
+
+        elif action == "update_badge_prompt":
+            if isinstance(payload, dict):
+                if "prompt_json" in payload:
+                    p_text = payload["prompt_json"]
+                else:
+                    p_text = json.dumps(payload, indent=2)
+            else:
+                p_text = str(payload)
+            self.create_badge_prompt_json = p_text
+            try:
+                json.loads(p_text)
+                self.create_badge_json_error = None
+            except Exception as e:
+                self.create_badge_json_error = str(e)
+
+        elif action == "format_badge_prompt":
+            try:
+                p_obj = json.loads(self.create_badge_prompt_json)
+                self.create_badge_prompt_json = json.dumps(p_obj, indent=2)
+                self.create_badge_json_error = None
+                self.set_flash("Prompt JSON formatted successfully.", "info")
+            except Exception as e:
+                self.create_badge_json_error = f"Cannot format invalid JSON: {e}"
+                self.set_flash(f"JSON Syntax Error: {e}", "error")
+
+        elif action == "preview_new_badge":
+            if isinstance(payload, dict):
+                for k in ["code", "title", "category", "description", "learning_outcomes", "learning_topics", "project_requirements"]:
+                    if k in payload and payload[k] is not None:
+                        self.create_badge_metadata[k] = str(payload[k]).strip()
+                if "prompt_json" in payload and payload["prompt_json"]:
+                    self.create_badge_prompt_json = payload["prompt_json"]
+
+            if not self.create_badge_band:
+                self.set_flash("Please select a target band for the badge.", "error")
+            elif self.create_badge_band == "B6":
+                self.set_flash("B6 badges cannot be assigned via standard reviewer workflow (executive council review required).", "error")
+            elif not self.create_badge_reviewer_id:
+                self.set_flash("Please select an eligible higher-band reviewer.", "error")
+            else:
+                is_elig, elig_err = store.verify_reviewer_eligibility(self.create_badge_reviewer_id, self.create_badge_band)
+                if not is_elig:
+                    self.set_flash(f"Selected reviewer ineligible: {elig_err}", "error")
+                else:
+                    try:
+                        parsed_prompt = json.loads(self.create_badge_prompt_json)
+                        if not isinstance(parsed_prompt, dict) or "prompt" not in parsed_prompt:
+                            self.set_flash("Structured JSON prompt must be an object containing a 'prompt' property.", "error")
+                        else:
+                            code = self.create_badge_metadata.get("code", "").strip()
+                            title = self.create_badge_metadata.get("title", "").strip()
+                            if not code or not title:
+                                self.set_flash("Badge Code and Title are required.", "error")
+                            else:
+                                self.active_modal = "badge_creation_preview"
+                                self.modal_payload = {
+                                    "target_band": self.create_badge_band,
+                                    "power": self.create_badge_power,
+                                    "capability": self.create_badge_capability,
+                                    "skill": self.create_badge_skill,
+                                    "reviewer_id": self.create_badge_reviewer_id,
+                                    "code": code,
+                                    "title": title,
+                                    "category": self.create_badge_metadata.get("category", "Systems Engineering"),
+                                    "description": self.create_badge_metadata.get("description", ""),
+                                    "learning_outcomes": self.create_badge_metadata.get("learning_outcomes", ""),
+                                    "learning_topics": self.create_badge_metadata.get("learning_topics", ""),
+                                    "project_requirements": self.create_badge_metadata.get("project_requirements", ""),
+                                    "prompt_json": self.create_badge_prompt_json
+                                }
+                    except Exception as e:
+                        self.create_badge_json_error = str(e)
+                        self.set_flash(f"Invalid JSON Prompt: {e}", "error")
+
+        elif action == "create_badge":
+            user_roles = getattr(self.current_user, "roles", [self.current_user.role]) if self.current_user else []
+            if not self.current_user or ("guardian" not in user_roles and self.current_user.role != "guardian"):
+                self.set_flash("Only Guardian / Training Mentors can author new badges.", "error")
+            else:
+                draft = self.modal_payload if self.modal_payload else self.create_badge_metadata
+                code = draft.get("code", "").strip()
+                title = draft.get("title", "").strip()
+                band = draft.get("target_band", self.create_badge_band)
+                power = draft.get("power", self.create_badge_power)
+                cap = draft.get("capability", self.create_badge_capability)
+                skill = draft.get("skill", self.create_badge_skill)
+                reviewer_id = draft.get("reviewer_id", self.create_badge_reviewer_id)
+                prompt_json = draft.get("prompt_json", self.create_badge_prompt_json)
+
+                all_b = store.get_all_badges()
+                if any(b.code.lower() == code.lower() for b in all_b):
+                    code = f"{code}-{int(time.time()) % 1000}"
+
+                badge_id = f"badge_{code.lower().replace('-', '_')}_{int(time.time()) % 1000}"
+                raw_outcomes = draft.get("learning_outcomes", "")
+                outcomes = [o.strip() for o in raw_outcomes.replace("\n", ",").split(",") if o.strip()]
+                raw_topics = draft.get("learning_topics", "")
+                topics = [t.strip() for t in raw_topics.replace("\n", ",").split(",") if t.strip()]
+
+                success, msg, *_ = store.create_badge_for_review(
+                    badge_id=badge_id,
+                    code=code,
+                    title=title,
+                    category=draft.get("category", "Systems Engineering"),
+                    description=draft.get("description", ""),
+                    target_band=band,
+                    power=power,
+                    capability=cap,
+                    skill=skill,
+                    prompt_json=prompt_json,
+                    creator_id=self.current_user.id,
+                    reviewer_id=reviewer_id,
+                    learning_outcomes=outcomes,
+                    learning_topics=topics,
+                    project_requirements=draft.get("project_requirements", "")
+                )
+
+                if success:
+                    rev_user = store.get_user_by_id(reviewer_id)
+                    rev_name = rev_user.name if rev_user else reviewer_id
+                    self.set_flash(f"Badge '{code}: {title}' successfully created and submitted to {rev_name} for approval.", "success")
+                    self.active_modal = None
+                    self.modal_payload = {}
+                    self.current_view = "g_badge_approval"
+                else:
+                    self.set_flash(f"Failed to create badge: {msg}", "error")
+
+        elif action == "filter_badge_approval":
+            self.badge_approval_filter = payload if isinstance(payload, str) else payload.get("filter", "all")
+
+        elif action == "search_badge_approval":
+            self.badge_approval_search = payload if isinstance(payload, str) else payload.get("query", "")
+
+        elif action == "open_badge_for_review":
+            b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            if badge:
+                self.active_modal = "badge_inspect"
+                self.modal_payload = {"badge_id": b_id}
+            else:
+                self.set_flash("Badge not found.", "warning")
+
+        elif action == "edit_submitted_badge":
+            b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                user_roles = getattr(self.current_user, "roles", [self.current_user.role]) if self.current_user else []
+                is_assigned = (getattr(badge, "assigned_reviewer_id", "") == (self.current_user.id if self.current_user else ""))
+                is_guardian = "guardian" in user_roles
+                if not (is_assigned or is_guardian):
+                    self.set_flash("Unauthorized: Only the assigned Badge Reviewer or Guardian can edit this submission.", "error")
+                else:
+                    self.active_modal = "badge_reviewer_edit"
+                    self.modal_payload = {"badge_id": b_id}
+
+        elif action == "save_reviewed_badge":
+            b_id = payload.get("badge_id") if isinstance(payload, dict) else ""
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                user_roles = getattr(self.current_user, "roles", [self.current_user.role]) if self.current_user else []
+                is_assigned = (getattr(badge, "assigned_reviewer_id", "") == (self.current_user.id if self.current_user else ""))
+                is_guardian = "guardian" in user_roles
+                if not (is_assigned or is_guardian):
+                    self.set_flash("Unauthorized: Only the assigned Badge Reviewer or Guardian can save edits.", "error")
+                else:
+                    updates = {
+                        "title": payload.get("title", badge.title),
+                        "power": payload.get("power", getattr(badge, "power", "Tech")),
+                        "capability": payload.get("capability", getattr(badge, "capability", "Data & Machine")),
+                        "skill": payload.get("skill", getattr(badge, "skill", "Hardware")),
+                        "description": payload.get("description", badge.description),
+                        "project_requirements": payload.get("project_requirements", badge.project_requirements),
+                        "prompt_json": payload.get("prompt_json", getattr(badge, "prompt_json", "{}"))
+                    }
+                    success, msg = store.update_badge_by_reviewer(b_id, self.current_user.id, updates)
+                    if success:
+                        self.set_flash(f"Changes to '{badge.code}' saved successfully. Badge remains pending authorization.", "success")
+                        self.active_modal = None
+                        self.modal_payload = {}
+                    else:
+                        self.set_flash(f"Failed to update badge: {msg}", "error")
+
+        elif action == "confirm_approve_badge":
+            b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                user_roles = getattr(self.current_user, "roles", [self.current_user.role]) if self.current_user else []
+                if "badge_reviewer" not in user_roles:
+                    self.set_flash("Unauthorized: Only authorized Badge Reviewers can authorize badges.", "error")
+                else:
+                    self.active_modal = "badge_approval_confirm"
+                    self.modal_payload = {"badge_id": b_id}
+
+        elif action == "approve_submitted_badge":
+            b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                user_roles = getattr(self.current_user, "roles", [self.current_user.role]) if self.current_user else []
+                if "badge_reviewer" not in user_roles:
+                    self.set_flash("Unauthorized: Only users with the Badge Reviewer role can approve badges.", "error")
+                else:
+                    success, msg = store.approve_badge(b_id, self.current_user.id)
+                    if success:
+                        self.set_flash(f"Badge '{badge.code}: {badge.title}' has been successfully authorized and approved.", "success")
+                        self.active_modal = None
+                        self.modal_payload = {}
+                    else:
+                        self.set_flash(f"Approval failed: {msg}", "error")
 
         elif action == "logout":
             self.current_user = None
@@ -2214,10 +2696,38 @@ if __name__ == "__main__":
                 </form>
                 """
 
+        elif self.active_modal == "badge_creation_preview":
+            title = "Badge Creation Preview & Verification"
+            rev = store.get_user_by_id(self.modal_payload.get("reviewer_id", ""))
+            body = render_badge_creation_preview_modal(self.modal_payload, rev)
+
+        elif self.active_modal == "badge_inspect":
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            title = f"Badge Inspection — {badge.code if badge else ''}"
+            rev = store.get_user_by_id(getattr(badge, "assigned_reviewer_id", "")) if badge else None
+            creator = store.get_user_by_id(getattr(badge, "creator_id", "")) if badge else None
+            body = render_badge_review_inspect_modal(badge, rev, creator) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+
+        elif self.active_modal == "badge_reviewer_edit":
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            title = f"Edit Badge Proposal — {badge.code if badge else ''}"
+            custom_caps = store.get_custom_capabilities()
+            custom_skills = store.get_custom_skills()
+            elig_revs = store.get_eligible_badge_reviewers(getattr(badge, "target_band", "B1")) if badge else []
+            body = render_badge_reviewer_edit_modal(badge, custom_caps, custom_skills, elig_revs) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+
+        elif self.active_modal == "badge_approval_confirm":
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            title = "Confirm Institutional Authorization"
+            body = render_badge_approval_confirm_modal(badge, self.current_user) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+
         modal_dialog_class = "liquid-glass-modal modal-dialog"
-        if self.active_modal == "material_preview":
+        if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect"]:
             modal_dialog_class += " modal-xl modal-lg"
-        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material"]:
+        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm"]:
             modal_dialog_class += " modal-lg"
 
         return f"""
@@ -2241,12 +2751,19 @@ if __name__ == "__main__":
     def render_login_view(self) -> str:
         demo_accounts = [
             {"id": "guardian_1", "role": "Guardian", "name": "Dr. Elena Vance", "user": "guardian", "desc": "Training Mentor (Full curriculum management & rubric evaluations)"},
+            {"id": "m_b3_3", "role": "Badge Reviewer (B3)", "name": "Aarav Sharma", "user": "reviewer_aarav", "desc": "AI Engineer • Band B3 (Authorized Reviewer for B1 & B2)"},
+            {"id": "m_b6_2", "role": "Senior Reviewer (B6)", "name": "Dr. Rajeshwari Iyer", "user": "reviewer_rajeshwari", "desc": "Solutions Designer • Band B6 (Executive Reviewer for B1 through B5)"},
             {"id": "cosmo_1", "role": "Cosmonaut", "name": "Astraea Nova", "user": "astraea", "desc": "Cosmonaut Learner (3 Badges completed, Ingestion active)"}
         ]
 
         account_buttons = []
         for acc in demo_accounts:
-            badge_cls = "status-approved" if acc["role"] == "Guardian" else "status-active"
+            if "Guardian" in acc["role"]:
+                badge_cls = "status-approved"
+            elif "Reviewer" in acc["role"]:
+                badge_cls = "status-warning"
+            else:
+                badge_cls = "status-active"
             acc_id = acc["id"]
             acc_name = escape(acc["name"])
             acc_role = escape(acc["role"])
@@ -2382,14 +2899,53 @@ if __name__ == "__main__":
         active_nav_id = self.current_view
         route_key = self.current_view
 
-        if self.current_user.role == "guardian":
+        user_roles = getattr(self.current_user, "roles", [self.current_user.role])
+        is_guardian_or_reviewer = ("guardian" in user_roles or "badge_reviewer" in user_roles or self.current_user.role in ("guardian", "badge_reviewer"))
+
+        if is_guardian_or_reviewer:
             pending_reviews = len([s for s in all_subs if s.status == "pending"])
             pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
-            sidebar_badges = {"g_reviews": pending_reviews, "g_extensions": pending_exts}
+            pending_badge_approvals = len(store.get_pending_badge_approvals(reviewer_id=self.current_user.id if "badge_reviewer" in user_roles and "guardian" not in user_roles else None))
+            sidebar_badges = {"g_reviews": pending_reviews, "g_extensions": pending_exts, "g_badge_approval": pending_badge_approvals}
             active_nav_id = "g_reviews" if self.current_view == "g_review_detail" else self.current_view
-            sidebar_html = render_guardian_sidebar(self.current_view, self.current_user, pending_reviews, pending_exts)
+            sidebar_html = render_guardian_sidebar(self.current_view, self.current_user, pending_reviews, pending_exts, pending_badge_approvals)
 
-            if self.current_view == "g_dashboard":
+            if self.current_view == "g_create_badge":
+                page_title = "Create Badge — StarApp"
+                custom_caps = store.get_custom_capabilities()
+                custom_skills = store.get_custom_skills()
+                elig_revs = store.get_eligible_badge_reviewers(self.create_badge_band) if self.create_badge_band else []
+                saved_b = store.get_saved_badges(self.create_badge_band)
+                main_content_html = render_guardian_create_badge(
+                    selected_band=self.create_badge_band,
+                    power=self.create_badge_power,
+                    capability=self.create_badge_capability,
+                    skill=self.create_badge_skill,
+                    reviewer_id=self.create_badge_reviewer_id,
+                    prompt_json=self.create_badge_prompt_json,
+                    metadata=self.create_badge_metadata,
+                    custom_capabilities=custom_caps,
+                    custom_skills=custom_skills,
+                    eligible_reviewers=elig_revs,
+                    json_error=self.create_badge_json_error,
+                    skill_search=self.create_badge_skill_search,
+                    outcome_sentence=self.create_badge_outcome_sentence,
+                    created_badge_data=self.created_badge_data,
+                    is_editing_badge=self.is_editing_badge,
+                    saved_badges=saved_b
+                )
+
+            elif self.current_view == "g_badge_approval":
+                page_title = "Reviewer Badge Approval — StarApp"
+                all_badges = store.get_all_badges()
+                main_content_html = render_guardian_badge_approval_queue(
+                    badges=all_badges,
+                    current_user=self.current_user,
+                    status_filter=self.badge_approval_filter,
+                    search_query=self.badge_approval_search
+                )
+
+            elif self.current_view == "g_dashboard":
                 page_title = "Training Batch Overview & Analytics"
                 actual_cosmo = store.get_user_by_id("cosmo_1")
                 assigned_badges = store.get_badges_for_cosmonaut("cosmo_1")

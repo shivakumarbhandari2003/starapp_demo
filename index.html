@@ -60,6 +60,22 @@
         // 1. Initialize Pyodide WebAssembly client-side runtime
         const pyodide = await loadPyodide();
 
+        // 1.1 Load unvendored SQLite3 package for Pyodide
+        if (progressBar) progressBar.style.width = "55%";
+        if (statusText) statusText.innerText = "Loading SQLite WebAssembly database engine...";
+        try {
+          await pyodide.loadPackage("sqlite3");
+        } catch (pkgErr) {
+          console.warn("[StarApp] pyodide.loadPackage('sqlite3') error:", pkgErr);
+          try {
+            await pyodide.loadPackage("micropip");
+            const micropip = pyodide.pyimport("micropip");
+            await micropip.install("sqlite3");
+          } catch (mErr) {
+            console.warn("[StarApp] micropip install sqlite3 error:", mErr);
+          }
+        }
+
         if (progressBar) progressBar.style.width = "70%";
         if (statusText) statusText.innerText = "Mounting StarApp domain architecture in Pyodide virtual FS...";
 
@@ -98,9 +114,11 @@
         // 3. Retrieve persistent data and session from IndexedDB / localStorage
         const storedDataJson = await window.StarAppBridge.getStore("data");
         const sessionJson = await window.StarAppBridge.getStore("session");
+        const sqliteDbB64 = await window.StarAppBridge.getStore("sqlite_db");
 
         window.__STORED_DATA_JSON__ = storedDataJson || "";
         window.__SESSION_DATA_JSON__ = sessionJson || "";
+        window.__SQLITE_DB_B64__ = sqliteDbB64 || "";
 
         if (progressBar) progressBar.style.width = "95%";
         if (statusText) statusText.innerText = "Launching StarApp Controller...";
@@ -118,10 +136,11 @@ from starapp.app import controller
 # Bind controller to global window so the bridge can dispatch actions
 js.window.starAppController = controller
 
-# Initialize with persistent store snapshot
+# Initialize with persistent store snapshot & authoritative SQLite database
 stored_data = js.window.__STORED_DATA_JSON__
 session_data = js.window.__SESSION_DATA_JSON__
-controller.initialize(stored_data, session_data)
+sqlite_db_b64 = js.window.__SQLITE_DB_B64__
+controller.initialize(stored_data, session_data, sqlite_db_b64)
         `);
 
       } catch (err) {

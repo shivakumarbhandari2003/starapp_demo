@@ -11,13 +11,34 @@ def current_iso_timestamp() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 class User:
-    def __init__(self, id: str, username: str, email: str, role: str, name: str, avatar: str = ""):
+    def __init__(
+        self,
+        id: str,
+        username: str,
+        email: str,
+        role: str,
+        name: str,
+        avatar: str = "",
+        roles: Optional[List[str]] = None,
+        band: str = "",
+        learning_track: str = ""
+    ):
         self.id = id
         self.username = username
         self.email = email
-        self.role = role  # "guardian" or "cosmonaut"
+        self.role = role  # Primary role: "guardian", "cosmonaut", "badge_reviewer"
         self.name = name
         self.avatar = avatar or name[:2].upper()
+        self.roles = roles if roles is not None else [role]
+        if role not in self.roles:
+            self.roles.append(role)
+        self.band = band
+        self.learning_track = learning_track
+
+    def has_role(self, role_name: str) -> bool:
+        if self.role == role_name:
+            return True
+        return role_name in getattr(self, "roles", [])
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -25,8 +46,11 @@ class User:
             "username": self.username,
             "email": self.email,
             "role": self.role,
+            "roles": self.roles,
             "name": self.name,
-            "avatar": self.avatar
+            "avatar": self.avatar,
+            "band": getattr(self, "band", ""),
+            "learning_track": getattr(self, "learning_track", "")
         }
 
     @classmethod
@@ -37,7 +61,10 @@ class User:
             email=data["email"],
             role=data["role"],
             name=data["name"],
-            avatar=data.get("avatar", "")
+            avatar=data.get("avatar", ""),
+            roles=data.get("roles"),
+            band=data.get("band", ""),
+            learning_track=data.get("learning_track", "")
         )
 
 
@@ -95,7 +122,18 @@ class Badge:
         is_published: bool = True,
         assigned_cosmonaut_ids: Optional[List[str]] = None,
         default_timeline: Optional[Dict[str, str]] = None,
-        is_allocated: bool = True
+        is_allocated: bool = True,
+        target_band: str = "",
+        power: str = "",
+        capability: str = "",
+        skill: str = "",
+        prompt_json: str = "",
+        workflow_status: str = "approved",
+        creator_id: str = "",
+        assigned_reviewer_id: str = "",
+        review_due_at: str = "",
+        created_at: str = "",
+        updated_at: str = ""
     ):
         self.id = id
         self.code = code
@@ -110,6 +148,17 @@ class Badge:
         self.assigned_cosmonaut_ids = assigned_cosmonaut_ids or []
         self.default_timeline = default_timeline or {}
         self.is_allocated = is_allocated
+        self.target_band = target_band
+        self.power = power
+        self.capability = capability
+        self.skill = skill
+        self.prompt_json = prompt_json
+        self.workflow_status = workflow_status
+        self.creator_id = creator_id
+        self.assigned_reviewer_id = assigned_reviewer_id
+        self.review_due_at = review_due_at
+        self.created_at = created_at or current_iso_timestamp()
+        self.updated_at = updated_at or current_iso_timestamp()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -125,7 +174,18 @@ class Badge:
             "is_published": self.is_published,
             "assigned_cosmonaut_ids": self.assigned_cosmonaut_ids,
             "default_timeline": self.default_timeline,
-            "is_allocated": getattr(self, "is_allocated", True)
+            "is_allocated": getattr(self, "is_allocated", True),
+            "target_band": getattr(self, "target_band", ""),
+            "power": getattr(self, "power", ""),
+            "capability": getattr(self, "capability", ""),
+            "skill": getattr(self, "skill", ""),
+            "prompt_json": getattr(self, "prompt_json", ""),
+            "workflow_status": getattr(self, "workflow_status", "approved"),
+            "creator_id": getattr(self, "creator_id", ""),
+            "assigned_reviewer_id": getattr(self, "assigned_reviewer_id", ""),
+            "review_due_at": getattr(self, "review_due_at", ""),
+            "created_at": getattr(self, "created_at", ""),
+            "updated_at": getattr(self, "updated_at", "")
         }
 
     @classmethod
@@ -143,7 +203,18 @@ class Badge:
             is_published=data.get("is_published", True),
             assigned_cosmonaut_ids=data.get("assigned_cosmonaut_ids", []),
             default_timeline=data.get("default_timeline", {}),
-            is_allocated=data.get("is_allocated", True)
+            is_allocated=data.get("is_allocated", True),
+            target_band=data.get("target_band", ""),
+            power=data.get("power", ""),
+            capability=data.get("capability", ""),
+            skill=data.get("skill", ""),
+            prompt_json=data.get("prompt_json", ""),
+            workflow_status=data.get("workflow_status", "approved"),
+            creator_id=data.get("creator_id", ""),
+            assigned_reviewer_id=data.get("assigned_reviewer_id", ""),
+            review_due_at=data.get("review_due_at", ""),
+            created_at=data.get("created_at", ""),
+            updated_at=data.get("updated_at", "")
         )
 
 

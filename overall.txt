@@ -1,0 +1,717 @@
+================================================================================
+STARAPP — COMPLETE TECHNICAL SPECIFICATION & IMPLEMENTATION ARCHITECTURE
+================================================================================
+
+Target Audience: Large Language Models (LLMs) and Core Engineering Team
+Purpose: Comprehensive technical handoff documenting everything implemented and
+developed in StarApp. Excludes ER Diagram files and Cosmonaut portal views/sidebars.
+Use this document to understand the codebase architecture, data structures, state
+management, Guardian workspaces, styling tokens, event handlers, and exact file
+responsibilities before implementing modifications.
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & ARCHITECTURAL FOUNDATION
+2. TECHNOLOGY STACK & ZERO-BACKEND RUNTIME MODEL
+3. PROJECT DIRECTORY & COMPONENT INVENTORY
+4. DATA MODELS & SCHEMA SPECIFICATION (starapp/models.py)
+5. CENTRALIZED STORAGE & PERSISTENCE ARCHITECTURE (starapp/storage.py)
+6. JAVASCRIPT BRIDGE & 3-REGION INCREMENTAL DOM ENGINE (js/bridge.js)
+7. APPLICATION CONTROLLER, ROUTING & EVENT DISPATCH (starapp/app.py)
+8. GUARDIAN PORTAL WORKSPACES & INTERFACES (starapp/views_guardian.py)
+   8.1 Guardian Sidebar Navigation
+   8.2 Batch Dashboard Workspace (g_dashboard)
+   8.3 Learning Roadmap Workspace (g_roadmap)
+   8.4 Badge Allotment Workspace (g_allotment)
+   8.5 Band & Competency Mapping Workspace (g_mapping)
+   8.6 Project Reviews & Rubric Evaluation (g_reviews, g_review_detail)
+   8.7 Learning Materials Management (g_materials)
+   8.8 Deadline Extension Management (g_extensions)
+   8.9 Targeted Announcements & Read Receipts
+   8.10 Cohort Activity Feed & Audit Trail
+9. BUSINESS LOGIC, VALIDATION & ANALYTICS ENGINES
+   9.1 Standard 50-Mark Rubric Engine (starapp/assessment.py)
+   9.2 Roadmap DAG & Milestone Progression Engine (starapp/roadmap.py)
+   9.3 Cohort Analytics & KPI Engine (starapp/analytics.py)
+   9.4 Form & Domain Validation Engine (starapp/validation.py)
+   9.5 Synthetic Benchmark & Mapping Datasets (seed_data, mapping_data, dashboard_demo)
+10. DESIGN SYSTEM & LIQUID GLASS 2.0 STYLING (css/)
+11. AUTOMATED TEST SUITE & VERIFICATION (tests/)
+12. BUILD SCRIPTS, DEV TOOLS & INVARIANTS FOR FUTURE CHANGES
+
+================================================================================
+1. EXECUTIVE SUMMARY & ARCHITECTURAL FOUNDATION
+================================================================================
+StarApp is an enterprise-grade training, gamified badge management, and skills
+certification platform built for cohort-based engineering programs ("Batch Orion-24").
+
+KEY ARCHITECTURAL HIGHLIGHTS:
+- Zero-Backend WebAssembly Architecture: The application runs entirely inside the
+  client browser without any traditional backend (no Node.js, Flask, FastAPI,
+  Django, Supabase, or Firebase).
+- In-Browser Python Execution: All application controllers, data access layers,
+  rubric engines, cohort analytics, and UI templates are written in modular Python
+  (Python 3.12+) and execute via Pyodide WebAssembly (v0.26.2).
+- Zero Server Round-Trips for Business Logic: All calculations, evaluations,
+  data mutations, and navigations occur in-memory within the Pyodide runtime.
+- Multi-Tier Local Persistence: Data is persisted across IndexedDB (Database:
+  "StarAppLocalDB", Store: "starapp_state", Key: "root_state") with fallback
+  to localStorage. Session tokens are isolated per tab via sessionStorage, and
+  cross-tab state changes are broadcast via BroadcastChannel.
+- High-Performance 3-Region DOM Reconciliation: A lightweight (<970 lines)
+  JavaScript bridge preserves UI focus and scroll states, patching only mutated
+  regions (Sidebar, Main Page Slot, or Modal Root) rather than rebuilding the DOM.
+
+================================================================================
+2. TECHNOLOGY STACK & ZERO-BACKEND RUNTIME MODEL
+================================================================================
+- WebAssembly Engine: Pyodide v0.26.2 (CPython compiled to WASM)
+- Core Programming Language: Python 3.12+ (executing inside Pyodide)
+- Host JavaScript Layer: Vanilla ECMAScript 2022 (no React, Vue, Angular, or jQuery)
+- Client Storage: IndexedDB API (Version 7) with localStorage fallback
+- Session Isolation: Browser sessionStorage (enables simultaneous independent tabs)
+- Real-Time Cross-Tab Sync: BroadcastChannel API ("starapp_cross_window_sync")
+- Styling & Themes: Handcrafted modern CSS3 (Liquid Glass 2.0 / Glassmorphism)
+- Static Launcher: Python built-in http.server (serve.py) with COOP/COEP headers
+- Bundling Pipeline: scripts/pack_py.py bundles starapp/*.py into js/starapp_bundle.js
+  which mounts onto Pyodide's virtual filesystem (/home/pyodide/starapp) at startup.
+
+================================================================================
+3. PROJECT DIRECTORY & COMPONENT INVENTORY
+================================================================================
+Directory layout (excluding ER Diagram files and contents):
+
+starapp_demo/
+├── index.html                   # HTML entry point, loading screen, Pyodide bootstrapper
+├── serve.py                     # Static Python HTTP launcher with security headers
+├── push_to_github.py            # Zero-dependency GitHub REST API synchronizer
+├── code.txt                     # Original React/JSX reference for liquid-glass components
+├── sw.js                        # Cache-first service worker for instant offline loads
+├── css/
+│   ├── design_tokens.css        # Strict 5-color palette, typography scale, radii
+│   ├── liquid_glass.css         # Liquid glass containers, pill & metal button styling
+│   ├── layout.css               # App shell, persistent sidebar, main viewport, modal root
+│   ├── components.css           # KPI cards, 50-mark rubric grid, tables, calendars
+│   └── responsive.css           # Breakpoints for desktop, laptop, tablet, mobile
+├── js/
+│   ├── bridge.js                # JS bridge: IndexedDB, 3-region DOM patcher, BroadcastChannel
+│   └── starapp_bundle.js        # Packed virtual filesystem source of all starapp/*.py files
+├── starapp/                     # Core Python Application (executed inside Pyodide)
+│   ├── __init__.py              # Package initializer
+│   ├── models.py                # Normalized domain dataclasses and serialization
+│   ├── storage.py               # DataStore class: in-memory graph, IndexedDB sync, dirty tracking
+│   ├── seed_data.py             # Initial 5-badge cohort seed data (Dr. Elena Vance + Astraea Nova)
+│   ├── mapping_data.py          # Bands B1-B6, 3 Roles, 162/36 members, 10 mapping badges, calendar logic
+│   ├── assessment.py            # Standard 50-mark rubric calculator, leaderboard, summaries
+│   ├── roadmap.py               # 25-badge DAG prerequisite roadmap engine & graph generator
+│   ├── analytics.py             # Cohort analytics, KPI formulas, telemetry popovers, risk matrix
+│   ├── validation.py            # Validation rules for badges, timelines, submissions, extensions
+│   ├── views_common.py          # Shared UI templates: marksheets, liquid cards, metal buttons, topbar
+│   ├── views_guardian.py        # All 7+ Guardian portal workspaces and modals
+│   ├── dashboard_demo.py        # Isolated benchmark cohort records (5 demo profiles)
+│   └── app.py                   # Central StarAppController: routing, event handlers, modals, render
+├── tests/                       # Headless Python test suite (49 passing tests)
+│   ├── run_tests.py             # Central test runner (executes all test files in 0.17s)
+│   ├── test_all.py              # Unit tests for models, validation, rubric scoring, prerequisites
+│   ├── test_scenarios_a_to_h.py # Integration tests for mandatory end-to-end workflows
+│   ├── test_dashboard_enhancements.py # Tests for cohort telemetry and data isolation
+│   ├── test_extension_flow.py   # Tests for deadline extension request and approval flow
+│   ├── test_mapping_flow.py     # Tests for Band & Competency Mapping workspace
+│   ├── test_materials_flow.py   # Tests for PDF and YouTube learning material workflows
+│   ├── test_review_flow.py      # Tests for multi-deliverable submission and rubric evaluation
+│   └── test_ui_remediation.py   # Tests for 3-region DOM patching, modal keys, tab preservation
+└── scripts/
+    └── pack_py.py               # Packs starapp/*.py into js/starapp_bundle.js
+
+================================================================================
+4. DATA MODELS & SCHEMA SPECIFICATION (starapp/models.py)
+================================================================================
+All domain models serialize cleanly to and from standard Python dictionaries
+(to_dict / from_dict) for seamless JSON persistence.
+
+1. User
+   - id: str (e.g., "guardian_1", "cosmo_1")
+   - username: str ("guardian", "astraea")
+   - email: str ("guardian@starapp.dev")
+   - role: str ("guardian" or "cosmonaut")
+   - name: str ("Dr. Elena Vance", "Astraea Nova")
+   - avatar: str (e.g., initials "EV", "AN")
+
+2. CosmonautProfile
+   - user_id: str
+   - batch_name: str ("Orion-24")
+   - assigned_guardian_id: str ("guardian_1")
+   - guardian_credentials: str ("Ph.D. Computer Science, Enterprise Data Architect")
+   - skills: List[str] (e.g., ["Python", "SQL", "Apache Kafka", "Docker"])
+   - certifications: List[Dict[str, str]] (keys: name, issuer, year, badge_url)
+
+3. Badge
+   - id: str ("badge_gov_101", "badge_cur_102", "badge_aios_101")
+   - code: str ("GOV-101", "CUR-102")
+   - title: str ("Data Governance & Ethics")
+   - category: str ("Foundations", "Architecture", "AI & ML", "Systems")
+   - description: str
+   - learning_outcomes: List[str]
+   - learning_topics: List[str]
+   - prerequisites: List[str] (list of parent badge IDs for DAG validation)
+   - project_requirements: str
+   - is_published: bool (True = visible to assigned learners)
+   - assigned_cosmonaut_ids: List[str]
+   - default_timeline: Dict[str, str]
+   - is_allocated: bool (determines roadmap active vs. locked status)
+
+4. BadgeTimeline (9-Point Milestone Lifecycle)
+   - badge_id: str
+   - cosmonaut_id: str
+   - assignment_date: str (YYYY-MM-DD)
+   - publication_date: str (YYYY-MM-DD)
+   - learning_start_date: str (YYYY-MM-DD)
+   - learning_end_date: str (YYYY-MM-DD)
+   - project_start_date: str (YYYY-MM-DD)
+   - project_end_date: str (YYYY-MM-DD)
+   - submission_deadline: str (YYYY-MM-DD)
+   - review_date: str (YYYY-MM-DD)
+   - expected_award_date: str (YYYY-MM-DD)
+   - actual_award_date: str
+   - status: str ("active", "completed", "overdue", "awaiting_review")
+
+5. ProjectSubmission (Multi-Deliverable Deliverable Hub)
+   - id: str ("sub_cosmo_1_badge_gov_101_1")
+   - badge_id: str
+   - cosmonaut_id: str
+   - attempt_number: int (1, 2, 3...)
+   - submission_type: str ("pdf", "github", "code", "multi")
+   - payload: str (raw base64 string, URL, or code text)
+   - file_name: str
+   - submitted_at: str (ISO timestamp)
+   - status: str ("pending", "approved", "rejected", "resubmission_requested")
+   - pdf_name / pdf_payload: str (embedded PDF preview)
+   - code_name / code_payload: str (embedded syntax-highlighted code)
+   - github_url: str (external GitHub repository URL)
+
+6. AssessmentMarksheet (Universal 50-Mark Rubric Model)
+   - id: str ("asm_sub_1_attempt_1")
+   - submission_id: str
+   - attempt_number: int
+   - badge_id: str
+   - cosmonaut_id: str
+   - reviewer_id: str ("guardian_1")
+   - reviewer_name: str ("Dr. Elena Vance")
+   - reviewed_at: str (ISO timestamp)
+   - decision: str ("approve", "reject", "resubmission_requested")
+   - 5 Mandatory Criteria (0.0 to 10.0 each):
+     * business_understanding: float
+     * architecture_report: float
+     * technical_knowledge: float
+     * presentation: float
+     * qa: float
+   - Automatically Computed Fields:
+     * total_marks: float (sum of 5 criteria, max 50.0)
+     * percentage: float ((total_marks / 50.0) * 100.0)
+   - Qualitative Feedback:
+     * strength_areas: str
+     * improvement_areas: str
+     * overall_feedback: str
+
+7. LearningMaterial
+   - id: str
+   - badge_id: str
+   - topic: str
+   - title: str
+   - description: str
+   - material_type: str ("pdf", "doc", "youtube", "code")
+   - url_or_data: str (base64 data URI or YouTube video URL)
+   - upload_date: str
+
+8. DeadlineExtension
+   - id: str
+   - badge_id: str
+   - cosmonaut_id: str
+   - current_deadline: str
+   - proposed_deadline: str
+   - reason: str
+   - status: str ("pending", "approved", "rejected")
+   - guardian_response: str
+   - requested_at: str
+   - decided_at: str
+
+9. Announcement
+   - id: str
+   - title: str
+   - message: str
+   - author_id / author_name: str
+   - target_type: str ("all" or "selected")
+   - target_cosmonaut_ids: List[str]
+   - badge_id: str
+   - published_at: str
+   - expiry_date: str
+   - read_by_cosmonaut_ids: List[str]
+
+10. ActivityEvent & Notification
+    - ActivityEvent: Event log entries for audit trail (submissions, evaluations,
+      extensions, allotments).
+    - Notification: Per-user notifications with read/unread tracking.
+
+11. Band Mapping Models (Embedded in DataStore)
+    - band_mappings: List[Dict[str, Any]] (records mapping members across bands,
+      assigned reviewers, and consecutive review dates).
+    - mapping_requests: List[Dict[str, Any]] (review requests dispatched to
+      guardians with statuses "pending", "accepted", "rejected").
+
+================================================================================
+5. CENTRALIZED STORAGE & PERSISTENCE ARCHITECTURE (starapp/storage.py)
+================================================================================
+The DataStore class serves as the single source of truth for both portals.
+Key implementation characteristics:
+- In-Memory Dictionaries: Fast O(1) lookups for users, profiles, badges, timelines,
+  submissions, assessments, materials, extensions, and announcements.
+- Composite Keys: Timelines are indexed as "{badge_id}_{cosmonaut_id}".
+- Schema Versioning: SCHEMA_VERSION = 10. Automatically triggers clean reset if
+  older, incompatible schemas are detected.
+- Dirty Marking & Serialization Cache: Calling mark_dirty() increments store.version,
+  sets store.dirty = True, and invalidates store._cached_json. Read-only actions
+  reuse the cached JSON string, avoiding expensive repeated serializations.
+- Demo Reset Functionality: reset_to_seed() restores the clean initial baseline
+  dataset (Dr. Elena Vance, Astraea Nova, 5 initial badges) without data corruption.
+
+================================================================================
+6. JAVASCRIPT BRIDGE & 3-REGION INCREMENTAL DOM ENGINE (js/bridge.js)
+================================================================================
+The JS bridge (~970 lines) provides the interface between browser APIs and Pyodide:
+1. Storage Persistence:
+   - Reads/writes state JSON to IndexedDB ("StarAppLocalDB", store: "starapp_state",
+     key: "root_state").
+   - Synchronizes fallback copies to localStorage.
+   - Manages sessionStorage for per-tab credentials ("starapp_session").
+2. Real-Time Cross-Window Synchronization:
+   - BroadcastChannel("starapp_cross_window_sync") broadcasts mutations across tabs.
+   - Tab-unique window ID (win_*) prevents echo loops.
+   - Form Control Guard: If the user is actively typing in an <input> or <textarea>,
+     incoming cross-tab reloads are deferred until focusout to avoid interrupting
+     mentor evaluation or input entry.
+   - Rapid-fire mutations within 300ms are coalesced into a single trailing reload.
+3. 3-Region Incremental DOM Patching Engine (patchAppRegions):
+   - Rather than wiping the entire DOM on every action (which causes scroll jumping
+     and input focus loss), the UI is separated into three stable regions:
+     * Region 1: Persistent Sidebar (#starapp-shell-sidebar). Link active states
+       and notification pill badges are patched in-place. Sidebar re-rendering is
+       skipped on standard page navigations.
+     * Region 2: Main Page Content (#starapp-page-slot). Scroll positions and input
+       focus are captured and restored. In g_review_detail, switching between PDF,
+       Code, and GitHub tabs patches only .review-left-column while keeping the
+       entire #guardian-rubric-form on the right untouched!
+     * Region 3: Modal Root (#starapp-modal-root). When an open modal receives an
+       update (e.g. live BroadcastChannel sync), title and body are updated without
+       replaying CSS backdrop fade animations.
+4. File I/O:
+   - Reads local files as Base64 data URLs via FileReader API for client-side storage.
+
+================================================================================
+7. APPLICATION CONTROLLER, ROUTING & EVENT DISPATCH (starapp/app.py)
+================================================================================
+StarAppController coordinates authentication, view routing, modal states, and event
+handling:
+- Controller Initialization: initialize(stored_json, session_json) loads state from
+  IndexedDB, restores active session, and mounts window.starAppController.
+- Event Dispatch Method: handle_event(action, payload_json) decodes JSON payloads
+  and dispatches them to specialized handler routines.
+
+PRIMARY GUARDIAN ACTIONS:
+- "nav_guardian": Routes Guardian between workspaces (g_dashboard, g_roadmap,
+  g_allotment, g_mapping, g_reviews, g_materials, g_extensions).
+- "set_guardian_cosmo_scope": Switches dashboard between cohort aggregate ("all")
+  and individual cosmonaut dossier view.
+- "set_guardian_risk_filter": Filters risk matrix table ("all", "on_track",
+  "moderate_risk", "critical").
+- "save_badge": Creates or updates a badge with title, code, category, prerequisites,
+  and 9-point milestone dates.
+- "toggle_badge_allotment": Toggles whether a badge is allocated to the cohort roadmap.
+- "toggle_badge_publication": Toggles badge visibility to assigned cosmonauts.
+- "open_review_detail": Opens deliverable evaluation workspace for a specific submission.
+- "submit_evaluation": Validates and commits the 50-mark rubric marksheet, updates
+  submission status (approve/reject/resubmission), and updates leaderboard averages.
+- "decide_extension": Approves or rejects a deadline extension; upon approval,
+  automatically updates the submission deadline across all platform timelines.
+- "save_material" & "save_bulk_materials": Uploads single or bulk learning assets.
+- "delete_material": Removes a learning resource.
+- "broadcast_announcement": Sends batch-wide or targeted announcements.
+- "guardian_mapping_*": Handles Band & Role mapping actions (band selection, role
+  toggling, reviewer band selection, calendar date selection, request dispatch,
+  accept/reject decisions, equal partitioning, and reset).
+- "demo_reset": Resets all local data back to initial seed dataset.
+
+MODAL SYSTEM:
+Controlled via self.active_modal and self.modal_payload:
+- "notifications": Displays list of system alerts.
+- "badge_detail": Shows comprehensive badge details, requirements, and 9-point timeline.
+- "marksheet_modal": Opens historical or audited marksheet with rubric breakdown.
+- "material_preview": In-app viewer for PDF documents, YouTube lectures, and code.
+- "review_submission": Quick-review modal dialog.
+- "decide_extension": Extension approval/rejection modal.
+- "create_announcement": Broadcast announcement authoring modal.
+- "add_material" / "edit_material": Modal forms for adding/editing learning resources.
+- "edit_badge": Modal form for creating/editing badge metadata and timelines.
+
+================================================================================
+8. GUARDIAN PORTAL WORKSPACES & INTERFACES (starapp/views_guardian.py)
+================================================================================
+The Guardian portal provides mentors with 7 primary workspaces:
+
+8.1 Guardian Sidebar Navigation
+- Persistent left navigation bar with liquid-glass aesthetic.
+- Displays mentor identity ("Dr. Elena Vance, Batch Orion-24 Lead") and sign-out button.
+- Dynamic count badges for pending reviews (g_reviews) and extensions (g_extensions).
+- Navigation links:
+  1. Batch Dashboard (g_dashboard)
+  2. Learning Roadmap (g_roadmap)
+  3. Badge Allotment (g_allotment)
+  4. Mapping (g_mapping)
+  5. Project Reviews (g_reviews)
+  6. Learning Materials (g_materials)
+  7. Extension Requests (g_extensions)
+- "Cosmonaut Window ↗" shortcut: Opens the learner portal in an isolated tab.
+
+8.2 Batch Dashboard Workspace (g_dashboard)
+- Cohort Scope vs. Individual Dossier Selector:
+  * Dropdown selector allowing mentor to view cohort aggregates or zoom into
+    an individual cosmonaut dossier (Astraea Nova or benchmark profiles).
+- Macro/Micro Telemetry KPI Grid:
+  * 4 primary KPI cards: Average Cohort Score, Assessment Approval Rate, Pending
+    Submission Reviews, and On-Track Milestone Velocity.
+  * Interactive Info Triggers (i): Hovering/clicking opens a floating liquid-glass
+    popover displaying the mathematical formula, exact numerator, exact denominator,
+    inclusion/exclusion rules, and pedagogical insight.
+- Cadet Risk & Intervention Monitoring Matrix:
+  * Table tracking each cadet's velocity, completed badges, average score, pending
+    submissions, overdue milestones, and risk tier ("On-Track", "Moderate Risk",
+    "High Risk / Critical").
+  * Filter buttons: [All], [On-Track], [Moderate Risk], [Critical / High Risk].
+  * Search bar for quick cadet filtering.
+- Visual Telemetry Visualizations:
+  * Score Distribution Histogram (SVG flex bars showing distribution across 90-100%,
+    80-89%, 70-79%, and <70%).
+  * Cohort Milestone Completion Progress Bars for each badge.
+- Individual Cosmonaut Dossier View (when a cadet is selected):
+  * Personal KPI overview (Average Score, Badges Earned, Completed Milestones).
+  * 9-Point Timeline lifecycle tracker for the cadet's current active badge.
+  * Certified marksheet audit links and submission history.
+  * Skills inventory and external certifications with verification links.
+
+8.3 Learning Roadmap Workspace (g_roadmap)
+- Visualizes the full 25-milestone progression graph from the mentor's perspective.
+- Displays milestone states across the cohort: Completed, Active, and Locked.
+- Allows the mentor to inspect badge requirements, topic breakdown, learning outcomes,
+  and prerequisite dependency chains directly from the roadmap stones.
+
+8.4 Badge Allotment Workspace (g_allotment)
+- Badge Catalog Grid: Displays all enterprise badges with codes, titles, and categories.
+- Allotment & Publication Controls:
+  * "Allotted" Toggle: Controls whether the badge is activated on the roadmap.
+  * "Published" Toggle: Controls whether the badge is visible to assigned cadets.
+- 9-Point Timeline Editor:
+  * Allows mentors to configure and adjust the 9 milestone dates for any badge:
+    Assignment Date, Publication Date, Learning Start/End, Project Start/End,
+    Submission Deadline, Review Date, and Award Date.
+- "Create New Badge" Action: Opens modal to author custom badges with custom
+  prerequisites and requirements, which immediately integrate into the DAG roadmap.
+
+8.5 Band & Competency Mapping Workspace (g_mapping)
+A sophisticated enterprise competency and reviewer allocation workspace:
+- 6 Band Cards (B1 to B6):
+  * B1: Foundation Associate (0-2 yrs)
+  * B2: Specialist (2-4 yrs)
+  * B3: Senior Specialist (4-7 yrs)
+  * B4: Lead Engineer (7-10 yrs)
+  * B5: Principal Architect (10-14 yrs)
+  * B6: Chief / Distinguished Fellow (14+ yrs)
+  * Dynamic header updating to the active band upon click.
+- 3 Role Filters: Solutions Designer (SD), AI Engineer (AIE), Systems Engineer (SE).
+- 4-Card Creation Matrix:
+  * Card 1 (Select Roles): Multiselect buttons for filtering candidates.
+  * Card 2 (Select Badge): Dropdown with live search across 10 mapping badges
+    (AIOS, Network, Data Modelling, Cloud Architecture, Systems Security,
+    Streaming Pipelines, Autonomous Agents, ML Ops, Enterprise Governance, Quantum).
+  * Card 3 (Select Cosmonauts): Checkbox list with search for candidates in the band.
+  * Card 4 (Select Reviewers across Multiple Higher Bands): Mentors can select
+    reviewers from any higher bands (e.g. B1 can be reviewed by B2, B3, B4, B5, B6).
+- Estimated Review Date Business Calendar:
+  * 7-column calendar grid (Mon-Sun).
+  * Automatically enforces 3 consecutive business days for review windows.
+  * Strictly greys out and locks Saturday and Sunday (weekends excluded).
+  * Allows forward ("after") or backward ("before") consecutive day selection.
+- Review Request Dispatch & Decision Flow:
+  * Sends review requests to selected higher-band guardians.
+  * Mentors can Accept or Reject requests.
+  * Final Candidate Preview table displays accepted guardians and pending cosmonauts.
+- Master Mapped Allocations Table:
+  * Generates clean, grouped allocation records.
+  * Evenly distributes cosmonauts across accepted reviewers.
+  * Provides visual "Who is mapped to whom" table with edit and delete capabilities.
+- Reset Everything: One-click button to reset mapping allocations back to baseline.
+
+8.6 Project Reviews & Rubric Evaluation (g_reviews, g_review_detail)
+- Review Queue (g_reviews):
+  * Filterable queue of all submitted projects across the cohort.
+  * Filter tabs: [All], [Pending Evaluation], [Approved], [Resubmission Requested].
+  * Displays cadet name, badge code, submission type, attempt number, and timestamp.
+- Evaluation Workspace (g_review_detail):
+  * Two-column workspace:
+    - Left Column (Deliverable Viewer): In-app viewer for PDF deliverables, syntax-
+      highlighted code viewer for script uploads, or direct links for GitHub repositories.
+      Switching viewer tabs patches only this column, leaving the rubric intact!
+    - Right Column (Standard 50-Mark Rubric Form):
+      * 5 Criteria scored 0 to 10:
+        1. Business Understanding & Problem Formulation (0-10)
+        2. Architecture, Report Quality & Documentation (0-10)
+        3. Technical Knowledge & Code Implementation (0-10)
+        4. Presentation & Clarity (0-10)
+        5. Q&A Defense & Conceptual Mastery (0-10)
+      * Live score summary: Total score (/50.0) and percentage (%) auto-calculated.
+      * Qualitative feedback fields: Key Strengths, Areas for Improvement,
+        and Overall Mentor Feedback.
+      * Evaluation Decisions: [Approve Milestone], [Request Resubmission], [Reject].
+- Multi-Attempt History Retention:
+  * When resubmission is requested, Attempt 1 is permanently archived with its
+    original marksheet and feedback. Subsequent attempts (Attempt 2, 3...) receive
+    new evaluations without overwriting historical marks.
+
+8.7 Learning Materials Management (g_materials)
+- Resource Repository: Displays all curriculum documents, PDFs, and YouTube videos.
+- In-App Viewer Modal:
+  * Seamless PDF previewer rendered via iframe data URI.
+  * Embedded YouTube player with automatic fallback link for restricted embeds.
+- Content Authoring:
+  * Single material upload modal (specify badge, topic, title, description, URL/file).
+  * Bulk upload modal allowing quick ingestion of multiple learning resources.
+  * Edit and delete capabilities with immediate persistence.
+
+8.8 Deadline Extension Management (g_extensions)
+- Extension Queue: Displays pending and decided extension requests from cadets.
+- Shows current deadline, proposed deadline, days requested, and cadet reason.
+- Decision Action: Mentor can Approve or Reject with optional feedback notes.
+- Platform-Wide Propagation: Approving an extension automatically updates the
+  submission deadline in the badge's 9-point timeline across all views and storage.
+
+8.9 Targeted Announcements & Read Receipts
+- Authoring Modal: Mentors compose announcements with title, rich message, and target.
+- Targeting Options: Broadcast to "All Cosmonauts" or select specific cadets.
+- Read Receipt Tracking: Real-time counter showing how many recipients have read
+  the announcement and listing who has marked it as read.
+
+8.10 Cohort Activity Feed & Audit Trail
+- Chronological audit log of all events occurring in the cohort.
+- Automatically captures badge assignments, project submissions, rubric evaluations,
+  extension requests/approvals, and material publications with timestamps and actor tags.
+
+================================================================================
+9. BUSINESS LOGIC, VALIDATION & ANALYTICS ENGINES
+================================================================================
+
+9.1 Standard 50-Mark Rubric Engine (starapp/assessment.py)
+- Criteria Bounds: Strict validation ensuring each score is a float between 0.0 and 10.0.
+- Automatic Totals:
+  total_marks = round(sum(5 criteria), 2)
+  percentage = round((total_marks / 50.0) * 100.0, 1)
+- Batch Leaderboard Ranking:
+  * Fair average ranking: Computes mean percentage across approved badges only,
+    preventing cadets with more badges from gaining an unfair advantage over cadets
+    with higher scores on fewer badges.
+  * Formats rank ordinal (1st, 2nd, 3rd...), total approved count, and average score.
+
+9.2 Roadmap DAG & Milestone Progression Engine (starapp/roadmap.py)
+- Directed Acyclic Graph (DAG) Validator:
+  * Evaluates prerequisite dependencies before unlocking milestones.
+  * A badge is "completed" if approved in an assessment marksheet.
+  * A badge is "active" if all prerequisites are satisfied and it is published/allotted.
+  * A badge is "locked" if any prerequisite badge is incomplete or unallocated.
+- Dynamic Unlocking: When a mentor allocates a new badge, it replaces the current
+  locked milestone, and the next unallocated curriculum badge becomes the new locked stone.
+- Mathematical Winding Path: Generates coordinates for a 25-milestone serpentine
+  curve connecting stone centers with cubic bezier SVG paths and pulsing halos.
+
+9.3 Cohort Analytics & KPI Engine (starapp/analytics.py)
+- Cohort Pacing & Velocity: Calculates expected milestones based on elapsed timeline days.
+- Risk Classification Algorithm:
+  * "On-Track": >=85% score average, zero overdue milestones, zero rejected submissions.
+  * "Moderate Risk": Score average between 70-84%, or 1 overdue milestone.
+  * "Critical / High Risk": Score average <70%, or >1 overdue milestone, or rejected attempts.
+- Mathematical Popover Registry (get_kpi_popover): Provides exact formulas, numerators,
+  denominators, and criteria for every KPI card in the dashboard.
+
+9.4 Form & Domain Validation Engine (starapp/validation.py)
+- validate_badge_input: Checks required code, title, and valid category.
+- validate_timeline_dates: Verifies date ordering (Learning Start <= Learning End <=
+  Project Start <= Submission Deadline <= Review Date <= Award Date).
+- validate_submission_input: Checks deliverable payload and file format.
+- validate_extension_request: Ensures proposed deadline is strictly after current deadline.
+- validate_announcement_input: Ensures non-empty title, message, and valid targets.
+
+9.5 Synthetic Benchmark & Mapping Datasets
+- seed_data.py: Initial dataset containing Dr. Elena Vance (Guardian), Astraea Nova
+  (Cosmonaut), and 5 core badges (GOV-101, CUR-102, DAT-103, ING-104, SQL-201).
+- mapping_data.py: Definitions for Bands B1-B6, 3 Roles, 162/36 members, 10 mapping
+  badges, and calendar month generation with weekend exclusion logic.
+- dashboard_demo.py: Isolated benchmark personas (Orion Drake, Lyra Solaris, Cassian Ray,
+  Kaelen Vesper, Seraphina Moon) providing realistic cohort distribution statistics
+  without polluting actual user authentication records.
+
+================================================================================
+10. DESIGN SYSTEM & LIQUID GLASS 2.0 STYLING (css/)
+================================================================================
+StarApp implements a proprietary, zero-dependency Liquid Glass 2.0 design language:
+
+STRICT 5-COLOUR PALETTE (css/design_tokens.css):
+1. Frost Navy (#071629): Main dark background, sidebar, high-contrast headings.
+2. Deep Frozen Midnight (#17345C): Primary action buttons, marksheet headers, active links.
+3. Icy Steel (#9DB7D5): Secondary accents, borders, dividers, subtle highlights.
+4. Frost Mist (#EAF4FF): Workspace background, light surfaces, badge fills.
+5. Snow White (#FFFFFF): Card content surfaces, modal panels, high-contrast text.
+Derived alpha levels (90%, 75%, 50%, 20%, 10%) are strictly calculated from these 5 colors.
+
+LIQUID GLASS CONTAINERS (css/liquid_glass.css):
+- Multi-layer specular highlights with inner and outer drop shadows.
+- Dynamic backdrop blur: -webkit-backdrop-filter: blur(18px) saturate(180%).
+- SVG Displacement Map: Optional #container-glass filter for chromatic aberration.
+
+BUTTON VARIANTS:
+- .btn-liquid: Specular pill button with dynamic scaling and liquid highlight.
+- .btn-metal: 3D tactile button with bevel rim layering, gradient illumination,
+  and active press depress states.
+
+LAYOUT & RESPONSIVENESS (css/layout.css, css/responsive.css):
+- .app-shell: Two-column layout with fixed/collapsible sidebar and scrollable viewport.
+- Modals: Centered liquid-glass dialogs with backdrop blur and accessible close triggers.
+- Responsive Breakpoints: Fully adapted for Desktop (1200px+), Laptop (992px),
+  Tablet (768px), and Mobile (<576px).
+
+================================================================================
+11. AUTOMATED TEST SUITE & VERIFICATION (tests/)
+================================================================================
+The project includes 49 automated unit and integration tests running headless
+via Python's built-in unittest in ~0.17 seconds.
+
+TEST MODULE INVENTORY:
+- tests/run_tests.py: Master test suite discovery and runner.
+- tests/test_all.py: Core unit tests for models, validation, rubric scoring, and DAG.
+- tests/test_scenarios_a_to_h.py: End-to-end verification of mandatory workflows:
+  * Scenario A: Badge creation, assignment, and publication visibility.
+  * Scenario B: Deliverable submission, 50-mark evaluation, marksheet appearance.
+  * Scenario C: Resubmission request, cadet resubmission, historical marksheet retention.
+  * Scenario D: Deadline extension request, approval, and timeline updates.
+  * Scenario E: Broadcast announcements and read receipt tracking.
+  * Scenario F: PDF and YouTube learning material publication and viewing.
+  * Scenario G: Full JSON serialization, reload, and persistence simulation.
+  * Scenario H: Role-based data privacy and boundary enforcement.
+- tests/test_dashboard_enhancements.py: Verifies cohort telemetry and data isolation.
+- tests/test_extension_flow.py: Verifies extension request lifecycles.
+- tests/test_mapping_flow.py: Comprehensive tests for the Band & Competency Mapping
+  workspace (6 bands, 4-card matrix, higher-band reviewers, weekend lockout calendar,
+  equal distribution, and reset).
+- tests/test_materials_flow.py: Verifies learning materials CRUD.
+- tests/test_review_flow.py: Verifies multi-deliverable submission and review flows.
+- tests/test_ui_remediation.py: Verifies 3-region DOM patching, focus preservation,
+  left-column-only review tab switching, and stale async generation guards.
+
+TO RUN THE ENTIRE TEST SUITE:
+Open terminal in project root and run:
+python tests/run_tests.py
+
+================================================================================
+12. BUILD SCRIPTS, DEV TOOLS & INVARIANTS FOR FUTURE CHANGES
+================================================================================
+
+CRITICAL WORKFLOW WHEN MODIFYING PYTHON CODE:
+Whenever any file in starapp/*.py is edited, you MUST run:
+  python scripts/pack_py.py
+This command repacks all Python files into js/starapp_bundle.js so Pyodide can
+load the updated code into its virtual filesystem. Failure to run this script will
+cause the browser to run stale Python code!
+
+DEV SERVER:
+To launch the application locally with proper COOP/COEP headers:
+  python serve.py
+This starts Python's built-in HTTP server on port 8000 and launches the browser.
+
+GITHUB SYNCHRONIZATION:
+To push local changes to GitHub without git CLI dependencies:
+  python push_to_github.py "Commit message"
+This script reads credentials from .env and pushes directly via the GitHub REST API.
+
+MANDATORY INVARIANTS TO PRESERVE IN FUTURE MODIFICATIONS:
+1. Zero External Backend: Do NOT introduce Node.js, Express, Flask, FastAPI,
+   Django, Firebase, or Supabase. All logic must remain in modular Python running
+   client-side in Pyodide.
+2. Strict 5-Colour Palette: All CSS and inline styles must adhere to the 5 approved
+   colors (--frost-navy, --deep-frozen-midnight, --icy-steel, --frost-mist, --snow-white).
+3. 3-Region DOM Patching Integrity: Keep sidebar, main viewport, and modal root IDs
+   intact so js/bridge.js can patch regions incrementally.
+4. Multi-Attempt History Preservation: Never overwrite historical marksheets or
+   submissions when handling resubmissions.
+5. Strict Data Isolation: Benchmark demo cadets (Orion, Lyra, Cassian, Kaelen,
+   Seraphina) must never be added to the live user login store.
+6. Schema Versioning: When modifying DataStore fields, update SCHEMA_VERSION in
+   starapp/storage.py if breaking changes are introduced.
+7. Always Repack and Test: After modifying Python files, run:
+   python scripts/pack_py.py
+   python tests/run_tests.py
+
+================================================================================
+13. SQLITE PERSISTENCE, CREATE BADGE & REVIEWER APPROVAL (NEW EXTENSION)
+================================================================================
+
+13.1 SQLITE CLIENT-SIDE ENGINE (starapp/database.py)
+- Authoritative relational database running entirely inside Pyodide WebAssembly
+  via Python 3.12+ `sqlite3` standard library module.
+- `PRAGMA foreign_keys = ON;` strictly enforced across 25+ relational tables.
+- Binary export/import via `export_bytes()`, `export_base64()`, and `import_base64()`
+  using `sqlite3.Connection.backup()` (works seamlessly for both in-memory and disk).
+- Persisted to browser IndexedDB (`StarAppLocalDB`, store `starapp_state`, key `sqlite_db`)
+  as base64 binary SQLite payload on every commit/sync.
+
+13.2 36 INDIAN DEMO PROFILES (starapp/mapping_data.py)
+- Deterministic seed data across all 6 bands (B1 through B6), exactly 6 members per band:
+  * 2 Solutions Designer (SD)
+  * 2 AI Engineer (AIE)
+  * 2 Systems Engineer (SE)
+- Higher band members (B2-B6) assigned the `badge_reviewer` multi-role to enable
+  rigorous testing of reviewer selection and approval workflows.
+
+13.3 GUARDIAN SIDEBAR EXTENSION (starapp/views_guardian.py)
+- Two new top navigation entries placed strictly above Batch Dashboard:
+  1. Create Badge (`g_create_badge`)
+  2. Reviewer Badge Approval (`g_badge_approval`)
+  3. Batch Dashboard (`g_dashboard`)
+  4. Learning Roadmap (`g_roadmap`)
+  5. Badge Allotment (`g_allotment`)
+  6. Mapping (`g_mapping`)
+  7. Project Reviews (`g_reviews`)
+  8. Learning Materials (`g_materials`)
+  9. Extension Requests (`g_extensions`)
+
+13.4 CREATE BADGE WORKSPACE (g_create_badge)
+- Band Selection: 6 interactive band cards (B1 to B6) showing band details and eligible reviewers.
+- Band Workspace: 4 selection cards:
+  1. Powers (Tech, Domain, Leadership)
+  2. Capabilities (5 predefined + custom addition persisted to SQLite)
+  3. Skills (24 predefined + search filter + custom addition persisted to SQLite)
+  4. Reviewer Selection (enforces strictly higher band with `badge_reviewer` role;
+     B6 band is locked out from reviewer selection with explanatory notice)
+- Live Structured JSON Prompt Editor: syntax highlighting, validation, formatting,
+  and synchronization with standard badge metadata (title, category, outcomes, topics).
+- Preview Modal: Rich dialog displaying all badge specifications before submission.
+- Submission Lifecycle: Always persists with `workflow_status = 'pending_review'`,
+  assigns reviewer deadline (+24 hours), and notifies assigned reviewer.
+  Never automatically publishes or allocates badge.
+
+13.5 REVIEWER BADGE APPROVAL WORKSPACE (g_badge_approval)
+- Queue Interface: Status filter tabs (All, Pending Review, Approved, Returned),
+  dynamic badge count on sidebar, and real-time search query.
+- Action Workflows:
+  * Inspect Modal: View complete badge specs, taxonomy, and raw JSON prompt.
+  * Reviewer Edit Modal: Allows reviewer to refine prompt JSON, title, and outcomes
+    while strictly preserving all unmodified badge fields and keeping status `pending_review`.
+  * Approval Modal: Enforces strict authorization (`has_role('badge_reviewer')`),
+    transitions `workflow_status` to `approved`, stamps review decision audit events,
+    notifies the creator Guardian, and keeps badge unpublished/unallocated.
+================================================================================
