@@ -31,7 +31,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
         self.app.current_view = "g_reviews"
         html_queue = self.app.render()
 
-        self.assertIn("Astraea Nova", html_queue)
+        self.assertIn("Aarav Sharma", html_queue)
         self.assertIn("ING-104", html_queue)
         self.assertIn("Uploaded Deliverables", html_queue)
         self.assertIn("Astraea_Kafka_Architecture_Spec.pdf", html_queue)

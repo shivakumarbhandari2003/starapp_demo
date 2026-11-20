@@ -51,7 +51,7 @@ class TestExtensionFlow(unittest.TestCase):
             cosmonauts_map={"cosmo_1": self.cosmo},
             badges_map={"badge_ing_104": self.badge}
         )
-        self.assertIn("Requested by Astraea Nova", html_guard)
+        self.assertIn("Requested by Aarav Sharma", html_guard)
         self.assertIn("Approve Extension", html_guard)
         self.assertIn("Reject", html_guard)
 

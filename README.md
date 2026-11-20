@@ -17,62 +17,54 @@
 
 ---
 
-## 1. Executive Overview & Zero-Backend Architecture
+## 1. Executive Overview & Modular Full-Stack Architecture
 
-StarApp is a fully functional, browser-local enterprise training, curriculum engineering, and gamified badge management application. It features two interconnected, role-based portals:
+StarApp is a fully functional, enterprise training, curriculum engineering, and gamified badge management application. It features two interconnected, role-based portals:
 
 1. **Guardian Portal (Admin / CEO / Trainers / Reviewers)**:
    - Band-specific badge authoring across 6 professional tiers (B1 to B6).
    - Real-time LLM integration via Gemini API for generating structured learning outcomes, practice project prompts, and modular curriculum topics.
-   - Competency mapping & higher-band reviewer allocation with an automated 3-business-day calendar engine.
+   - Competency mapping & higher-band reviewer allocation with an automated calendar engine.
    - 50-mark universal rubric evaluation (5 criteria $\times$ 10 marks), marksheet publication, and timeline management.
 2. **Cosmonaut Portal (Cadets / Learners)**:
-   - Candy Crush-inspired gamified learning roadmap with SVG cubic-bezier milestone pathways.
+   - Candy Crush-inspired gamified learning roadmap with SVG milestone pathways.
    - In-app materials viewer (PDF handbooks and responsive YouTube streams).
    - Multi-attempt project submission hub (PDF architecture reports, GitHub repository links, and executable Python code).
    - Real-time batch leaderboard, competency matrix, and personalized telemetry popovers.
 
-### The Zero-Backend Client Execution Model
-StarApp runs **without any conventional backend server** (no Flask, FastAPI, Django, Express, Spring, Firebase, or Supabase).
-- **Core Runtime**: Pure modular Python 3.12 executed client-side in the browser via **Pyodide WebAssembly**.
-- **Database Engine**: Full **SQLite3** relational database compiled into WebAssembly via Pyodide, coupled with native Python `sqlite3` for local headless testing and CLI workflows.
-- **Persistence Layer**:
-  - `IndexedDB`: Stores raw SQLite database binary snapshots (`starapp.db` export bytes) and file attachments.
-  - `localStorage`: Tracks active session tokens, demo persona state, and active navigational routes.
-  - Virtual Filesystem (`/home/pyodide/starapp/`): Mounts bundled Python modules (`js/starapp_bundle.js`) at boot time in less than 200ms.
+### The Modular Full-Stack Execution Model
+StarApp is built as a **clean, modular Full-Stack Monolith**:
+- **Backend Framework**: Python 3.12 / 3.13 + **FastAPI** with versioned `/api/v1` REST endpoints.
+- **Database Engine**: Authoritative persistent disk **SQLite3** database (`data/starapp.db`) configured with `PRAGMA foreign_keys = ON;`, `PRAGMA journal_mode = WAL;`, and `PRAGMA busy_timeout = 5000;`.
+- **Security & RBAC**: Server-side Role-Based Access Control enforcing non-negotiable reviewer rules ($\text{Reviewer\_Band} > \text{Badge\_Band}$), bcrypt password hashing, and HttpOnly SameSite session cookies.
+- **Frontend Layer**: Native HTML5, Liquid-Glass CSS design tokens, and a typed reusable API client (`js/api.js`).
 
 ```mermaid
 flowchart TD
-    subgraph Browser ["Client-Side Browser Execution (Zero-Backend)"]
+    subgraph Browser ["Client-Side Browser Execution"]
         UI["DOM / HTML5 / Liquid Glass UI"]
-        Bridge["JavaScript Bridge (js/bridge.js)"]
-        Pyodide["Pyodide WebAssembly (Python 3.12 Runtime)"]
-        
-        subgraph StarAppPython ["starapp/ Python Module Suite"]
-            Controller["StarAppController (starapp/app.py)"]
-            Store["DataStore (starapp/storage.py)"]
-            DB["DatabaseManager (starapp/database.py)"]
-            ViewsG["Guardian Views (views_guardian.py)"]
-            ViewsC["Cosmonaut Views (views_cosmonaut.py)"]
-        end
-        
-        subgraph Persistence ["Browser Local Persistence"]
-            IDB["IndexedDB (starapp_relational_sqlite_v2)"]
-            LS["localStorage (Session / Active User)"]
-        end
+        API_Client["API Client (js/api.js)"]
     end
 
-    UI <-->|DOM Events / Dispatch| Bridge
-    Bridge <-->|Call / Evaluate| Pyodide
-    Pyodide --> Controller
-    Controller --> Store
-    Store --> DB
-    DB <-->|Binary Export / Restore| IDB
-    Store <-->|Active User Token| LS
-    Controller --> ViewsG
-    Controller --> ViewsC
-    ViewsG -->|HTML String Injection| Bridge
-    ViewsC -->|HTML String Injection| Bridge
+    subgraph Backend ["FastAPI Modular Backend (Port 8000)"]
+        API_Router["/api/v1 Routers"]
+        Auth_RBAC["Session & RBAC Middleware"]
+        Services["Feature Service Layer (Badges, Reviews, Evaluations, Allotments)"]
+        Repos["Repository Layer (Parameterized SQL)"]
+        GeminiProxy["Server-Side Gemini AI Client"]
+    end
+
+    subgraph Storage ["Persistent Storage"]
+        DB[("data/starapp.db (SQLite3 Disk Database)")]
+    end
+
+    UI <-->|Fetch / JSON REST| API_Client
+    API_Client <==>|HTTP JSON| API_Router
+    API_Router --> Auth_RBAC
+    Auth_RBAC --> Services
+    Services --> GeminiProxy
+    Services --> Repos
+    Repos <==>|PRAGMA WAL + FK=ON| DB
 ```
 
 ---
@@ -652,6 +644,100 @@ python scripts/pack_py.py
 ```
 
 ### 4. Direct One-Click Demo Access
-- **Guardian / CEO Portal**: Sign in as `Arjun Mehta` (Role: Guardian / CEO, Password: `12345678`).
-- **Cadet / Cosmonaut Portal**: Sign in as `Aarav Sharma` (Role: Cosmonaut / B1 Solutions Designer, Password: `12345678`).
-- **Reviewer Portal**: Sign in as `Arjun Malhotra` (Role: Badge Reviewer / B3 AI Engineer, Password: `12345678`).
+The demo login screen prominently surfaces 5 key accounts demonstrating the corporate hierarchy:
+1. **Ananya Iyer - B1** (`m_b1_2`, Solutions Designer • Band B1 Cadet • Password: `12345678`)
+2. **Nisha Menon - B2** (`m_b2_4`, AI Engineer • Band B2 Cadet & Institutional Reviewer for B1 • Password: `12345678`)
+3. **Tanvi Shah - B3** (`m_b3_6`, Systems Engineer • Band B3 Cadet & Institutional Reviewer for B1 & B2 • Password: `12345678`)
+4. **Arjun Mehta (CEO)** (`guardian_1`, Guardian / CEO • Enterprise Curriculum Administrator & Platform Guardian • Password: `12345678`)
+5. **Aarav Sharma - B1** (`cosmo_1`, Cosmonaut Learner • Solutions Designer • Band B1 Cadet • Password: `12345678`)
+
+---
+
+## 11. Badge Review Request & Approval Workflow
+
+### Higher-Band Eligibility Hierarchy
+Badge quality assurance strictly mandates peer review by senior technical personnel from higher bands:
+| Target Badge Band | Eligible Reviewer Bands | Available Reviewer Count | Authorization Policy |
+| :--- | :--- | :--- | :--- |
+| **Band B1** (Foundation Associate) | **B2, B3, B4, B5, B6** | 29 Technical Specialists | Higher-Band Peer Review |
+| **Band B2** (Specialist) | **B3, B4, B5, B6** | 23 Senior Specialists & Architects | Higher-Band Peer Review |
+| **Band B3** (Senior Specialist) | **B4, B5, B6** | 17 Lead Engineers & Architects | Higher-Band Peer Review |
+| **Band B4** (Lead Engineer) | **B5, B6** | 11 Principal Architects & Fellows | Higher-Band Peer Review |
+| **Band B5** (Principal Architect) | **B6** | 5 Distinguished Fellows | Senior Fellow Review |
+| **Band B6** (Distinguished Fellow) | Executive Council | N/A | Executive Council Authorization Only |
+
+*All employees from Band B2 to B6 hold dual qualifications as Cosmonaut Learners and Institutional Reviewers (`badge_reviewer` and `project_reviewer`). All 36 employees (B1–B6) are enrolled as Cosmonauts.*
+
+### End-to-End Workflow Lifecycle
+1. **Badge Authoring & Generation**:
+   - Guardian selects band (e.g. Band B1), picks Power, Capability, and Skill, and clicks **"Create Badge with Gemini"**.
+   - Gemini generates the complete 6-section curriculum badge (Outcomes, Earn the Badge, Practice Project with LLM prompt, Learning Topics with completion trackers, Learning Resources, Related Skills).
+2. **Persistence & Cataloging**:
+   - Guardian clicks **"Save Badge"**. The badge is persisted to the `badges` table with `workflow_status = 'ready_for_review'` and default target band.
+   - The badge generation preview automatically hides, and the badge appears in the **"Saved Badges for Band {band}"** catalog.
+3. **Higher-Band Reviewer Selection & Dispatch**:
+   - In either the Band Saved Badges section or the centralized **Reviewer Badge Approval** queue (`g_badge_approval`), Guardian selects an eligible higher-band reviewer from the dynamic dropdown (filtered strictly by the hierarchy rule) and clicks **"Send Request"**.
+   - The badge enters `workflow_status = 'pending_review'`, an assignment is written to `badge_reviewer_assignments`, a notification is generated in `notifications`, and an audit event is logged in `badge_review_events`.
+4. **Cosmonaut Portal Review Requests Workspace (`c_requests`)**:
+   - When the assigned reviewer logs into their portal (e.g. Nisha Menon, Band B2):
+     - The sidebar displays a **"Review Requests"** navigation link with an active pending count badge.
+     - The Dashboard highlights an urgent **Institutional Peer Review Assignment** banner with a direct link to the workspace.
+   - In `c_requests`, the reviewer can:
+     - **Inspect Badge**: View all 6 curriculum sections in detail.
+     - **Edit Badge**: Modify outcomes, topics, practice project requirements, and prompt directly. Edits are immediately and permanently saved to the real badge in SQLite.
+     - **Accept & Approve**: Authorizes the badge, moving it to `workflow_status = 'approved'`, and notifying the Guardian.
+     - **Return with Feedback**: Enters revision feedback notes, moving the badge to `workflow_status = 'returned'`, alerting the Guardian with the specific feedback for updates.
+5. **Guardian Allotment**:
+   - Once approved, the badge is marked with an **Approved** status pill and an **"Allot &rarr;"** button unlocks, enabling direct allocation to eligible Cosmonauts in `g_allotment`.
+
+---
+
+## 12. Universal Non-Destructive Navigation & SQLite-Driven Architecture
+
+### Universal Back Navigation (`← Back`)
+Every workspace, page, and modal incorporates intuitive, prominent back-navigation:
+1. **Persistent Topbar Back Button**: Present in `app-topbar` across all views, enabling one-click return to the previous screen.
+2. **Contextual Workspace Navigation**:
+   - Inside Band Workspace (`g_create_badge` with `create_badge_band` set): The Back button returns smoothly to the 6 Band Selection Cards view (`create_badge_band = None`).
+   - Band Selection View: The Back button returns to the Guardian Dashboard (`g_dashboard`).
+   - Review Queues & Detail Views: Returns to the parent queue or dashboard without losing active filter tabs or search queries.
+   - Active Modals: Automatically dismissed cleanly by `go_back` without disturbing underlying workspace form states.
+3. **LIFO History Stack (`view_history`)**: The controller maintains a non-destructive navigation history stack tracking view identifiers, active band selections, and inspection IDs, preventing unintended state resets or session loss.
+
+### 100% Relational SQLite Data Source
+All synthetic/mock cadet profiles (Orion Blake, Lyra Bennett, Cassian Reed, Kaelen Frost, Seraphina Vale, Dr. Elena Vance) have been completely removed:
+- **Badge Authors & Reviewers**: Real enterprise users (e.g. `Arjun Mehta` CEO, real senior employees) are dynamically resolved and persisted to SQLite columns `creator_id` and `reviewer_id`.
+- **Reviewer Selection Dropdowns**: Populated in real-time from `users`, `user_band_memberships`, and `user_role_assignments` using higher-band SQL queries.
+- **Analytics & Leaderboards**: Computed dynamically across all 36 corporate employees stored in the relational database.
+
+---
+
+## 13. Full-Stack FastAPI Local Deployment & Commands
+
+### Installation & Startup
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Start the local full-stack server
+python serve.py
+# Or directly with uvicorn:
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# 3. Access the platform
+# Web Application:              http://127.0.0.1:8000
+# Interactive API Docs (Swagger): http://127.0.0.1:8000/docs
+# Diagnostic Health Endpoint:   http://127.0.0.1:8000/api/health
+```
+
+### Running Automated Test Suites
+```bash
+# Run the complete test suite (89 tests: 79 baseline regression + 10 full-stack backend)
+python tests/run_tests.py
+
+# Run only the full-stack backend tests (fast, ~1.8s)
+python tests/test_backend_fullstack.py
+```
+
+
+

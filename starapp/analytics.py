@@ -9,7 +9,7 @@ from starapp.assessment import RUBRIC_CRITERIA, calculate_cosmonaut_score_summar
 from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet
 from starapp.dashboard_demo import get_dashboard_demo_cosmonauts, get_demo_cosmonaut_by_id
 
-def build_astraea_analytics_record(
+def build_cosmonaut_analytics_record(
     actual_cosmo: User,
     assigned_badges: List[Badge],
     assessments: List[AssessmentMarksheet],
@@ -17,8 +17,8 @@ def build_astraea_analytics_record(
     extensions: Optional[List[Any]] = None
 ) -> Dict[str, Any]:
     """
-    Constructs a standardized analytics profile for the real Cosmonaut (Astraea Nova)
-    strictly from her actual application records.
+    Constructs a standardized analytics profile for a Cosmonaut
+    strictly from their actual SQLite application records.
     """
     approved_asms = [a for a in assessments if a.decision == "approve"]
     total_assigned = len(assigned_badges)
@@ -199,6 +199,8 @@ def build_astraea_analytics_record(
         "standing_tier": tier
     }
 
+build_astraea_analytics_record = build_cosmonaut_analytics_record
+
 def get_guardian_cohort_profiles(
     actual_cosmo: User,
     assigned_badges: List[Badge],
@@ -207,13 +209,24 @@ def get_guardian_cohort_profiles(
     extensions: Optional[List[Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Returns the complete 6-person cohort for Guardian analytics:
-    - 1 Actual Cosmonaut (Astraea Nova, is_demo=False)
-    - 5 Demonstration Profiles (is_demo=True)
+    Returns cohort profiles computed directly from SQLite users.
     """
-    astraea = build_astraea_analytics_record(actual_cosmo, assigned_badges, assessments, submissions, extensions)
-    demos = get_dashboard_demo_cosmonauts()
-    return [astraea] + list(demos)
+    from starapp.storage import store
+    primary = build_cosmonaut_analytics_record(actual_cosmo, assigned_badges, assessments, submissions, extensions)
+    cohort = [primary]
+
+    # Populate cohort profiles dynamically from SQLite cosmonauts
+    all_cosmonauts = store.get_all_cosmonauts()
+    seen_ids = {actual_cosmo.id}
+    for c in all_cosmonauts:
+        if c.id not in seen_ids:
+            seen_ids.add(c.id)
+            c_badges = store.get_badges_for_cosmonaut(c.id)
+            c_asms = store.get_assessments_for_cosmonaut(c.id)
+            c_subs = store.get_submissions_for_cosmonaut(c.id)
+            c_exts = store.get_extensions_for_cosmonaut(c.id)
+            cohort.append(build_cosmonaut_analytics_record(c, c_badges, c_asms, c_subs, c_exts))
+    return cohort
 
 _COHORT_ANALYTICS_CACHE: Dict[str, Any] = {}
 
@@ -345,7 +358,7 @@ def calculate_guardian_cohort_analytics(
             "first_attempt_rate": 50.0,
             "bottleneck": "Consumer group partition rebalance storms & idempotent producer deduplication.",
             "pedagogy": "Exactly-once Kafka consumer semantics and failure recovery.",
-            "status_summary": "2 Certified • 1 In Review (Astraea Nova Attempt #2) • 3 In Progress"
+            "status_summary": "2 Certified • 1 In Review (Aarav Sharma Attempt #2) • 3 In Progress"
         },
         {
             "id": "badge_sql_201",
@@ -451,7 +464,7 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
                 "scope": "Cohort Aggregate (6 Profiles)",
                 "included": "All active enrolled engineering cadets in Batch Orion-24",
                 "excluded": "Graduated alumni, external auditors, or unassigned accounts",
-                "insight": "Active training cohort size representing the total instructional footprint for Guardian Dr. Elena Vance."
+                "insight": "Active training cohort size representing the total instructional footprint for Guardian Arjun Mehta."
             },
             "completion_rate": {
                 "title": "Badge Completion Rate",
@@ -515,14 +528,14 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
                 "denominator": "Active Application Submission Queue",
                 "value": f"{data.get('pending_evals', 1)} Pending",
                 "scope": "Guardian Production Queue",
-                "included": "Astraea Nova - ING-104 (Attempt #2 Deliverable Package)",
+                "included": "Aarav Sharma - ING-104 (Attempt #2 Deliverable Package)",
                 "excluded": "Completed evaluations and certified milestones",
                 "insight": "Clicking 'Evaluate Pending Deliverable' opens the live 50-mark rubric assessment viewport."
             }
         }
         return popovers.get(metric_key, {})
     else:
-        # Individual Scope (e.g. Astraea Nova or Selected Cadet)
+        # Individual Scope (e.g. Aarav Sharma or Selected Cadet)
         popovers = {
             "individual_badges": {
                 "title": "Certified Roadmap Milestones",

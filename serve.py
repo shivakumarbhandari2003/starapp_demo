@@ -1,72 +1,43 @@
 """
-STARAPP STATIC LAUNCHER
-Standard static HTTP file server using Python's built-in http.server.
-(No backend framework, no database, no Flask/Django/FastAPI).
-Serves index.html, CSS, and JS files to local browser.
+STARAPP LOCAL FULL-STACK LAUNCHER
+Launches the FastAPI backend with persistent SQLite3 storage, REST APIs,
+server-side RBAC, and static frontend presentation serving.
 """
 
-import http.server
-import socketserver
-import webbrowser
-import os
 import sys
+import os
 
-PORT = 8000
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+if DIRECTORY not in sys.path:
+    sys.path.insert(0, DIRECTORY)
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=DIRECTORY, **kwargs)
+try:
+    import uvicorn
+    HAVE_UVICORN = True
+except ImportError:
+    HAVE_UVICORN = False
 
-    def end_headers(self):
-        # Enable CORS and shared array buffer headers if needed
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        super().end_headers()
-
-    def copyfile(self, source, outputfile):
-        """Silently handle browser client disconnects (WinError 10053 / BrokenPipe) without crashing."""
-        try:
-            super().copyfile(source, outputfile)
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            pass
-
-    def handle_one_request(self):
-        """Catch early socket resets from browser parallel connection pooling."""
-        try:
-            super().handle_one_request()
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            pass
-
-class RobustThreadingServer(http.server.ThreadingHTTPServer):
-    daemon_threads = True
-    allow_reuse_address = True
-
-    def handle_error(self, request, client_address):
-        """Suppress benign client-abort errors from polluting terminal or blocking execution."""
-        exc_type, exc_val = sys.exc_info()[:2]
-        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-            return
-        super().handle_error(request, client_address)
 
 def main():
-    os.chdir(DIRECTORY)
-    with RobustThreadingServer(("", PORT), Handler) as httpd:
-        url = f"http://localhost:{PORT}/index.html"
-        print(f"==================================================")
-        print(f"STARAPP LOCAL STATIC PROTOTYPE SERVER (THREADED)")
-        print(f"Serving at: {url}")
-        print(f"Press Ctrl+C to stop.")
-        print(f"==================================================")
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
-        try:
+    if HAVE_UVICORN:
+        print("==================================================================")
+        print("   STARAPP FULL-STACK PLATFORM — LOCAL PRODUCTION SERVER")
+        print("==================================================================")
+        print(" * Architecture: Modular FastAPI + SQLite3 + Native Frontend")
+        print(" * Local URL:    http://127.0.0.1:8000")
+        print(" * API Docs:     http://127.0.0.1:8000/docs")
+        print(" * Health Check: http://127.0.0.1:8000/api/health")
+        print("==================================================================")
+        uvicorn.run("backend.app.main:app", host="127.0.0.1", port=8000, reload=False)
+    else:
+        print("[WARN] uvicorn not installed. Falling back to static http.server...")
+        import http.server
+        import socketserver
+        handler = http.server.SimpleHTTPRequestHandler
+        with socketserver.TCPServer(("127.0.0.1", 8000), handler) as httpd:
+            print("Serving static StarApp at http://127.0.0.1:8000 ...")
             httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down server.")
+
 
 if __name__ == "__main__":
     main()
-

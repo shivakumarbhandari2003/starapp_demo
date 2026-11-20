@@ -112,42 +112,42 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "aarav.sharma",
         "avatar": "AS", "email": "aarav.sharma@starapp.io", "password": "12345678",
         "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b1_2", "band": "B1", "name": "Ananya Iyer", "age": 25, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "ananya.iyer",
         "avatar": "AI", "email": "ananya.iyer@starapp.io", "password": "12345678",
         "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b1_3", "band": "B1", "name": "Vivaan Patel", "age": 27, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "vivaan.patel",
         "avatar": "VP", "email": "vivaan.patel@starapp.io", "password": "12345678",
         "reporting_manager": "Rohan Deshmukh (B2)", "reporting_manager_id": "m_b2_1", "reporting_manager_name": "Rohan Deshmukh", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b1_4", "band": "B1", "name": "Kavya Reddy", "age": 26, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "kavya.reddy",
         "avatar": "KR", "email": "kavya.reddy@starapp.io", "password": "12345678",
         "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b1_5", "band": "B1", "name": "Ishaan Gupta", "age": 28, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "ishaan.gupta",
         "avatar": "IG", "email": "ishaan.gupta@starapp.io", "password": "12345678",
         "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b1_6", "band": "B1", "name": "Diya Chatterjee", "age": 25, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "diya.chatterjee",
         "avatar": "DC", "email": "diya.chatterjee@starapp.io", "password": "12345678",
         "reporting_manager": "Aditya Kulkarni (B2)", "reporting_manager_id": "m_b2_3", "reporting_manager_name": "Aditya Kulkarni", "reporting_manager_band": "B2",
-        "application_roles": ["cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut"], "status": "active", "is_demo": False
     },
 
     # Band B2 (Specialist) - 6 Members (2 Managers, 4 ICs)
@@ -157,14 +157,14 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "RD", "email": "rohan.deshmukh@starapp.io", "password": "12345678",
         "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
         "direct_reports": ["m_b1_1", "m_b1_2", "m_b1_3"],
-        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b2_2", "band": "B2", "name": "Meera Nair", "age": 29, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "meera.nair",
         "avatar": "MN", "email": "meera.nair@starapp.io", "password": "12345678",
         "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b2_3", "band": "B2", "name": "Aditya Kulkarni", "age": 32, "role": "AI Engineer",
@@ -172,28 +172,28 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "AK", "email": "aditya.kulkarni@starapp.io", "password": "12345678",
         "reporting_manager": "Vikram Rao (B3)", "reporting_manager_id": "m_b3_1", "reporting_manager_name": "Vikram Rao", "reporting_manager_band": "B3",
         "direct_reports": ["m_b1_4", "m_b1_5", "m_b1_6"],
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b2_4", "band": "B2", "name": "Nisha Menon", "age": 30, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "nisha.menon",
         "avatar": "NM", "email": "nisha.menon@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b2_5", "band": "B2", "name": "Karthik Subramanian", "age": 33, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "karthik.subramanian",
         "avatar": "KS", "email": "karthik.subramanian@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b2_6", "band": "B2", "name": "Pooja Joshi", "age": 28, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "pooja.joshi",
         "avatar": "PJ", "email": "pooja.joshi@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Malhotra (B3)", "reporting_manager_id": "m_b3_3", "reporting_manager_name": "Arjun Malhotra", "reporting_manager_band": "B3",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
 
     # Band B3 (Senior Specialist) - 6 Members (2 Managers, 4 ICs)
@@ -203,14 +203,14 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "VR", "email": "vikram.rao@starapp.io", "password": "12345678",
         "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
         "direct_reports": ["m_b2_1", "m_b2_2", "m_b2_3"],
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b3_2", "band": "B3", "name": "Sneha Kapoor", "age": 35, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "sneha.kapoor",
         "avatar": "SK", "email": "sneha.kapoor@starapp.io", "password": "12345678",
         "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b3_3", "band": "B3", "name": "Arjun Malhotra", "age": 37, "role": "AI Engineer",
@@ -218,28 +218,28 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "AM", "email": "arjun.malhotra@starapp.io", "password": "12345678",
         "reporting_manager": "Rajiv Menon (B4)", "reporting_manager_id": "m_b4_1", "reporting_manager_name": "Rajiv Menon", "reporting_manager_band": "B4",
         "direct_reports": ["m_b2_4", "m_b2_5", "m_b2_6"],
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b3_4", "band": "B3", "name": "Divya Krishnan", "age": 34, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "divya.krishnan",
         "avatar": "DK", "email": "divya.krishnan@starapp.io", "password": "12345678",
         "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b3_5", "band": "B3", "name": "Sandeep Bhat", "age": 38, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "sandeep.bhat",
         "avatar": "SB", "email": "sandeep.bhat@starapp.io", "password": "12345678",
         "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b3_6", "band": "B3", "name": "Tanvi Shah", "age": 35, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "tanvi.shah",
         "avatar": "TS", "email": "tanvi.shah@starapp.io", "password": "12345678",
         "reporting_manager": "Pranav Sethi (B4)", "reporting_manager_id": "m_b4_3", "reporting_manager_name": "Pranav Sethi", "reporting_manager_band": "B4",
-        "application_roles": ["cosmonaut", "badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
 
     # Band B4 (Lead Engineer) - 6 Members (2 Managers, 4 ICs)
@@ -249,14 +249,14 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "RM", "email": "rajiv.menon@starapp.io", "password": "12345678",
         "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
         "direct_reports": ["m_b3_1", "m_b3_2", "m_b3_3"],
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b4_2", "band": "B4", "name": "Shalini Desai", "age": 40, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "shalini.desai",
         "avatar": "SD", "email": "shalini.desai@starapp.io", "password": "12345678",
         "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b4_3", "band": "B4", "name": "Pranav Sethi", "age": 43, "role": "AI Engineer",
@@ -264,28 +264,28 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "PS", "email": "pranav.sethi@starapp.io", "password": "12345678",
         "reporting_manager": "Anirudh Krishnan (B5)", "reporting_manager_id": "m_b5_1", "reporting_manager_name": "Anirudh Krishnan", "reporting_manager_band": "B5",
         "direct_reports": ["m_b3_4", "m_b3_5", "m_b3_6"],
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b4_4", "band": "B4", "name": "Neha Pillai", "age": 39, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "neha.pillai",
         "avatar": "NP", "email": "neha.pillai@starapp.io", "password": "12345678",
         "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b4_5", "band": "B4", "name": "Gaurav Mukherjee", "age": 44, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "gaurav.mukherjee",
         "avatar": "GM", "email": "gaurav.mukherjee@starapp.io", "password": "12345678",
         "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b4_6", "band": "B4", "name": "Aditi Rao", "age": 41, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "aditi.rao",
         "avatar": "AR", "email": "aditi.rao@starapp.io", "password": "12345678",
         "reporting_manager": "Sameer Kulkarni (B5)", "reporting_manager_id": "m_b5_3", "reporting_manager_name": "Sameer Kulkarni", "reporting_manager_band": "B5",
-        "application_roles": ["badge_reviewer", "cosmonaut"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
 
     # Band B5 (Principal Architect) - 6 Members (2 Managers, 4 ICs)
@@ -295,14 +295,14 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "AK", "email": "anirudh.krishnan@starapp.io", "password": "12345678",
         "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
         "direct_reports": ["m_b4_1", "m_b4_2", "m_b4_3"],
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b5_2", "band": "B5", "name": "Kavita Shah", "age": 47, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "kavita.shah",
         "avatar": "KS", "email": "kavita.shah@starapp.io", "password": "12345678",
         "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b5_3", "band": "B5", "name": "Sameer Kulkarni", "age": 49, "role": "AI Engineer",
@@ -310,28 +310,28 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "SK", "email": "sameer.kulkarni@starapp.io", "password": "12345678",
         "reporting_manager": "Devika Narayanan (B6)", "reporting_manager_id": "m_b6_1", "reporting_manager_name": "Devika Narayanan", "reporting_manager_band": "B6",
         "direct_reports": ["m_b4_4", "m_b4_5", "m_b4_6"],
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b5_4", "band": "B5", "name": "Ritu Malhotra", "age": 46, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "ritu.malhotra",
         "avatar": "RM", "email": "ritu.malhotra@starapp.io", "password": "12345678",
         "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b5_5", "band": "B5", "name": "Harish Iyer", "age": 50, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "harish.iyer",
         "avatar": "HI", "email": "harish.iyer@starapp.io", "password": "12345678",
         "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b5_6", "band": "B5", "name": "Lakshmi Nambiar", "age": 47, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "lakshmi.nambiar",
         "avatar": "LN", "email": "lakshmi.nambiar@starapp.io", "password": "12345678",
         "reporting_manager": "Manish Bansal (B6)", "reporting_manager_id": "m_b6_3", "reporting_manager_name": "Manish Bansal", "reporting_manager_band": "B6",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
 
     # Band B6 (Chief / Distinguished Fellow) - Exactly 5 Employees (2 Managers, 3 ICs)
@@ -341,14 +341,14 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "DN", "email": "devika.narayanan@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
         "direct_reports": ["m_b5_1", "m_b5_2", "m_b5_3"],
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b6_2", "band": "B6", "name": "Siddharth Banerjee", "age": 54, "role": "Solutions Designer",
         "learning_track": "Solutions Designer", "track_code": "SD", "username": "siddharth.banerjee",
         "avatar": "SB", "email": "siddharth.banerjee@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b6_3", "band": "B6", "name": "Manish Bansal", "age": 53, "role": "AI Engineer",
@@ -356,21 +356,21 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "MB", "email": "manish.bansal@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
         "direct_reports": ["m_b5_4", "m_b5_5", "m_b5_6"],
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b6_4", "band": "B6", "name": "Farah Contractor", "age": 52, "role": "AI Engineer",
         "learning_track": "AI Engineer", "track_code": "AIE", "username": "farah.contractor",
         "avatar": "FC", "email": "farah.contractor@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
     {
         "id": "m_b6_5", "band": "B6", "name": "Prakash Venkataraman", "age": 54, "role": "Systems Engineer",
         "learning_track": "Systems Engineer", "track_code": "SE", "username": "prakash.venkataraman",
         "avatar": "PV", "email": "prakash.venkataraman@starapp.io", "password": "12345678",
         "reporting_manager": "Arjun Mehta (CEO)", "reporting_manager_id": "guardian_1", "reporting_manager_name": "Arjun Mehta", "reporting_manager_band": "CEO",
-        "application_roles": ["badge_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["cosmonaut", "badge_reviewer", "project_reviewer"], "status": "active", "is_demo": False
     },
 
     # Executive Leadership - CEO & Admin (Arjun Mehta)
@@ -380,7 +380,7 @@ DUMMY_MEMBERS: List[Dict[str, Any]] = [
         "avatar": "AM", "email": "arjun.mehta@starapp.io", "password": "12345678",
         "reporting_manager": None, "reporting_manager_id": None, "reporting_manager_name": None, "reporting_manager_band": None,
         "direct_reports": ["m_b6_1", "m_b6_2", "m_b6_3", "m_b6_4", "m_b6_5"],
-        "application_roles": ["guardian", "project_reviewer"], "status": "active", "is_demo": True
+        "application_roles": ["guardian", "project_reviewer"], "status": "active", "is_demo": False
     }
 ]
 

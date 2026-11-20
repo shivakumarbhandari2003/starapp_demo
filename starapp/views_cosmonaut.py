@@ -13,7 +13,7 @@ from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
-    render_learning_materials_view
+    render_learning_materials_view, render_back_button
 )
 from starapp.roadmap import generate_roadmap_graph
 from starapp.assessment import RUBRIC_CRITERIA
@@ -59,7 +59,17 @@ def render_cosmo_metric_info_popover(key: str, data: Dict[str, Any], scope: str 
 # COSMONAUT SIDEBAR
 # ==============================================================================
 
-def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announcements_count: int) -> str:
+def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announcements_count: int, pending_requests_count: int = 0) -> str:
+    from starapp.storage import store
+
+    # If pending_requests_count was not passed, compute it dynamically
+    if pending_requests_count == 0 and hasattr(store, "get_badge_review_requests_for_user"):
+        try:
+            reqs = store.get_badge_review_requests_for_user(current_user.id)
+            pending_requests_count = len([r for r in reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+        except Exception:
+            pending_requests_count = 0
+
     nav_items = [
         {"id": "c_dashboard", "label": "My Dashboard", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>', "badge": 0},
         {"id": "c_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
@@ -69,6 +79,17 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         {"id": "c_profile", "label": "Cosmonaut Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
         {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0}
     ]
+
+    # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Review Requests view
+    u_band = getattr(current_user, "band", "")
+    is_eligible = (u_band in ("B2", "B3", "B4", "B5", "B6")) or current_user.has_role("badge_reviewer") or (pending_requests_count > 0)
+    if is_eligible:
+        nav_items.insert(2, {
+            "id": "c_requests",
+            "label": "Review Requests",
+            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+            "badge": pending_requests_count
+        })
 
     links_html = []
     for item in nav_items:
@@ -97,7 +118,7 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
 
         <div class="role-badge-pill">
             <span class="role-badge-label">Learner</span>
-            <span class="role-badge-val">Batch Orion-24</span>
+            <span class="role-badge-val">Band {escape(getattr(current_user, 'band', 'B1'))}</span>
         </div>
 
         <ul class="sidebar-nav">
@@ -149,7 +170,7 @@ def render_cosmonaut_dashboard(
     cadet_exts = extensions if extensions is not None else store.get_extensions_for_cosmonaut(current_user.id)
     cadet_anns = recent_announcements if recent_announcements is not None else store.get_announcements_for_cosmonaut(current_user.id)[:3]
 
-    # Standardized analytics profile for Astraea Nova
+    # Standardized analytics profile for Aarav Sharma
     astraea_rec = build_astraea_analytics_record(current_user, assigned_badges, assessments, cadet_subs, cadet_exts)
 
     # Resolve cohort profiles for cohort-wide comparative metrics & leaderboard
@@ -208,16 +229,16 @@ def render_cosmonaut_dashboard(
 
     if pending_sub:
         next_action_title = f"{active_b.code if active_b else 'Milestone'} Deliverable (Attempt #{pending_sub.attempt_number}) In Evaluation"
-        next_action_desc = f"Your latest project package for <strong>{escape(active_b.title if active_b else '')}</strong> is currently undergoing technical review by Dr. Elena Vance. While awaiting marksheet publication, begin reviewing study materials for subsequent milestones."
+        next_action_desc = f"Your latest project package for <strong>{escape(active_b.title if active_b else '')}</strong> is currently undergoing technical review. While awaiting marksheet publication, begin reviewing study materials for subsequent milestones."
         next_action_pill = '<span class="status-pill status-pending" style="font-size:11px; font-weight:800; padding:4px 10px;">&#9203; Under Guardian Review</span>'
         primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Track Submission Status &rarr;</button>"""
         secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Browse Study Materials &rarr;</button>"""
     elif latest_sub and latest_sub.status == "resubmission_requested":
         next_action_title = f"Resubmission Required: {active_b.code if active_b else 'Milestone'}"
-        next_action_desc = f"Guardian requested a revised Attempt #{latest_sub.attempt_number + 1} deliverable. Address the architectural idempotency feedback and resubmit your implementation package."
+        next_action_desc = f"Evaluator requested a revised Attempt #{latest_sub.attempt_number + 1} deliverable. Address the architectural feedback and resubmit your implementation package."
         next_action_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:800; padding:4px 10px;">&#9888; Resubmission Requested</span>'
         primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Revised Deliverable &rarr;</button>"""
-        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Mentor Feedback &rarr;</button>"""
+        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Evaluator Feedback &rarr;</button>"""
     elif active_b:
         next_action_title = f"Active Sprint: Complete {active_b.code} Deliverables"
         next_action_desc = f"You are currently fulfilling <strong>{escape(active_b.title)}</strong>. Prepare your PDF system architecture charter and executable code package for upload."
@@ -226,13 +247,13 @@ def render_cosmonaut_dashboard(
         secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Review Study Materials &rarr;</button>"""
     else:
         next_action_title = "Curriculum Roadmap Completed"
-        next_action_desc = "All assigned enterprise milestones have been certified by Guardian mentorship. Review your official marksheet transcript."
+        next_action_desc = "All assigned enterprise milestones have been certified. Review your official marksheet transcript."
         next_action_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; padding:4px 10px;">&#10003; Certified</span>'
         primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Marksheets &rarr;</button>"""
         secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_roadmap')">Explore Career Pathways &rarr;</button>"""
 
     # --------------------------------------------------------------------------
-    # SECTION D: Batch Orion-24 Academic Leaderboard (NEW FOR COSMONAUT)
+    # SECTION D: Cohort Academic Leaderboard
     # --------------------------------------------------------------------------
     leaderboard_rows = []
     for idx, c in enumerate(sorted_cohort, start=1):
@@ -308,8 +329,8 @@ def render_cosmonaut_dashboard(
     <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
-                <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Batch Orion-24 Academic Leaderboard</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress. Compare your score with batch mates.</div>
+                <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Cohort Academic Leaderboard</h3>
+                <div style="font-size:12px; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress. Compare your score with cohort mates.</div>
             </div>
             <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                 {total_cohort} Enrolled Cadets &bull; Your Rank: #{rank}
@@ -605,12 +626,12 @@ def render_cosmonaut_dashboard(
         </div>
     </div>
 
-    <!-- Guardian Mentoring Action Plan -->
+    <!-- Mentoring Action Plan -->
     <div style="background:linear-gradient(135deg, rgba(23,52,92,0.05) 0%, rgba(37,99,235,0.08) 100%); border:1px solid rgba(37,99,235,0.22); border-left:4px solid var(--frost-navy); border-radius:var(--radius-sm); padding:16px 20px;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">EV</div>
+            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">GM</div>
             <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
-                Guardian Mentoring Guidance &bull; Dr. Elena Vance
+                Faculty Mentoring Guidance &bull; Mentorship Committee
             </div>
         </div>
         <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
@@ -619,8 +640,31 @@ def render_cosmonaut_dashboard(
     </div>
     """
 
+    # Review request alert banner for higher-band reviewers
+    review_alert_banner = ""
+    try:
+        user_reqs = store.get_badge_review_requests_for_user(current_user.id)
+        pending_review_cnt = len([r for r in user_reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+        if pending_review_cnt > 0:
+            review_alert_banner = f"""
+            <div class="liquid-glass-card" style="padding:16px 20px; border-left:4px solid #F59E0B; margin-bottom:20px; background:linear-gradient(135deg, rgba(254,243,199,0.95) 0%, rgba(255,255,255,0.98) 100%); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-radius:var(--radius-md); box-shadow:0 4px 14px rgba(245,158,11,0.12);">
+                <div>
+                    <div style="font-size:11.5px; font-weight:800; color:#B45309; text-transform:uppercase; letter-spacing:0.5px;">Institutional Peer Review Assignment</div>
+                    <div style="font-size:13.5px; color:var(--frost-navy); font-weight:700; margin-top:2px;">
+                        You have <strong>{pending_review_cnt} badge review request(s)</strong> awaiting your inspection and authorization.
+                    </div>
+                </div>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_requests')" style="font-weight:700; font-size:12px; padding:6px 16px;">
+                    Review Requests ({pending_review_cnt}) &rarr;
+                </button>
+            </div>
+            """
+    except Exception:
+        pass
+
     return f"""
     <div>
+        {review_alert_banner}
         <!-- SECTION A: Personal Welcome / Dossier Header -->
         <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
@@ -632,7 +676,7 @@ def render_cosmonaut_dashboard(
                             <span style="font-size:11px; font-weight:800; background:#10B981; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">FLIGHT OFFICER</span>
                         </div>
                         <div style="font-size:12.5px; color:var(--frost-navy-75); margin-top:3px;">
-                            ID: <strong style="font-family:var(--font-family-mono);">{escape(current_user.id)}</strong> &bull; Batch: <strong>{escape(profile.batch_name or "Batch Orion-24")}</strong> &bull; Lead Mentor: <strong>Dr. Elena Vance</strong>
+                            ID: <strong style="font-family:var(--font-family-mono);">{escape(current_user.id)}</strong> &bull; Batch: <strong>{escape(profile.batch_name or "Orion-24")}</strong> &bull; Lead Mentor: <strong>Arjun Mehta</strong>
                         </div>
                     </div>
                 </div>
@@ -689,7 +733,7 @@ def render_cosmonaut_dashboard(
                     </div>
                 </div>
                 <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:#059669;">#{rank} <span style="font-size:12.5px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
-                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">Top {round((rank/max(1, total_cohort))*100)}% of Batch Orion-24</div>
+                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">Top {round((rank/max(1, total_cohort))*100)}% of Cohort</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
@@ -735,7 +779,7 @@ def render_cosmonaut_dashboard(
             </div>
         </div>
 
-        <!-- SECTION D: Batch Orion-24 Academic Leaderboard -->
+        <!-- SECTION D: Cohort Academic Leaderboard -->
         {leaderboard_deck}
 
         <!-- SECTION E: Milestone Performance & Rubric Marks Bar Graph -->
@@ -813,8 +857,8 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
         "Data systems apprentice specializing in stream processing architectures, "
         "fault-tolerant ETL pipelines, and regulatory data governance matrices under Guardian mentorship."
     )
-    guardian_name = "Dr. Elena Vance"
-    guardian_title = profile.guardian_credentials or "Lead Data Architect & Guardian (Batch Orion-24)"
+    guardian_name = "Academy Guardian"
+    guardian_title = profile.guardian_credentials or "Lead Enterprise Architect & Mentor"
 
     # Skills Pill Badges
     skills_tags = []
@@ -854,6 +898,9 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
 
     return f"""
     <div style="max-width:1100px; margin:0 auto;">
+        <div style="display:flex; align-items:center; margin-bottom:16px;">
+            {render_back_button()}
+        </div>
         <!-- 1. Executive Bio & Credentials Header Banner -->
         <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
@@ -904,8 +951,8 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
 
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
                     <div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Training Cohort</div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(profile.batch_name)}</div>
-                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">Orion-24 Senior Stream</div>
+                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(profile.batch_name or f"Band {getattr(current_user, 'band', 'B1')} Cohort")}</div>
+                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">Enterprise Cadets</div>
                 </div>
 
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
@@ -1139,7 +1186,9 @@ def render_gamified_roadmap(
         "Progress level by level across the 25-milestone curriculum pathway. Each locked level unlocks as your Guardian publishes the next milestone."
     )
 
-    return """
+    back_html = f'<div style="display:flex; align-items:center; margin-bottom:16px;">{render_back_button()}</div>'
+
+    roadmap_body = """
     <div>
         <div style="text-align:center;margin-bottom:28px;">
             <h2 style="font-size:1.6rem;font-weight:800;color:var(--frost-navy);">{heading_title}</h2>
@@ -1194,6 +1243,7 @@ def render_gamified_roadmap(
         cmpsvg=completed_svg,
         containers="\n".join(milestone_els)
     )
+    return f"<div>{back_html}{roadmap_body}</div>"
 
 def render_badge_detail_modal_content(
     badge: Badge,
@@ -1318,7 +1368,7 @@ def render_badge_detail_modal_content(
                 <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(display_title)}</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:11.5px; font-weight:600; color:var(--frost-navy-50);">Decided by Guardian Dr. Elena Vance</span>
+                <span style="font-size:11.5px; font-weight:600; color:var(--frost-navy-50);">Decided by Assigned Reviewer</span>
                 {render_status_pill(state)}
             </div>
         </div>
@@ -1358,6 +1408,9 @@ def render_cosmonaut_submission_workspace(
 
     return f"""
     <div>
+        <div style="display:flex; align-items:center; margin-bottom:16px;">
+            {render_back_button()}
+        </div>
         <div style="margin-bottom:24px; text-align:center;">
             <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Project Deliverable Submission Portal</h2>
             <p style="font-size:13.5px; color:var(--frost-navy-50);">Provide your technical deliverables, executable scripts, and repository links for formal review.</p>
@@ -1508,9 +1561,12 @@ def render_cosmonaut_results(
     # Top header with Title on the left and Badge Dropdown on the top right
     top_header_html = f"""
     <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
-        <div>
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
-            <div style="font-size:13px; color:var(--frost-navy-50);">Guardian evaluation rubric scores and performance breakdown.</div>
+        <div style="display:flex; align-items:center; gap:12px;">
+            {render_back_button()}
+            <div>
+                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
+                <div style="font-size:13px; color:var(--frost-navy-50);">Institutional evaluation rubric scores and performance breakdown.</div>
+            </div>
         </div>
         <div style="min-width:320px;">
             <label style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; display:block; margin-bottom:6px;">Select Milestone Badge</label>
@@ -1534,7 +1590,7 @@ def render_cosmonaut_results(
             </div>
             <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Evaluation Pending for {escape(badge_code)}</h3>
             <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:540px; margin:0 auto 20px auto; line-height:1.5;">
-                <strong>{escape(badge_title)}</strong> has been allocated by your Guardian. Once you submit project deliverables, Dr. Elena Vance will publish your marksheet across the 50-mark universal rubric.
+                <strong>{escape(badge_title)}</strong> has been allocated by your Guardian. Once you submit project deliverables, your Guardian will publish your marksheet across the 50-mark universal rubric.
             </p>
             <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{selected_badge_id}')">
                 Open Deliverable Submission Portal →
@@ -1660,9 +1716,14 @@ def render_cosmonaut_extensions(
 
     return f"""
     <div>
-        <div style="margin-bottom:24px;">
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Milestone Deadline Extension Portal</h2>
-            <p style="font-size:13.5px; color:var(--frost-navy-50);">Request scheduling adjustments for active milestones and track Guardian evaluations in real-time.</p>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                {render_back_button()}
+                <div>
+                    <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Milestone Deadline Extension Portal</h2>
+                    <p style="font-size:13.5px; color:var(--frost-navy-50); margin:0;">Request scheduling adjustments for active milestones and track evaluations in real-time.</p>
+                </div>
+            </div>
         </div>
 
         <!-- Vertically Stacked Layout: Form on top, Submitted requests below -->
@@ -1796,9 +1857,14 @@ def render_cosmonaut_announcements(
 
     return f"""
     <div>
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Academy Announcement Center</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Notices and schedule updates broadcasted by Dr. Elena Vance.</p>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                {render_back_button()}
+                <div>
+                    <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0;">Academy Announcement Center</h2>
+                    <p style="font-size:13px; color:var(--frost-navy-50); margin:2px 0 0 0;">Notices and schedule updates broadcasted by Academy Leadership.</p>
+                </div>
+            </div>
         </div>
 
         <div>
@@ -1828,9 +1894,14 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
 
     return f"""
     <div>
-        <div style="margin-bottom:20px;">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Personal Activity Feed</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Your verified training progression, milestone submissions, and marksheet publications.</p>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                {render_back_button()}
+                <div>
+                    <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0;">Personal Activity Feed</h2>
+                    <p style="font-size:13px; color:var(--frost-navy-50); margin:2px 0 0 0;">Your verified training progression, milestone submissions, and marksheet publications.</p>
+                </div>
+            </div>
         </div>
 
         <div class="table-responsive">
@@ -1847,6 +1918,266 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
                     {"".join(rows) if rows else '<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--frost-navy-50);">No recorded activities yet.</td></tr>'}
                 </tbody>
             </table>
+        </div>
+    </div>
+    """
+
+
+# ==============================================================================
+# 6.9 REVIEW REQUESTS QUEUE (COSMONAUT VIEW FOR HIGHER-BAND REVIEWERS)
+# ==============================================================================
+
+def render_cosmonaut_review_requests(
+    requests: List[Dict[str, Any]],
+    current_user: User,
+    active_tab: str = "all",
+    search_query: str = ""
+) -> str:
+    """
+    Renders the Review Requests workspace in the Cosmonaut portal.
+    Engineers in higher bands (B2 through B6) can inspect, edit, approve,
+    or return/reject badges submitted for peer review.
+    """
+    from starapp.storage import store
+
+    # Filtering
+    filtered = requests
+    if active_tab and active_tab != "all":
+        filtered = [
+            r for r in filtered
+            if r.get("workflow_status") == active_tab or r.get("assignment_status") == active_tab
+        ]
+
+    if search_query and search_query.strip():
+        q = search_query.strip().lower()
+        filtered = [
+            r for r in filtered
+            if q in r.get("title", "").lower()
+            or q in r.get("code", "").lower()
+            or q in r.get("target_band", "").lower()
+            or q in r.get("skill", "").lower()
+            or q in r.get("capability", "").lower()
+        ]
+
+    # Counts
+    all_cnt = len(requests)
+    pending_cnt = len([r for r in requests if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+    approved_cnt = len([r for r in requests if r.get("workflow_status") == "approved" or r.get("assignment_status") == "approved"])
+    returned_cnt = len([r for r in requests if r.get("workflow_status") == "returned" or r.get("assignment_status") == "returned"])
+
+    def tab_btn(tab_id: str, label: str, count: int) -> str:
+        is_sel = (tab_id == active_tab)
+        st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if is_sel else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+        return f"""
+        <button type="button" class="btn-secondary btn-sm" style="{st} padding:7px 16px; border-radius:var(--radius-sm);"
+                onclick="window.StarAppBridge.dispatchAction('filter_cosmo_requests', '{tab_id}')">
+            {label} ({count})
+        </button>
+        """
+
+    tabs_html = f"""
+    <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+        {tab_btn('all', 'All Requests', all_cnt)}
+        {tab_btn('pending_review', 'Pending Review', pending_cnt)}
+        {tab_btn('approved', 'Approved', approved_cnt)}
+        {tab_btn('returned', 'Returned', returned_cnt)}
+    </div>
+    """
+
+    user_band = getattr(current_user, "band", "B2")
+    user_track = getattr(current_user, "learning_track", "Engineer")
+
+    # Render request cards
+    cards_html = []
+    for r in filtered:
+        b_id = r.get("id", "")
+        b_code = escape(r.get("code", ""))
+        b_title = escape(r.get("title", ""))
+        target_band = escape(r.get("target_band", "B1"))
+        b_loc = escape(r.get("location", ""))
+        b_desc = escape(r.get("description", ""))
+        wf_status = r.get("workflow_status", "pending_review")
+        assign_status = r.get("assignment_status", "pending")
+        creator_name = escape(r.get("creator_name") or "Guardian")
+        assigned_at = escape(r.get("assigned_at", "")[:10] or "2026-11-18")
+        due_date = escape(r.get("review_due_at", "")[:10] or "2026-11-25")
+        dec_notes = escape(r.get("decision_notes", ""))
+
+        if wf_status == "pending_review":
+            status_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Pending Review</span>'
+        elif wf_status == "approved":
+            status_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Approved</span>'
+        elif wf_status == "returned":
+            status_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:700;">Returned for Changes</span>'
+        else:
+            status_pill = f'<span class="status-pill status-active" style="font-size:11px; font-weight:700;">{escape(wf_status.title())}</span>'
+
+        # Outcomes preview
+        outcomes = r.get("learning_outcomes", [])
+        outcomes_list = []
+        for oc in outcomes[:3]:
+            outcomes_list.append(f'<li style="margin-bottom:4px; font-size:12px; color:var(--frost-navy);">{escape(str(oc))}</li>')
+        outcomes_html = f'<ul style="margin:6px 0 0 16px; padding:0; list-style-type:disc;">{"".join(outcomes_list)}</ul>' if outcomes_list else '<span style="font-size:12px; color:var(--frost-navy-50);">No outcomes specified.</span>'
+
+        # Topics pills
+        topics = r.get("learning_topics", [])
+        topic_pills = []
+        for t in topics[:6]:
+            t_title = t.get("title") if isinstance(t, dict) else str(t)
+            topic_pills.append(f'<span style="font-size:11px; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-weight:600;">{escape(t_title)}</span>')
+        topics_html = f'<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">{"".join(topic_pills)}</div>' if topic_pills else ""
+
+        # Practice Project requirements preview
+        reqs = r.get("project_requirements", "")
+        reqs_html = f"""
+        <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.7); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:12px; color:var(--frost-navy-75);">
+            <strong style="color:var(--frost-navy);">Practice Project Specification:</strong> {escape(reqs[:180])}{"..." if len(reqs) > 180 else ""}
+        </div>
+        """ if reqs else ""
+
+        # Decision notes preview if present
+        notes_box = ""
+        if dec_notes:
+            notes_box = f"""
+            <div style="margin-top:10px; padding:8px 12px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:12px; color:var(--frost-navy);">
+                <strong style="color:#DC2626;">Reviewer Feedback Notes:</strong> {dec_notes}
+            </div>
+            """
+
+        # Action Buttons
+        inspect_btn = f"""
+        <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700;"
+                onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b_id}')">
+            Inspect Badge
+        </button>
+        """
+
+        edit_btn = f"""
+        <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700;"
+                onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b_id}')">
+            Edit Badge
+        </button>
+        """
+
+        approve_btn = ""
+        return_btn = ""
+        if wf_status == "pending_review":
+            approve_btn = f"""
+            <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:800; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
+                Accept & Approve &rarr;
+            </button>
+            """
+            return_btn = f"""
+            <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b_id}')">
+                Return with Feedback
+            </button>
+            """
+        elif wf_status == "returned":
+            approve_btn = f"""
+            <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:800;"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
+                Re-evaluate & Approve &rarr;
+            </button>
+            """
+
+        cards_html.append(f"""
+        <div class="liquid-glass-card" style="padding:20px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-40); margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(240,247,255,0.9) 100%); box-shadow:0 4px 14px rgba(7,22,41,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{b_code}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">TARGET: BAND {target_band}</span>
+                        {status_pill}
+                    </div>
+                    <h3 style="font-size:15.5px; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">{b_title}</h3>
+                    <div style="font-size:12px; color:var(--frost-navy-75); font-weight:600;">{b_loc}</div>
+                </div>
+
+                <div style="text-align:right; font-size:11.5px; color:var(--frost-navy-50);">
+                    <div>Assigned by: <strong style="color:var(--frost-navy);">{creator_name}</strong></div>
+                    <div>Assigned: <strong>{assigned_at}</strong> &bull; Due: <strong style="color:#B45309;">{due_date}</strong></div>
+                </div>
+            </div>
+
+            <p style="font-size:12.5px; color:var(--frost-navy-75); margin:0 0 10px 0; line-height:1.5;">{b_desc}</p>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-bottom:14px;">
+                <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                    <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Key Learning Outcomes</div>
+                    {outcomes_html}
+                </div>
+
+                <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
+                    <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Curriculum Topics</div>
+                    {topics_html}
+                </div>
+            </div>
+
+            {reqs_html}
+            {notes_box}
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid var(--icy-steel-25);">
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                    Institutional Reviewer: <strong style="color:var(--deep-frozen-midnight);">{escape(current_user.name)} (Band {user_band})</strong>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    {inspect_btn}
+                    {edit_btn}
+                    {return_btn}
+                    {approve_btn}
+                </div>
+            </div>
+        </div>
+        """)
+
+    empty_html = f"""
+    <div class="liquid-glass-card" style="padding:48px 24px; text-align:center; border-radius:var(--radius-md); border:1.5px dashed var(--icy-steel-40);">
+        <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:rgba(23,52,92,0.06); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Review Requests in this Queue</h3>
+        <p style="font-size:13px; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
+            When Guardians author badges for lower bands and request your oversight, they will appear here for review and authorization.
+        </p>
+    </div>
+    """
+
+    return f"""
+    <div>
+        <!-- Heading -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {user_band}</span>
+                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">{user_track}</span>
+                </div>
+                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Review Requests</h1>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
+                    Higher-band peer review workspace. Inspect, edit specifications, and authorize badges submitted by Guardians.
+                </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                {render_back_button()}
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
+                    &larr; Dashboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter tabs & Search -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
+            {tabs_html}
+            <div style="min-width:240px; max-width:320px; width:100%;">
+                <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px;"
+                       oninput="window.StarAppBridge.dispatchAction('search_cosmo_requests', this.value)">
+            </div>
+        </div>
+
+        <!-- Request Cards List -->
+        <div>
+            {"".join(cards_html) if cards_html else empty_html}
         </div>
     </div>
     """

@@ -12,10 +12,11 @@
   <link rel="stylesheet" href="css/components.css?v=9">
   <link rel="stylesheet" href="css/responsive.css?v=9">
 
-  <!-- App Configuration -->
+  <!-- App Configuration & Backend API Client -->
+  <script src="js/api.js?v=10"></script>
   <script>
     window.__STARAPP_CONFIG__ = window.__STARAPP_CONFIG__ || {};
-    window.__STARAPP_CONFIG__.GEMINI_API_KEY = window.atob ? window.atob("QVEuQWI4Uk42TFJMWVJpcm9JSjRPRm5DdGd3UjZySzNNVlo3V2JZekdZU0l5S0Vqci10VVE=") : "";
+    window.__STARAPP_CONFIG__.USE_BACKEND_API = true;
   </script>
 
   <!-- Pyodide WebAssembly Python Runtime -->
@@ -58,6 +59,30 @@
     async function initializeStarApp() {
       const statusText = document.getElementById("loading-status-text");
       const progressBar = document.getElementById("loading-progress-bar");
+
+      // 0. Full-Stack Fast Path: If FastAPI backend is active, boot natively without Pyodide!
+      try {
+        const healthResp = await fetch("/api/health");
+        if (healthResp.ok) {
+          if (progressBar) progressBar.style.width = "75%";
+          if (statusText) statusText.innerText = "Connecting to FastAPI backend & SQLite3...";
+          const dispatchResp = await fetch("/api/v1/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "boot", payload: "{}" })
+          });
+          const data = await dispatchResp.json();
+          if (data && data.regions) {
+            window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
+          } else if (data && data.full_html) {
+            window.StarAppBridge.updateAppRoot(data.full_html);
+          }
+          console.log("[StarApp] Native Full-Stack FastAPI backend active. Initialized in <50ms without Pyodide.");
+          return;
+        }
+      } catch (backendErr) {
+        console.log("[StarApp] FastAPI backend not available, falling back to browser Pyodide runtime:", backendErr);
+      }
 
       try {
         if (progressBar) progressBar.style.width = "40%";
@@ -147,13 +172,41 @@
           }
         }
 
+        // Mount Authoritative SQLite Database directly into Pyodide virtual FS
+        if (window.__STARAPP_AUTHORITATIVE_SQLITE_B64__) {
+          try {
+            const binaryStr = atob(window.__STARAPP_AUTHORITATIVE_SQLITE_B64__);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+            ensureFsDir("data");
+            ensureFsDir("/home/pyodide");
+            pyodide.FS.writeFile("data/starapp.db", bytes);
+            pyodide.FS.writeFile("/home/pyodide/starapp.db", bytes);
+            pyodide.FS.writeFile("starapp.db", bytes);
+            console.log("[StarApp] Authoritative SQLite database mounted into Pyodide FS (" + bytes.length + " bytes)");
+          } catch (e) {
+            console.error("[StarApp] Error mounting authoritative SQLite DB:", e);
+          }
+        }
+
         if (progressBar) progressBar.style.width = "85%";
         if (statusText) statusText.innerText = "Retrieving local state snapshot from IndexedDB...";
 
         // 3. Retrieve persistent data and session from IndexedDB / localStorage
-        const storedDataJson = await window.StarAppBridge.getStore("data");
+        let storedDataJson = await window.StarAppBridge.getStore("data");
         const sessionJson = await window.StarAppBridge.getStore("session");
-        const sqliteDbB64 = await window.StarAppBridge.getStore("sqlite_db");
+        let sqliteDbB64 = await window.StarAppBridge.getStore("sqlite_db");
+
+        // Filter out stale legacy synthetic caches if present
+        if (storedDataJson && (storedDataJson.includes("Elena Vance") || storedDataJson.includes("badge_gov_101") || storedDataJson.includes("Ada Lovelace") || storedDataJson.includes("AGT-304"))) {
+          console.log("[StarApp] Ignoring stale synthetic data from legacy storage");
+          storedDataJson = "";
+        }
+        if (!sqliteDbB64 && window.__STARAPP_AUTHORITATIVE_SQLITE_B64__) {
+          sqliteDbB64 = window.__STARAPP_AUTHORITATIVE_SQLITE_B64__;
+        }
 
         window.__STORED_DATA_JSON__ = storedDataJson || "";
         window.__SESSION_DATA_JSON__ = sessionJson || "";

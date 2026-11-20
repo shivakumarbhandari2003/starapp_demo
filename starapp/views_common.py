@@ -135,6 +135,25 @@ def render_metal_button(
     </div>
     """
 
+def render_back_button(
+    target_action: str = "go_back",
+    payload_json: str = "{}",
+    label: str = "Back",
+    extra_style: str = ""
+) -> str:
+    """Renders a standard liquid-glass Back button for workspace and page navigation."""
+    onclick_attr = f"window.StarAppBridge.dispatchAction('{escape(target_action)}', '{escape(payload_json)}')"
+    return f"""
+    <button type="button" class="btn-secondary btn-sm" onclick="{onclick_attr}"
+            style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm); {extra_style}"
+            title="Navigate back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        <span>{escape(label)}</span>
+    </button>
+    """
+
 def render_status_pill(status: str) -> str:
     status_lower = (status or "").lower().replace(" ", "_")
     cls_map = {
@@ -394,7 +413,15 @@ def render_topbar(
     bell_badge = f'<span class="notif-badge">{unread_notifs_count}</span>' if unread_notifs_count > 0 else ""
     return f"""
     <header class="app-topbar">
-        <div class="topbar-left">
+        <div class="topbar-left" style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')"
+                    style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:var(--radius-sm); margin-right:6px;"
+                    title="Go back to previous screen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <span>Back</span>
+            </button>
             <button type="button" class="topbar-sidebar-toggle-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Toggle Sidebar Navigation">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
             </button>

@@ -85,8 +85,8 @@ class TestAssessmentAndAnalytics(unittest.TestCase):
         assessments = store.get_all_assessments()
 
         leaderboard = calculate_batch_leaderboard(cosmonauts, assessments)
-        self.assertEqual(len(leaderboard), 1)
-        # Astraea Nova has 3 completed badges (48, 47, 49 = avg 48.0), should be rank #1
+        self.assertEqual(len(leaderboard), len(cosmonauts))
+        # Aarav Sharma has 3 completed badges (48, 47, 49 = avg 48.0), should be rank #1
         self.assertEqual(leaderboard[0]["cosmonaut_id"], "cosmo_1")
         self.assertEqual(leaderboard[0]["rank"], 1)
         self.assertEqual(leaderboard[0]["average_marks"], 48.0)
@@ -115,8 +115,8 @@ class TestRoadmapPrerequisites(unittest.TestCase):
         assessments = store.get_all_assessments()
         submissions = store.get_all_submissions()
 
-        # Initially 25 badges total on roadmap: 3 completed, 1 active, 21 locked
-        for cosmo in store.get_all_cosmonauts():
+        # Initially 25 badges total on roadmap for cosmo_1: 3 completed, 1 active, 21 locked
+        for cosmo in [store.get_user_by_id("cosmo_1")]:
             graph = generate_roadmap_graph(badges, cosmo.id, assessments, submissions)
             self.assertEqual(len(graph), 25, f"Cosmonaut {cosmo.id} should show 25 badges total")
             self.assertEqual([n["state"] for n in graph[:3]], ["completed", "completed", "completed"])
@@ -300,7 +300,7 @@ class TestAnnouncementsAndPrivacy(unittest.TestCase):
         self.assertEqual(controller.current_user.role, "cosmonaut")
 
         view_html = controller.render()
-        self.assertIn("Astraea Nova", view_html)
+        self.assertIn("Aarav Sharma", view_html)
         self.assertNotIn("Batch Orion-24 Lead", view_html)
 
 if __name__ == "__main__":

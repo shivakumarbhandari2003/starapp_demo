@@ -40,7 +40,8 @@ from starapp.views_guardian import (
     render_guardian_announcements,
     render_guardian_create_badge, render_guardian_badge_approval_queue,
     render_badge_creation_preview_modal, render_badge_review_inspect_modal,
-    render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal
+    render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal,
+    render_badge_return_confirm_modal
 )
 from starapp.mapping_data import (
     get_higher_bands, filter_members_by_band_and_roles, filter_reviewers_by_band_and_roles,
@@ -52,7 +53,7 @@ from starapp.views_cosmonaut import (
     render_badge_detail_modal_content, render_cosmonaut_submission_workspace,
     render_cosmonaut_results, render_cosmonaut_materials,
     render_cosmonaut_extensions, render_cosmonaut_announcements,
-    render_cosmonaut_activity_stream
+    render_cosmonaut_activity_stream, render_cosmonaut_review_requests
 )
 
 # Pyodide browser bridge detection
@@ -83,6 +84,7 @@ class StarAppController:
         self.flash_type: str = "info"
         self.render_generation: int = 0
         self._last_render_source: str = "init"
+        self.view_history: list = []
 
         # Mapping workspace state
         self.mapping_selected_band: str = "B1"
@@ -147,6 +149,10 @@ class StarAppController:
         self.badge_approval_filter: str = "all"
         self.badge_approval_search: str = ""
 
+        # Cosmonaut Review Requests Queue state
+        self.cosmo_requests_tab: str = "all"
+        self.cosmo_requests_search: str = ""
+
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
         "g_create_badge", "g_badge_approval",
@@ -155,7 +161,8 @@ class StarAppController:
     }
     _COSMONAUT_VIEWS = {
         "c_dashboard", "c_roadmap", "c_submission", "c_results",
-        "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity"
+        "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity",
+        "c_requests"
     }
 
     def initialize(self, stored_json: Optional[str] = None, session_json: Optional[str] = None, sqlite_b64: Optional[str] = None):
@@ -176,10 +183,10 @@ class StarAppController:
                         # Restore the exact page if it is valid for the user's role
                         if is_guardian_user and saved_view in self._GUARDIAN_VIEWS:
                             self.current_view = saved_view
-                        elif user.role == "cosmonaut" and saved_view in self._COSMONAUT_VIEWS:
+                        elif saved_view in self._COSMONAUT_VIEWS:
                             self.current_view = saved_view
                         else:
-                            self.current_view = "g_badge_approval" if user.has_role("badge_reviewer") and not user.has_role("guardian") else ("g_dashboard" if is_guardian_user else "c_dashboard")
+                            self.current_view = "g_dashboard" if is_guardian_user else "c_dashboard"
             except Exception as e:
                 print(f"[Controller] Session restore error: {e}")
 
@@ -232,6 +239,20 @@ class StarAppController:
         self.last_flash_message = message
         self.flash_type = ftype
 
+    def _push_history(self):
+        if not hasattr(self, "view_history"):
+            self.view_history = []
+        entry = {
+            "view": self.current_view,
+            "band": self.create_badge_band,
+            "sub_id": self.selected_review_sub_id,
+            "submission_badge_id": self.cosmonaut_submission_badge_id
+        }
+        if not self.view_history or self.view_history[-1]["view"] != self.current_view or self.view_history[-1].get("band") != self.create_badge_band:
+            self.view_history.append(entry)
+        if len(self.view_history) > 30:
+            self.view_history.pop(0)
+
     # ==========================================================================
     # ACTION & EVENT HANDLER
     # ==========================================================================
@@ -248,6 +269,7 @@ class StarAppController:
 
         # --- Authentication Actions ---
         if action == "login":
+            self.view_history = []
             username = str(payload.get("username", "")).strip().lower()
             user = store.get_user_by_username(username)
             if user:
@@ -262,14 +284,15 @@ class StarAppController:
                 self.set_flash("Invalid demo username. Please choose from the demo credentials below.", "error")
 
         elif action == "select_demo_account":
+            self.view_history = []
             user_id = payload.get("user_id") if isinstance(payload, dict) else payload
             user = store.get_user_by_id(user_id)
             if user:
                 self.current_user = user
                 user_roles = getattr(user, "roles", [user.role])
-                is_guardian_user = (user.role in ("guardian", "badge_reviewer") or user.has_role("guardian") or user.has_role("badge_reviewer"))
+                is_guardian_user = (user.id in ("guardian_1", "admin") or user.role in ("guardian", "admin") or "guardian" in user_roles or "admin" in user_roles)
                 if is_guardian_user:
-                    self.current_view = "g_badge_approval" if user.has_role("badge_reviewer") and not user.has_role("guardian") else "g_dashboard"
+                    self.current_view = "g_dashboard"
                 else:
                     self.current_view = "c_dashboard"
                 self.set_flash(f"Logged in as {user.name} ({', '.join(user_roles).replace('_', ' ').title()})", "success")
@@ -277,6 +300,7 @@ class StarAppController:
         # --- Create Badge & Reviewer Approval Workflow ---
         elif action == "select_create_badge_band":
             from starapp.badge_generator import BAND_DEFAULT_OUTCOME_SENTENCES
+            self._push_history()
             band = payload if isinstance(payload, str) else (payload.get("band", "") if isinstance(payload, dict) else "")
             band = band.strip() if band else None
             self.create_badge_band = band
@@ -758,29 +782,122 @@ class StarAppController:
                     else:
                         self.set_flash(f"Approval failed: {msg}", "error")
 
+        elif action == "send_badge_review_request":
+            if isinstance(payload, str) and payload.strip():
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            b_id = payload.get("badge_id", "")
+            r_id = payload.get("reviewer_id", "")
+            if not b_id or not r_id:
+                self.set_flash("Please select an eligible higher-band reviewer.", "warning")
+            else:
+                creator_id = self.current_user.id if self.current_user else "guardian_1"
+                success, msg = store.assign_and_request_badge_review(b_id, r_id, creator_id)
+                if success:
+                    self.set_flash(msg, "success")
+                else:
+                    self.set_flash(msg, "error")
+
+        elif action == "confirm_return_badge":
+            b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                self.active_modal = "badge_reviewer_return"
+                self.modal_payload = {"badge_id": b_id}
+
+        elif action == "return_submitted_badge":
+            if isinstance(payload, str) and payload.strip():
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {"badge_id": payload}
+            b_id = payload.get("badge_id", "")
+            notes = payload.get("notes", "")
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            else:
+                rev_id = self.current_user.id if self.current_user else "guardian_1"
+                rev_name = self.current_user.name if self.current_user else "Reviewer"
+                success, msg = store.return_badge(b_id, rev_id, rev_name, notes)
+                if success:
+                    self.set_flash(f"Badge '{badge.code}' returned with revision feedback.", "info")
+                    self.active_modal = None
+                    self.modal_payload = {}
+                else:
+                    self.set_flash(msg, "error")
+
+        elif action == "filter_cosmo_requests":
+            self.cosmo_requests_tab = payload if isinstance(payload, str) else payload.get("tab", "all")
+
+        elif action == "search_cosmo_requests":
+            self.cosmo_requests_search = payload if isinstance(payload, str) else payload.get("query", "")
+
         elif action == "logout":
             self.current_user = None
             self.current_view = "login"
             self.active_modal = None
+            self.view_history = []
             self.set_flash("You have been signed out.", "info")
 
         elif action == "reset_demo_data":
             store.reset_to_seed()
             self.active_modal = None
+            self.view_history = []
             self.set_flash("StarApp demo data has been restored to factory default.", "success")
 
         # --- Navigation Actions ---
+        elif action == "go_back":
+            if self.active_modal:
+                self.active_modal = None
+                self.modal_payload = {}
+            elif self.current_view == "g_create_badge" and self.create_badge_band:
+                self.create_badge_band = None
+            elif hasattr(self, "view_history") and self.view_history:
+                prev_entry = self.view_history.pop()
+                while self.view_history and prev_entry.get("view") == self.current_view and prev_entry.get("band") == self.create_badge_band:
+                    prev_entry = self.view_history.pop()
+
+                prev_view = prev_entry.get("view", "")
+                if prev_view and prev_view != self.current_view:
+                    self.current_view = prev_view
+                    self.create_badge_band = prev_entry.get("band")
+                elif self.current_view == "g_create_badge":
+                    self.create_badge_band = None
+                else:
+                    is_guard = (self.current_user and (self.current_user.id == "guardian_1" or self.current_user.role == "guardian" or self.current_user.has_role("guardian")))
+                    self.current_view = "g_dashboard" if is_guard else "c_dashboard"
+            else:
+                if self.current_view == "g_create_badge" and self.create_badge_band:
+                    self.create_badge_band = None
+                else:
+                    is_guard = (self.current_user and (self.current_user.id == "guardian_1" or self.current_user.role == "guardian" or self.current_user.has_role("guardian")))
+                    if is_guard and self.current_view != "g_dashboard":
+                        self.current_view = "g_dashboard"
+                    elif is_guard:
+                        self.current_view = "g_create_badge"
+                        self.create_badge_band = None
+                    elif not is_guard and self.current_view != "c_dashboard":
+                        self.current_view = "c_dashboard"
+
         elif action == "nav_guardian":
+            self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
             self.current_view = view_id
             self.active_modal = None
 
         elif action == "nav_cosmonaut":
+            self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
             self.current_view = view_id
             self.active_modal = None
 
         elif action == "nav_to_submit_badge":
+            self._push_history()
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
             self.cosmonaut_submission_badge_id = badge_id
             self.current_view = "c_submission"
@@ -1231,7 +1348,7 @@ class StarAppController:
                     store.add_notification(
                         recipient_id=cid,
                         title=f"Milestone Unlocked: {badge.code}",
-                        message=f"Dr. Elena Vance published and unlocked {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
+                        message=f"{self.current_user.name if self.current_user else 'Arjun Mehta'} published and unlocked {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
                         link_section="c_roadmap"
                     )
 
@@ -1312,7 +1429,7 @@ class StarAppController:
                     store.add_notification(
                         recipient_id=cid,
                         title=f"Milestone Published: {badge.code}",
-                        message=f"Dr. Elena Vance published {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
+                        message=f"{self.current_user.name if self.current_user else 'Arjun Mehta'} published {badge.code}: {badge.title}! Curriculum and project requirements are now live.",
                         link_section="c_roadmap"
                     )
 
@@ -1443,6 +1560,7 @@ class StarAppController:
             return  # Do not re-render full DOM on simple DOM field toggle
 
         elif action == "open_submission_review_page":
+            self._push_history()
             sub_id = payload if isinstance(payload, str) else payload.get("submission_id", "")
             self.selected_review_sub_id = sub_id
             self.selected_viewer_tab = "pdf"
@@ -1882,10 +2000,11 @@ if __name__ == "__main__":
                 details=f"New deadline: {ext.proposed_deadline if decision == 'approved' else ext.current_deadline}. Note: {response_note}"
             )
 
+            guardian_name = self.current_user.name if self.current_user else "Arjun Mehta"
             store.add_notification(
                 recipient_id=ext.cosmonaut_id,
                 title=f"Extension Request {decision.title()}",
-                message=f"Dr. Elena Vance {decision} your deadline extension request for {b_name}. Note: {response_note}",
+                message=f"{guardian_name} {decision} your deadline extension request for {b_name}. Note: {response_note}",
                 link_section="c_extensions"
             )
 
@@ -2036,10 +2155,11 @@ if __name__ == "__main__":
                 store.save_timeline(tl)
 
             if is_new:
+                creator_name = self.current_user.name if self.current_user else "Arjun Mehta"
                 store.add_notification(
                     recipient_id=cid,
                     title=f"New Milestone Available: {code}",
-                    message=f"Dr. Elena Vance created new milestone {code}: {title}. The previous locked milestone is now unlocked!",
+                    message=f"{creator_name} created new milestone {code}: {title}. The previous locked milestone is now unlocked!",
                     link_section="c_roadmap"
                 )
 
@@ -2258,7 +2378,7 @@ if __name__ == "__main__":
             asm_id = self.modal_payload.get("marksheet_id")
             marksheet = store.get_assessment(asm_id)
             if not marksheet and asm_id:
-                # 1. Check actual cosmonaut benchmark assessments (Astraea Nova)
+                # 1. Check actual cosmonaut benchmark assessments (Aarav Sharma)
                 if asm_id in ("asm_c1_ing_2", "asm_c1_sql_201") or "cosmo_1" in asm_id:
                     is_sql = "sql" in asm_id.lower()
                     b_id = "badge_sql_201" if is_sql else "badge_ing_104"
@@ -2269,7 +2389,7 @@ if __name__ == "__main__":
                         badge_id=b_id,
                         cosmonaut_id="cosmo_1",
                         reviewer_id="guardian_1",
-                        reviewer_name="Dr. Elena Vance",
+                        reviewer_name="Arjun Mehta",
                         reviewed_at="2026-11-08",
                         decision="approve",
                         business_understanding=9.5,
@@ -2296,7 +2416,7 @@ if __name__ == "__main__":
                                     badge_id=b_id,
                                     cosmonaut_id=demo["id"],
                                     reviewer_id="guardian_1",
-                                    reviewer_name="Dr. Elena Vance",
+                                    reviewer_name="Arjun Mehta",
                                     reviewed_at=a.get("reviewed_at", "2026-11-01"),
                                     decision=a.get("decision", "approve"),
                                     business_understanding=float(a.get("business_understanding", 9.0)),
@@ -2513,7 +2633,7 @@ if __name__ == "__main__":
                 <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(23,52,92,0.08); margin:0 auto 14px; color:var(--deep-frozen-midnight);">{lock_ic_32}</div>
                 <h3 style="color:var(--frost-navy); font-weight:800; font-size:1.25rem; margin-bottom:8px;">Milestone {escape(str(idx))} Sealed</h3>
                 <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.6; max-width:440px; margin:0 auto 16px;">
-                    This milestone curriculum and project parameters are managed by your Guardian, <strong>Dr. Elena Vance</strong>. Once your current sprint deliverables are reviewed and certified, Dr. Vance will publish the timeline and unlock this milestone for your cohort.
+                    This milestone curriculum and project parameters are managed by your Guardian, <strong>Arjun Mehta</strong>. Once your current sprint deliverables are reviewed and certified, Arjun Mehta will publish the timeline and unlock this milestone for your cohort.
                 </p>
                 <div style="background:rgba(234,244,255,0.6); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); font-size:12px; color:var(--frost-navy); margin-bottom:20px;">
                     <strong>Next Action:</strong> Complete and submit your active milestone (<strong>ING-104 Ingestion Foundations</strong>) to qualify for advancement.
@@ -2823,10 +2943,16 @@ if __name__ == "__main__":
             title = "Confirm Institutional Authorization"
             body = render_badge_approval_confirm_modal(badge, self.current_user) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
+        elif self.active_modal == "badge_reviewer_return":
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            title = "Return Badge Proposal for Revisions"
+            body = render_badge_return_confirm_modal(badge, self.current_user) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+
         modal_dialog_class = "liquid-glass-modal modal-dialog"
         if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect"]:
             modal_dialog_class += " modal-xl modal-lg"
-        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm"]:
+        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_reviewer_return"]:
             modal_dialog_class += " modal-lg"
 
         return f"""
@@ -2849,10 +2975,15 @@ if __name__ == "__main__":
 
     def render_login_view(self) -> str:
         demo_accounts = [
-            {"id": "guardian_1", "role": "Guardian", "name": "Dr. Elena Vance", "user": "guardian", "desc": "Training Mentor (Full curriculum management & rubric evaluations)"},
-            {"id": "m_b3_3", "role": "Badge Reviewer (B3)", "name": "Aarav Sharma", "user": "reviewer_aarav", "desc": "AI Engineer • Band B3 (Authorized Reviewer for B1 & B2)"},
-            {"id": "m_b6_2", "role": "Senior Reviewer (B6)", "name": "Dr. Rajeshwari Iyer", "user": "reviewer_rajeshwari", "desc": "Solutions Designer • Band B6 (Executive Reviewer for B1 through B5)"},
-            {"id": "cosmo_1", "role": "Cosmonaut", "name": "Astraea Nova", "user": "astraea", "desc": "Cosmonaut Learner (3 Badges completed, Ingestion active)"}
+            {"id": "m_b1_2", "role": "Cosmonaut Cadet (B1)", "name": "Ananya Iyer - B1", "user": "ananya.iyer", "desc": "Solutions Designer • Band B1 Cadet (Learner Pilot)"},
+            {"id": "m_b2_4", "role": "Specialist & Reviewer (B2)", "name": "Nisha Menon - B2", "user": "nisha.menon", "desc": "AI Engineer • Band B2 (Authorized Badge Reviewer for B1)"},
+            {"id": "m_b3_6", "role": "Senior Specialist & Reviewer (B3)", "name": "Tanvi Shah - B3", "user": "tanvi.shah", "desc": "Systems Engineer • Band B3 (Authorized Badge Reviewer for B1 & B2)"},
+            {"id": "m_b4_1", "role": "Lead Engineer & Reviewer (B4)", "name": "Rajiv Menon - B4", "user": "rajiv.menon", "desc": "Solutions Designer • Band B4 (Authorized Reviewer for B1 to B3)"},
+            {"id": "m_b5_1", "role": "Principal Architect & Reviewer (B5)", "name": "Anirudh Krishnan - B5", "user": "anirudh.krishnan", "desc": "Solutions Designer • Band B5 (Authorized Reviewer for B1 to B4)"},
+            {"id": "m_b6_1", "role": "Director & Reviewer (B6)", "name": "Devika Narayanan - B6", "user": "devika.narayanan", "desc": "Solutions Designer • Band B6 (Authorized Reviewer for B1 to B5)"},
+            {"id": "guardian_1", "role": "Guardian / CEO", "name": "Arjun Mehta (CEO)", "user": "guardian", "desc": "Chief Executive Officer • Executive Leadership & Academy Guardian"},
+            {"id": "admin", "role": "Administrator (B6)", "name": "Guardian Admin", "user": "admin", "desc": "System Administrator • Curriculum Architect & Authority"},
+            {"id": "cosmo_1", "role": "Cosmonaut (B1)", "name": "Aarav Sharma - B1", "user": "astraea", "desc": "Solutions Designer • Band B1 Cadet (Active Learner)"}
         ]
 
         account_buttons = []
@@ -2927,7 +3058,9 @@ if __name__ == "__main__":
     # ==========================================================================
 
     def _dispatch_browser_render(self, regions_payload: Dict[str, Any], full_html: str):
-        """Dispatches 3-region incremental update to JS bridge when running in Pyodide browser."""
+        """Dispatches 3-region incremental update to JS bridge when running in Pyodide browser or backend API."""
+        self.last_rendered_regions = regions_payload
+        self.last_rendered_html = full_html
         if not (IS_BROWSER and hasattr(js, "document")):
             return
         if hasattr(js, "window") and hasattr(js.window, "StarAppBridge"):
@@ -2999,9 +3132,9 @@ if __name__ == "__main__":
         route_key = self.current_view
 
         user_roles = getattr(self.current_user, "roles", [self.current_user.role])
-        is_guardian_or_reviewer = ("guardian" in user_roles or "badge_reviewer" in user_roles or self.current_user.role in ("guardian", "badge_reviewer"))
+        is_guardian_view = self.current_view.startswith("g_")
 
-        if is_guardian_or_reviewer:
+        if is_guardian_view:
             hide_sidebar = (self.current_view == "g_create_badge" and not self.create_badge_band)
             pending_reviews = len([s for s in all_subs if s.status == "pending"])
             pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
@@ -3192,7 +3325,9 @@ if __name__ == "__main__":
 
         else:  # Cosmonaut Portal
             unread_anns = len([a for a in store.get_announcements_for_cosmonaut(self.current_user.id) if self.current_user.id not in a.read_by_cosmonaut_ids])
-            sidebar_html = render_cosmonaut_sidebar(self.current_view, self.current_user, unread_anns)
+            cosmo_reqs = store.get_badge_review_requests_for_user(self.current_user.id)
+            pending_cosmo_reqs_cnt = len([r for r in cosmo_reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+            sidebar_html = render_cosmonaut_sidebar(self.current_view, self.current_user, unread_anns, pending_cosmo_reqs_cnt)
 
             assigned_badges = store.get_badges_for_cosmonaut(self.current_user.id)
             user_asms = store.get_assessments_for_cosmonaut(self.current_user.id)
@@ -3275,6 +3410,15 @@ if __name__ == "__main__":
                 page_title = "Personal Training Activity Stream"
                 user_acts = store.get_activities(self.current_user.id)
                 main_content_html = render_cosmonaut_activity_stream(user_acts)
+
+            elif self.current_view == "c_requests":
+                page_title = "Badge Review Requests Queue"
+                main_content_html = render_cosmonaut_review_requests(
+                    requests=cosmo_reqs,
+                    current_user=self.current_user,
+                    active_tab=getattr(self, "cosmo_requests_tab", "all"),
+                    search_query=getattr(self, "cosmo_requests_search", "")
+                )
 
         modal_html = self.render_active_modal()
 

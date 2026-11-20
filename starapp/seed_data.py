@@ -1,8 +1,8 @@
 """
 STARAPP SEED DATA GENERATOR (SINGLE GUARDIAN + SINGLE COSMONAUT)
 Constructs the initial synthetic demo environment:
-- 1 Guardian: Dr. Elena Vance (guardian_1 / 'guardian')
-- 1 Cosmonaut: Astraea Nova (cosmo_1 / 'astraea')
+- 1 Guardian: Arjun Mehta (guardian_1 / 'guardian')
+- 1 Cosmonaut: Aarav Sharma (cosmo_1 / 'astraea')
 - Batch Orion-24
 - Exactly 5 badges on the initial learning roadmap:
   1. GOV-101 (Completed)
@@ -20,18 +20,18 @@ def get_initial_seed_data() -> Dict[str, Any]:
         {
             "id": "guardian_1",
             "username": "guardian",
-            "email": "guardian@starapp.dev",
+            "email": "arjun.mehta@starapp.io",
             "role": "guardian",
-            "name": "Dr. Elena Vance",
-            "avatar": "EV"
+            "name": "Arjun Mehta",
+            "avatar": "AM"
         },
         {
             "id": "cosmo_1",
             "username": "astraea",
-            "email": "astraea@starapp.dev",
+            "email": "aarav.cadet@starapp.io",
             "role": "cosmonaut",
-            "name": "Astraea Nova",
-            "avatar": "AN"
+            "name": "Aarav Sharma",
+            "avatar": "AS"
         }
     ]
 
@@ -953,8 +953,8 @@ for msg in consumer:
             "code_payload": '''\"\"\"
 StarApp Academy: High-Throughput Idempotent Kafka Stream Consumer
 Batch Orion-24: Ingestion Foundations (Attempt #2 Deliverable)
-Cosmonaut: Astraea Nova (cosmo_1)
-Mentor: Dr. Elena Vance (guardian_1)
+Cosmonaut: Aarav Sharma (cosmo_1)
+Mentor: Arjun Mehta (guardian_1)
 \"\"\"
 import json
 import logging
@@ -1010,7 +1010,7 @@ class IdempotentKafkaConsumer:
             "badge_id": "badge_gov_101",
             "cosmonaut_id": "cosmo_1",
             "reviewer_id": "guardian_1",
-            "reviewer_name": "Dr. Elena Vance",
+            "reviewer_name": "Arjun Mehta",
             "reviewed_at": "2026-10-24T16:00:00Z",
             "decision": "approve",
             "business_understanding": 10.0,
@@ -1029,7 +1029,7 @@ class IdempotentKafkaConsumer:
             "badge_id": "badge_cur_102",
             "cosmonaut_id": "cosmo_1",
             "reviewer_id": "guardian_1",
-            "reviewer_name": "Dr. Elena Vance",
+            "reviewer_name": "Arjun Mehta",
             "reviewed_at": "2026-11-04T14:30:00Z",
             "decision": "approve",
             "business_understanding": 9.5,
@@ -1048,7 +1048,7 @@ class IdempotentKafkaConsumer:
             "badge_id": "badge_dat_103",
             "cosmonaut_id": "cosmo_1",
             "reviewer_id": "guardian_1",
-            "reviewer_name": "Dr. Elena Vance",
+            "reviewer_name": "Arjun Mehta",
             "reviewed_at": "2026-11-06T11:00:00Z",
             "decision": "approve",
             "business_understanding": 10.0,
@@ -1067,7 +1067,7 @@ class IdempotentKafkaConsumer:
             "badge_id": "badge_ing_104",
             "cosmonaut_id": "cosmo_1",
             "reviewer_id": "guardian_1",
-            "reviewer_name": "Dr. Elena Vance",
+            "reviewer_name": "Arjun Mehta",
             "reviewed_at": "2026-11-06T18:00:00Z",
             "decision": "resubmission_requested",
             "business_understanding": 7.0,
@@ -1105,7 +1105,7 @@ class IdempotentKafkaConsumer:
             "message": "Welcome to Batch Orion-24! Please ensure your project submissions strictly follow the 5-criterion 50-mark assessment rubric guidelines before submitting deliverables.",
             "published_at": "2026-10-01T08:00:00Z",
             "author_id": "guardian_1",
-            "author_name": "Dr. Elena Vance",
+            "author_name": "Arjun Mehta",
             "target_type": "all",
             "target_cosmonaut_ids": ["cosmo_1"],
             "badge_id": "badge_gov_101",
@@ -1117,7 +1117,7 @@ class IdempotentKafkaConsumer:
             "message": "We are hosting an interactive session on Kafka consumer offsets, idempotency keys, and dead-letter queues this Friday at 14:00 UTC.",
             "published_at": "2026-11-05T10:00:00Z",
             "author_id": "guardian_1",
-            "author_name": "Dr. Elena Vance",
+            "author_name": "Arjun Mehta",
             "target_type": "all",
             "target_cosmonaut_ids": ["cosmo_1"],
             "badge_id": "badge_ing_104",
@@ -1131,44 +1131,44 @@ class IdempotentKafkaConsumer:
             "event_type": "batch_initialized",
             "timestamp": "2026-10-01T08:00:00Z",
             "actor_id": "guardian_1",
-            "actor_name": "Dr. Elena Vance",
+            "actor_name": "Arjun Mehta",
             "cosmonaut_id": "",
             "badge_id": "",
             "summary": "Training Batch Orion-24 Initialized",
-            "details": "Academy portal initialized with Mentor Dr. Elena Vance and Cosmonaut Astraea Nova."
+            "details": "Academy portal initialized with Mentor Arjun Mehta and Cosmonaut Aarav Sharma."
         },
         {
             "id": "act_2",
             "event_type": "badge_awarded",
             "timestamp": "2026-10-24T16:00:00Z",
             "actor_id": "guardian_1",
-            "actor_name": "Dr. Elena Vance",
+            "actor_name": "Arjun Mehta",
             "cosmonaut_id": "cosmo_1",
             "badge_id": "badge_gov_101",
             "summary": "Milestone Awarded: GOV-101",
-            "details": "Astraea Nova passed Governance Foundations with 48.0/50 (96.0%)."
+            "details": "Aarav Sharma passed Governance Foundations with 48.0/50 (96.0%)."
         },
         {
             "id": "act_3",
             "event_type": "badge_awarded",
             "timestamp": "2026-11-04T14:30:00Z",
             "actor_id": "guardian_1",
-            "actor_name": "Dr. Elena Vance",
+            "actor_name": "Arjun Mehta",
             "cosmonaut_id": "cosmo_1",
             "badge_id": "badge_cur_102",
             "summary": "Milestone Awarded: CUR-102",
-            "details": "Astraea Nova passed Curation Foundations with 47.0/50 (94.0%)."
+            "details": "Aarav Sharma passed Curation Foundations with 47.0/50 (94.0%)."
         },
         {
             "id": "act_4",
             "event_type": "badge_awarded",
             "timestamp": "2026-11-06T11:00:00Z",
             "actor_id": "guardian_1",
-            "actor_name": "Dr. Elena Vance",
+            "actor_name": "Arjun Mehta",
             "cosmonaut_id": "cosmo_1",
             "badge_id": "badge_dat_103",
             "summary": "Milestone Awarded: DAT-103",
-            "details": "Astraea Nova passed Data Model Foundations with 49.0/50 (98.0%)."
+            "details": "Aarav Sharma passed Data Model Foundations with 49.0/50 (98.0%)."
         }
     ]
 
@@ -1186,7 +1186,7 @@ class IdempotentKafkaConsumer:
             "id": "notif_2",
             "recipient_id": "cosmo_1",
             "title": "Milestone Awarded: DAT-103",
-            "message": "Dr. Elena Vance approved your Data Model Foundations project deliverable (49.0/50).",
+            "message": "Arjun Mehta approved your Data Model Foundations project deliverable (49.0/50).",
             "created_at": "2026-11-06T11:05:00Z",
             "is_read": False,
             "link_section": "c_results"
@@ -1195,7 +1195,7 @@ class IdempotentKafkaConsumer:
             "id": "notif_3",
             "recipient_id": "guardian_1",
             "title": "Ingestion Deliverable Submitted",
-            "message": "Astraea Nova submitted Attempt #2 for ING-104 Ingestion Foundations.",
+            "message": "Aarav Sharma submitted Attempt #2 for ING-104 Ingestion Foundations.",
             "created_at": "2026-11-07T14:30:00Z",
             "is_read": False,
             "link_section": "g_reviews"

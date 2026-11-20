@@ -10,9 +10,21 @@
  */
 
 (function () {
-  const DB_NAME = "StarAppLocalDB";
-  const DB_VERSION = 7;
+  const DB_NAME = "StarAppLocalDB_v9";
+  const DB_VERSION = 9;
   const STORE_NAME = "starapp_state";
+
+  // Purge legacy synthetic database and old cached data
+  try {
+    const rawData = localStorage.getItem("starapp_data") || "";
+    const rawDb = localStorage.getItem("starapp_sqlite_db") || "";
+    if (rawData.includes("Elena Vance") || rawData.includes("badge_gov_101") || rawData.includes("Ada Lovelace") || rawData.includes("AGT-304") || rawDb.length > 0) {
+      console.log("[StarAppBridge] Purging legacy synthetic state from localStorage & IndexedDB");
+      localStorage.removeItem("starapp_data");
+      localStorage.removeItem("starapp_sqlite_db");
+      try { indexedDB.deleteDatabase("StarAppLocalDB"); } catch (e) {}
+    }
+  } catch (e) {}
 
   // Tab-unique identifier to prevent self-triggering broadcast loops
   const currentWindowId = "win_" + Math.random().toString(36).substring(2, 10);
@@ -860,99 +872,44 @@ Return ONLY valid JSON matching this exact schema:
 
       let parsedBadge = null;
 
-      // If no valid API key is configured, instantly generate deterministic badge without network delay
-      if (!apiKey || apiKey === "YOUR_API_HERE") {
-        parsedBadge = this.generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence);
-      } else {
-        const endpoints = [
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`
-        ];
-
-        for (const endpoint of endpoints) {
-          if (parsedBadge) break;
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 9000);
-
-          try {
-            const resp = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-goog-api-key": apiKey
-              },
-              signal: controller.signal,
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{ text: promptInstruction }]
-                }]
-              })
-            });
-            clearTimeout(timeoutId);
-
-            if (resp.ok) {
-              const jsonResp = await resp.json();
-              const textOut = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (textOut) {
-                const cleanText = textOut.replace(/^```json/m, "").replace(/^```/m, "").replace(/```$/m, "").trim();
-                const rawObj = JSON.parse(cleanText);
-                if (rawObj && rawObj.title) {
-                  const locationStr = `${rawObj.title} -> ${skill} -> ${capability} -> ${power} -> Band ${band}`;
-                  const formattedOutcomes = (rawObj.outcomes || []).map(o => {
-                    let s = String(o).trim();
-                    if (!s.startsWith("Can ")) {
-                      s = "Can " + s.charAt(0).toLowerCase() + s.slice(1);
-                    }
-                    if (!s.endsWith(".")) s += ".";
-                    return s;
-                  });
-
-                  parsedBadge = {
-                    id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
-                    code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
-                    title: rawObj.title,
-                    description: rawObj.description || `Foundational badge covering core ${skill.toLowerCase()} concepts.`,
-                    target_band: band,
-                    power: power,
-                    capability: capability,
-                    skill: skill,
-                    location: locationStr,
-                    outcomes: formattedOutcomes.length > 0 ? formattedOutcomes : [outcomeSentence],
-                    earn_badge_status: "Pending Review",
-                    earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
-                    practice_project: {
-                      intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
-                      prompt: rawObj.practice_prompt || "",
-                      footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
-                    },
-                    learning_topics: (rawObj.learning_topics || []).map((t, idx) => ({
-                      title: t.title || `Topic ${idx + 1}`,
-                      status: "In Progress",
-                      completed: false,
-                      description: t.description || ""
-                    })),
-                    learning_resources: {
-                      intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
-                      prompt: rawObj.resources_prompt || "",
-                      footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
-                    },
-                    related: {
-                      skill: skill,
-                      capability: capability,
-                      power: power
-                    }
-                  };
-                  break;
-                }
+      // Prefer secure Backend Gemini Proxy
+      if (window.StarAppAPI && window.StarAppAPI.gemini) {
+        try {
+          const apiRes = await window.StarAppAPI.gemini.generateBadge(band, power, capability, skill, outcomeSentence);
+          if (apiRes && apiRes.badge) {
+            const rawObj = apiRes.badge;
+            const locationStr = `${rawObj.title} -> ${skill} -> ${capability} -> ${power} -> Band ${band}`;
+            const formattedOutcomes = (rawObj.outcomes || []).map(o => {
+              let s = String(o).trim();
+              if (!s.startsWith("Can ")) {
+                s = "Can " + s.charAt(0).toLowerCase() + s.slice(1);
               }
-            }
-          } catch (err) {
-            clearTimeout(timeoutId);
-            console.warn(`[StarAppBridge] Gemini API attempt failed on ${endpoint}:`, err);
+              if (!s.endsWith(".")) s += ".";
+              return s;
+            });
+
+            parsedBadge = {
+              id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+              code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
+              title: rawObj.title,
+              description: rawObj.description || `Foundational badge covering core ${skill.toLowerCase()} concepts.`,
+              target_band: band,
+              power: power,
+              capability: capability,
+              skill: skill,
+              location: locationStr,
+              outcomes: formattedOutcomes.length > 0 ? formattedOutcomes : [outcomeSentence],
+              learning_topics: rawObj.learning_topics || [],
+              practice_prompt: `I'm working toward the "${rawObj.title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.`,
+              resources_prompt: `What are high-impact learning resources for "${rawObj.title}"?`
+            };
           }
+        } catch (e) {
+          console.warn("[StarApp] Backend Gemini API call failed, falling back to deterministic generation:", e);
         }
       }
 
+      // Fallback if not generated
       if (!parsedBadge) {
         parsedBadge = this.generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence);
       }
@@ -1262,14 +1219,36 @@ Return ONLY valid JSON matching this exact schema:
       return renderState;
     },
 
-    // Dispatch UI click/action event to Python controller
+    // Go back to previous view in history stack
+    goBack() {
+      this.dispatchAction("go_back", "{}");
+    },
+
+    // Dispatch UI click/action event to Python controller (Native FastAPI Backend or in-browser Pyodide)
     dispatchAction(action, payloadJson = "{}") {
       localActionSeq += 1;
       pendingDeferredReload = false;
       if (window.starAppController && typeof window.starAppController.handle_event === "function") {
         window.starAppController.handle_event(action, payloadJson);
       } else {
-        console.warn("[StarAppBridge] Controller not yet initialized. Queuing action:", action);
+        // Native FastAPI Full-Stack Backend dispatch
+        const payloadStr = typeof payloadJson === "string" ? payloadJson : JSON.stringify(payloadJson);
+        fetch("/api/v1/dispatch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, payload: payloadStr })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.regions) {
+            window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
+          } else if (data && data.full_html) {
+            window.StarAppBridge.updateAppRoot(data.full_html);
+          }
+        })
+        .catch(err => {
+          console.error("[StarAppBridge] FastAPI backend dispatch error:", err);
+        });
       }
     },
 

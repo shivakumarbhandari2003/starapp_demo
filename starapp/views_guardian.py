@@ -101,7 +101,7 @@ def render_guardian_sidebar(
 
     user_roles = getattr(current_user, "roles", [current_user.role])
     role_title = "Badge Reviewer" if ("badge_reviewer" in user_roles and "guardian" not in user_roles) else "Training Mentor"
-    user_sub_desc = f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Batch Orion-24 Lead"
+    user_sub_desc = f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Academy Guardian"
 
     sidebar_hidden_attr = ' class="app-sidebar band-selection-hidden" style="display:none !important;" aria-hidden="true"' if hidden else ' class="app-sidebar"'
 
@@ -193,10 +193,10 @@ def render_guardian_dashboard(
             <div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
                     <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); letter-spacing:0.5px;">COMMAND CONTROL</span>
-                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Batch Orion-24 Command Center</h2>
+                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Academy Command Center</h2>
                 </div>
                 <div style="font-size:12.5px; color:var(--frost-navy-50);">
-                    Guardian: <strong>Dr. Elena Vance</strong> &bull; Cohort: <strong>Enterprise Cloud & Systems Architecture</strong> &bull; Date: <strong>2026-11-08</strong>
+                    Guardian: <strong>Academy Leadership</strong> &bull; Organization: <strong>StarApp Academy</strong>
                 </div>
             </div>
 
@@ -511,7 +511,7 @@ def render_guardian_dashboard(
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 14px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.22); border-radius:var(--radius-sm);">
                         <div>
                             <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">Evaluate Pending Deliverable</div>
-                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Astraea Nova &bull; ING-104 (Attempt #2 Deliverable Package)</div>
+                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Aarav Sharma &bull; ING-104 (Attempt #2 Deliverable Package)</div>
                         </div>
                         <button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')">
                             Review Project &rarr;
@@ -533,7 +533,7 @@ def render_guardian_dashboard(
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
                         <div>
                             <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">Curriculum Allotment Manager</div>
-                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Allot, unlock, or configure badge milestones for Batch Orion-24</div>
+                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Allot, unlock, or configure badge milestones for Academy Cadets</div>
                         </div>
                         <button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')">
                             Open Catalog
@@ -542,7 +542,7 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div style="margin-top:12px; font-size:11px; color:var(--frost-navy-50); text-align:right;">
-                Logged as Batch Lead: Dr. Elena Vance
+                Role: <strong>Curriculum Authority &bull; Active Session</strong>
             </div>
         </div>
     </div>
@@ -616,11 +616,11 @@ def render_guardian_dashboard(
     <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
-                <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Batch Orion-24 Academic Leaderboard</h3>
+                <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Academy Academic Leaderboard</h3>
                 <div style="font-size:12px; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress.</div>
             </div>
             <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:var(--radius-xs);">
-                6 Enrolled Engineering Cadets
+                Enrolled Engineering Cadets
             </span>
         </div>
 
@@ -721,7 +721,7 @@ def render_guardian_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
             <div>
                 <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Cadet Risk & Intervention Monitoring Matrix</h3>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">Individual cadet standing across Batch Orion-24 with transparent pedagogical risk diagnostics.</div>
+                <div style="font-size:12.5px; color:var(--frost-navy-50);">Individual cadet standing across StarApp Academy with transparent pedagogical risk diagnostics.</div>
             </div>
 
             <div style="display:flex; gap:8px;">
@@ -1091,9 +1091,9 @@ def render_individual_cosmo_dossier(
     <!-- Guardian Mentoring Action Plan -->
     <div style="background:linear-gradient(135deg, rgba(23,52,92,0.05) 0%, rgba(37,99,235,0.08) 100%); border:1px solid rgba(37,99,235,0.22); border-left:4px solid var(--frost-navy); border-radius:var(--radius-sm); padding:16px 20px;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">EV</div>
+            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">GM</div>
             <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
-                Guardian Mentoring Action Plan &bull; Dr. Elena Vance
+                Guardian Mentoring Guidance
             </div>
         </div>
         <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
@@ -1122,7 +1122,7 @@ def render_individual_cosmo_dossier(
                             {badge_tag}
                         </div>
                         <div style="font-size:12.5px; color:var(--frost-navy-75); margin-top:3px;">
-                            ID: <strong style="font-family:var(--font-family-mono);">{escape(c_id)}</strong> &bull; Email: <strong>{escape(c_email)}</strong> &bull; Batch: <strong>{escape(data.get("batch", "Batch Orion-24"))}</strong>
+                            ID: <strong style="font-family:var(--font-family-mono);">{escape(c_id)}</strong> &bull; Email: <strong>{escape(c_email)}</strong> &bull; Band: <strong>{escape(data.get("band", "B1"))}</strong>
                         </div>
                     </div>
                 </div>
@@ -1526,9 +1526,15 @@ def render_guardian_badge_allotment(
         </div>
 
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-            <div>
-                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Badge Catalog & Allotment Manager</h2>
-
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm);" title="Navigate back">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    <span>Back</span>
+                </button>
+                <div>
+                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Badge Catalog & Allotment Manager</h2>
+                    <p style="font-size:12.5px; color:var(--frost-navy-50); margin:2px 0 0 0;">Manage curriculum badge allocation and publication for cadets.</p>
+                </div>
             </div>
             {create_btn}
         </div>
@@ -1583,9 +1589,9 @@ def render_guardian_review_queue(
         pill = render_status_pill(sub.status)
 
         # File names / payloads
-        pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Astraea_ING104_Idempotent_Architecture.pdf"
-        code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "idempotent_streaming_consumer.py"
-        github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or "https://github.com/starapp-cosmonauts/ingestion-service-astraea"
+        pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Deliverable.pdf"
+        code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
+        github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or ""
 
         # Precomputed Vector Icons
         pdf_ic = get_icon("file_text", 13, "margin-right:4px; color:#D32F2F;")
@@ -1611,7 +1617,7 @@ def render_guardian_review_queue(
                     </div>
                     <div>
                         <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)}</div>
-                        <div style="font-size:11px; color:var(--frost-navy-50);">Batch Orion-24 &bull; Cosmonaut Cadet</div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -1703,58 +1709,15 @@ def render_guardian_review_detail(
     pill = render_status_pill(submission.status)
 
     # Deliverables info
-    pdf_name = getattr(submission, "pdf_name", "") or (submission.file_name if submission.submission_type == "pdf" else "") or "Astraea_ING104_Idempotent_Architecture.pdf"
-    pdf_payload = getattr(submission, "pdf_payload", "") or (submission.payload if submission.submission_type == "pdf" else "") or "data/Chemistry%20Syllabus.pdf"
+    pdf_name = getattr(submission, "pdf_name", "") or (submission.file_name if submission.submission_type == "pdf" else "") or "Deliverable.pdf"
+    pdf_payload = getattr(submission, "pdf_payload", "") or (submission.payload if submission.submission_type == "pdf" else "") or ""
     
-    code_name = getattr(submission, "code_name", "") or (submission.file_name if submission.submission_type == "code" else "") or "idempotent_streaming_consumer.py"
-    code_payload = getattr(submission, "code_payload", "") or (submission.payload if submission.submission_type == "code" else "") or '''"""
-StarApp Academy: High-Throughput Idempotent Kafka Stream Consumer
-Batch Orion-24: Ingestion Foundations (Attempt #2 Deliverable)
-Cosmonaut: Astraea Nova (cosmo_1)
-Mentor: Dr. Elena Vance (guardian_1)
-"""
-import json
-import logging
-from typing import Dict, Any
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("IdempotentIngestion")
-
-class IdempotentKafkaConsumer:
-    def __init__(self, dedup_store, dlq_publisher):
-        self.dedup_store = dedup_store
-        self.dlq_publisher = dlq_publisher
-        self.processed_count = 0
-        self.dlq_count = 0
-
-    def process_event(self, raw_message: str) -> bool:
-        try:
-            payload = json.loads(raw_message)
-            idempotency_key = payload.get("idempotency_key")
-            if not idempotency_key:
-                raise ValueError("Missing mandatory idempotency_key in payload header")
-
-            # Check if payload was already processed (atomic deduplication check)
-            if self.dedup_store.exists(idempotency_key):
-                logger.info(f"Duplicate event skipped: {idempotency_key}")
-                return True
-
-            # Execute transactional ingestion
-            self._write_to_primary_store(payload)
-            self.dedup_store.set(idempotency_key, ttl_seconds=86400)
-            self.processed_count += 1
-            return True
-
-        except Exception as exc:
-            logger.error(f"Ingestion anomaly, routing to DLQ: {exc}")
-            self.dlq_publisher.publish_dead_letter(raw_message, str(exc))
-            self.dlq_count += 1
-            return False
-
-    def _write_to_primary_store(self, payload: Dict[str, Any]):
-        logger.info(f"Successfully committed payload to Bronze ingestion lake: {payload.get('id')}")
+    code_name = getattr(submission, "code_name", "") or (submission.file_name if submission.submission_type == "code" else "") or "script.py"
+    code_payload = getattr(submission, "code_payload", "") or (submission.payload if submission.submission_type == "code" else "") or '''# Deliverable Script
+def run():
+    print("Executing deliverable package.")
 '''
-    github_url = getattr(submission, "github_url", "") or (submission.payload if submission.submission_type == "github" else "") or "https://github.com/starapp-cosmonauts/ingestion-service-astraea"
+    github_url = getattr(submission, "github_url", "") or (submission.payload if submission.submission_type == "github" else "") or ""
 
     # Clean PDF URL with parameters to disable left-side thumbnail/navigation pane and fit horizontally
     base_pdf_url = pdf_payload.split("#")[0]
@@ -3443,6 +3406,9 @@ def render_guardian_create_badge(
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:14px;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:var(--snow-white);" title="Navigate Back">
+                        &larr; Back
+                    </button>
                     <button type="button" class="btn-secondary btn-sm" onclick="window.open('index.html?role=cosmonaut', '_blank');" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:var(--snow-white);">
                         Cosmonaut Window ↗
                     </button>
@@ -3667,25 +3633,92 @@ def render_guardian_create_badge(
         saved_cards = []
         for sb in saved_list:
             sb_title = sb.get("title", "")
+            sb_code = sb.get("code", "")
             sb_loc = sb.get("location", "")
             sb_band = sb.get("target_band", selected_band)
             sb_id = sb.get("id", "")
-            saved_cards.append(f"""
-            <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-40); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">BAND {sb_band}</span>
-                        <h4 style="font-size:14px; font-weight:800; color:var(--frost-navy); margin:0;">{escape(sb_title)}</h4>
+            sb_status = sb.get("workflow_status", "ready_for_review")
+            sb_rev_id = sb.get("assigned_reviewer_id")
+            sb_rev_name = sb.get("assigned_reviewer_name")
+            sb_rev_band = sb.get("assigned_reviewer_band")
+            sb_notes = sb.get("decision_notes", "")
+
+            # Status pill
+            if sb_status == "ready_for_review":
+                status_pill = '<span class="status-pill status-active" style="font-size:10px; font-weight:700;">Ready for Review</span>'
+            elif sb_status == "pending_review":
+                status_pill = f'<span class="status-pill status-warning" style="font-size:10px; font-weight:700;">Pending Review</span>'
+            elif sb_status == "approved":
+                status_pill = f'<span class="status-pill status-approved" style="font-size:10px; font-weight:700;">Approved</span>'
+            elif sb_status == "returned":
+                status_pill = f'<span class="status-pill status-rejected" style="font-size:10px; font-weight:700;">Returned for Changes</span>'
+            else:
+                status_pill = f'<span class="status-pill status-active" style="font-size:10px; font-weight:700;">{escape(sb_status.title())}</span>'
+
+            # Higher-band reviewer selector
+            reviewer_selector_html = ""
+            if sb_status in ("ready_for_review", "returned", "pending_review"):
+                if sb_band == "B6":
+                    reviewer_selector_html = '<div style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">Executive council review required (Band B6).</div>'
+                else:
+                    el_revs = store.get_eligible_badge_reviewers(sb_band)
+                    opt_items = ['<option value="">-- Select Higher-Band Reviewer --</option>']
+                    for r in el_revs:
+                        sel_attr = "selected" if r.get("id") == sb_rev_id else ""
+                        opt_items.append(f'<option value="{r["id"]}" {sel_attr}>{escape(r["name"])} ({r["band"]}) - {escape(r["learning_track"])}</option>')
+                    reviewer_selector_html = f"""
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                        <span style="font-size:11px; font-weight:700; color:var(--frost-navy-75);">Badge Reviewer:</span>
+                        <select id="reviewer-select-{sb_id}" class="form-input" style="font-size:11.5px; padding:4px 8px; max-width:240px;">
+                            {"".join(opt_items)}
+                        </select>
+                        <button type="button" class="btn-metal btn-sm" onclick="const sel=document.getElementById('reviewer-select-{sb_id}'); if(!sel.value){{alert('Please select an eligible higher-band reviewer.'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{sb_id}', reviewer_id:sel.value}}));" style="font-size:11px; font-weight:800; padding:4px 10px;">
+                            Send Request
+                        </button>
                     </div>
-                    <div style="font-size:12px; color:var(--frost-navy-75); font-weight:600;">{escape(sb_loc)}</div>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('view_saved_badge', '{sb_id}')" style="font-size:11.5px; font-weight:700;">
-                        View Badge
-                    </button>
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')" style="font-size:11.5px; font-weight:700;">
-                        Allot &rarr;
-                    </button>
+                    """
+
+            # Assigned reviewer info banner
+            rev_info_html = ""
+            if sb_status == "pending_review" and sb_rev_name:
+                rev_info_html = f'<div style="font-size:11px; color:var(--deep-frozen-midnight); margin-top:4px;">Request sent to: <strong>{escape(sb_rev_name)} (Band {escape(sb_rev_band or "")})</strong></div>'
+            elif sb_status == "approved" and sb_rev_name:
+                rev_info_html = f'<div style="font-size:11px; color:#059669; margin-top:4px;">Authorized by: <strong>{escape(sb_rev_name)} (Band {escape(sb_rev_band or "")})</strong></div>'
+
+            # Decision notes if returned
+            notes_html = ""
+            if sb_notes and sb_status == "returned":
+                notes_html = f'<div style="margin-top:6px; padding:6px 10px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:11.5px; color:#DC2626;"><strong>Reviewer Feedback:</strong> {escape(sb_notes)}</div>'
+
+            allot_btn = ""
+            if sb_status == "approved":
+                allot_btn = f"""
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')" style="font-size:11.5px; font-weight:700;">
+                    Allot &rarr;
+                </button>
+                """
+
+            saved_cards.append(f"""
+            <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-40); margin-bottom:12px; background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                            <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">BAND {sb_band}</span>
+                            {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:2px 8px; border-radius:var(--radius-xs);">{escape(sb_code)}</span>' if sb_code else ''}
+                            <h4 style="font-size:14px; font-weight:800; color:var(--frost-navy); margin:0;">{escape(sb_title)}</h4>
+                            {status_pill}
+                        </div>
+                        <div style="font-size:12px; color:var(--frost-navy-75); font-weight:600;">{escape(sb_loc)}</div>
+                        {rev_info_html}
+                        {notes_html}
+                        {reviewer_selector_html}
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-top:2px;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{sb_id}')" style="font-size:11.5px; font-weight:700;">
+                            View Badge
+                        </button>
+                        {allot_btn}
+                    </div>
                 </div>
             </div>
             """)
@@ -3722,14 +3755,14 @@ def render_guardian_create_badge(
         <!-- Breadcrumb & Navigation -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
             <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--frost-navy-50);">
-                <a style="cursor:pointer; color:var(--deep-frozen-midnight);" onclick="window.StarAppBridge.dispatchAction('select_create_badge_band', '')">Create Badge</a>
+                <a style="cursor:pointer; color:var(--deep-frozen-midnight);" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')">Create Badge</a>
                 <span>&rsaquo;</span>
                 <span style="color:var(--deep-frozen-midnight);">Band {selected_band}</span>
                 <span>&rsaquo;</span>
                 <span style="color:var(--frost-navy);">Configure Badge</span>
             </div>
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('select_create_badge_band', '')" style="font-size:12px; font-weight:700;">
-                &larr; Switch Band
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')" style="font-size:12px; font-weight:700;">
+                &larr; Back to Bands
             </button>
         </div>
 
@@ -4266,6 +4299,7 @@ def render_guardian_badge_approval_queue(
 
     # Tabs
     all_cnt = len(badges)
+    ready_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "ready_for_review"])
     pending_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "pending_review"])
     approved_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "approved"])
     returned_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "returned"])
@@ -4283,6 +4317,7 @@ def render_guardian_badge_approval_queue(
     tabs_html = f"""
     <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
         {tab_btn('all', 'All Submissions', all_cnt)}
+        {tab_btn('ready_for_review', 'Ready for Review', ready_cnt)}
         {tab_btn('pending_review', 'Pending Review', pending_cnt)}
         {tab_btn('approved', 'Approved', approved_cnt)}
         {tab_btn('returned', 'Returned', returned_cnt)}
@@ -4296,10 +4331,14 @@ def render_guardian_badge_approval_queue(
 
     for b in filtered:
         status_val = getattr(b, "workflow_status", "approved")
-        if status_val == "pending_review":
+        if status_val == "ready_for_review":
+            status_pill = '<span class="status-pill status-active" style="font-size:11px;">Ready for Review</span>'
+        elif status_val == "pending_review":
             status_pill = '<span class="status-pill status-warning" style="font-size:11px;">Pending Review</span>'
         elif status_val == "approved":
             status_pill = '<span class="status-pill status-approved" style="font-size:11px;">Approved</span>'
+        elif status_val == "returned":
+            status_pill = '<span class="status-pill status-rejected" style="font-size:11px;">Returned</span>'
         else:
             status_pill = f'<span class="status-pill status-active" style="font-size:11px;">{escape(status_val.title())}</span>'
 
@@ -4309,12 +4348,36 @@ def render_guardian_badge_approval_queue(
         skill = getattr(b, "skill", "Hardware")
 
         creator = store.get_user_by_id(getattr(b, "creator_id", ""))
-        creator_name = creator.name if creator else "System/Guardian"
+        creator_name = creator.name if creator else "Guardian Admin"
 
         assigned_rev = store.get_user_by_id(getattr(b, "assigned_reviewer_id", ""))
         rev_name = assigned_rev.name if assigned_rev else "Unassigned"
 
         created_at_fmt = b.created_at[:10] if getattr(b, "created_at", None) else "2026-11-18"
+
+        # Reviewer column presentation
+        if target_band == "B6":
+            rev_col_html = '<div style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">Executive Council</div>'
+        elif status_val in ("ready_for_review", "returned") or not assigned_rev:
+            el_revs = store.get_eligible_badge_reviewers(target_band)
+            opt_revs = "".join([f'<option value="{r["id"]}" {"selected" if assigned_rev and r["id"] == assigned_rev.id else ""}>{escape(r["name"])} ({r["band"]})</option>' for r in el_revs])
+            rev_col_html = f"""
+            <div style="display:flex; gap:4px; align-items:center;">
+                <select id="g-queue-rev-{b.id}" class="form-input" style="font-size:11px; padding:3px 6px; max-width:145px;">
+                    <option value="">-- Reviewer --</option>
+                    {opt_revs}
+                </select>
+                <button type="button" class="btn-metal btn-sm" style="font-size:10px; padding:3px 7px; font-weight:700;"
+                        onclick="const s=document.getElementById('g-queue-rev-{b.id}'); if(!s.value){{alert('Please select an eligible higher-band reviewer'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{b.id}', reviewer_id:s.value}}));">
+                    Send
+                </button>
+            </div>
+            """
+        else:
+            rev_col_html = f"""
+            <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)}</div>
+            <div style="color:var(--frost-navy-50); font-size:11px;">Assigned Reviewer</div>
+            """
 
         # Action buttons
         inspect_btn = f"""
@@ -4327,7 +4390,7 @@ def render_guardian_badge_approval_queue(
         # Edit button: Only assigned reviewer or guardian
         can_edit = (is_reviewer and assigned_rev and assigned_rev.id == current_user.id) or ("guardian" in user_roles)
         edit_btn = ""
-        if can_edit and status_val == "pending_review":
+        if can_edit and status_val in ("pending_review", "ready_for_review", "returned"):
             edit_btn = f"""
             <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 10px; font-weight:700;"
                     onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b.id}')">
@@ -4335,8 +4398,19 @@ def render_guardian_badge_approval_queue(
             </button>
             """
 
+        # Return button
+        return_btn = ""
+        can_return = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+        if can_return:
+            return_btn = f"""
+            <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 8px; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b.id}')">
+                Return
+            </button>
+            """
+
         # Approve button: Only authorized badge_reviewer
-        can_approve = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+        can_approve = is_reviewer and status_val in ("pending_review", "ready_for_review") and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
         approve_btn = ""
         if can_approve:
             approve_btn = f"""
@@ -4364,8 +4438,7 @@ def render_guardian_badge_approval_queue(
                 <div style="color:var(--frost-navy-50); font-size:11px;">Created {created_at_fmt}</div>
             </td>
             <td style="padding:14px 16px; font-size:12px;">
-                <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)}</div>
-                <div style="color:var(--frost-navy-50); font-size:11px;">Assigned Reviewer</div>
+                {rev_col_html}
             </td>
             <td style="padding:14px 16px; text-align:center;">
                 {status_pill}
@@ -4374,6 +4447,7 @@ def render_guardian_badge_approval_queue(
                 <div style="display:flex; justify-content:flex-end; gap:6px; align-items:center;">
                     {inspect_btn}
                     {edit_btn}
+                    {return_btn}
                     {approve_btn}
                 </div>
             </td>
@@ -4391,15 +4465,28 @@ def render_guardian_badge_approval_queue(
 
     return f"""
     <div>
-        <!-- Heading -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
-            <div>
-                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin-bottom:4px;">Reviewer Badge Approval</h1>
-                <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Review, update and approve badges submitted for authorization.</p>
+        <!-- Breadcrumb & Top Navigation with Back Button -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--frost-navy-50);">
+                <a style="cursor:pointer; color:var(--deep-frozen-midnight);" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')">Curriculum Management</a>
+                <span>&rsaquo;</span>
+                <span style="color:var(--frost-navy);">Reviewer Badge Approval Queue</span>
             </div>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_create_badge')" style="font-weight:700; font-size:12.5px;">
-                + Create New Badge
-            </button>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm);" title="Navigate back to previous view">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    <span>Back</span>
+                </button>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_create_badge')" style="font-weight:700; font-size:12px; padding:6px 16px;">
+                    + Create New Badge
+                </button>
+            </div>
+        </div>
+
+        <!-- Heading -->
+        <div style="margin-bottom:20px;">
+            <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin-bottom:4px;">Reviewer Badge Approval</h1>
+            <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Review, update and approve badges submitted for authorization.</p>
         </div>
 
         <!-- Filter tabs & Search -->
@@ -4674,6 +4761,52 @@ def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) 
             </button>
             <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('approve_submitted_badge', '{badge.id}')" style="font-weight:800; padding:9px 22px; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;">
                 Confirm & Authorize Badge &rarr;
+            </button>
+        </div>
+    </div>
+    """
+
+
+# ==============================================================================
+# 7.14 BADGE RETURN CONFIRMATION MODAL
+# ==============================================================================
+
+def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) -> str:
+    code = escape(badge.code)
+    title = escape(badge.title)
+    band = escape(getattr(badge, "target_band", "B1"))
+    rev_name = escape(reviewer.name) if reviewer else "Current Reviewer"
+
+    return f"""
+    <div style="padding:6px 0;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
+            <div style="width:42px; height:42px; border-radius:50%; background:rgba(239,68,68,0.12); border:1.5px solid #EF4444; display:flex; align-items:center; justify-content:center; color:#EF4444; flex-shrink:0;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div>
+                <h2 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Return Badge with Feedback</h2>
+                <div style="font-size:12px; color:var(--frost-navy-50);">Request Revisions for Band {band} Milestone</div>
+            </div>
+        </div>
+
+        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:12.5px; line-height:1.5;">
+            <div><strong style="color:var(--frost-navy);">{code}: {title}</strong></div>
+            <div style="color:var(--frost-navy-75); margin-top:4px;">
+                Reviewing Officer: <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:20px;">
+            <label class="form-label" style="font-size:12px; font-weight:700;">Revision Feedback / Reason for Return</label>
+            <textarea id="badge-return-notes-input" class="form-input" rows="4" placeholder="Detail the necessary curriculum adjustments, missing outcomes, or rubric improvements needed before this badge can be authorized..." style="font-size:12.5px;"></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+                Cancel
+            </button>
+            <button type="button" class="btn-metal" onclick="const n=document.getElementById('badge-return-notes-input')?.value.trim(); window.StarAppBridge.dispatchAction('return_submitted_badge', JSON.stringify({{badge_id:'{badge.id}', notes:n}}));" style="font-weight:800; padding:9px 22px; background:linear-gradient(135deg, #EF4444 0%, #DC2626 100%); border-color:#DC2626; color:#fff;">
+                Confirm Return with Feedback &rarr;
             </button>
         </div>
     </div>

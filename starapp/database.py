@@ -421,11 +421,13 @@ CREATE INDEX IF NOT EXISTS idx_badge_reviewer_assignments_reviewer ON badge_revi
 class DatabaseManager:
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            # Default to Pyodide virtual fs or local working directory
+            # Default to Pyodide virtual fs or authoritative data/starapp.db
             if os.path.exists("/home/pyodide"):
                 db_path = "/home/pyodide/starapp.db"
+            elif os.path.exists(os.path.join(os.getcwd(), "data", "starapp.db")):
+                db_path = os.environ.get("STARAPP_DB_PATH", os.path.join(os.getcwd(), "data", "starapp.db"))
             else:
-                db_path = os.environ.get("STARAPP_DB_PATH", "starapp.db")
+                db_path = os.environ.get("STARAPP_DB_PATH", "data/starapp.db")
         self.db_path = db_path
         self._conn: Optional[Any] = None
         if SQLITE_AVAILABLE:
@@ -626,7 +628,7 @@ class DatabaseManager:
                     reporting_manager_id, reporting_manager_name, reporting_manager_band,
                     password, primary_role, avatar, status, is_demo, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?)
                 """,
                 (
                     u_id, u_uname, u_email, u_name, u_age, u_role, u_track, u_track_code, u_band,
@@ -689,6 +691,127 @@ class DatabaseManager:
         )
         c.execute("INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES ('cosmo_1', 'cosmonaut', ?)", (current_iso_timestamp(),))
         c.execute("INSERT OR REPLACE INTO user_band_memberships (user_id, band_code, track_code, assigned_at) VALUES ('cosmo_1', 'B1', 'SD', ?)", (current_iso_timestamp(),))
+
+        # 7. Seed 2 Initial B1 Badges for Band B1 Card & Review Workflow
+        b1_badges_seed = [
+            (
+                "b1_int_01",
+                "B1-INT-01",
+                "Intelligent Apps Foundations",
+                "Intelligent Apps / Intelligent Apps",
+                "Foundations of intelligent agents, LLM integrations, and modern full-stack reasoning workflows.",
+                json.dumps([
+                    "Understand agent architectures and prompt formatting",
+                    "Connect LLM reasoning APIs to enterprise pipelines",
+                    "Implement secure tool use and stateful conversations"
+                ]),
+                json.dumps(["Agent Architecture", "API Integration", "Tool Calling", "Context Windows", "Output Parsing", "Streaming APIs"]),
+                "Build a production agent pipeline that queries live enterprise databases with structured validation.",
+                0, 0, "B1", "Tech", "Intelligent Apps", "Intelligent Apps",
+                json.dumps({
+                    "id": "b1_int_01",
+                    "code": "B1-INT-01",
+                    "title": "Intelligent Apps Foundations",
+                    "target_band": "B1",
+                    "power": "Tech",
+                    "capability": "Intelligent Apps",
+                    "skill": "Intelligent Apps",
+                    "description": "Foundations of intelligent agents, LLM integrations, and modern full-stack reasoning workflows.",
+                    "location": "Intelligent Apps Foundations -> Intelligent Apps -> Intelligent Apps -> Tech -> Band B1",
+                    "outcomes": [
+                        "Can understand agent architectures and prompt formatting",
+                        "Can connect LLM reasoning APIs to enterprise pipelines",
+                        "Can implement secure tool use and stateful conversations"
+                    ],
+                    "learning_topics": [
+                        {"index": 0, "title": "Agent Architecture", "description": "Core concepts of agents, planners, and memory buffers."},
+                        {"index": 1, "title": "API Integration", "description": "Authenticating, rate-limiting, and error handling for reasoning APIs."},
+                        {"index": 2, "title": "Tool Calling", "description": "Declaring schemas and invoking functions safely."},
+                        {"index": 3, "title": "Context Windows", "description": "Managing prompt limits, token consumption, and KV cache."},
+                        {"index": 4, "title": "Output Parsing", "description": "Structured output parsing and validation."},
+                        {"index": 5, "title": "Streaming APIs", "description": "SSE and WebSocket chunk rendering."}
+                    ],
+                    "practice_project": {
+                        "title": "Production Agent Pipeline",
+                        "prompt": "Build a production agent pipeline that queries live enterprise databases with structured validation."
+                    }
+                }),
+                "ready_for_review",
+                "guardian_1",
+                None,
+                json.dumps([]),
+                json.dumps({}),
+                current_iso_timestamp(),
+                current_iso_timestamp()
+            ),
+            (
+                "b1_dat_01",
+                "B1-DAT-01",
+                "Data Systems Architecture",
+                "Data & Machine / Data Model",
+                "Core concepts of high-scale data partitioning, cache topologies, and database durability.",
+                json.dumps([
+                    "Design normalized 3NF and dimensional schemas",
+                    "Optimize distributed queries and indexing strategies",
+                    "Implement failover policies and WAL logging"
+                ]),
+                json.dumps(["Schema Design", "Distributed Caching", "Failover Topologies", "WAL Logging", "ACID Guarantees", "Partitioning"]),
+                "Design and evaluate a fault-tolerant relational cluster architecture with high-availability replication.",
+                0, 0, "B1", "Tech", "Data & Machine", "Data Model",
+                json.dumps({
+                    "id": "b1_dat_01",
+                    "code": "B1-DAT-01",
+                    "title": "Data Systems Architecture",
+                    "target_band": "B1",
+                    "power": "Tech",
+                    "capability": "Data & Machine",
+                    "skill": "Data Model",
+                    "description": "Core concepts of high-scale data partitioning, cache topologies, and database durability.",
+                    "location": "Data Systems Architecture -> Data Model -> Data & Machine -> Tech -> Band B1",
+                    "outcomes": [
+                        "Can design normalized 3NF and dimensional schemas",
+                        "Can optimize distributed queries and indexing strategies",
+                        "Can implement failover policies and WAL logging"
+                    ],
+                    "learning_topics": [
+                        {"index": 0, "title": "Schema Design", "description": "3NF normalization and dimensional models."},
+                        {"index": 1, "title": "Distributed Caching", "description": "Redis and Memcached caching strategies."},
+                        {"index": 2, "title": "Failover Topologies", "description": "Master-replica consensus and quorum."},
+                        {"index": 3, "title": "WAL Logging", "description": "Write-ahead logging and point-in-time recovery."},
+                        {"index": 4, "title": "ACID Guarantees", "description": "Transaction isolation levels and MVCC."},
+                        {"index": 5, "title": "Partitioning", "description": "Horizontal sharding and range partitioning."}
+                    ],
+                    "practice_project": {
+                        "title": "Fault-Tolerant Cluster Architecture",
+                        "prompt": "Design and evaluate a fault-tolerant relational cluster architecture with high-availability replication."
+                    }
+                }),
+                "ready_for_review",
+                "guardian_1",
+                None,
+                json.dumps([]),
+                json.dumps({}),
+                current_iso_timestamp(),
+                current_iso_timestamp()
+            )
+        ]
+        for b_item in b1_badges_seed:
+            c.execute(
+                """
+                INSERT OR IGNORE INTO badges (
+                    id, code, title, category, description,
+                    learning_outcomes_json, learning_topics_json, project_requirements,
+                    is_published, is_allocated, target_band, power, capability, skill,
+                    prompt_json, workflow_status, creator_id, assigned_reviewer_id,
+                    assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                b_item
+            )
+            b_id = b_item[0]
+            c.execute("INSERT OR REPLACE INTO badge_powers (badge_id, power_name) VALUES (?, ?)", (b_id, b_item[11]))
+            c.execute("INSERT OR REPLACE INTO badge_capabilities (badge_id, capability_name, is_custom) VALUES (?, ?, 0)", (b_id, b_item[12]))
+            c.execute("INSERT OR REPLACE INTO badge_skills (badge_id, skill_name, is_custom) VALUES (?, ?, 0)", (b_id, b_item[13]))
 
         self.conn.commit()
 
@@ -1001,7 +1124,7 @@ class DatabaseManager:
                         a["badge_id"],
                         a["cosmonaut_id"],
                         a.get("reviewer_id", "guardian_1"),
-                        a.get("reviewer_name", "Dr. Elena Vance"),
+                        a.get("reviewer_name", "Arjun Mehta"),
                         a.get("reviewed_at", current_iso_timestamp()),
                         a.get("decision", "approve"),
                         float(a.get("business_understanding", 0.0)),
@@ -1074,7 +1197,7 @@ class DatabaseManager:
                         ann["title"],
                         ann["message"],
                         ann.get("author_id", "guardian_1"),
-                        ann.get("author_name", "Dr. Elena Vance"),
+                        ann.get("author_name", "Arjun Mehta"),
                         ann.get("target_type", "all"),
                         ann.get("badge_id", ""),
                         ann.get("published_at", current_iso_timestamp()),
@@ -1126,7 +1249,7 @@ class DatabaseManager:
                         act.get("timestamp", current_iso_timestamp()),
                         act.get("event_type", "general"),
                         act.get("actor_id", "guardian_1"),
-                        act.get("actor_name", "Dr. Elena Vance"),
+                        act.get("actor_name", "Arjun Mehta"),
                         act.get("cosmonaut_id", ""),
                         act.get("badge_id", ""),
                         act.get("summary", ""),
@@ -1160,8 +1283,8 @@ class DatabaseManager:
             return {}
         c = self.conn
 
-        # Users: actual login/session users (guardian_1, cosmo_1) or non-demo users
-        users_rows = c.execute("SELECT * FROM users WHERE id IN ('guardian_1', 'cosmo_1') OR is_demo = 0 ORDER BY id").fetchall()
+        # Users: all active users directly from SQLite
+        users_rows = c.execute("SELECT * FROM users ORDER BY id").fetchall()
         users = []
         for r in users_rows:
             # Fetch assigned roles
@@ -1558,7 +1681,7 @@ class DatabaseManager:
         self,
         badge_data: Dict[str, Any],
         creator_id: str = "guardian_1",
-        creator_name: str = "Dr. Elena Vance"
+        creator_name: str = "Arjun Mehta"
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Executes atomic creation of a badge in 'pending_review' status.
@@ -1746,6 +1869,19 @@ class DatabaseManager:
             new_skill = updated_data.get("skill") or curr_row["skill"]
             new_prompt = updated_data.get("prompt_json") or curr_row["prompt_json"]
 
+            # Synchronize outcomes and topics from prompt_json if provided
+            if "prompt_json" in updated_data and updated_data["prompt_json"]:
+                try:
+                    pj = json.loads(updated_data["prompt_json"])
+                    if "outcomes" in pj and "learning_outcomes" not in updated_data:
+                        new_outcomes = json.dumps(pj["outcomes"])
+                    elif "learning_outcomes" in pj and "learning_outcomes" not in updated_data:
+                        new_outcomes = json.dumps(pj["learning_outcomes"])
+                    if "learning_topics" in pj and "learning_topics" not in updated_data:
+                        new_topics = json.dumps([t["title"] if isinstance(t, dict) else str(t) for t in pj["learning_topics"]])
+                except Exception:
+                    pass
+
             with self.conn:
                 self.conn.execute(
                     """
@@ -1761,7 +1897,7 @@ class DatabaseManager:
                         skill = ?,
                         prompt_json = ?,
                         updated_at = ?
-                    WHERE id = ? AND workflow_status = 'pending_review'
+                    WHERE id = ? AND workflow_status IN ('pending_review', 'ready_for_review', 'returned', 'approved')
                     """,
                     (
                         new_title,
@@ -1922,6 +2058,231 @@ class DatabaseManager:
         except Exception as e:
             return False, f"Approval transaction failed: {e}"
 
+    def return_badge(
+        self,
+        badge_id: str,
+        reviewer_id: str,
+        reviewer_name: str,
+        notes: str = ""
+    ) -> Tuple[bool, str]:
+        """
+        Returns / Rejects a badge with revision feedback to the creator Guardian.
+        Updates workflow_status to 'returned' and logs feedback and audit trails.
+        """
+        now_iso = current_iso_timestamp()
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return True, f"Badge {badge_id} returned for revisions."
+
+        try:
+            badge_row = self.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
+            if not badge_row:
+                return False, f"Badge {badge_id} not found."
+
+            creator_id = badge_row["creator_id"] or "guardian_1"
+            badge_code = badge_row["code"]
+            badge_title = badge_row["title"]
+
+            with self.conn:
+                # 1. Update Badge status
+                self.conn.execute(
+                    """
+                    UPDATE badges SET
+                        workflow_status = 'returned',
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (now_iso, badge_id)
+                )
+
+                # 2. Update assignment record
+                self.conn.execute(
+                    """
+                    UPDATE badge_reviewer_assignments SET
+                        status = 'returned',
+                        decision_notes = ?,
+                        decided_at = ?
+                    WHERE badge_id = ? AND status = 'pending'
+                    """,
+                    (notes or "Badge returned with revision feedback.", now_iso, badge_id)
+                )
+
+                # 3. Audit Review Event
+                event_id = f"bre_{badge_id}_returned_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
+                    VALUES (?, ?, ?, 'returned', 'pending_review', 'returned', ?, ?)
+                    """,
+                    (event_id, badge_id, reviewer_id, notes or "Returned with feedback.", now_iso)
+                )
+
+                # 4. Notify Creator Guardian
+                notif_id = f"notif_ret_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
+                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_returned', ?)
+                    """,
+                    (
+                        notif_id,
+                        creator_id,
+                        f"Badge Returned: {badge_code}",
+                        f"Reviewer {reviewer_name} returned badge '{badge_title}' with feedback: {notes}",
+                        now_iso,
+                        badge_id
+                    )
+                )
+
+                # 5. Activity Event
+                act_id = f"act_ret_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
+                    VALUES (?, ?, 'badge_returned', ?, ?, '', ?, ?, ?)
+                    """,
+                    (
+                        act_id,
+                        now_iso,
+                        reviewer_id,
+                        reviewer_name,
+                        badge_id,
+                        f"Reviewer {reviewer_name} returned badge {badge_code} ({badge_title}) for revisions.",
+                        notes
+                    )
+                )
+
+            return True, f"Badge {badge_code} returned with feedback."
+        except Exception as e:
+            return False, f"Failed to return badge: {e}"
+
+    def assign_and_request_badge_review(
+        self,
+        badge_id: str,
+        reviewer_id: str,
+        creator_id: str = "guardian_1"
+    ) -> Tuple[bool, str]:
+        """
+        Assigns an eligible higher-band reviewer to a badge and dispatches the review request.
+        Strictly enforces higher-band hierarchy:
+        Target Band B1 -> Reviewer must be B2..B6
+        Target Band B2 -> Reviewer must be B3..B6
+        Target Band B3 -> Reviewer must be B4..B6
+        Target Band B4 -> Reviewer must be B5..B6
+        Target Band B5 -> Reviewer must be B6
+        Target Band B6 -> Locked (Executive Council)
+        """
+        now_iso = current_iso_timestamp()
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return True, "Review request dispatched successfully."
+
+        try:
+            badge_row = self.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
+            if not badge_row:
+                return False, f"Badge {badge_id} not found."
+
+            target_band = badge_row["target_band"] or "B1"
+            from starapp.mapping_data import get_higher_bands
+            higher_bands = get_higher_bands(target_band)
+
+            if target_band == "B6":
+                return False, "Band B6 badges require Executive Council review. No higher-band reviewer is eligible."
+
+            # Verify reviewer exists and is in a higher band
+            rev_row = self.conn.execute(
+                """
+                SELECT u.id, u.name, u.email, m.band_code
+                FROM users u
+                JOIN user_band_memberships m ON u.id = m.user_id
+                WHERE u.id = ? AND u.status = 'active'
+                """,
+                (reviewer_id,)
+            ).fetchone()
+
+            if not rev_row:
+                return False, f"Selected reviewer {reviewer_id} not found or inactive."
+
+            rev_band = rev_row["band_code"]
+            if rev_band not in higher_bands:
+                return False, f"Invalid Reviewer: A Band {target_band} badge can only be reviewed by engineers in higher bands ({', '.join(higher_bands)}). {rev_row['name']} is in Band {rev_band}."
+
+            rev_name = rev_row["name"]
+            badge_code = badge_row["code"]
+            badge_title = badge_row["title"]
+
+            due_date = (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+            assign_id = f"bra_{badge_id}_{reviewer_id}_{int(datetime.datetime.now().timestamp())}"
+
+            with self.conn:
+                # 1. Update Badge status & assigned reviewer
+                self.conn.execute(
+                    """
+                    UPDATE badges SET
+                        workflow_status = 'pending_review',
+                        assigned_reviewer_id = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (reviewer_id, now_iso, badge_id)
+                )
+
+                # 2. Insert or replace assignment record
+                self.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO badge_reviewer_assignments (
+                        id, badge_id, reviewer_id, assigned_at, review_due_at, status, decision_notes, decided_at
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', '', NULL)
+                    """,
+                    (assign_id, badge_id, reviewer_id, now_iso, due_date)
+                )
+
+                # 3. Audit Review Event
+                event_id = f"bre_{badge_id}_req_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
+                    VALUES (?, ?, ?, 'created_and_submitted', ?, 'pending_review', ?, ?)
+                    """,
+                    (event_id, badge_id, creator_id, badge_row["workflow_status"], f"Review requested from {rev_name} ({rev_band}).", now_iso)
+                )
+
+                # 4. Dispatch Notification to Reviewer
+                notif_id = f"notif_req_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
+                    VALUES (?, ?, ?, ?, 'c_requests', ?, 0, 'badge_review_requested', ?)
+                    """,
+                    (
+                        notif_id,
+                        reviewer_id,
+                        f"Review Request: {badge_code}",
+                        f"Guardian submitted badge '{badge_title}' ({badge_code}) for Band {target_band} for your review and authorization.",
+                        now_iso,
+                        badge_id
+                    )
+                )
+
+                # 5. Activity Event
+                act_id = f"act_req_{int(datetime.datetime.now().timestamp() * 1000)}"
+                self.conn.execute(
+                    """
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
+                    VALUES (?, ?, 'badge_review_requested', ?, 'Guardian', '', ?, ?, ?)
+                    """,
+                    (
+                        act_id,
+                        now_iso,
+                        creator_id,
+                        badge_id,
+                        f"Dispatched review request for {badge_code} ({badge_title}) to {rev_name} ({rev_band}).",
+                        f"Review due by {due_date}."
+                    )
+                )
+
+            return True, f"Review request for badge '{badge_title}' sent to {rev_name} ({rev_band})!"
+        except Exception as e:
+            return False, f"Failed to dispatch review request: {e}"
+
     # ==========================================================================
     # WORKFLOW QUERY ACCESSORS
     # ==========================================================================
@@ -1943,7 +2304,7 @@ class DatabaseManager:
         LEFT JOIN users u_c ON b.creator_id = u_c.id
         LEFT JOIN users u_r ON b.assigned_reviewer_id = u_r.id
         LEFT JOIN badge_reviewer_assignments ra ON b.id = ra.badge_id
-        WHERE b.workflow_status IN ('pending_review', 'approved', 'returned')
+        WHERE b.workflow_status IN ('ready_for_review', 'pending_review', 'approved', 'returned')
         """
         params = []
         if status_filter != "all":
@@ -1988,6 +2349,57 @@ class DatabaseManager:
         except Exception:
             res["prompt"] = {}
         return res
+
+    def get_badge_review_requests_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves all badge review requests where user_id is the assigned reviewer.
+        Includes badge details, assignment metadata, decision notes, outcomes, and topics.
+        """
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return []
+        query = """
+        SELECT
+            b.id, b.code, b.title, b.category, b.description, b.target_band,
+            b.power, b.capability, b.skill, b.prompt_json, b.workflow_status,
+            b.learning_outcomes_json, b.learning_topics_json, b.project_requirements,
+            b.created_at, b.updated_at,
+            b.creator_id, u_c.name AS creator_name, u_c.email AS creator_email,
+            b.assigned_reviewer_id, u_r.name AS reviewer_name,
+            ra.id AS assignment_id, ra.assigned_at, ra.review_due_at,
+            ra.status AS assignment_status, ra.decision_notes, ra.decided_at
+        FROM badges b
+        LEFT JOIN users u_c ON b.creator_id = u_c.id
+        LEFT JOIN users u_r ON b.assigned_reviewer_id = u_r.id
+        LEFT JOIN badge_reviewer_assignments ra ON b.id = ra.badge_id
+        WHERE b.assigned_reviewer_id = ? OR ra.reviewer_id = ?
+        ORDER BY b.created_at DESC
+        """
+        rows = self.conn.execute(query, (user_id, user_id)).fetchall()
+        results = []
+        seen_ids = set()
+        for r in rows:
+            d = dict(r)
+            if d["id"] in seen_ids:
+                continue
+            seen_ids.add(d["id"])
+            try:
+                d["learning_outcomes"] = json.loads(d.get("learning_outcomes_json") or "[]")
+            except Exception:
+                d["learning_outcomes"] = []
+            try:
+                d["learning_topics"] = json.loads(d.get("learning_topics_json") or "[]")
+            except Exception:
+                d["learning_topics"] = []
+            prompt_obj = {}
+            if d.get("prompt_json"):
+                try:
+                    prompt_obj = json.loads(d["prompt_json"])
+                except Exception:
+                    prompt_obj = {}
+            d["prompt"] = prompt_obj
+            d["location"] = prompt_obj.get("location") or f"{d['title']} -> {d.get('skill', 'General')} -> {d.get('capability', 'Core')} -> {d.get('power', 'Tech')} -> Band {d.get('target_band', 'B1')}"
+            results.append(d)
+        return results
 
 # Global database manager instance
 db = DatabaseManager()

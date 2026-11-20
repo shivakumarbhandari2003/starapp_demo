@@ -55,6 +55,17 @@ class DataStore:
         self.dirty: bool = False
         self._cached_json: Optional[str] = None
 
+        # Auto-load existing authoritative SQLite state if available
+        try:
+            if self.db and self.db.conn:
+                row = self.db.conn.execute("SELECT COUNT(*) FROM users").fetchone()
+                if row and row[0] > 0:
+                    exported = self.db.export_to_dict()
+                    if exported.get("users"):
+                        self.load_from_dict(exported)
+        except Exception:
+            pass
+
     def mark_dirty(self):
         """Flags store as modified to trigger targeted SQLite export and persistence."""
         self.version += 1
@@ -131,7 +142,19 @@ class DataStore:
             except Exception as e:
                 print(f"[DataStore] Failed to migrate from JSON snapshot: {e}, resetting to seed.")
 
-        # 3. Fallback to clean seed
+        # 3. Check if existing authoritative SQLite database already has records
+        try:
+            if self.db and self.db.conn:
+                row = self.db.conn.execute("SELECT COUNT(*) FROM users").fetchone()
+                if row and row[0] > 0:
+                    exported = self.db.export_to_dict()
+                    if exported.get("users"):
+                        self.load_from_dict(exported)
+                        return
+        except Exception as e:
+            print(f"[DataStore] Failed to load existing SQLite database: {e}")
+
+        # 4. Fallback to clean seed only if SQLite database is completely empty
         self.reset_to_seed()
 
     def reset_to_seed(self):
@@ -187,7 +210,14 @@ class DataStore:
         return None
 
     def get_all_cosmonauts(self) -> List[User]:
-        return [u for u in self.users.values() if u.role == "cosmonaut"]
+        # All members across B1 to B6 are cosmonauts/cadets
+        return [
+            u for u in self.users.values()
+            if u.role in ("cosmonaut", "cadet") or "cosmonaut" in getattr(u, "roles", []) or "cadet" in getattr(u, "roles", []) or (u.id != "guardian_1" and getattr(u, "band", "") in ("B1", "B2", "B3", "B4", "B5", "B6"))
+        ]
+
+    def get_all_users(self) -> List[User]:
+        return list(self.users.values())
 
     def get_cosmonaut_profile(self, user_id: str) -> CosmonautProfile:
         if user_id not in self.profiles:
@@ -785,12 +815,12 @@ class DataStore:
         if args and isinstance(args[0], dict):
             badge_data = dict(args[0])
             creator_id = args[1] if len(args) > 1 else kwargs.get("creator_id", "guardian_1")
-            creator_name = args[2] if len(args) > 2 else kwargs.get("creator_name", "Dr. Elena Vance")
+            creator_name = args[2] if len(args) > 2 else kwargs.get("creator_name", "Arjun Mehta")
         else:
             badge_data = dict(kwargs)
             creator_id = kwargs.get("creator_id", "guardian_1")
             creator = self.get_user_by_id(creator_id)
-            creator_name = creator.name if creator else "Dr. Elena Vance"
+            creator_name = creator.name if creator else "Arjun Mehta"
 
         ok, msg, b_id = self.db.create_badge_for_review(badge_data, creator_id, creator_name)
         if ok and b_id:
@@ -872,6 +902,35 @@ class DataStore:
             self.mark_dirty()
         return ok, msg
 
+    def return_badge(self, badge_id: str, reviewer_id: str, reviewer_name: str = "", notes: str = "") -> Tuple[bool, str]:
+        if not reviewer_name:
+            u = self.get_user_by_id(reviewer_id)
+            reviewer_name = u.name if u else "Reviewer"
+        ok, msg = self.db.return_badge(badge_id, reviewer_id, reviewer_name, notes)
+        if ok:
+            b = self.get_badge(badge_id)
+            if b:
+                b.workflow_status = "returned"
+            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
+            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self.mark_dirty()
+        return ok, msg
+
+    def assign_and_request_badge_review(self, badge_id: str, reviewer_id: str, creator_id: str = "guardian_1") -> Tuple[bool, str]:
+        ok, msg = self.db.assign_and_request_badge_review(badge_id, reviewer_id, creator_id)
+        if ok:
+            b = self.get_badge(badge_id)
+            if b:
+                b.workflow_status = "pending_review"
+                b.assigned_reviewer_id = reviewer_id
+            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
+            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self.mark_dirty()
+        return ok, msg
+
+    def get_badge_review_requests_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+        return self.db.get_badge_review_requests_for_user(user_id)
+
     def get_submitted_badges_for_approval(self, status_filter: str = "all") -> List[Dict[str, Any]]:
         return self.db.get_submitted_badges_for_approval(status_filter)
 
@@ -915,7 +974,7 @@ class DataStore:
             capability=cap,
             skill=skill,
             prompt_json=json.dumps(badge_dict, indent=2),
-            workflow_status="approved",
+            workflow_status=badge_dict.get("workflow_status", "ready_for_review"),
             creator_id=creator_id
         )
         self.save_badge(badge)
@@ -944,6 +1003,16 @@ class DataStore:
                     except Exception:
                         pass
                 loc = badge_json.get("location") or f"{b.title} -> {getattr(b, 'skill', 'General')} -> {getattr(b, 'capability', 'Core')} -> {getattr(b, 'power', 'Tech')} -> Band {getattr(b, 'target_band', 'B1')}"
+                rev_user = self.get_user_by_id(getattr(b, "assigned_reviewer_id", "")) if getattr(b, "assigned_reviewer_id", None) else None
+                # Check assignment decision notes from DB if available
+                dec_notes = ""
+                try:
+                    if self.db and self.db.conn:
+                        ra_row = self.db.conn.execute("SELECT decision_notes FROM badge_reviewer_assignments WHERE badge_id = ? ORDER BY assigned_at DESC LIMIT 1", (b.id,)).fetchone()
+                        if ra_row and ra_row["decision_notes"]:
+                            dec_notes = ra_row["decision_notes"]
+                except Exception:
+                    pass
                 results.append({
                     "id": b.id,
                     "code": b.code,
@@ -955,9 +1024,14 @@ class DataStore:
                     "description": b.description,
                     "location": loc,
                     "created_at": getattr(b, "created_at", ""),
-                    "workflow_status": getattr(b, "workflow_status", "approved"),
+                    "workflow_status": getattr(b, "workflow_status", "ready_for_review"),
+                    "assigned_reviewer_id": getattr(b, "assigned_reviewer_id", None),
+                    "assigned_reviewer_name": rev_user.name if rev_user else None,
+                    "assigned_reviewer_band": getattr(rev_user, "band", "") if rev_user else None,
+                    "decision_notes": dec_notes,
                     "badge_data": badge_json
                 })
+        return sorted(results, key=lambda x: x.get("created_at", ""), reverse=True)
         return sorted(results, key=lambda x: x.get("created_at", ""), reverse=True)
 
 # Global store instance
