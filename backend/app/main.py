@@ -25,15 +25,44 @@ from backend.app.features.evaluations.router import router as evaluations_router
 from backend.app.features.audit.router import router as audit_router
 from backend.app.integrations.gemini.router import router as gemini_router
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Optional, Dict, Union
 import json
-from starapp.app import controller
+from starapp.app import StarAppController, controller
+from starapp.storage import store
 
 
 class ActionDispatchRequest(BaseModel):
     action: str
     payload: Optional[Any] = "{}"
     session_id: Optional[str] = None
+
+
+# Tab-isolated session controller registry for concurrent multi-window testing
+_session_controllers: Dict[str, StarAppController] = {"default": controller}
+
+
+def get_session_controller(session_id: Optional[str] = None, role_hint: Optional[str] = None) -> StarAppController:
+    """
+    Returns an isolated StarAppController for each browser window/tab session,
+    allowing concurrent multi-user testing (e.g. Guardian in Window 1, Cosmonaut in Window 2)
+    while sharing the authoritative persistent SQLite3 database.
+    """
+    sid = session_id or "default"
+    if sid not in _session_controllers:
+        ctrl = StarAppController()
+        ctrl.initialize()
+        if role_hint == "cosmonaut" or "cosmo" in sid.lower():
+            user = store.get_user_by_id("cosmo_1")
+            if user:
+                ctrl.current_user = user
+                ctrl.current_view = "c_dashboard"
+        elif role_hint == "guardian" or "guard" in sid.lower():
+            user = store.get_user_by_id("admin") or store.get_user_by_id("guardian_1")
+            if user:
+                ctrl.current_user = user
+                ctrl.current_view = "g_dashboard"
+        _session_controllers[sid] = ctrl
+    return _session_controllers[sid]
 
 
 @asynccontextmanager
@@ -82,31 +111,60 @@ app.include_router(gemini_router, prefix=api_v1_prefix)
 
 
 @app.post("/api/v1/dispatch")
-async def dispatch_action(req: ActionDispatchRequest):
+async def dispatch_action(req: ActionDispatchRequest, request: Request):
     """
     Full-stack action dispatcher: Executes UI actions server-side on the FastAPI backend,
     persists changes to authoritative SQLite3 (data/starapp.db), and returns incremental regions.
+    Supports tab-isolated sessions via session_id or X-Session-Id header.
     """
     action = req.action
     payload_str = req.payload if isinstance(req.payload, str) else json.dumps(req.payload)
+    sid = req.session_id or request.headers.get("X-Session-Id") or "default"
+
+    role_hint = None
+    if isinstance(req.payload, dict):
+        role_hint = req.payload.get("role")
+    elif isinstance(req.payload, str) and req.payload.startswith("{"):
+        try:
+            p = json.loads(req.payload)
+            if isinstance(p, dict):
+                role_hint = p.get("role")
+        except Exception:
+            pass
+
+    ctrl = get_session_controller(sid, role_hint=role_hint)
+
+    # Fast role initialization if requested via ?role= on boot
+    if action == "boot" and role_hint:
+        if role_hint == "cosmonaut" and (not ctrl.current_user or ctrl.current_user.id != "cosmo_1"):
+            user = store.get_user_by_id("cosmo_1")
+            if user:
+                ctrl.current_user = user
+                ctrl.current_view = "c_dashboard"
+        elif role_hint == "guardian" and (not ctrl.current_user or ctrl.current_user.role != "guardian"):
+            user = store.get_user_by_id("admin") or store.get_user_by_id("guardian_1")
+            if user:
+                ctrl.current_user = user
+                ctrl.current_view = "g_dashboard"
 
     if action not in ("boot", "get_ui", "initial_render"):
-        controller.handle_event(action, payload_str)
+        ctrl.handle_event(action, payload_str)
 
-    full_html = controller.render()
-    regions = getattr(controller, "last_rendered_regions", None)
+    full_html = ctrl.render()
+    regions = getattr(ctrl, "last_rendered_regions", None)
 
     return {
         "success": True,
         "action": action,
         "full_html": full_html,
         "regions": regions,
-        "current_view": getattr(controller, "current_view", "login"),
+        "session_id": sid,
+        "current_view": getattr(ctrl, "current_view", "login"),
         "user": {
-            "id": controller.current_user.id,
-            "name": controller.current_user.name,
-            "role": controller.current_user.role,
-        } if controller.current_user else None,
+            "id": ctrl.current_user.id,
+            "name": ctrl.current_user.name,
+            "role": ctrl.current_user.role,
+        } if ctrl.current_user else None,
     }
 
 

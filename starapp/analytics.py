@@ -64,7 +64,7 @@ def build_cosmonaut_analytics_record(
         risk_status = "On Track"
         risk_reason = "Three enterprise milestones certified with honors (96.0% Average Assessment Score). Pacing on schedule."
 
-    # Format assessment details
+    # Format assessment details strictly from actual approved assessments
     badge_map = {b.id: b for b in assigned_badges}
     asm_list = []
     approved_badge_ids = {a.badge_id for a in approved_asms}
@@ -74,7 +74,7 @@ def build_cosmonaut_analytics_record(
         asm_list.append({
             "id": a.id,
             "badge_id": a.badge_id,
-            "badge_code": a.badge_id.replace("badge_", "").upper(),
+            "badge_code": getattr(badge_obj, "code", a.badge_id.replace("badge_", "").upper()),
             "badge_title": b_title,
             "attempt_number": a.attempt_number,
             "decision": a.decision,
@@ -88,82 +88,60 @@ def build_cosmonaut_analytics_record(
             "percentage": a.percentage
         })
 
-    # Include benchmark evaluations for ING-104 and SQL-201 so all badges display proper values
-    if "badge_ing_104" not in approved_badge_ids:
-        asm_list.append({
-            "id": "asm_c1_ing_2",
-            "badge_id": "badge_ing_104",
-            "badge_code": "ING-104",
-            "badge_title": "Ingestion Foundations",
-            "attempt_number": 2,
-            "decision": "approve",
-            "reviewed_at": "2026-11-08",
-            "business_understanding": 9.5,
-            "architecture_report": 9.0,
-            "technical_knowledge": 9.5,
-            "presentation": 9.5,
-            "qa": 9.0,
-            "total_marks": 46.5,
-            "percentage": 93.0
-        })
-    if "badge_sql_201" not in approved_badge_ids:
-        asm_list.append({
-            "id": "asm_c1_sql_201",
-            "badge_id": "badge_sql_201",
-            "badge_code": "SQL-201",
-            "badge_title": "Advanced Analytical SQL",
-            "attempt_number": 1,
-            "decision": "approve",
-            "reviewed_at": "2026-11-08",
-            "business_understanding": 9.5,
-            "architecture_report": 9.5,
-            "technical_knowledge": 9.5,
-            "presentation": 9.5,
-            "qa": 9.0,
-            "total_marks": 47.0,
-            "percentage": 94.0
-        })
-
     # Standing tier (Academic Performance Category)
-    if avg_marks >= 45.0:
-        tier = "Excellent Performance"
-    elif avg_marks >= 40.0:
-        tier = "Strong Performance"
-    elif avg_marks >= 35.0:
-        tier = "Developing Performance"
+    if not approved_asms:
+        tier = "Enrolled"
+        skills = []
+        certifications = []
+        strengths = []
+        improvements = []
+        risk_reason = "Enrolled in cohort curriculum. Awaiting initial deliverable submission."
+        mentoring_plan = "Enrolled in active learning cohort. Awaiting submission of initial milestone deliverable."
     else:
-        tier = "Needs Support"
+        if avg_marks >= 45.0:
+            tier = "Excellent Performance"
+        elif avg_marks >= 40.0:
+            tier = "Strong Performance"
+        elif avg_marks >= 35.0:
+            tier = "Developing Performance"
+        else:
+            tier = "Needs Support"
 
-    # Verified Skills & Competencies (Derived from actual cleared milestone rubrics)
-    skills = [
-        {"name": "ReactJS", "category": "Frontend Architecture", "proficiency": "Advanced", "level_color": "#2563EB", "pct": 94, "rating": 9.4, "badge": "DAT-103"},
-        {"name": "Nodejs", "category": "Backend Engineering", "proficiency": "Advanced", "level_color": "#2563EB", "pct": 92, "rating": 9.2, "badge": "ING-104"},
-        {"name": "SQL", "category": "Analytical Querying", "proficiency": "Expert", "level_color": "#10B981", "pct": 98, "rating": 9.8, "badge": "SQL-201"},
-        {"name": "Python", "category": "Data Engineering", "proficiency": "Expert", "level_color": "#10B981", "pct": 96, "rating": 9.6, "badge": "CUR-102"},
-        {"name": "Database", "category": "Storage Systems", "proficiency": "Expert", "level_color": "#10B981", "pct": 98, "rating": 9.8, "badge": "DAT-103"},
-        {"name": "Cloud", "category": "Cloud Architecture", "proficiency": "Advanced", "level_color": "#2563EB", "pct": 95, "rating": 9.5, "badge": "GOV-101"}
-    ]
+        # Verified Skills & Competencies (Derived from actual cleared milestone rubrics)
+        skills = [
+            {"name": a.get("badge_title", "Engineering"), "category": "Milestone Proficiency", "proficiency": "Mastered", "level_color": "#10B981", "pct": int(a.get("percentage", 100)), "rating": round(a.get("total_marks", 50.0) / 5.0, 1), "badge": a.get("badge_code", "")}
+            for a in asm_list
+        ]
 
-    # Official Certifications (Verified Credentials)
-    certifications = [
-        {"code": "DAT-103", "title": "In-Memory Datastores", "credential_id": "STAR-CERT-2026-DAT-0104", "issued_at": "2026-11-04", "score": "49.0 / 50.0 (98%)", "honors": "Honors with Distinction"},
-        {"code": "GOV-101", "title": "Data Governance Foundations", "credential_id": "STAR-CERT-2026-GOV-0101", "issued_at": "2026-10-20", "score": "48.0 / 50.0 (96%)", "honors": "Honors with Distinction"},
-        {"code": "CUR-102", "title": "Data Curation & Stewardship", "credential_id": "STAR-CERT-2026-CUR-0102", "issued_at": "2026-10-28", "score": "47.0 / 50.0 (94%)", "honors": "Certified with Merit"}
-    ]
+        # Official Certifications (Verified Credentials from actual approved assessments)
+        certifications = [
+            {
+                "code": a.get("badge_code", ""),
+                "title": a.get("badge_title", ""),
+                "credential_id": f"STAR-CERT-2026-{a.get('badge_code', '')}",
+                "issued_at": a.get("reviewed_at", ""),
+                "score": f"{a.get('total_marks', 0.0)} / 50.0 ({a.get('percentage', 0.0)}%)",
+                "honors": "Honors with Distinction" if a.get("total_marks", 0.0) >= 45 else "Certified with Merit"
+            }
+            for a in asm_list
+        ]
 
-    # Pedagogical Strengths & Improvement Areas
-    strengths = [
-        "Exceptional schema design and Redis memory caching eviction policies (DAT-103 score 49.0/50.0).",
-        "Rigorous enterprise regulatory data cataloging, schema lineage tracking, and multi-tenant access specifications.",
-        "Demonstrates resilient engineering practices by quickly implementing idempotency deduplication in Attempt #2."
-    ]
+        strengths = [
+            f"Demonstrated verified engineering proficiency in {a.get('badge_title', '')}."
+            for a in asm_list
+        ]
 
-    improvements = [
-        "Deepen automated integration testing for Kafka consumer group rebalance edge cases under network partitions.",
-        "Tune Dead-Letter Queue (DLQ) exponential backoff parameters to prevent downstream queue saturation."
-    ]
+        improvements = [
+            "Continue applying advanced architecture patterns to subsequent milestones."
+        ]
+        mentoring_plan = f"Guide cadet through {active_b.code if active_b else 'subsequent'} curriculum milestones."
 
-    mentoring_plan = "Evaluate submitted ING-104 Attempt #2 deliverable against the idempotency rubric criteria and unlock SQL-201 Capstone upon successful certification."
+    if pending_subs:
+        last_activity_summary = f"Submitted deliverable package for {active_b.code if active_b else 'milestone'}"
+    elif approved_asms:
+        last_activity_summary = f"Completed {approved_asms[-1].badge_id} evaluation"
+    else:
+        last_activity_summary = "Enrolled in cohort curriculum"
 
     return {
         "id": actual_cosmo.id,
@@ -178,10 +156,10 @@ def build_cosmonaut_analytics_record(
         "active_badge_code": active_b.code if active_b else "N/A",
         "active_badge_title": active_b.title if active_b else "All Completed",
         "upcoming_deadline": "2026-12-02",
-        "deadline_status": "Attempt #2 in Review" if pending_subs else "On Schedule",
+        "deadline_status": "Attempt in Review" if pending_subs else "On Schedule",
         "last_active": "2026-11-08",
         "days_inactive": 0,
-        "last_activity_summary": "Submitted deliverable package for ING-104 (Attempt #2)",
+        "last_activity_summary": last_activity_summary,
         "risk_status": risk_status,
         "risk_reason": risk_reason,
         "assessments": asm_list,
@@ -524,11 +502,11 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
             "pending_evals": {
                 "title": "Pending Submissions Queue",
                 "formula": "Count(Submitted Deliverables with Status = 'pending')",
-                "numerator": f"{data.get('pending_evals', 1)} Deliverable Awaiting Review",
+                "numerator": f"{data.get('pending_evals', 0)} Deliverables Awaiting Review",
                 "denominator": "Active Application Submission Queue",
-                "value": f"{data.get('pending_evals', 1)} Pending",
+                "value": f"{data.get('pending_evals', 0)} Pending",
                 "scope": "Guardian Production Queue",
-                "included": "Aarav Sharma - ING-104 (Attempt #2 Deliverable Package)",
+                "included": "Deliverable packages currently awaiting evaluation",
                 "excluded": "Completed evaluations and certified milestones",
                 "insight": "Clicking 'Evaluate Pending Deliverable' opens the live 50-mark rubric assessment viewport."
             }
@@ -540,46 +518,46 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
             "individual_badges": {
                 "title": "Certified Roadmap Milestones",
                 "formula": "Certified Badges / Total Assigned Curriculum Badges",
-                "numerator": f"{data.get('completed_count', 3)} Approved Milestones",
-                "denominator": f"{data.get('total_assigned', 5)} Assigned Milestones",
-                "value": f"{data.get('completed_count', 3)} / {data.get('total_assigned', 5)} ({round((data.get('completed_count', 3)/max(1, data.get('total_assigned', 5)))*100, 1)}%)",
+                "numerator": f"{data.get('completed_count', 0)} Approved Milestones",
+                "denominator": f"{data.get('total_assigned', 0)} Assigned Milestones",
+                "value": f"{data.get('completed_count', 0)} / {max(0, data.get('total_assigned', 0))} ({round((data.get('completed_count', 0)/max(1, data.get('total_assigned', 1)))*100, 1)}%)",
                 "scope": f"Individual: {data.get('name', 'Cadet')}",
-                "included": "Officially verified badges: GOV-101, CUR-102, DAT-103",
-                "excluded": "Milestones in development or pending review (ING-104)",
-                "insight": "Cadet has completed 60% of core curriculum prerequisites for data engineering honors."
+                "included": f"Officially verified badges: {', '.join([a.get('badge_code', '') for a in data.get('assessments', []) if a.get('decision') == 'approve']) or 'None'}",
+                "excluded": "Milestones in development or pending review",
+                "insight": f"Cadet has completed {round((data.get('completed_count', 0)/max(1, data.get('total_assigned', 1)))*100, 1)}% of assigned curriculum milestones."
             },
             "individual_score": {
                 "title": "Average Assessment Score",
                 "formula": "Sum(Approved Milestone Marks) / Count(Approved Milestones)",
                 "numerator": f"{sum(a.get('total_marks', 0) for a in data.get('assessments', [])):.1f} Total Marks",
                 "denominator": f"{len(data.get('assessments', []))} Evaluated Milestones",
-                "value": f"{data.get('average_marks', 48.0):.1f} / 50.0 ({data.get('average_percentage', 96.0):.1f}%)",
+                "value": f"{data.get('average_marks', 0.0):.1f} / 50.0 ({data.get('average_percentage', 0.0):.1f}%)",
                 "scope": f"Individual: {data.get('name', 'Cadet')}",
                 "included": "All final rubric marks awarded across cleared badges",
                 "excluded": "Pending deliverable revisions",
-                "insight": f"Academic standing: {data.get('standing_tier', 'Excellent Performance')}."
+                "insight": f"Academic standing: {data.get('standing_tier', 'Enrolled')}."
             },
             "individual_first_attempt": {
                 "title": "First-Attempt Pass Rate",
                 "formula": "(Milestones Cleared on Attempt #1 / Attempted Milestones) × 100",
-                "numerator": f"{data.get('first_attempt_passes', 3)} First-Attempt Passes",
-                "denominator": f"{data.get('first_attempt_eligible', 4)} Attempted Milestones",
-                "value": f"{round((data.get('first_attempt_passes', 3)/max(1, data.get('first_attempt_eligible', 4)))*100, 1)}%",
+                "numerator": f"{data.get('first_attempt_passes', 0)} First-Attempt Passes",
+                "denominator": f"{data.get('first_attempt_eligible', 0)} Attempted Milestones",
+                "value": f"{round((data.get('first_attempt_passes', 0)/max(1, data.get('first_attempt_eligible', 1)))*100, 1)}%",
                 "scope": f"Individual: {data.get('name', 'Cadet')}",
-                "included": "Passed on Attempt #1: GOV-101 (48/50), CUR-102 (47/50), DAT-103 (49/50)",
-                "excluded": "ING-104 (Attempt #1 required resubmission for idempotency; Attempt #2 pending review)",
-                "insight": "Cadet demonstrates superior architecture depth on initial project submissions."
+                "included": "Passed on Attempt #1 across completed milestones",
+                "excluded": "Resubmissions and ongoing deliverables",
+                "insight": "Measures single-pass delivery performance against technical rubrics."
             },
             "individual_active_milestone": {
                 "title": "Active Milestone Sprint",
                 "formula": "Current Roadmap Node & Sprint State",
-                "numerator": f"{data.get('active_badge_code', 'ING-104')}",
-                "denominator": f"Target: {data.get('upcoming_deadline', '2026-12-02')}",
-                "value": f"{data.get('active_badge_code', 'ING-104')} ({data.get('deadline_status', 'In Review')})",
+                "numerator": f"{data.get('active_badge_code', 'N/A')}",
+                "denominator": f"Target: {data.get('upcoming_deadline', 'N/A')}",
+                "value": f"{data.get('active_badge_code', 'N/A')} ({data.get('deadline_status', 'Enrolled')})",
                 "scope": f"Individual: {data.get('name', 'Cadet')}",
                 "included": "Milestone deliverable, code repository, and architecture design document",
-                "excluded": "Future locked badges (SQL-201)",
-                "insight": "Attempt #2 deliverable submitted and currently awaiting Guardian evaluation."
+                "excluded": "Locked roadmap milestones",
+                "insight": f"Current sprint status: {data.get('deadline_status', 'Enrolled')}."
             }
         }
         return popovers.get(metric_key, {})

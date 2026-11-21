@@ -9,4 +9,7 @@ Desktop.ini
 *.db
 *.sqlite
 *.bak
+*-shm
+*-wal
+scratch/
 

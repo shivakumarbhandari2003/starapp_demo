@@ -19,16 +19,20 @@ class UserRepository(BaseRepository):
         roles = [r["role_id"] for r in self.fetchall("SELECT role_id FROM user_role_assignments WHERE user_id = ?", (row["id"],))]
         band_row = self.fetchone("SELECT band_code, track_code FROM user_band_memberships WHERE user_id = ?", (row["id"],))
 
+        user_role = row["primary_role"] if "primary_role" in row.keys() else row["role"]
+        user_band = row["band"] if "band" in row.keys() and row["band"] else (band_row["band_code"] if band_row else "")
+        user_track = (band_row["track_code"] if band_row else "") or (row["learning_track"] if "learning_track" in row.keys() else "")
+
         return User(
             id=row["id"],
             username=row["username"],
             email=row["email"],
-            role=row["primary_role"],
+            role=user_role,
             name=row["name"],
             avatar=row["avatar"] or row["name"][:2].upper(),
-            roles=roles,
-            band=band_row["band_code"] if band_row else "",
-            learning_track=band_row["track_code"] if band_row else ""
+            roles=roles if roles else [user_role],
+            band=user_band,
+            learning_track=user_track
         )
 
     def get_by_username(self, username: str) -> Optional[User]:

@@ -11,8 +11,23 @@ class TestExtensionFlow(unittest.TestCase):
         store.reset_to_seed()
         self.cosmo = store.users.get("cosmo_1")
         self.guardian = store.users.get("guardian_1")
-        self.badge = store.get_badge("badge_ing_104")
-        self.tl = store.get_timeline("badge_ing_104", "cosmo_1")
+        self.badge = store.get_badge("b1_int_01")
+        self.tl = store.get_timeline("b1_int_01", "cosmo_1")
+        if not self.tl:
+            self.tl = BadgeTimeline(
+                badge_id="b1_int_01",
+                cosmonaut_id="cosmo_1",
+                assignment_date="2026-11-01",
+                publication_date="2026-11-02",
+                learning_start_date="2026-11-03",
+                learning_end_date="2026-11-10",
+                project_start_date="2026-11-11",
+                project_end_date="2026-11-18",
+                submission_deadline="2026-11-20",
+                review_date="2026-11-25",
+                expected_award_date="2026-11-28",
+            )
+            store.save_timeline(self.tl)
 
     def test_extension_full_lifecycle_and_rendering(self):
         app = StarAppController()
@@ -20,7 +35,7 @@ class TestExtensionFlow(unittest.TestCase):
 
         # 1. Cosmonaut submits deadline extension request
         req_payload = {
-            "badge_id": "badge_ing_104",
+            "badge_id": "b1_int_01",
             "proposed_deadline": "2026-12-18",
             "reason": "Encountered distributed Kafka consumer rebalance lag needing custom backoff logic."
         }
@@ -36,10 +51,10 @@ class TestExtensionFlow(unittest.TestCase):
         html_cosmo = render_cosmonaut_extensions(
             assigned_badges=[self.badge],
             extensions=exts,
-            badges_map={"badge_ing_104": self.badge}
+            badges_map={"b1_int_01": self.badge}
         )
         self.assertIn("Submitted Requests & Actions", html_cosmo)
-        self.assertIn("ING-104", html_cosmo)
+        self.assertIn("B1-INT-01", html_cosmo)
         self.assertIn("Pending Review", html_cosmo)
         self.assertIn("2026-12-18", html_cosmo)
 
@@ -49,7 +64,7 @@ class TestExtensionFlow(unittest.TestCase):
         html_guard = render_guardian_extensions(
             extensions=all_exts,
             cosmonauts_map={"cosmo_1": self.cosmo},
-            badges_map={"badge_ing_104": self.badge}
+            badges_map={"b1_int_01": self.badge}
         )
         self.assertIn("Requested by Aarav Sharma", html_guard)
         self.assertIn("Approve Extension", html_guard)
@@ -76,14 +91,14 @@ class TestExtensionFlow(unittest.TestCase):
         self.assertEqual(updated_ext.guardian_response, "Approved. Excellent architectural rationale provided.")
 
         # Verify timeline updated
-        tl_updated = store.get_timeline("badge_ing_104", "cosmo_1")
+        tl_updated = store.get_timeline("b1_int_01", "cosmo_1")
         self.assertEqual(tl_updated.submission_deadline, "2026-12-18")
 
         # 6. Verify reflection in Cosmonaut extensions view (action button 'Submit Deliverable')
         html_cosmo_approved = render_cosmonaut_extensions(
             assigned_badges=[self.badge],
             extensions=[updated_ext],
-            badges_map={"badge_ing_104": self.badge}
+            badges_map={"b1_int_01": self.badge}
         )
         self.assertIn("Approved", html_cosmo_approved)
         self.assertIn("Submit Deliverable", html_cosmo_approved)
@@ -92,8 +107,8 @@ class TestExtensionFlow(unittest.TestCase):
         # 7. Verify reflection in Cosmonaut Results view
         html_results = render_cosmonaut_results(
             assessments=[],
-            badges_map={"badge_ing_104": self.badge},
-            selected_badge_id="badge_ing_104",
+            badges_map={"b1_int_01": self.badge},
+            selected_badge_id="b1_int_01",
             available_badges=[self.badge],
             extensions=[updated_ext]
         )

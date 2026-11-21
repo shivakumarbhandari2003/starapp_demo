@@ -190,25 +190,28 @@
 }
 
 .form-control,
+.form-input,
 .form-select,
 .form-textarea {
   width: 100%;
-  padding: 9px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--icy-steel-50);
-  background: rgba(255, 255, 255, 0.85);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--icy-steel-50);
+  background: rgba(255, 255, 255, 0.95);
   font-family: var(--font-family-base);
   font-size: var(--font-size-sm);
   color: var(--frost-navy);
   outline: none;
+  box-sizing: border-box;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
 .form-control:focus,
+.form-input:focus,
 .form-select:focus,
 .form-textarea:focus {
-  border-color: var(--deep-frozen-midnight);
-  box-shadow: 0 0 0 3px rgba(23, 52, 92, 0.15);
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
   background: var(--snow-white);
 }
 

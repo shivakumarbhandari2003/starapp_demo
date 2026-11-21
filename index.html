@@ -66,10 +66,24 @@
         if (healthResp.ok) {
           if (progressBar) progressBar.style.width = "75%";
           if (statusText) statusText.innerText = "Connecting to FastAPI backend & SQLite3...";
+          const urlParams = new URLSearchParams(window.location.search);
+          const requestedRole = urlParams.get("role");
+          let sid = sessionStorage.getItem("starapp_window_session_id");
+          if (!sid) {
+            sid = (requestedRole ? requestedRole + "_" : "win_") + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+            sessionStorage.setItem("starapp_window_session_id", sid);
+          }
           const dispatchResp = await fetch("/api/v1/dispatch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "boot", payload: "{}" })
+            headers: {
+              "Content-Type": "application/json",
+              "X-Session-Id": sid
+            },
+            body: JSON.stringify({
+              action: "boot",
+              payload: JSON.stringify({ role: requestedRole || "" }),
+              session_id: sid
+            })
           });
           const data = await dispatchResp.json();
           if (data && data.regions) {

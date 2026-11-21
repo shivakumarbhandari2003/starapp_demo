@@ -9,6 +9,12 @@ class TestLearningMaterialsFlow(unittest.TestCase):
         store.reset_to_seed()
 
     def test_materials_lifecycle_guardian_and_cosmonaut(self):
+        # Ensure b1_int_01 is published and assigned to cosmo_1 for the cosmonaut portal test
+        b_init = store.get_badge("b1_int_01")
+        b_init.is_published = True
+        b_init.assigned_cosmonaut_ids = ["cosmo_1"]
+        store.save_badge(b_init)
+
         # 1. Initially materials are clean/empty
         self.assertEqual(len(store.get_materials()), 0)
 
@@ -42,7 +48,7 @@ class TestLearningMaterialsFlow(unittest.TestCase):
 
         # 5. Guardian publishes 2 PDFs and 2 YouTube videos in bulk
         bulk_payload = {
-            "badge_id": "badge_ing_104",
+            "badge_id": "b1_int_01",
             "topic": "Module 1: Ingestion Pipelines",
             "description": "Foundational curriculum and reference lectures.",
             "pdfs": [
@@ -58,13 +64,13 @@ class TestLearningMaterialsFlow(unittest.TestCase):
         self.assertIsNone(self.app.active_modal)
 
         # Verify store has 4 materials
-        all_mats = store.get_materials("badge_ing_104")
+        all_mats = store.get_materials("b1_int_01")
         self.assertEqual(len(all_mats), 4)
 
         # 6. Verify Guardian view
         self.app.current_view = "g_materials"
         html_g_updated = self.app.render()
-        self.assertIn("ING-104", html_g_updated)
+        self.assertIn("B1-INT-01", html_g_updated)
         self.assertIn("Kafka Architecture Spec", html_g_updated)
         self.assertIn("Schema Registry Manual", html_g_updated)
         self.assertIn("Kafka Consumer Deep Dive", html_g_updated)
@@ -78,7 +84,7 @@ class TestLearningMaterialsFlow(unittest.TestCase):
         self.app.current_user = store.users.get("cosmo_1")
         self.app.current_view = "c_materials"
         html_c_updated = self.app.render()
-        self.assertIn("ING-104", html_c_updated)
+        self.assertIn("B1-INT-01", html_c_updated)
         self.assertIn("Kafka Architecture Spec", html_c_updated)
         self.assertIn("Idempotent Producer Architecture", html_c_updated)
         self.assertIn("Theater View", html_c_updated)
@@ -113,7 +119,7 @@ class TestLearningMaterialsFlow(unittest.TestCase):
         # 9. Guardian deletes one PDF material
         pdf_mat = next(m for m in all_mats if m.material_type == "pdf")
         self.app.handle_event("delete_material", {"material_id": pdf_mat.id})
-        self.assertEqual(len(store.get_materials("badge_ing_104")), 3)
+        self.assertEqual(len(store.get_materials("b1_int_01")), 3)
 
         # 10. Filter verification
         self.app.handle_event("filter_materials_type", "pdf")

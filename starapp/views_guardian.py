@@ -1504,6 +1504,150 @@ def render_guardian_badge_allotment(
         </div>
         """)
 
+    # --------------------------------------------------------------------------
+    # STRUCTURED MAPPED ALLOCATIONS SECTION
+    # --------------------------------------------------------------------------
+    from starapp.storage import store
+    all_mappings = store.get_band_mappings() if store else []
+
+    users_map = {u.id: u for u in cosmonauts}
+    if store and hasattr(store, "users") and store.users:
+        users_map.update(store.users)
+
+    mapping_rows = []
+    for idx, mp in enumerate(all_mappings, start=1):
+        m_id = mp.get("id", "")
+        m_band = mp.get("band", "B1")
+        m_badge = mp.get("badge", "Milestone")
+        m_cosmo_ids = mp.get("cosmonauts", [])
+        m_rev_ids = mp.get("reviewers", [])
+        m_dates = mp.get("review_dates", [])
+        m_created = mp.get("created_at", "")[:10]
+
+        rev_id = m_rev_ids[0] if m_rev_ids else ""
+        rev_user = users_map.get(rev_id)
+        rev_name = rev_user.name if rev_user else (rev_id or "Unassigned")
+        rev_band = getattr(rev_user, "band", "") or mp.get("reviewer_band", "B2")
+        rev_role = getattr(rev_user, "role", "Reviewer")
+        rev_avatar = getattr(rev_user, "avatar", (rev_name[:2].upper() if rev_name else "REV"))
+
+        cadet_chips = []
+        for cid in m_cosmo_ids:
+            c_u = users_map.get(cid)
+            c_name = c_u.name if c_u else cid
+            c_band = getattr(c_u, "band", m_band)
+            c_avatar = getattr(c_u, "avatar", (c_name[:2].upper() if c_name else "CAD"))
+            cadet_chips.append(f"""
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); font-size:11.5px; font-weight:700; color:var(--frost-navy); box-shadow:0 1px 2px rgba(23,52,92,0.03);">
+                <span style="width:18px; height:18px; border-radius:50%; background:rgba(23,52,92,0.1); display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(c_avatar)}</span>
+                {escape(c_name)}
+                <span style="font-family:var(--font-family-mono); font-size:9.5px; color:var(--frost-navy-50);">({escape(c_band)})</span>
+            </span>
+            """)
+
+        dates_disp = " ➔ ".join(m_dates) if m_dates else "Review Schedule Pending"
+
+        mapping_rows.append(f"""
+        <tr style="border-bottom:1px solid var(--icy-steel-25); transition:background 0.15s ease;">
+            <td style="padding:14px 16px; font-weight:700; color:var(--deep-frozen-midnight); width:40px;">
+                {idx}
+            </td>
+            <td style="padding:14px 16px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 7px; border-radius:3px;">
+                        BAND {escape(m_band)}
+                    </span>
+                    <strong style="color:var(--frost-navy); font-size:13.5px;">{escape(m_badge)}</strong>
+                </div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:3px;">
+                    Allocated: {escape(m_created)} &bull; ID: <span style="font-family:var(--font-family-mono);">{escape(m_id)}</span>
+                </div>
+            </td>
+            <td style="padding:14px 16px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0;">
+                        {escape(rev_avatar)}
+                    </div>
+                    <div>
+                        <div style="font-weight:800; font-size:13px; color:var(--frost-navy);">{escape(rev_name)}</div>
+                        <div style="font-size:11px; color:#059669; font-weight:700;">
+                            Band {escape(rev_band)} &bull; {escape(rev_role)}
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td style="padding:14px 16px;">
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    {"".join(cadet_chips)}
+                </div>
+                <div style="font-size:10.5px; font-weight:700; color:var(--deep-frozen-midnight); margin-top:4px;">
+                    Total: {len(m_cosmo_ids)} Cadets Allotted
+                </div>
+            </td>
+            <td style="padding:14px 16px; font-family:var(--font-family-mono); font-size:11px; color:var(--deep-frozen-midnight); font-weight:700;">
+                {escape(dates_disp)}
+            </td>
+            <td style="padding:14px 16px; text-align:center;">
+                <span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); padding:4px 10px; border-radius:999px;">
+                    ✓ Allocated &amp; Scheduled
+                </span>
+            </td>
+        </tr>
+        """)
+
+    if mapping_rows:
+        mapped_allocations_section_html = f"""
+        <div class="liquid-glass-card" style="padding:22px 24px; margin-bottom:28px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(240,247,255,0.85) 100%);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:36px; height:36px; border-radius:var(--radius-xs); background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </div>
+                    <div>
+                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">Active Mapped Badge Allocations &amp; Schedules</h3>
+                        <div style="font-size:12px; color:var(--frost-navy-50);">Authoritative mapped cohorts with assigned higher-band reviewers and confirmed 3-day assessment windows.</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-size:12px; padding:7px 16px; display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    + New Mapping
+                </button>
+            </div>
+            <div class="table-container" style="overflow-x:auto;">
+                <table class="data-table" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:rgba(23,52,92,0.05); text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy);">
+                            <th style="padding:10px 16px;">#</th>
+                            <th style="padding:10px 16px;">Milestone Badge</th>
+                            <th style="padding:10px 16px;">Authorized Reviewer</th>
+                            <th style="padding:10px 16px;">Allotted Cosmonauts</th>
+                            <th style="padding:10px 16px;">Review Window</th>
+                            <th style="padding:10px 16px; text-align:center;">Workflow Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(mapping_rows)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        """
+    else:
+        mapped_allocations_section_html = f"""
+        <div class="liquid-glass-card" style="padding:26px 20px; margin-bottom:28px; text-align:center; border:1.5px dashed var(--icy-steel-50); background:rgba(255,255,255,0.7);">
+            <div style="color:var(--frost-navy-50); margin-bottom:8px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+            </div>
+            <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">No Badge Allocations Mapped Yet</div>
+            <div style="font-size:12px; color:var(--frost-navy-50); max-width:480px; margin:4px auto 14px auto;">
+                Use the Mapping Matrix to pair cosmonauts with approved curriculum badges, select an eligible higher-band reviewer, and schedule the 3-day assessment window.
+            </div>
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-size:12px; padding:7px 18px; display:inline-flex; align-items:center; gap:6px;">
+                + Open Mapping Matrix &rarr;
+            </button>
+        </div>
+        """
+
     return f"""
     <div>
         <!-- Metric Counters Top Row -->
@@ -1538,6 +1682,9 @@ def render_guardian_badge_allotment(
             </div>
             {create_btn}
         </div>
+
+        <!-- Active Structured Mapped Allocations -->
+        {mapped_allocations_section_html}
 
         {tabs_html}
 
@@ -2354,26 +2501,30 @@ def render_guardian_mapping(
     badge_search: str = "",
     all_mappings: Optional[List[Dict[str, Any]]] = None,
     all_requests: Optional[List[Dict[str, Any]]] = None,
-    show_final_stage: bool = False
+    show_final_stage: bool = False,
+    store: Optional[Any] = None
 ) -> str:
     """
     Renders the Guardian Mapping Workspace:
-    1. 6 cards for Bands B1 to B6.
-    2. Dynamic heading displaying the chosen Band (e.g. B1).
-    3. 'Create Badge' box containing 4 cards:
-       - Card 1: Select Roles (multiselect with radio/select buttons)
-       - Card 2: Select Badge (dropdown with search for AIOS, Network, Data Modelling, etc.)
-       - Card 3: Select Cosmonaut (checkboxes, single/multiselect, search)
-       - Card 4: Select Reviewers across MULTIPLE higher bands (checkboxes, search)
-    4. 'Select Estimated Review Date':
-       - Calendar with 3 consecutive dates selection.
-       - Highlights the 3 selected review days.
-       - Greys out Saturday and Sunday (disabled non-review days).
-    5. Guardian Review Requests & Decisions (Accept / Reject).
-    6. Final Candidate Cosmonauts & Accepted Guardians preview table.
+    1. Active Workspace Band Bar with clean switcher pills (B1 to B6 boxes removed).
+    2. Real SQLite data filters for Cosmonauts of current band, higher-band Reviewers, and Approved Badges.
+    3. 'Map Approved Badge' box containing 4 cards:
+       - Card 1: Select Roles (multiselect with real SQLite counts)
+       - Card 2: Select Approved Badge (queries SQLite for approved badges of current band)
+       - Card 3: Select Cosmonauts (real SQLite members of current band)
+       - Card 4: Select Higher-Band Reviewers (Reviewer_Band > Current_Band from SQLite)
+    4. Estimated Review Date Calendar (3 consecutive days, weekends disabled).
+    5. Guardian Review Requests & Decisions (Accept / Reject workflow).
+    6. Candidate Cosmonauts & Accepted Guardians preview table.
     7. Master Mapped Allocations (One reviewer per row, mapped cosmonauts properly grouped).
-    8. Reset Everything demo button.
     """
+    if store is None:
+        try:
+            from starapp.storage import store as global_store
+            store = global_store
+        except Exception:
+            store = None
+
     selected_band = selected_band if selected_band in BAND_CODES else "B1"
     active_roles = list(selected_roles) if selected_roles is not None else list(ROLES)
     selected_cosmonauts = list(selected_cosmonauts) if selected_cosmonauts is not None else []
@@ -2388,7 +2539,7 @@ def render_guardian_mapping(
     else:
         review_dates = sorted(review_dates)
 
-    # Higher bands for reviewer selection
+    # Higher bands for reviewer selection (Strictly Reviewer_Band > selected_band)
     higher_bands = get_higher_bands(selected_band)
     if selected_reviewer_bands:
         active_reviewer_bands = [b for b in selected_reviewer_bands if b in higher_bands]
@@ -2400,18 +2551,153 @@ def render_guardian_mapping(
 
     band_info = get_band_info(selected_band)
 
-    # Filter cosmonauts of the selected band by active roles and search
-    filtered_cosmonauts = filter_members_by_band_and_roles(selected_band, active_roles, cosmo_search)
+    # --------------------------------------------------------------------------
+    # REAL SQLITE DATA: BUILD REAL USERS MAP
+    # --------------------------------------------------------------------------
+    users_map: Dict[str, Dict[str, Any]] = {}
+    if store and hasattr(store, "users") and store.users:
+        for uid, u in store.users.items():
+            users_map[uid] = {
+                "id": u.id,
+                "name": u.name,
+                "role": u.role,
+                "band": getattr(u, "band", ""),
+                "avatar": getattr(u, "avatar", (u.name[:2].upper() if u.name else "US"))
+            }
+    if store and store.db and store.db.conn:
+        try:
+            u_rows = store.db.conn.execute("SELECT id, name, role, band, avatar FROM users").fetchall()
+            for r in u_rows:
+                users_map[r["id"]] = {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "role": r["role"],
+                    "band": r["band"],
+                    "avatar": r["avatar"] or (r["name"][:2].upper() if r["name"] else "US")
+                }
+        except Exception:
+            pass
+    if not users_map:
+        from starapp.mapping_data import MEMBERS_MAP
+        users_map = dict(MEMBERS_MAP)
 
-    # Filter reviewers of ALL active higher reviewer bands by active roles and search
-    filtered_reviewers = filter_reviewers_by_band_and_roles(active_reviewer_bands, active_roles, reviewer_search)
+    # --------------------------------------------------------------------------
+    # REAL SQLITE DATA: FILTER COSMONAUTS OF THE CURRENT BAND
+    # --------------------------------------------------------------------------
+    raw_cosmonauts: List[Dict[str, Any]] = []
+    if store and store.db and store.db.conn:
+        try:
+            rows = store.db.conn.execute(
+                """
+                SELECT id, username, email, name, role, band, avatar, status 
+                FROM users 
+                WHERE band = ? AND status = 'active'
+                ORDER BY name
+                """,
+                (selected_band,)
+            ).fetchall()
+            raw_cosmonauts = [dict(r) for r in rows]
+        except Exception:
+            raw_cosmonauts = []
+    if not raw_cosmonauts and store:
+        raw_cosmonauts = store.get_members_by_band(selected_band)
 
-    # Filter badges by search query
+    # Count real members per role for selected band
+    role_counts = {r: 0 for r in ROLES}
+    for m in raw_cosmonauts:
+        m_r = m.get("role", "")
+        if m_r in role_counts:
+            role_counts[m_r] += 1
+
+    c_search = cosmo_search.strip().lower()
+    filtered_cosmonauts = []
+    for m in raw_cosmonauts:
+        m_role = m.get("role", "")
+        if active_roles and m_role not in active_roles:
+            continue
+        if c_search:
+            m_name = m.get("name", "").lower()
+            if c_search not in m_name and c_search not in m_role.lower():
+                continue
+        filtered_cosmonauts.append(m)
+
+    # --------------------------------------------------------------------------
+    # REAL SQLITE DATA: FILTER HIGHER-BAND REVIEWERS (Reviewer_Band > Current_Band)
+    # --------------------------------------------------------------------------
+    raw_reviewers: List[Dict[str, Any]] = []
+    if active_reviewer_bands and store and store.db and store.db.conn:
+        try:
+            placeholders = ",".join("?" for _ in active_reviewer_bands)
+            rows = store.db.conn.execute(
+                f"""
+                SELECT id, username, email, name, role, band, avatar, status
+                FROM users
+                WHERE band IN ({placeholders}) AND status = 'active'
+                ORDER BY band, name
+                """,
+                active_reviewer_bands
+            ).fetchall()
+            raw_reviewers = [dict(r) for r in rows]
+        except Exception:
+            raw_reviewers = []
+
+    r_search = reviewer_search.strip().lower()
+    filtered_reviewers = []
+    for m in raw_reviewers:
+        m_role = m.get("role", "")
+        if active_roles and m_role not in active_roles:
+            continue
+        if r_search:
+            m_name = m.get("name", "").lower()
+            if r_search not in m_name and r_search not in m_role.lower():
+                continue
+        filtered_reviewers.append(m)
+
+    # --------------------------------------------------------------------------
+    # REAL SQLITE DATA: FILTER APPROVED BADGES FOR CURRENT BAND ONLY
+    # --------------------------------------------------------------------------
+    raw_badges: List[Dict[str, Any]] = []
+    if store and store.db and store.db.conn:
+        try:
+            rows = store.db.conn.execute(
+                """
+                SELECT id, code, title, category, description, target_band, workflow_status, is_published, is_allocated, skill
+                FROM badges
+                WHERE target_band = ? AND workflow_status IN ('approved', 'ready_for_review')
+                ORDER BY code, title
+                """,
+                (selected_band,)
+            ).fetchall()
+            raw_badges = [dict(r) for r in rows]
+        except Exception:
+            raw_badges = []
+    if not raw_badges and store:
+        raw_badges = [b for b in store.get_saved_badges(selected_band) if b.get("workflow_status") in ("approved", "ready_for_review")]
+
+    clean_badges: List[Dict[str, Any]] = []
+    for b in raw_badges:
+        b_code = b.get("code") or b.get("id", "")
+        b_name = b.get("title") or b_code
+        b_cat = b.get("category") or b.get("skill") or "Milestone"
+        clean_badges.append({
+            "id": b.get("id", b_code),
+            "code": b_code,
+            "name": b_name,
+            "title": b_name,
+            "category": b_cat,
+            "description": b.get("description", "")
+        })
+
     b_query = badge_search.strip().lower()
     filtered_badges = [
-        b for b in MAPPING_BADGES
+        b for b in clean_badges
         if not b_query or b_query in b["name"].lower() or b_query in b["code"].lower() or b_query in b["category"].lower()
     ]
+
+    # Auto-select first approved badge if current selected_badge is not present
+    badge_names = [b["name"] for b in clean_badges] + [b["code"] for b in clean_badges]
+    if clean_badges and selected_badge not in badge_names:
+        selected_badge = clean_badges[0]["name"]
 
     # Calendar Grid calculation
     cal_grid = generate_calendar_month_grid(calendar_year, calendar_month, review_dates, review_anchor)
@@ -2421,41 +2707,12 @@ def render_guardian_mapping(
     after_label = "2 Days After: " + ", ".join([d[5:] for d in after_dates])
     before_label = "2 Days Before: " + ", ".join([d[5:] for d in before_dates])
 
-    # Performance optimization: pre-index lookups as sets for O(1) membership checks
+    # Performance optimization: pre-index lookups as sets
     selected_cosmonauts_set = set(selected_cosmonauts)
     selected_reviewers_set = set(selected_reviewers)
     active_reviewer_bands_set = set(active_reviewer_bands)
 
-    # Pre-count members per role for selected band in O(N) rather than repeated scans
-    band_members = MEMBERS_BY_BAND.get(selected_band, [])
-    role_counts = {r: 0 for r in ROLES}
-    for m in band_members:
-        m_r = m.get("role")
-        if m_r in role_counts:
-            role_counts[m_r] += 1
 
-    # --------------------------------------------------------------------------
-    # 1. RENDER THE 6 BAND CARDS (B1 to B6)
-    # --------------------------------------------------------------------------
-    band_cards_html = []
-    for b in BANDS:
-        code = b["code"]
-        is_sel = (code == selected_band)
-        card_cls = "mapping-band-card active" if is_sel else "mapping-band-card"
-        active_indicator = '<span style="position:absolute; top:7px; right:8px; width:8px; height:8px; border-radius:999px; background:#10B981; box-shadow:0 0 6px #10B981;" title="Selected Band"></span>' if is_sel else ''
-        band_cards_html.append(f"""
-        <div class="{card_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_band', '{code}')">
-            {active_indicator}
-            <div style="font-size:1.45rem; font-weight:900; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight);">{code}</div>
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-top:2px;">{escape(b['title'])}</div>
-            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:3px;">27 Members &bull; 3 Roles (9/Domain)</div>
-            <div style="margin-top:6px; display:flex; justify-content:center; gap:4px; font-size:9.5px; font-weight:800; color:var(--frost-navy-50);">
-                <span style="background:rgba(79,70,229,0.1); color:#4F46E5; padding:1px 5px; border-radius:4px;">SD</span>
-                <span style="background:rgba(5,150,105,0.1); color:#059669; padding:1px 5px; border-radius:4px;">AIE</span>
-                <span style="background:rgba(2,132,199,0.1); color:#0284C7; padding:1px 5px; border-radius:4px;">SE</span>
-            </div>
-        </div>
-        """)
 
     # --------------------------------------------------------------------------
     # 2. CARD 1: SELECT ROLES (Multiselect with Radio/Select Buttons)
@@ -2487,52 +2744,71 @@ def render_guardian_mapping(
         """)
 
     # --------------------------------------------------------------------------
-    # 3. CARD 2: SELECT BADGE (Dropdown with Search)
+    # 3. CARD 2: SELECT APPROVED BADGE (Queries SQLite for Approved Badges)
     # --------------------------------------------------------------------------
-    badges_list_html = []
-    for b in filtered_badges:
-        is_b_sel = (b["name"] == selected_badge)
-        b_cls = "mapping-badge-item selected" if is_b_sel else "mapping-badge-item"
-        b_check = '<span style="color:#10B981; font-weight:900; font-size:13px;">✓</span>' if is_b_sel else ''
-        badges_list_html.append(f"""
-        <div class="{b_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_badge', '{b['name']}')" data-badge-name="{escape(b['name'].lower())}">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <div style="width:28px; height:28px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px; color:var(--deep-frozen-midnight);">
-                    {b['code'][:3]}
+    if filtered_badges:
+        badges_list_html = []
+        for b in filtered_badges:
+            is_b_sel = (b["name"] == selected_badge or b["code"] == selected_badge)
+            b_cls = "mapping-badge-item selected" if is_b_sel else "mapping-badge-item"
+            b_check = '<span style="color:#10B981; font-weight:900; font-size:13px;">✓</span>' if is_b_sel else ''
+            badges_list_html.append(f"""
+            <div class="{b_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_badge', '{b['name']}')" data-badge-name="{escape(b['name'].lower())}">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="min-width:54px; padding:3px 6px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:10.5px; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">
+                        {escape(b['code'])}
+                    </div>
+                    <div>
+                        <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(b['name'])}</div>
+                        <div style="font-size:10.5px; color:var(--frost-navy-50);">{escape(b['category'])} &bull; Band {selected_band}</div>
+                    </div>
                 </div>
-                <div>
-                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(b['name'])}</div>
-                    <div style="font-size:10.5px; color:var(--frost-navy-50);">{escape(b['category'])}</div>
-                </div>
+                {b_check}
             </div>
-            {b_check}
+            """)
+        badges_scroll_content = "".join(badges_list_html)
+    else:
+        badges_scroll_content = f"""
+        <div style="text-align:center; padding:28px 12px; background:rgba(255,255,255,0.7); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm); margin:6px 0;">
+            <div style="color:var(--frost-navy-50); margin-bottom:6px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+            <div style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">No Approved Badges in SQLite</div>
+            <div style="font-size:11px; color:var(--frost-navy-50); margin:4px 0 10px 0;">Only peer-approved badges for Band {selected_band} can be mapped.</div>
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_create_badge')" style="font-size:11px; padding:5px 12px;">
+                + Create Badge
+            </button>
         </div>
-        """)
+        """
 
     # --------------------------------------------------------------------------
-    # 4. CARD 3: SELECT COSMONAUT (Dummy 6 Members of Selected Band)
+    # 4. CARD 3: SELECT COSMONAUT (Real SQLite Members of Selected Band)
     # --------------------------------------------------------------------------
     cosmo_list_html = []
     for m in filtered_cosmonauts:
-        is_c_sel = (m["id"] in selected_cosmonauts_set)
+        m_id = m.get("id", "")
+        m_name = m.get("name", m_id)
+        m_role = m.get("role", "Engineer")
+        m_avatar = m.get("avatar") or m_name[:2].upper()
+        is_c_sel = (m_id in selected_cosmonauts_set)
         c_cls = "mapping-member-item selected" if is_c_sel else "mapping-member-item"
-        c_cfg = ROLE_CONFIG.get(m["role"], {})
+        c_cfg = ROLE_CONFIG.get(m_role, {})
         check_box = (
             '<div style="width:18px; height:18px; border-radius:4px; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900;">✓</div>'
             if is_c_sel else
             '<div style="width:18px; height:18px; border-radius:4px; border:1.5px solid var(--icy-steel-50); background:#fff;"></div>'
         )
         cosmo_list_html.append(f"""
-        <div class="{c_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_cosmonaut', '{m['id']}')" data-member-name="{escape(m['name'].lower())}" data-member-role="{escape(m['role'].lower())}">
+        <div class="{c_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_cosmonaut', '{m_id}')" data-member-name="{escape(m_name.lower())}" data-member-role="{escape(m_role.lower())}">
             <div style="display:flex; align-items:center; gap:8px;">
                 <div style="width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.12), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">
-                    {m['avatar']}
+                    {escape(m_avatar)}
                 </div>
                 <div>
-                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m['name'])}</div>
+                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m_name)}</div>
                     <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
                         <span style="font-size:10px; font-weight:700; color:{c_cfg.get('color', '#17345C')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 6px; border-radius:3px;">
-                            {escape(m['role'])}
+                            {escape(m_role)}
                         </span>
                     </div>
                 </div>
@@ -2542,7 +2818,7 @@ def render_guardian_mapping(
         """)
 
     # --------------------------------------------------------------------------
-    # 5. CARD 4: SELECT REVIEWERS (Higher Bands than Selected Band)
+    # 5. CARD 4: SELECT REVIEWERS (Higher Bands than Selected Band from SQLite)
     # --------------------------------------------------------------------------
     higher_bands_pills = []
     is_all_active = len(active_reviewer_bands) == len(higher_bands)
@@ -2563,26 +2839,31 @@ def render_guardian_mapping(
 
     reviewers_list_html = []
     for m in filtered_reviewers:
-        is_r_sel = (m["id"] in selected_reviewers_set)
+        m_id = m.get("id", "")
+        m_name = m.get("name", m_id)
+        m_role = m.get("role", "Reviewer")
+        m_band = m.get("band", selected_reviewer_band)
+        m_avatar = m.get("avatar") or m_name[:2].upper()
+        is_r_sel = (m_id in selected_reviewers_set)
         r_cls = "mapping-member-item selected" if is_r_sel else "mapping-member-item"
-        r_cfg = ROLE_CONFIG.get(m["role"], {})
+        r_cfg = ROLE_CONFIG.get(m_role, {})
         r_check = (
             '<div style="width:18px; height:18px; border-radius:4px; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900;">✓</div>'
             if is_r_sel else
             '<div style="width:18px; height:18px; border-radius:4px; border:1.5px solid var(--icy-steel-50); background:#fff;"></div>'
         )
         reviewers_list_html.append(f"""
-        <div class="{r_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer', '{m['id']}')" data-member-name="{escape(m['name'].lower())}" data-member-role="{escape(m['role'].lower())}">
+        <div class="{r_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer', '{m_id}')" data-member-name="{escape(m_name.lower())}" data-member-role="{escape(m_role.lower())}">
             <div style="display:flex; align-items:center; gap:8px;">
                 <div style="width:30px; height:30px; border-radius:999px; background:linear-gradient(135deg, rgba(5,150,105,0.15), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#059669;">
-                    {m['avatar']}
+                    {escape(m_avatar)}
                 </div>
                 <div>
-                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m['name'])}</div>
+                    <div style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(m_name)}</div>
                     <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
-                        <span style="font-size:9.5px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 5px; border-radius:3px;">{m['band']}</span>
+                        <span style="font-size:9.5px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 5px; border-radius:3px;">{escape(m_band)}</span>
                         <span style="font-size:10px; font-weight:700; color:{r_cfg.get('color', '#17345C')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 6px; border-radius:3px;">
-                            {escape(m['role'])}
+                            {escape(m_role)}
                         </span>
                     </div>
                 </div>
@@ -2723,7 +3004,7 @@ def render_guardian_mapping(
     # --------------------------------------------------------------------------
     cosmo_table_rows = []
     for idx, cid in enumerate(selected_cosmonauts):
-        c_info = MEMBERS_MAP.get(cid, {})
+        c_info = users_map.get(cid, {})
         cosmo_table_rows.append(f"""
         <tr>
             <td style="font-weight:700; width:45px; color:var(--deep-frozen-midnight);">{idx + 1}</td>
@@ -2740,15 +3021,19 @@ def render_guardian_mapping(
 
     accepted_reviewer_table_rows = []
     for idx, req in enumerate(accepted_band_requests):
+        r_uid = req.get("reviewer_id", "")
+        u_info = users_map.get(r_uid, {})
+        rev_name = req.get('reviewer_name') or u_info.get('name', 'Reviewer')
+        rev_band = req.get('reviewer_band') or u_info.get('band', 'B2')
         accepted_reviewer_table_rows.append(f"""
         <tr>
             <td style="font-weight:700; width:45px; color:#059669;">{idx + 1}</td>
             <td style="font-weight:700; color:var(--frost-navy); font-size:13px;">
-                {escape(req.get('reviewer_name', 'Guardian'))}
+                {escape(rev_name)}
             </td>
             <td style="width:75px;">
                 <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 6px; border-radius:3px;">
-                    {escape(req.get('reviewer_band', 'B2'))}
+                    {escape(rev_band)}
                 </span>
             </td>
         </tr>
@@ -2767,22 +3052,22 @@ def render_guardian_mapping(
         m_rev_ids = mp.get("reviewers", [])
         m_rev_band = mp.get("reviewer_band", "B2")
 
-        # Guardian info
+        # Guardian / Reviewer info from SQLite users_map
         g_id = m_rev_ids[0] if m_rev_ids else ""
-        guardian = MEMBERS_MAP.get(g_id, {})
+        guardian = users_map.get(g_id, {})
         g_name = guardian.get("name", g_id)
-        g_role = guardian.get("role", "AI Engineer")
+        g_role = guardian.get("role", "Reviewer")
         g_band = guardian.get("band", m_rev_band)
-        g_avatar = guardian.get("avatar", "REV")
+        g_avatar = guardian.get("avatar") or (g_name[:2].upper() if g_name else "REV")
         g_cfg = ROLE_CONFIG.get(g_role, {})
 
-        # Cosmonaut chips mapped to this single reviewer (proper clean readable format with names & band)
+        # Cosmonaut chips mapped to this single reviewer
         cadet_cells = []
         for c_idx, cid in enumerate(m_cosmo_ids):
-            cosmo = MEMBERS_MAP.get(cid, {})
+            cosmo = users_map.get(cid, {})
             c_name = cosmo.get("name", cid)
             c_band = cosmo.get("band", selected_band)
-            c_avatar = cosmo.get("avatar", "CAD")
+            c_avatar = cosmo.get("avatar") or (c_name[:2].upper() if c_name else "CAD")
 
             cadet_cells.append(f"""
             <div class="mapped-cosmo-chip" style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); box-shadow:0 1px 2px rgba(23,52,92,0.03);">
@@ -2815,7 +3100,7 @@ def render_guardian_mapping(
             </td>
             <td style="vertical-align:middle; padding:16px 14px;">
                 <div style="font-size:13px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(m_badge)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">{escape(BADGES_MAP.get(m_badge, {}).get('category', 'Milestone'))}</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Band {selected_band} &bull; SQLite Verified</div>
             </td>
             <td style="vertical-align:middle; padding:16px 14px;">
                 <!-- ALL COSMONAUTS MAPPED TO THIS SINGLE REVIEWER -->
@@ -2841,7 +3126,7 @@ def render_guardian_mapping(
     box_heading = (
         f"Edit Badge Mapping: {escape(selected_badge)} ({selected_band})"
         if editing_mapping_id else
-        "Create Badge"
+        f"Map Approved Badge &bull; Band {selected_band}"
     )
     submit_btn_text = "Update Badge Mapping" if editing_mapping_id else "Create Badge Mapping"
 
@@ -2856,22 +3141,7 @@ def render_guardian_mapping(
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <span class="status-pill status-active" style="font-weight:700;">Guardian Portal</span>
-                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700;">6 Bands &bull; 162 Members (27/Band)</span>
-            </div>
-        </div>
-
-        <!-- 1. The 6 Band Cards (B1 to B6) -->
-        <div style="margin-bottom:24px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
-                    Select Cohort Band (B1 – B6)
-                </div>
-                <div style="font-size:11.5px; color:var(--frost-navy-50);">
-                    Click any band card to inspect & map badges
-                </div>
-            </div>
-            <div class="mapping-bands-grid">
-                {"".join(band_cards_html)}
+                <span class="status-pill" style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); font-weight:700;">Real SQLite Data &bull; Band {selected_band}</span>
             </div>
         </div>
 
@@ -2929,15 +3199,15 @@ def render_guardian_mapping(
                             <span style="font-size:11px; font-weight:700; color:#10B981;">{escape(selected_badge)}</span>
                         </div>
                         <div class="mapping-card-subtitle">
-                            Milestone badge from curriculum
+                            Approved in SQLite ({len(clean_badges)} available)
                         </div>
                     </div>
-                    <input type="text" id="mapping-badge-search-input" class="form-control form-control-sm" placeholder="Search badge (AIOS, Network...)" oninput="window.StarAppBridge.filterBadgeList(this.value)" value="{escape(badge_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
+                    <input type="text" id="mapping-badge-search-input" class="form-control form-control-sm" placeholder="Search badge (Title, code...)" oninput="window.StarAppBridge.filterBadgeList(this.value)" value="{escape(badge_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
                     <div id="mapping-badges-scroll" class="mapping-scroll-list">
-                        {"".join(badges_list_html)}
+                        {badges_scroll_content}
                     </div>
                     <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
-                        Selected: <strong>{escape(selected_badge)}</strong> ({escape(BADGES_MAP.get(selected_badge, {}).get('code', ''))})
+                        Selected: <strong>{escape(selected_badge)}</strong> &bull; Band {selected_band}
                     </div>
                 </div>
 
@@ -2949,7 +3219,7 @@ def render_guardian_mapping(
                             <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{len(selected_cosmonauts)} Selected</span>
                         </div>
                         <div class="mapping-card-subtitle">
-                            27 members of {selected_band} ({len(filtered_cosmonauts)} visible)
+                            Band {selected_band} ({len(filtered_cosmonauts)} visible / {len(raw_cosmonauts)} in SQLite)
                         </div>
                     </div>
                     <input type="text" id="mapping-cosmo-search-input" class="form-control form-control-sm" placeholder="Search {selected_band} cosmonauts..." oninput="window.StarAppBridge.filterCosmoList(this.value)" value="{escape(cosmo_search)}" style="margin-bottom:8px; font-size:11.5px; padding:6px 10px;">
@@ -2958,7 +3228,7 @@ def render_guardian_mapping(
                         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_cosmonauts', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
                     </div>
                     <div id="mapping-cosmo-scroll" class="mapping-scroll-list">
-                        {"".join(cosmo_list_html) if cosmo_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_band} members match active roles/search.</div>"}
+                        {"".join(cosmo_list_html) if cosmo_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_band} members match active roles/search in SQLite.</div>"}
                     </div>
                     <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
                         Hover to inspect &bull; Single or multi-select
@@ -2973,7 +3243,7 @@ def render_guardian_mapping(
                             <span style="font-size:11px; font-weight:700; color:#059669;">{len(selected_reviewers)} Selected</span>
                         </div>
                         <div class="mapping-card-subtitle">
-                            Higher bands ({", ".join(active_reviewer_bands)}) &bull; {len(filtered_reviewers)} Available
+                            Higher bands ({", ".join(active_reviewer_bands)}) &bull; {len(filtered_reviewers)} in SQLite
                         </div>
                     </div>
                     <!-- Higher Bands Selector Pills -->
@@ -2987,7 +3257,7 @@ def render_guardian_mapping(
                         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_mapping_reviewers', '{{}}')" style="flex:1; font-size:10px; padding:3px 6px;">Clear</button>
                     </div>
                     <div id="mapping-reviewer-scroll" class="mapping-scroll-list">
-                        {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_reviewer_band} reviewers match active roles/search.</div>"}
+                        {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12px; color:var(--frost-navy-50);'>No {selected_reviewer_band} reviewers match active roles/search in SQLite.</div>"}
                     </div>
                     <div style="margin-top:auto; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:10.5px; color:var(--frost-navy-50); text-align:center;">
                         Higher band than {selected_band} &bull; Matches active role
@@ -3463,14 +3733,57 @@ def render_guardian_create_badge(
     has_badge = badge_data is not None
 
     if has_badge:
-        badge_title = badge_data.get("title", f"{active_skill} Foundations")
+        band_suffix = "Foundations" if selected_band in ("B1", "B2") else ("Architecture" if selected_band in ("B3", "B4") else "Mastery")
+        badge_title = badge_data.get("title", f"{active_skill} {band_suffix}")
         badge_desc = badge_data.get("description", "")
         outcomes = badge_data.get("outcomes", [])
         practice_project = badge_data.get("practice_project", {})
-        practice_prompt = practice_project.get("prompt", "")
+        practice_prompt = practice_project.get("prompt", "") if isinstance(practice_project, dict) else (str(practice_project) if practice_project else "")
+        if not practice_prompt and "practice_prompt" in badge_data:
+            practice_prompt = badge_data.get("practice_prompt", "")
+
         learning_topics = badge_data.get("learning_topics", [])
+
         learning_resources = badge_data.get("learning_resources", {})
-        resources_prompt = learning_resources.get("prompt", "")
+        resources_prompt = learning_resources.get("prompt", "") if isinstance(learning_resources, dict) else (str(learning_resources) if learning_resources else "")
+        if not resources_prompt and "resources_prompt" in badge_data:
+            resources_prompt = badge_data.get("resources_prompt", "")
+
+        # Defense-in-depth: If prompts are empty or 1-line placeholders, synthesize full curriculum prompt
+        from starapp.badge_generator import build_practice_project_prompt, build_learning_resources_prompt
+        if not practice_prompt or len(practice_prompt.strip()) < 120 or "\n-" not in practice_prompt:
+            practice_prompt = build_practice_project_prompt(
+                badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
+            )
+            if isinstance(badge_data.get("practice_project"), dict):
+                badge_data["practice_project"]["prompt"] = practice_prompt
+            else:
+                badge_data["practice_project"] = {
+                    "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
+                    "prompt": practice_prompt,
+                    "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                }
+            badge_data["practice_prompt"] = practice_prompt
+
+        if not resources_prompt or len(resources_prompt.strip()) < 120 or "\n-" not in resources_prompt:
+            resources_prompt = build_learning_resources_prompt(
+                badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
+            )
+            if isinstance(badge_data.get("learning_resources"), dict):
+                badge_data["learning_resources"]["prompt"] = resources_prompt
+            else:
+                badge_data["learning_resources"] = {
+                    "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                    "prompt": resources_prompt,
+                    "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                }
+            badge_data["resources_prompt"] = resources_prompt
+
+        # Band alignment in description
+        if badge_desc and badge_desc.startswith("B1 badge") and selected_band != "B1":
+            badge_desc = f"{selected_band} badge" + badge_desc[8:]
+            badge_data["description"] = badge_desc
+
         badge_location = badge_data.get("location") or f"{badge_title} -> {active_skill} -> {active_cap} -> {active_power} -> Band {selected_band}"
     else:
         badge_title = ""
@@ -3769,6 +4082,7 @@ def render_guardian_create_badge(
         <!-- ═══════════════════════════════════════════════════════════
              CONFIGURATION CARD — 3 Liquid Glass Dropdowns + Outcome
              ═══════════════════════════════════════════════════════════ -->
+        <input type="hidden" id="current-badge-band" value="{selected_band}">
         <div style="padding:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); margin-bottom:28px; background:linear-gradient(135deg,rgba(255,255,255,0.98) 0%,rgba(234,244,255,0.92) 100%); box-shadow:0 8px 32px rgba(7,22,41,0.07);">
 
             <!-- Card header -->
@@ -4277,17 +4591,31 @@ def render_badge_creation_preview_modal(badge_data: Dict[str, Any], reviewer: Op
 # 7.10 REVIEWER BADGE APPROVAL WORKSPACE
 # ==============================================================================
 
+def format_badge_timestamp(ts: Optional[str]) -> str:
+    if not ts:
+        return "2026-11-20"
+    try:
+        clean = str(ts).replace("Z", "").split("+")[0]
+        if "T" in clean:
+            d_part, t_part = clean.split("T", 1)
+            return f"{d_part} {t_part[:5]}"
+        return clean[:16]
+    except Exception:
+        return str(ts)[:16]
+
+
 def render_guardian_badge_approval_queue(
     badges: List[Badge],
     current_user: User,
     status_filter: str = "all",
-    search_query: str = ""
+    search_query: str = "",
+    selected_band: str = "all"
 ) -> str:
     from starapp.storage import store
 
     # Filtering
     filtered = badges
-    if status_filter and status_filter != "all":
+    if status_filter and status_filter not in ("all", "history"):
         filtered = [b for b in filtered if getattr(b, "workflow_status", "approved") == status_filter]
 
     if search_query and search_query.strip():
@@ -4304,6 +4632,11 @@ def render_guardian_badge_approval_queue(
     approved_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "approved"])
     returned_cnt = len([b for b in badges if getattr(b, "workflow_status", "approved") == "returned"])
 
+    history_records = store.get_badge_review_history() if hasattr(store, "get_badge_review_history") else []
+    if selected_band and selected_band != "all":
+        history_records = [h for h in history_records if h.get("target_band") == selected_band]
+    history_cnt = len(history_records)
+
     def tab_btn(tab_id: str, label: str, count: int) -> str:
         is_sel = (tab_id == status_filter)
         st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if is_sel else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
@@ -4319,8 +4652,9 @@ def render_guardian_badge_approval_queue(
         {tab_btn('all', 'All Submissions', all_cnt)}
         {tab_btn('ready_for_review', 'Ready for Review', ready_cnt)}
         {tab_btn('pending_review', 'Pending Review', pending_cnt)}
-        {tab_btn('approved', 'Approved', approved_cnt)}
+        {tab_btn('approved', 'Approved Badges', approved_cnt)}
         {tab_btn('returned', 'Returned', returned_cnt)}
+        {tab_btn('history', 'Review History & Audit', history_cnt)}
     </div>
     """
 
@@ -4329,130 +4663,176 @@ def render_guardian_badge_approval_queue(
     user_roles = getattr(current_user, "roles", [current_user.role])
     is_reviewer = "badge_reviewer" in user_roles
 
-    for b in filtered:
-        status_val = getattr(b, "workflow_status", "approved")
-        if status_val == "ready_for_review":
-            status_pill = '<span class="status-pill status-active" style="font-size:11px;">Ready for Review</span>'
-        elif status_val == "pending_review":
-            status_pill = '<span class="status-pill status-warning" style="font-size:11px;">Pending Review</span>'
-        elif status_val == "approved":
-            status_pill = '<span class="status-pill status-approved" style="font-size:11px;">Approved</span>'
-        elif status_val == "returned":
-            status_pill = '<span class="status-pill status-rejected" style="font-size:11px;">Returned</span>'
-        else:
-            status_pill = f'<span class="status-pill status-active" style="font-size:11px;">{escape(status_val.title())}</span>'
+    if status_filter == "history":
+        # Render Audit Trail / History view
+        for h in history_records:
+            ev_type = h.get("event_type", "")
+            if ev_type == "approved":
+                ev_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Authorized & Approved</span>'
+            elif ev_type == "returned":
+                ev_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:700;">Returned for Revisions</span>'
+            elif ev_type == "edited":
+                ev_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Badge Edited</span>'
+            else:
+                ev_pill = '<span class="status-pill status-active" style="font-size:11px; font-weight:700;">Review Dispatched</span>'
 
-        target_band = getattr(b, "target_band", "B1")
-        power = getattr(b, "power", "Tech")
-        cap = getattr(b, "capability", "Data & Machine")
-        skill = getattr(b, "skill", "Hardware")
+            rows_html.append(f"""
+            <tr style="border-bottom:1px solid var(--icy-steel-25); transition:background 0.15s ease;">
+                <td style="padding:14px 16px;">
+                    <div style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(h.get('badge_title', ''))}</div>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; color:var(--deep-frozen-midnight);">{escape(h.get('badge_code', ''))}</div>
+                </td>
+                <td style="padding:14px 16px;">
+                    <span style="font-family:var(--font-family-mono); font-weight:800; font-size:11px; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">BAND {escape(h.get('target_band', 'B1'))}</span>
+                </td>
+                <td style="padding:14px 16px; font-size:12px; color:var(--frost-navy-75); max-width:260px;">
+                    <div style="font-size:11.5px; font-weight:600; line-height:1.4;">{escape(h.get('taxonomy_tree', ''))}</div>
+                </td>
+                <td style="padding:14px 16px; text-align:center;">
+                    {ev_pill}
+                </td>
+                <td style="padding:14px 16px; font-size:12px;">
+                    <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(h.get('actor_name') or 'Officer')}</div>
+                    <div style="font-size:11px; color:var(--frost-navy-50);">Band {escape(h.get('actor_band') or 'B2')}</div>
+                </td>
+                <td style="padding:14px 16px; font-size:12px; color:var(--frost-navy-75);">
+                    <div style="font-weight:600;">{escape(h.get('formatted_timestamp', ''))}</div>
+                </td>
+                <td style="padding:14px 16px; font-size:11.5px; color:var(--frost-navy-75); max-width:220px;">
+                    {escape(h.get('notes') or 'Action completed.')}
+                </td>
+            </tr>
+            """)
+    else:
+        for b in filtered:
+            status_val = getattr(b, "workflow_status", "approved")
+            if status_val == "ready_for_review":
+                status_pill = '<span class="status-pill status-active" style="font-size:11px;">Ready for Review</span>'
+            elif status_val == "pending_review":
+                status_pill = '<span class="status-pill status-warning" style="font-size:11px;">Pending Review</span>'
+            elif status_val == "approved":
+                status_pill = '<span class="status-pill status-approved" style="font-size:11px;">Approved</span>'
+            elif status_val == "returned":
+                status_pill = '<span class="status-pill status-rejected" style="font-size:11px;">Returned</span>'
+            else:
+                status_pill = f'<span class="status-pill status-active" style="font-size:11px;">{escape(status_val.title())}</span>'
 
-        creator = store.get_user_by_id(getattr(b, "creator_id", ""))
-        creator_name = creator.name if creator else "Guardian Admin"
+            target_band = getattr(b, "target_band", "B1")
+            power = getattr(b, "power", "Tech")
+            cap = getattr(b, "capability", "Data & Machine")
+            skill = getattr(b, "skill", "Hardware")
 
-        assigned_rev = store.get_user_by_id(getattr(b, "assigned_reviewer_id", ""))
-        rev_name = assigned_rev.name if assigned_rev else "Unassigned"
+            creator = store.get_user_by_id(getattr(b, "creator_id", ""))
+            creator_name = creator.name if creator else "Guardian Admin"
 
-        created_at_fmt = b.created_at[:10] if getattr(b, "created_at", None) else "2026-11-18"
+            assigned_rev = store.get_user_by_id(getattr(b, "assigned_reviewer_id", ""))
+            rev_name = assigned_rev.name if assigned_rev else "Unassigned"
 
-        # Reviewer column presentation
-        if target_band == "B6":
-            rev_col_html = '<div style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">Executive Council</div>'
-        elif status_val in ("ready_for_review", "returned") or not assigned_rev:
-            el_revs = store.get_eligible_badge_reviewers(target_band)
-            opt_revs = "".join([f'<option value="{r["id"]}" {"selected" if assigned_rev and r["id"] == assigned_rev.id else ""}>{escape(r["name"])} ({r["band"]})</option>' for r in el_revs])
-            rev_col_html = f"""
-            <div style="display:flex; gap:4px; align-items:center;">
-                <select id="g-queue-rev-{b.id}" class="form-input" style="font-size:11px; padding:3px 6px; max-width:145px;">
-                    <option value="">-- Reviewer --</option>
-                    {opt_revs}
-                </select>
-                <button type="button" class="btn-metal btn-sm" style="font-size:10px; padding:3px 7px; font-weight:700;"
-                        onclick="const s=document.getElementById('g-queue-rev-{b.id}'); if(!s.value){{alert('Please select an eligible higher-band reviewer'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{b.id}', reviewer_id:s.value}}));">
-                    Send
-                </button>
-            </div>
-            """
-        else:
-            rev_col_html = f"""
-            <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)}</div>
-            <div style="color:var(--frost-navy-50); font-size:11px;">Assigned Reviewer</div>
-            """
+            created_at_fmt = format_badge_timestamp(getattr(b, "created_at", None))
 
-        # Action buttons
-        inspect_btn = f"""
-        <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 10px; font-weight:700;"
-                onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b.id}')">
-            Inspect
-        </button>
-        """
-
-        # Edit button: Only assigned reviewer or guardian
-        can_edit = (is_reviewer and assigned_rev and assigned_rev.id == current_user.id) or ("guardian" in user_roles)
-        edit_btn = ""
-        if can_edit and status_val in ("pending_review", "ready_for_review", "returned"):
-            edit_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 10px; font-weight:700;"
-                    onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b.id}')">
-                Edit
-            </button>
-            """
-
-        # Return button
-        return_btn = ""
-        can_return = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
-        if can_return:
-            return_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 8px; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
-                    onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b.id}')">
-                Return
-            </button>
-            """
-
-        # Approve button: Only authorized badge_reviewer
-        can_approve = is_reviewer and status_val in ("pending_review", "ready_for_review") and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
-        approve_btn = ""
-        if can_approve:
-            approve_btn = f"""
-            <button type="button" class="btn-metal btn-sm" style="font-size:11px; padding:4px 12px; font-weight:800;"
-                    onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b.id}')">
-                Approve &rarr;
-            </button>
-            """
-
-        rows_html.append(f"""
-        <tr style="border-bottom:1px solid var(--icy-steel-25); transition:background 0.15s ease;">
-            <td style="padding:14px 16px;">
-                <div style="font-weight:700; color:var(--frost-navy); font-size:13.5px;">{escape(b.title)}</div>
-                <div style="font-family:var(--font-family-mono); font-size:11.5px; color:var(--deep-frozen-midnight);">{escape(b.code)}</div>
-            </td>
-            <td style="padding:14px 16px;">
-                <span style="font-family:var(--font-family-mono); font-weight:800; font-size:11px; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">BAND {escape(target_band)}</span>
-            </td>
-            <td style="padding:14px 16px; font-size:12px;">
-                <div style="font-weight:600; color:var(--frost-navy);">{escape(power)} &bull; {escape(skill)}</div>
-                <div style="color:var(--frost-navy-50); font-size:11px;">{escape(cap)}</div>
-            </td>
-            <td style="padding:14px 16px; font-size:12px;">
-                <div style="font-weight:600; color:var(--frost-navy);">{escape(creator_name)}</div>
-                <div style="color:var(--frost-navy-50); font-size:11px;">Created {created_at_fmt}</div>
-            </td>
-            <td style="padding:14px 16px; font-size:12px;">
-                {rev_col_html}
-            </td>
-            <td style="padding:14px 16px; text-align:center;">
-                {status_pill}
-            </td>
-            <td style="padding:14px 16px; text-align:right;">
-                <div style="display:flex; justify-content:flex-end; gap:6px; align-items:center;">
-                    {inspect_btn}
-                    {edit_btn}
-                    {return_btn}
-                    {approve_btn}
+            # Reviewer column presentation
+            if target_band == "B6":
+                rev_col_html = '<div style="font-size:11px; color:var(--frost-navy-50); font-style:italic;">Executive Council</div>'
+            elif status_val == "approved":
+                rev_col_html = f"""
+                <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)}</div>
+                <div style="color:#059669; font-size:11px; font-weight:700;">Authorized Reviewer</div>
+                """
+            elif status_val in ("ready_for_review", "returned") or not assigned_rev:
+                el_revs = store.get_eligible_badge_reviewers(target_band)
+                opt_revs = "".join([f'<option value="{r["id"]}" {"selected" if assigned_rev and r["id"] == assigned_rev.id else ""}>{escape(r["name"])} ({r["band"]})</option>' for r in el_revs])
+                rev_col_html = f"""
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <select id="g-queue-rev-{b.id}" class="form-input" style="font-size:11px; padding:3px 6px; max-width:145px;">
+                        <option value="">-- Reviewer --</option>
+                        {opt_revs}
+                    </select>
+                    <button type="button" class="btn-metal btn-sm" style="font-size:10px; padding:3px 7px; font-weight:700;"
+                            onclick="const s=document.getElementById('g-queue-rev-{b.id}'); if(!s.value){{alert('Please select an eligible higher-band reviewer'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{b.id}', reviewer_id:s.value}}));">
+                        Send
+                    </button>
                 </div>
-            </td>
-        </tr>
-        """)
+                """
+            else:
+                rev_col_html = f"""
+                <div style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)}</div>
+                <div style="color:var(--frost-navy-50); font-size:11px;">Assigned Reviewer</div>
+                """
+
+            # Action buttons
+            inspect_btn = f"""
+            <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 10px; font-weight:700;"
+                    onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b.id}')">
+                Inspect
+            </button>
+            """
+
+            # Edit button: Only assigned reviewer or guardian
+            can_edit = (is_reviewer and assigned_rev and assigned_rev.id == current_user.id) or ("guardian" in user_roles)
+            edit_btn = ""
+            if can_edit and status_val in ("pending_review", "ready_for_review", "returned"):
+                edit_btn = f"""
+                <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 10px; font-weight:700;"
+                        onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b.id}')">
+                    Edit
+                </button>
+                """
+
+            # Return button
+            return_btn = ""
+            can_return = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+            if can_return:
+                return_btn = f"""
+                <button type="button" class="btn-secondary btn-sm" style="font-size:11px; padding:4px 8px; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
+                        onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b.id}')">
+                    Return
+                </button>
+                """
+
+            # Approve button: Only authorized badge_reviewer
+            can_approve = is_reviewer and status_val in ("pending_review", "ready_for_review") and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+            approve_btn = ""
+            if can_approve:
+                approve_btn = f"""
+                <button type="button" class="btn-metal btn-sm" style="font-size:11px; padding:4px 12px; font-weight:800;"
+                        onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b.id}')">
+                    Approve &rarr;
+                </button>
+                """
+
+            rows_html.append(f"""
+            <tr style="border-bottom:1px solid var(--icy-steel-25); transition:background 0.15s ease;">
+                <td style="padding:14px 16px;">
+                    <div style="font-weight:700; color:var(--frost-navy); font-size:13.5px;">{escape(b.title)}</div>
+                    <div style="font-family:var(--font-family-mono); font-size:11.5px; color:var(--deep-frozen-midnight);">{escape(b.code)}</div>
+                </td>
+                <td style="padding:14px 16px;">
+                    <span style="font-family:var(--font-family-mono); font-weight:800; font-size:11px; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">BAND {escape(target_band)}</span>
+                </td>
+                <td style="padding:14px 16px; font-size:12px;">
+                    <div style="font-weight:600; color:var(--frost-navy);">{escape(power)} &bull; {escape(skill)}</div>
+                    <div style="color:var(--frost-navy-50); font-size:11px;">{escape(cap)}</div>
+                </td>
+                <td style="padding:14px 16px; font-size:12px;">
+                    <div style="font-weight:600; color:var(--frost-navy);">{escape(creator_name)}</div>
+                    <div style="color:var(--frost-navy-50); font-size:11px;">Created {created_at_fmt}</div>
+                </td>
+                <td style="padding:14px 16px; font-size:12px;">
+                    {rev_col_html}
+                </td>
+                <td style="padding:14px 16px; text-align:center;">
+                    {status_pill}
+                </td>
+                <td style="padding:14px 16px; text-align:right;">
+                    <div style="display:flex; justify-content:flex-end; gap:6px; align-items:center;">
+                        {inspect_btn}
+                        {edit_btn}
+                        {return_btn}
+                        {approve_btn}
+                    </div>
+                </td>
+            </tr>
+            """)
 
     empty_html = """
     <tr>
@@ -4461,6 +4841,15 @@ def render_guardian_badge_approval_queue(
             <div style="font-size:12px;">No badge submissions match the selected filter criteria.</div>
         </td>
     </tr>
+    """
+
+    bands_list = ["all", "B1", "B2", "B3", "B4", "B5", "B6"]
+    band_opts = "".join([f'<option value="{b}"{" selected" if b == selected_band else ""}>{"All Bands" if b == "all" else f"Band {b}"}</option>' for b in bands_list])
+    band_filter_html = f"""
+    <select class="form-input" style="font-size:12px; padding:7px 12px; max-width:130px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(255,255,255,0.9);"
+            onchange="window.StarAppBridge.dispatchAction('filter_badge_approval_band', this.value)">
+        {band_opts}
+    </select>
     """
 
     return f"""
@@ -4489,11 +4878,12 @@ def render_guardian_badge_approval_queue(
             <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Review, update and approve badges submitted for authorization.</p>
         </div>
 
-        <!-- Filter tabs & Search -->
+        <!-- Filter tabs & Search with Band Filter Dropdown -->
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
             {tabs_html}
-            <div style="min-width:240px; max-width:320px; width:100%;">
-                <input type="text" class="form-input" placeholder="Search badge, code, skill, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px;"
+            <div style="display:flex; gap:8px; align-items:center; min-width:320px; max-width:440px; width:100%; justify-content:flex-end;">
+                {band_filter_html}
+                <input type="text" class="form-input" placeholder="Search badge, code, skill, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px; flex:1;"
                        oninput="window.StarAppBridge.dispatchAction('search_badge_approval', this.value)">
             </div>
         </div>
@@ -4504,13 +4894,15 @@ def render_guardian_badge_approval_queue(
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead>
                         <tr style="background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.12) 100%); border-bottom:1.5px solid var(--icy-steel-30); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-75);">
-                            <th style="padding:12px 16px;">Badge Title & Code</th>
-                            <th style="padding:12px 16px;">Band</th>
-                            <th style="padding:12px 16px;">Taxonomy & Skill</th>
-                            <th style="padding:12px 16px;">Creator</th>
-                            <th style="padding:12px 16px;">Assigned Reviewer</th>
-                            <th style="padding:12px 16px; text-align:center;">Status</th>
-                            <th style="padding:12px 16px; text-align:right;">Actions</th>
+                            {"".join([
+                                '<th style="padding:12px 16px;">Badge Title & Code</th>',
+                                '<th style="padding:12px 16px;">Band</th>',
+                                '<th style="padding:12px 16px;">Taxonomy Hierarchy</th>' if status_filter == 'history' else '<th style="padding:12px 16px;">Taxonomy & Skill</th>',
+                                '<th style="padding:12px 16px; text-align:center;">Action / Event</th>' if status_filter == 'history' else '<th style="padding:12px 16px;">Creator</th>',
+                                '<th style="padding:12px 16px;">Reviewer / Officer</th>' if status_filter == 'history' else '<th style="padding:12px 16px;">Assigned Reviewer</th>',
+                                '<th style="padding:12px 16px;">Timestamp</th>' if status_filter == 'history' else '<th style="padding:12px 16px; text-align:center;">Status</th>',
+                                '<th style="padding:12px 16px;">Audit Notes / Reason</th>' if status_filter == 'history' else '<th style="padding:12px 16px; text-align:right;">Actions</th>'
+                            ])}
                         </tr>
                     </thead>
                     <tbody>
@@ -4543,20 +4935,60 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
     prompt_str = getattr(badge, "prompt_json", "{}")
     objs_html = ""
     outcomes_html = ""
+    prac_prompt = ""
+    res_prompt = ""
     try:
         p_obj = json.loads(prompt_str) if isinstance(prompt_str, str) else prompt_str
         objs = p_obj.get("learning_objectives", [])
         if isinstance(objs, list):
             objs_html = "".join([f"<li style='margin-bottom:4px;'>{escape(str(o))}</li>" for o in objs])
-        outs = p_obj.get("expected_outcomes", [])
+        outs = p_obj.get("expected_outcomes", []) or p_obj.get("outcomes", [])
+        if not outs and getattr(badge, "learning_outcomes", None):
+            outs = badge.learning_outcomes
         if isinstance(outs, list):
             outcomes_html = "".join([f"<li style='margin-bottom:4px;'>{escape(str(o))}</li>" for o in outs])
+        
+        if isinstance(p_obj, dict):
+            if isinstance(p_obj.get("practice_project"), dict):
+                prac_prompt = p_obj["practice_project"].get("prompt", "")
+            if not prac_prompt:
+                prac_prompt = p_obj.get("practice_prompt", "")
+            if isinstance(p_obj.get("learning_resources"), dict):
+                res_prompt = p_obj["learning_resources"].get("prompt", "")
+            if not res_prompt:
+                res_prompt = p_obj.get("resources_prompt", "")
+
         formatted_json = json.dumps(p_obj, indent=2)
     except Exception:
         formatted_json = str(prompt_str)
 
+    if not prac_prompt:
+        prac_prompt = reqs
+
     rev_name = escape(reviewer.name) if reviewer else "Unassigned"
     creator_name = escape(creator.name) if creator else "System"
+
+    practice_card_html = ""
+    if prac_prompt:
+        practice_card_html = f"""
+        <div style="margin-bottom:16px;">
+            <div style="font-size:12px; font-weight:700; color:#EA580C; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                <span>🛠️ Practice Project Prompt:</span>
+            </div>
+            <div style="background:rgba(241,245,249,0.9); border:1px solid rgba(249,115,22,0.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--frost-navy); line-height:1.6; white-space:pre-wrap; max-height:180px; overflow-y:auto;">{escape(prac_prompt)}</div>
+        </div>
+        """
+
+    resources_card_html = ""
+    if res_prompt:
+        resources_card_html = f"""
+        <div style="margin-bottom:16px;">
+            <div style="font-size:12px; font-weight:700; color:#2563EB; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                <span>📚 Learning Resources Prompt:</span>
+            </div>
+            <div style="background:rgba(241,245,249,0.9); border:1px solid rgba(59,130,246,0.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--frost-navy); line-height:1.6; white-space:pre-wrap; max-height:180px; overflow-y:auto;">{escape(res_prompt)}</div>
+        </div>
+        """
 
     return f"""
     <div style="padding:4px 0;">
@@ -4603,6 +5035,9 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
             </div>
         </div>
         ''' if (objs_html or outcomes_html) else ''}
+
+        {practice_card_html}
+        {resources_card_html}
 
         <div style="margin-bottom:18px;">
             <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Structured JSON Prompt:</div>
@@ -4657,63 +5092,245 @@ def render_badge_reviewer_edit_modal(
             skills.append(s_name)
     skill_opts = "".join([f'<option value="{s}"{" selected" if s == curr_skill else ""}>{s}</option>' for s in skills])
 
+    # Parse structured prompt if available
+    pj = {}
+    try:
+        if prompt_str:
+            pj = json.loads(prompt_str) if isinstance(prompt_str, str) else prompt_str
+    except Exception:
+        pj = {}
+
+    # Extract Outcomes
+    outcomes = pj.get("outcomes") or pj.get("learning_outcomes") or getattr(badge, "learning_outcomes", [])
+    if isinstance(outcomes, str):
+        try: outcomes = json.loads(outcomes)
+        except Exception: outcomes = [o.strip() for o in outcomes.split("\n") if o.strip()]
+    if not outcomes:
+        outcomes = [
+            f"Can design, configure, and evaluate modular system components and services for {title}.",
+            f"Can analyze how {curr_skill} architectures impact system throughput and resilience.",
+            f"Can design end-to-end specifications meeting Band {band} engineering standards.",
+            f"Can implement automated telemetry and robust verification routines."
+        ]
+    outcomes_str = "\n".join(outcomes) if isinstance(outcomes, list) else str(outcomes)
+
+    # Extract Practice Project Prompt
+    practice_prompt = ""
+    if isinstance(pj.get("practice_project"), dict):
+        practice_prompt = pj["practice_project"].get("prompt", "")
+    elif isinstance(pj.get("practice_project"), str):
+        practice_prompt = pj.get("practice_project")
+    if not practice_prompt:
+        practice_prompt = pj.get("practice_prompt") or reqs or f"I'm working toward the \"{title}\" badge ({curr_skill} / {curr_cap} / {curr_power}) in Band {band}.\nAct as my principal engineering tutor and create an end-to-end milestone project specification."
+
+    # Extract Learning Resources Prompt
+    resources_prompt = ""
+    if isinstance(pj.get("learning_resources"), dict):
+        resources_prompt = pj["learning_resources"].get("prompt", "")
+    elif isinstance(pj.get("learning_resources"), str):
+        resources_prompt = pj.get("learning_resources")
+    if not resources_prompt:
+        resources_prompt = pj.get("resources_prompt") or f"I am preparing for the \"{title}\" badge ({curr_skill} / {curr_cap} / {curr_power}) in Band {band}.\nProvide a curated syllabus of top documentation, whitepapers, interactive labs, and reference architectures."
+
+    # Extract Learning Topics (6 Topics)
+    topics_data = pj.get("learning_topics") or getattr(badge, "learning_topics", [])
+    if isinstance(topics_data, str):
+        try: topics_data = json.loads(topics_data)
+        except Exception: topics_data = []
+
+    topics_list = []
+    if isinstance(topics_data, list):
+        for idx, item in enumerate(topics_data):
+            if isinstance(item, dict):
+                topics_list.append({
+                    "title": item.get("title", f"{curr_skill} Topic {idx+1}"),
+                    "description": item.get("description", f"Curriculum module covering {curr_skill} operational standards.")
+                })
+            elif isinstance(item, str):
+                topics_list.append({
+                    "title": item,
+                    "description": f"Curriculum module covering {item} operational standards."
+                })
+
+    while len(topics_list) < 6:
+        idx = len(topics_list) + 1
+        topics_list.append({
+            "title": f"{curr_skill} Core Module {idx}",
+            "description": f"Curriculum module covering {curr_skill} architecture and verification routines."
+        })
+
+    # Build Topics HTML
+    topics_rows = []
+    for idx, t in enumerate(topics_list[:6]):
+        t_title = escape(t.get("title", ""))
+        t_desc = escape(t.get("description", ""))
+        topics_rows.append(f"""
+        <div style="padding:14px 16px; background:rgba(255,255,255,0.95); border:1.5px solid var(--icy-steel-30); border-radius:var(--radius-md); box-shadow:0 1px 3px rgba(0,0,0,0.03); width:100%; box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Curriculum Module</span>
+            </div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">Topic Title</label>
+                <input type="text" id="edit-topic-title-{idx}" class="form-input" style="font-size:13px; font-weight:700; width:100%; box-sizing:border-box; padding:8px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff;" placeholder="Topic Title" value="{t_title}">
+            </div>
+            <div>
+                <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">Description & Scope</label>
+                <textarea id="edit-topic-desc-{idx}" class="form-input" rows="2" style="font-size:12px; line-height:1.5; width:100%; box-sizing:border-box; padding:8px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;" placeholder="Topic Description / Scope">{t_desc}</textarea>
+            </div>
+        </div>
+        """)
+
     return f"""
     <div style="padding:4px 0;">
-        <div style="margin-bottom:16px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{code}</span>
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs);">BAND {band}</span>
-                <span class="status-pill status-warning" style="font-size:11px;">Reviewer Edit Mode</span>
+        <!-- Top Status Bar & Location -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:var(--radius-xs);">{code}</span>
+                <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs);">BAND {band}</span>
+                <span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Reviewer Edit Mode</span>
             </div>
-            <h2 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">Edit Badge Proposal</h2>
-            <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Adjust rubric parameters or prompt specification before authorization. Badge remains pending review.</div>
+            <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                Higher-Band Quality & Rubric Verification
+            </div>
         </div>
 
         <form onsubmit="event.preventDefault(); window.StarAppBridge.submitReviewedBadgeEdit('{badge.id}');">
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">
-                <div class="form-group">
-                    <label class="form-label" style="font-size:12px; font-weight:700;">Badge Title</label>
-                    <input type="text" id="edit-badge-title" class="form-input" value="{title}" style="font-size:12.5px;">
+            <!-- Header Card: Title, Hierarchy & Description -->
+            <div class="liquid-glass-card" style="padding:18px 20px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-40); margin-bottom:18px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:14px; margin-bottom:14px;">
+                    <div style="width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-70); display:block; margin-bottom:4px;">Badge Title</label>
+                        <input type="text" id="edit-badge-title" class="form-input" style="font-size:1.35rem; font-weight:800; width:100%; box-sizing:border-box; padding:8px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff;" value="{title}">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" style="font-size:12px; font-weight:700;">Power</label>
-                    <select id="edit-badge-power" class="form-input" style="font-size:12px;">{power_opts}</select>
+
+                <!-- 3-Column Hierarchy: Power, Capability, Skill -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:14px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">① Power</label>
+                        <select id="edit-badge-power" class="form-input" style="font-size:12px; font-weight:700; width:100%; box-sizing:border-box;">{power_opts}</select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">② Capability</label>
+                        <select id="edit-badge-cap" class="form-input" style="font-size:12px; font-weight:700; width:100%; box-sizing:border-box;">{cap_opts}</select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">③ Skill</label>
+                        <select id="edit-badge-skill" class="form-input" style="font-size:12px; font-weight:700; width:100%; box-sizing:border-box;">{skill_opts}</select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" style="font-size:12px; font-weight:700;">Capability</label>
-                    <select id="edit-badge-cap" class="form-input" style="font-size:12px;">{cap_opts}</select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" style="font-size:12px; font-weight:700;">Skill</label>
-                    <select id="edit-badge-skill" class="form-input" style="font-size:12px;">{skill_opts}</select>
+
+                <!-- Description -->
+                <div>
+                    <label style="font-size:11px; font-weight:700; color:var(--frost-navy-70); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:4px;">Target Outcome &amp; Scope Description</label>
+                    <textarea id="edit-badge-desc" class="form-input" rows="3" style="font-size:12.5px; line-height:1.5; width:100%; box-sizing:border-box; padding:8px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{desc}</textarea>
                 </div>
             </div>
 
-            <div class="form-group" style="margin-bottom:12px;">
-                <label class="form-label" style="font-size:12px; font-weight:700;">Description</label>
-                <textarea id="edit-badge-desc" class="form-input" rows="2" style="font-size:12px;">{desc}</textarea>
-            </div>
-
-            <div class="form-group" style="margin-bottom:12px;">
-                <label class="form-label" style="font-size:12px; font-weight:700;">Project Requirements</label>
-                <textarea id="edit-badge-reqs" class="form-input" rows="2" style="font-size:12px;">{reqs}</textarea>
-            </div>
-
-            <div class="form-group" style="margin-bottom:18px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <label class="form-label" style="font-size:12px; font-weight:700; margin:0;">Structured JSON Prompt</label>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.formatReviewedBadgePrompt()" style="font-size:11px; padding:3px 8px;">Format JSON</button>
+            <!-- SECTION 1: OUTCOMES -->
+            <div class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(16,185,129,0.2); background:rgba(16,185,129,0.04);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        </span>
+                        <div>
+                            <span style="font-size:14.5px; font-weight:800; color:#10B981;">Learning Outcomes</span>
+                            <div style="font-size:11px; color:var(--frost-navy-50);">One bullet point per line, starting with "Can..."</div>
+                        </div>
+                    </div>
                 </div>
-                <textarea id="edit-badge-prompt" class="form-input" spellcheck="false"
-                          style="font-family:var(--font-family-mono); font-size:11.5px; height:180px; background:var(--frost-navy); color:var(--snow-white); padding:10px; line-height:1.5;">{escape(prompt_str)}</textarea>
+                <div style="padding:16px 20px;">
+                    <textarea id="edit-badge-outcomes" class="form-input" rows="5" style="font-size:12.5px; line-height:1.6; font-family:var(--font-family-sans); width:100%; box-sizing:border-box; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff;" placeholder="Can design...\nCan analyze...\nCan implement...">{escape(outcomes_str)}</textarea>
+                </div>
             </div>
 
-            <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+            <!-- SECTION 2: PRACTICE PROJECT -->
+            <div class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(249,115,22,0.2); background:rgba(249,115,22,0.04);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
+                        </span>
+                        <div>
+                            <span style="font-size:14.5px; font-weight:800; color:#EA580C;">Practice Project Prompt</span>
+                            <div style="font-size:11px; color:var(--frost-navy-50);">Hands-on challenge prompt provided to LLMs to generate practice projects</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <textarea id="edit-practice-prompt" class="form-input" rows="6" style="width:100%; box-sizing:border-box; font-size:12.5px; line-height:1.6; font-family:var(--font-family-mono); padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{escape(practice_prompt)}</textarea>
+                </div>
+            </div>
+
+            <!-- SECTION 3: LEARNING TOPICS (6 MODULES) -->
+            <div class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(6,182,212,0.2); background:rgba(6,182,212,0.04);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+                        </span>
+                        <div>
+                            <span style="font-size:14.5px; font-weight:800; color:#0891B2;">Learning Topics (6 Curriculum Modules)</span>
+                            <div style="font-size:11px; color:var(--frost-navy-50);">Structured syllabus modules covering theoretical and practical concepts</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px; display:flex; flex-direction:column; gap:12px;">
+                    {"".join(topics_rows)}
+                </div>
+            </div>
+
+            <!-- SECTION 4: LEARNING RESOURCES -->
+            <div class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(59,130,246,0.2); background:rgba(59,130,246,0.04);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </span>
+                        <div>
+                            <span style="font-size:14.5px; font-weight:800; color:#2563EB;">Learning Resources Prompt</span>
+                            <div style="font-size:11px; color:var(--frost-navy-50);">Curated syllabus prompt to discover whitepapers, labs, and documentation</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <textarea id="edit-resources-prompt" class="form-input" rows="6" style="width:100%; box-sizing:border-box; font-size:12.5px; line-height:1.6; font-family:var(--font-family-mono); padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;">{escape(resources_prompt)}</textarea>
+                </div>
+            </div>
+
+            <!-- SECTION 5: REVIEWER AUDIT NOTES & FEEDBACK -->
+            <div class="liquid-glass-card" style="margin-bottom:22px; border-radius:var(--radius-lg); border:1.5px solid #8B5CF6; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(139,92,246,0.2); background:rgba(139,92,246,0.04);">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </span>
+                        <div>
+                            <span style="font-size:14.5px; font-weight:800; color:#7C3AED;">Reviewer Audit Notes &amp; Feedback</span>
+                            <div style="font-size:11px; color:var(--frost-navy-50);">Institutional review remarks and audit trail log</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:16px 20px;">
+                    <textarea id="edit-reviewer-notes" class="form-input" rows="3" style="width:100%; box-sizing:border-box; font-size:12.5px; line-height:1.5; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:#ffffff; resize:vertical;" placeholder="Optional remarks, recommendations, or audit reasoning to attach to this review..."></textarea>
+                </div>
+            </div>
+
+            <!-- ACTION BUTTONS -->
+            <div style="display:flex; justify-content:flex-end; gap:12px; padding-top:14px; border-top:1px solid var(--icy-steel-30); position:sticky; bottom:0; background:rgba(255,255,255,0.95); backdrop-filter:blur(8px); padding-bottom:8px; z-index:10;">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700; padding:9px 18px;">
                     Cancel
                 </button>
-                <button type="submit" class="btn-metal" style="font-weight:800; padding:8px 20px;">
-                    Save Edits (Keep Pending) &rarr;
+                <button type="submit" class="btn-secondary" style="font-weight:700; padding:9px 20px;">
+                    💾 Save Edits (Keep Pending)
+                </button>
+                <button type="button" class="btn-metal" style="font-weight:800; padding:9px 24px; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;" onclick="window.StarAppBridge.submitAndApproveBadge('{badge.id}');">
+                    ✓ Save &amp; Approve Badge &rarr;
                 </button>
             </div>
         </form>

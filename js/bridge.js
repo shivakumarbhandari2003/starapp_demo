@@ -730,22 +730,125 @@
 
     // Submit reviewer badge edits
     submitReviewedBadgeEdit(badgeId) {
-      const promptVal = document.getElementById("edit-badge-prompt")?.value || "{}";
-      try {
-        JSON.parse(promptVal);
-      } catch (err) {
-        alert("Invalid JSON Prompt: " + err.message);
-        return;
+      const title = document.getElementById("edit-badge-title")?.value || "";
+      const power = document.getElementById("edit-badge-power")?.value || "Tech";
+      const capability = document.getElementById("edit-badge-cap")?.value || "Data & Machine";
+      const skill = document.getElementById("edit-badge-skill")?.value || "Hardware";
+      const description = document.getElementById("edit-badge-desc")?.value || "";
+      const outcomesText = document.getElementById("edit-badge-outcomes")?.value || "";
+      const practicePrompt = document.getElementById("edit-practice-prompt")?.value || "";
+      const resourcesPrompt = document.getElementById("edit-resources-prompt")?.value || "";
+      const notes = document.getElementById("edit-reviewer-notes")?.value || "";
+
+      const outcomes = outcomesText.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+      const topics = [];
+      for (let i = 0; i < 6; i++) {
+        const tTitle = document.getElementById(`edit-topic-title-${i}`)?.value || `Module ${i+1}`;
+        const tDesc = document.getElementById(`edit-topic-desc-${i}`)?.value || "";
+        topics.push({ title: tTitle, description: tDesc, completed: false });
       }
+
+      const promptObj = {
+        title: title,
+        description: description,
+        power: power,
+        capability: capability,
+        skill: skill,
+        outcomes: outcomes,
+        learning_outcomes: outcomes,
+        practice_project: {
+          intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
+          prompt: practicePrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+        },
+        practice_prompt: practicePrompt,
+        learning_topics: topics,
+        learning_resources: {
+          intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+          prompt: resourcesPrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+        },
+        resources_prompt: resourcesPrompt,
+        notes: notes
+      };
+
       const payload = {
         badge_id: badgeId,
-        title: document.getElementById("edit-badge-title")?.value || "",
-        power: document.getElementById("edit-badge-power")?.value || "Tech",
-        capability: document.getElementById("edit-badge-cap")?.value || "Data & Machine",
-        skill: document.getElementById("edit-badge-skill")?.value || "Hardware",
-        description: document.getElementById("edit-badge-desc")?.value || "",
-        project_requirements: document.getElementById("edit-badge-reqs")?.value || "",
-        prompt_json: promptVal
+        title: title,
+        power: power,
+        capability: capability,
+        skill: skill,
+        description: description,
+        learning_outcomes: outcomes,
+        learning_topics: topics,
+        project_requirements: practicePrompt,
+        practice_prompt: practicePrompt,
+        resources_prompt: resourcesPrompt,
+        notes: notes,
+        prompt_json: JSON.stringify(promptObj),
+        and_approve: false
+      };
+      window.StarAppBridge.dispatchAction("save_reviewed_badge", JSON.stringify(payload));
+    },
+
+    submitAndApproveBadge(badgeId) {
+      const title = document.getElementById("edit-badge-title")?.value || "";
+      const power = document.getElementById("edit-badge-power")?.value || "Tech";
+      const capability = document.getElementById("edit-badge-cap")?.value || "Data & Machine";
+      const skill = document.getElementById("edit-badge-skill")?.value || "Hardware";
+      const description = document.getElementById("edit-badge-desc")?.value || "";
+      const outcomesText = document.getElementById("edit-badge-outcomes")?.value || "";
+      const practicePrompt = document.getElementById("edit-practice-prompt")?.value || "";
+      const resourcesPrompt = document.getElementById("edit-resources-prompt")?.value || "";
+      const notes = document.getElementById("edit-reviewer-notes")?.value || "";
+
+      const outcomes = outcomesText.split("\n").map(s => s.trim()).filter(s => s.length > 0);
+      const topics = [];
+      for (let i = 0; i < 6; i++) {
+        const tTitle = document.getElementById(`edit-topic-title-${i}`)?.value || `Module ${i+1}`;
+        const tDesc = document.getElementById(`edit-topic-desc-${i}`)?.value || "";
+        topics.push({ title: tTitle, description: tDesc, completed: false });
+      }
+
+      const promptObj = {
+        title: title,
+        description: description,
+        power: power,
+        capability: capability,
+        skill: skill,
+        outcomes: outcomes,
+        learning_outcomes: outcomes,
+        practice_project: {
+          intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
+          prompt: practicePrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+        },
+        practice_prompt: practicePrompt,
+        learning_topics: topics,
+        learning_resources: {
+          intro: "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+          prompt: resourcesPrompt,
+          footnote: "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+        },
+        resources_prompt: resourcesPrompt,
+        notes: notes
+      };
+
+      const payload = {
+        badge_id: badgeId,
+        title: title,
+        power: power,
+        capability: capability,
+        skill: skill,
+        description: description,
+        learning_outcomes: outcomes,
+        learning_topics: topics,
+        project_requirements: practicePrompt,
+        practice_prompt: practicePrompt,
+        resources_prompt: resourcesPrompt,
+        notes: notes,
+        prompt_json: JSON.stringify(promptObj),
+        and_approve: true
       };
       window.StarAppBridge.dispatchAction("save_reviewed_badge", JSON.stringify(payload));
     },
@@ -806,10 +909,15 @@
       const skill = skillEl?.value || "Hardware";
       const outcomeSentence = outcomeEl?.value?.trim() || "";
 
-      let band = "B1";
-      if (window.starAppController && window.starAppController.create_badge_band) {
+      const bandEl = document.getElementById("current-badge-band");
+      let band = (bandEl && bandEl.value) ? bandEl.value.trim() : "";
+      if (!band) {
+        band = sessionStorage.getItem("starapp_active_band") || "";
+      }
+      if (!band && window.starAppController && window.starAppController.create_badge_band) {
         band = window.starAppController.create_badge_band;
       }
+      if (!band) band = "B1";
 
       if (btn) {
         btn.disabled = true;
@@ -888,6 +996,30 @@ Return ONLY valid JSON matching this exact schema:
               return s;
             });
 
+            const outcomesList = formattedOutcomes.length > 0 ? formattedOutcomes : [outcomeSentence];
+
+            const topics = (rawObj.learning_topics || []).map((t, idx) => ({
+              title: t.title || `Topic ${idx + 1}`,
+              description: t.description || "",
+              status: t.status || "In Progress",
+              completed: !!t.completed
+            }));
+
+            const topicsBullets = topics.map(t => `- ${t.title}: ${t.description}`).join("\n");
+            const outcomesSemicolon = outcomesList.join("; ");
+
+            const defaultPracticePrompt = `I'm working toward the "${rawObj.title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.\nI want to practice the following topics for this badge:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nDesign one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like.`;
+
+            const defaultResourcesPrompt = `I'm working toward the "${rawObj.title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.\nI need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nPlease suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), and suggest one small hands-on project that lets me demonstrate all of the topics together.`;
+
+            const practicePrompt = (rawObj.practice_project && rawObj.practice_project.prompt)
+              || rawObj.practice_prompt
+              || defaultPracticePrompt;
+
+            const resourcesPrompt = (rawObj.learning_resources && rawObj.learning_resources.prompt)
+              || rawObj.resources_prompt
+              || defaultResourcesPrompt;
+
             parsedBadge = {
               id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
               code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
@@ -898,10 +1030,27 @@ Return ONLY valid JSON matching this exact schema:
               capability: capability,
               skill: skill,
               location: locationStr,
-              outcomes: formattedOutcomes.length > 0 ? formattedOutcomes : [outcomeSentence],
-              learning_topics: rawObj.learning_topics || [],
-              practice_prompt: `I'm working toward the "${rawObj.title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.`,
-              resources_prompt: `What are high-impact learning resources for "${rawObj.title}"?`
+              outcomes: outcomesList,
+              learning_topics: topics,
+              practice_prompt: practicePrompt,
+              resources_prompt: resourcesPrompt,
+              practice_project: {
+                intro: (rawObj.practice_project && rawObj.practice_project.intro) || "Want some hands-on practice? Use this prompt to generate a practice project.",
+                prompt: practicePrompt,
+                footnote: (rawObj.practice_project && rawObj.practice_project.footnote) || "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+              },
+              learning_resources: {
+                intro: (rawObj.learning_resources && rawObj.learning_resources.intro) || "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                prompt: resourcesPrompt,
+                footnote: (rawObj.learning_resources && rawObj.learning_resources.footnote) || "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+              },
+              earn_badge_status: "Pending Review",
+              earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
+              related: {
+                skill: skill,
+                capability: capability,
+                power: power
+              }
             };
           }
         } catch (e) {
@@ -934,7 +1083,8 @@ Return ONLY valid JSON matching this exact schema:
     },
 
     generateDeterministicBadgeData(band, power, capability, skill, outcomeSentence) {
-      const title = `${skill} Foundations`;
+      const suffix = (band === "B1" || band === "B2") ? "Foundations" : ((band === "B3" || band === "B4") ? "Architecture" : "Mastery");
+      const title = `${skill} ${suffix}`;
       const location = `${title} -> ${skill} -> ${capability} -> ${power} -> Band ${band}`;
       let outcome = outcomeSentence?.trim() || `Identify core ${skill.toLowerCase()} components and evaluate their primary system roles`;
       if (!outcome.startsWith("Can ")) {
@@ -945,7 +1095,7 @@ Return ONLY valid JSON matching this exact schema:
       const outcomes = [
         outcome,
         `Can explain how ${skill.toLowerCase()} architectures impact performance, throughput, and operational resilience.`,
-        `Can analyze and select appropriate ${skill.toLowerCase()} specifications for diverse engineering workloads.`,
+        `Can analyze and select appropriate ${skill.toLowerCase()} specifications for diverse engineering workloads in Band ${band}.`,
         `Can implement automated telemetry and quality verification for ${skill.toLowerCase()} components.`
       ];
 
@@ -961,15 +1111,15 @@ Return ONLY valid JSON matching this exact schema:
       const topicsBullets = topics.map(t => `- ${t.title}: ${t.description}`).join("\n");
       const outcomesSemicolon = outcomes.join("; ");
 
-      const practicePrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}).\nI want to practice the following topics for this badge:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nDesign one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like.`;
+      const practicePrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.\nI want to practice the following topics for this badge:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nDesign one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like.`;
 
-      const resourcesPrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}).\nI need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nPlease suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), and suggest one small hands-on project that lets me demonstrate all of the topics together.`;
+      const resourcesPrompt = `I'm working toward the "${title}" badge (${skill} / ${capability} / ${power}) in Band ${band}.\nI need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n${topicsBullets}\n\nBy the end I need to be able to: ${outcomesSemicolon}\n\nPlease suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), and suggest one small hands-on project that lets me demonstrate all of the topics together.`;
 
       return {
         id: `badge_${band.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
         code: `${band}-${skill.substring(0,3).toUpperCase()}-01`,
         title: title,
-        description: `Foundational badge covering core ${skill.toLowerCase()} concepts — architectural primitives, component design, telemetry, and system verification.`,
+        description: `${band} badge specializing in ${skill} under the ${capability} capability (${power} domain). ${outcomeSentence || ""}`.trim(),
         target_band: band,
         power: power,
         capability: capability,
@@ -978,6 +1128,8 @@ Return ONLY valid JSON matching this exact schema:
         outcomes: outcomes,
         earn_badge_status: "Pending Review",
         earn_badge_text: "Great job submitting your project — your guardian is reviewing it now.",
+        practice_prompt: practicePrompt,
+        resources_prompt: resourcesPrompt,
         practice_project: {
           intro: "Want some hands-on practice? Use this prompt to generate a practice project.",
           prompt: practicePrompt,
@@ -1219,6 +1371,17 @@ Return ONLY valid JSON matching this exact schema:
       return renderState;
     },
 
+    getWindowSessionId() {
+      let sid = sessionStorage.getItem("starapp_window_session_id");
+      if (!sid) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const role = urlParams.get("role") || "";
+        sid = (role ? role + "_" : "win_") + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+        sessionStorage.setItem("starapp_window_session_id", sid);
+      }
+      return sid;
+    },
+
     // Go back to previous view in history stack
     goBack() {
       this.dispatchAction("go_back", "{}");
@@ -1228,15 +1391,29 @@ Return ONLY valid JSON matching this exact schema:
     dispatchAction(action, payloadJson = "{}") {
       localActionSeq += 1;
       pendingDeferredReload = false;
+
+      // Track active band in tab session storage
+      if (action === "select_create_badge_band") {
+        const b = typeof payloadJson === "string" ? payloadJson.replace(/[{"}:]/g, "") : (payloadJson?.band || "");
+        if (b) sessionStorage.setItem("starapp_active_band", b.trim());
+      } else if (action === "go_back") {
+        const bandEl = document.getElementById("current-badge-band");
+        if (bandEl) sessionStorage.removeItem("starapp_active_band");
+      }
+
       if (window.starAppController && typeof window.starAppController.handle_event === "function") {
         window.starAppController.handle_event(action, payloadJson);
       } else {
-        // Native FastAPI Full-Stack Backend dispatch
+        // Native FastAPI Full-Stack Backend dispatch with tab-isolated session ID
+        const sid = this.getWindowSessionId();
         const payloadStr = typeof payloadJson === "string" ? payloadJson : JSON.stringify(payloadJson);
         fetch("/api/v1/dispatch", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: action, payload: payloadStr })
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Id": sid
+          },
+          body: JSON.stringify({ action: action, payload: payloadStr, session_id: sid })
         })
         .then(res => res.json())
         .then(data => {

@@ -234,6 +234,52 @@ SKILL_TOPIC_PRESETS: Dict[str, Dict[str, Any]] = {
     }
 }
 
+def build_practice_project_prompt(title: str, skill: str, capability: str, power: str, band: str, topics: List[Any], outcomes: List[str]) -> str:
+    """Builds a rich, multi-line hands-on practice project prompt listing all topics and target outcomes."""
+    topic_bullets = []
+    for idx, t in enumerate(topics):
+        if isinstance(t, dict):
+            t_title = t.get("title", f"Topic {idx+1}")
+            t_desc = t.get("description", "")
+            topic_bullets.append(f"- {t_title}: {t_desc}" if t_desc else f"- {t_title}")
+        else:
+            topic_bullets.append(f"- {str(t)}")
+    bullets_str = "\n".join(topic_bullets) if topic_bullets else f"- {skill} Fundamentals"
+    outcomes_str = "; ".join(outcomes) if outcomes else f"Demonstrate mastery in {skill}"
+
+    return (
+        f"I'm working toward the \"{title}\" badge ({skill} / {capability} / {power}) in Band {band}.\n"
+        f"I want to practice the following topics for this badge:\n"
+        f"{bullets_str}\n\n"
+        f"By the end I need to be able to: {outcomes_str}\n\n"
+        f"Design one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. "
+        f"Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like."
+    )
+
+
+def build_learning_resources_prompt(title: str, skill: str, capability: str, power: str, band: str, topics: List[Any], outcomes: List[str]) -> str:
+    """Builds a rich, multi-line learning resources prompt listing all topics and target outcomes."""
+    topic_bullets = []
+    for idx, t in enumerate(topics):
+        if isinstance(t, dict):
+            t_title = t.get("title", f"Topic {idx+1}")
+            t_desc = t.get("description", "")
+            topic_bullets.append(f"- {t_title}: {t_desc}" if t_desc else f"- {t_title}")
+        else:
+            topic_bullets.append(f"- {str(t)}")
+    bullets_str = "\n".join(topic_bullets) if topic_bullets else f"- {skill} Fundamentals"
+    outcomes_str = "; ".join(outcomes) if outcomes else f"Demonstrate mastery in {skill}"
+
+    return (
+        f"I'm working toward the \"{title}\" badge ({skill} / {capability} / {power}) in Band {band}.\n"
+        f"I need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n"
+        f"{bullets_str}\n\n"
+        f"By the end I need to be able to: {outcomes_str}\n\n"
+        f"Please suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), "
+        f"and suggest one small hands-on project that lets me demonstrate all of the topics together."
+    )
+
+
 # ==============================================================================
 # BADGE GENERATOR IMPLEMENTATION
 # ==============================================================================
@@ -254,15 +300,19 @@ def generate_badge_data(
     skill_clean = skill.strip() if skill else "Hardware"
     outcome_clean = outcome_sentence.strip() if outcome_sentence else BAND_DEFAULT_OUTCOME_SENTENCES.get(band_clean, "")
 
+    # Suffix matching band progression tier
+    suffix = "Foundations" if band_clean in ["B1", "B2"] else ("Architecture" if band_clean in ["B3", "B4"] else "Mastery")
+
     # Look up preset or synthesize customized content
     preset = SKILL_TOPIC_PRESETS.get(skill_clean)
     if preset:
-        title = preset["title"]
+        base_title = preset["title"].replace(" Foundations", "").replace(" Architecture", "").replace(" Mastery", "")
+        title = f"{base_title} {suffix}"
         summary = preset["category_summary"]
         topics = preset["topics"]
         raw_outcomes = list(preset["default_outcomes"])
     else:
-        title = f"{skill_clean} Foundations" if band_clean in ["B1", "B2"] else (f"{skill_clean} Architecture" if band_clean in ["B3", "B4"] else f"{skill_clean} Mastery")
+        title = f"{skill_clean} {suffix}"
         summary = f"core {skill_clean.lower()} concepts and practices — design, implementation, operational telemetry, and performance optimization"
         topics = [
             {"title": f"{skill_clean} fundamentals", "description": f"Understanding foundational {skill_clean.lower()} concepts, architectural primitives, and lifecycle management."},
@@ -292,29 +342,9 @@ def generate_badge_data(
     # Location breadcrumb string: Badge name -> skill name -> capability name -> power name -> Band number
     location_str = f"{title} -> {skill_clean} -> {cap_clean} -> {power_clean} -> Band {band_clean}"
 
-    # Build topics description bullets for LLM prompts
-    topics_bullets = "\n".join([f"- {t['title']}: {t['description']}" for t in topics])
-    outcomes_semicolon = "; ".join(outcomes)
-
-    # Practice Project Prompt (matching user prompt & screenshot)
-    practice_prompt = (
-        f"I'm working toward the \"{title}\" badge ({skill_clean} / {cap_clean} / {power_clean}).\n"
-        f"I want to practice the following topics for this badge:\n"
-        f"{topics_bullets}\n\n"
-        f"By the end I need to be able to: {outcomes_semicolon}\n\n"
-        f"Design one small, hands-on practice project that lets me demonstrate all of the topics and outcomes above together. "
-        f"Include a clear task description, any starting constraints or inputs I should assume, and what a finished/successful result looks like."
-    )
-
-    # Learning Resources Prompt (matching user prompt & screenshot)
-    resources_prompt = (
-        f"I'm working toward the \"{title}\" badge ({skill_clean} / {cap_clean} / {power_clean}).\n"
-        f"I need free, current, high-quality learning resources (official docs, free courses, tutorials, videos) that help me learn:\n"
-        f"{topics_bullets}\n\n"
-        f"By the end I need to be able to: {outcomes_semicolon}\n\n"
-        f"Please suggest specific free resources for each topic above (prefer official docs, free interactive tutorials, and reputable free video/blog content over paid courses), "
-        f"and suggest one small hands-on project that lets me demonstrate all of the topics together."
-    )
+    # Rich prompts
+    practice_prompt = build_practice_project_prompt(title, skill_clean, cap_clean, power_clean, band_clean, topics, outcomes)
+    resources_prompt = build_learning_resources_prompt(title, skill_clean, cap_clean, power_clean, band_clean, topics, outcomes)
 
     badge_code = f"{band_clean}-{skill_clean[:3].upper()}-01"
     badge_id = f"badge_{band_clean.lower()}_{skill_clean.lower().replace(' ', '_').replace('-', '_')}"
@@ -323,7 +353,7 @@ def generate_badge_data(
         "id": badge_id,
         "code": badge_code,
         "title": title,
-        "description": f"Foundational badge covering {summary}.",
+        "description": f"{band_clean} badge specializing in {skill_clean} under the {cap_clean} capability ({power_clean} domain). {outcome_clean or ''}".strip(),
         "target_band": band_clean,
         "power": power_clean,
         "capability": cap_clean,
@@ -332,6 +362,8 @@ def generate_badge_data(
         "outcomes": outcomes,
         "earn_badge_status": "Pending Review",
         "earn_badge_text": "Great job submitting your project — your guardian is reviewing it now.",
+        "practice_prompt": practice_prompt,
+        "resources_prompt": resources_prompt,
         "practice_project": {
             "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
             "prompt": practice_prompt,

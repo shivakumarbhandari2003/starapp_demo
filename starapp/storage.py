@@ -6,6 +6,7 @@ SQLite is the primary structured database; exports/imports binary snapshots to I
 
 import json
 import datetime
+import time
 from typing import List, Dict, Any, Optional, Tuple
 from starapp.models import (
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
@@ -178,16 +179,19 @@ class DataStore:
         if row:
             roles = [r[0] for r in self.db.conn.execute("SELECT role_id FROM user_role_assignments WHERE user_id = ?", (row["id"],)).fetchall()]
             band_row = self.db.conn.execute("SELECT band_code, track_code FROM user_band_memberships WHERE user_id = ?", (row["id"],)).fetchone()
+            user_role = row["primary_role"] if "primary_role" in row.keys() else row["role"]
+            user_band = row["band"] if "band" in row.keys() and row["band"] else (band_row["band_code"] if band_row else "")
+            user_track = (band_row["track_code"] if band_row else "") or (row["learning_track"] if "learning_track" in row.keys() else "")
             user = User(
                 id=row["id"],
                 username=row["username"],
                 email=row["email"],
-                role=row["primary_role"],
+                role=user_role,
                 name=row["name"],
                 avatar=row["avatar"] or row["name"][:2].upper(),
-                roles=roles,
-                band=band_row["band_code"] if band_row else "",
-                learning_track=band_row["track_code"] if band_row else ""
+                roles=roles if roles else [user_role],
+                band=user_band,
+                learning_track=user_track
             )
             self.users[row["id"]] = user
             if user_id != row["id"]:
@@ -931,6 +935,9 @@ class DataStore:
     def get_badge_review_requests_for_user(self, user_id: str) -> List[Dict[str, Any]]:
         return self.db.get_badge_review_requests_for_user(user_id)
 
+    def get_badge_review_history(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.db.get_badge_review_history(badge_id=badge_id, reviewer_id=reviewer_id)
+
     def get_submitted_badges_for_approval(self, status_filter: str = "all") -> List[Dict[str, Any]]:
         return self.db.get_submitted_badges_for_approval(status_filter)
 
@@ -957,6 +964,12 @@ class DataStore:
                 if getattr(existing, "skill", "").strip().lower() == skill.lower():
                     return False, f"A badge for skill '{skill}' already exists for Band {band} ('{existing.title}'). Duplicate badges are not allowed in the same band.", None
 
+        practice_prompt = ""
+        if isinstance(badge_dict.get("practice_project"), dict):
+            practice_prompt = badge_dict["practice_project"].get("prompt", "")
+        if not practice_prompt:
+            practice_prompt = badge_dict.get("practice_prompt", "") or badge_dict.get("project_requirements", "")
+
         badge = Badge(
             id=b_id,
             code=code,
@@ -966,7 +979,7 @@ class DataStore:
             learning_outcomes=outcomes,
             learning_topics=topics,
             prerequisites=[],
-            project_requirements=badge_dict.get("practice_project", {}).get("prompt", ""),
+            project_requirements=practice_prompt,
             is_published=False,
             is_allocated=False,
             target_band=band,
@@ -990,10 +1003,40 @@ class DataStore:
         return True, "Badge saved successfully!", badge
 
     def get_saved_badges(self, band: Optional[str] = None) -> List[Dict[str, Any]]:
+        # Sync from SQLite if in-memory cache is empty
+        try:
+            if self.db and self.db.conn and len(self.badges) == 0:
+                rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
+                for r in rows:
+                    if r["id"] not in self.badges:
+                        self.badges[r["id"]] = Badge(
+                            id=r["id"],
+                            code=r["code"] or "",
+                            title=r["title"] or "",
+                            category=r["category"] or "",
+                            description=r["description"] or "",
+                            learning_outcomes=json.loads(r["learning_outcomes_json"] or "[]"),
+                            learning_topics=json.loads(r["learning_topics_json"] or "[]"),
+                            project_requirements=r["project_requirements"] or "",
+                            is_published=bool(r["is_published"]),
+                            is_allocated=bool(r["is_allocated"]),
+                            target_band=r["target_band"],
+                            power=r["power"],
+                            capability=r["capability"],
+                            skill=r["skill"],
+                            prompt_json=r["prompt_json"],
+                            workflow_status=r["workflow_status"] or "ready_for_review",
+                            creator_id=r["creator_id"] or "guardian_1",
+                            assigned_reviewer_id=r["assigned_reviewer_id"]
+                        )
+        except Exception:
+            pass
+
         results = []
         for b in self.badges.values():
-            if not getattr(b, "is_allocated", True) or getattr(b, "target_band", ""):
-                if band and getattr(b, "target_band", "") != band:
+            b_band = getattr(b, "target_band", None) or ""
+            if not getattr(b, "is_allocated", True) or b_band:
+                if band and b_band != band:
                     continue
                 # Parse structured prompt if available
                 badge_json = {}
@@ -1002,7 +1045,7 @@ class DataStore:
                         badge_json = json.loads(b.prompt_json)
                     except Exception:
                         pass
-                loc = badge_json.get("location") or f"{b.title} -> {getattr(b, 'skill', 'General')} -> {getattr(b, 'capability', 'Core')} -> {getattr(b, 'power', 'Tech')} -> Band {getattr(b, 'target_band', 'B1')}"
+                loc = badge_json.get("location") or f"{b.title} -> {getattr(b, 'skill', 'General')} -> {getattr(b, 'capability', 'Core')} -> {getattr(b, 'power', 'Tech')} -> Band {b_band or 'B1'}"
                 rev_user = self.get_user_by_id(getattr(b, "assigned_reviewer_id", "")) if getattr(b, "assigned_reviewer_id", None) else None
                 # Check assignment decision notes from DB if available
                 dec_notes = ""
@@ -1017,7 +1060,7 @@ class DataStore:
                     "id": b.id,
                     "code": b.code,
                     "title": b.title,
-                    "target_band": getattr(b, "target_band", "B1"),
+                    "target_band": b_band or "B1",
                     "power": getattr(b, "power", "Tech"),
                     "capability": getattr(b, "capability", "Data & Machine"),
                     "skill": getattr(b, "skill", "Hardware"),
@@ -1031,7 +1074,6 @@ class DataStore:
                     "decision_notes": dec_notes,
                     "badge_data": badge_json
                 })
-        return sorted(results, key=lambda x: x.get("created_at", ""), reverse=True)
         return sorted(results, key=lambda x: x.get("created_at", ""), reverse=True)
 
 # Global store instance

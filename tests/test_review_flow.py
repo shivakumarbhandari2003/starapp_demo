@@ -12,7 +12,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
         # 1. Cosmonaut submits deliverable with badge name, pdf file, code file, and github link
         self.app.current_user = store.users.get("cosmo_1")
         sub_payload = {
-            "badge_id": "badge_ing_104",
+            "badge_id": "b1_int_01",
             "pdf_name": "Astraea_Kafka_Architecture_Spec.pdf",
             "pdf_payload": "data/Chemistry%20Syllabus.pdf",
             "code_name": "custom_kafka_idempotent_consumer.py",
@@ -20,7 +20,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
             "github_url": "https://github.com/starapp-cosmonauts/custom-ingestion"
         }
         self.app.handle_event("submit_project_deliverable", sub_payload)
-        subs = store.get_submissions_for_cosmonaut("cosmo_1", "badge_ing_104")
+        subs = store.get_submissions_for_cosmonaut("cosmo_1", "b1_int_01")
         latest_sub = subs[-1]
         self.assertEqual(latest_sub.pdf_name, "Astraea_Kafka_Architecture_Spec.pdf")
         self.assertEqual(latest_sub.code_name, "custom_kafka_idempotent_consumer.py")
@@ -32,7 +32,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
         html_queue = self.app.render()
 
         self.assertIn("Aarav Sharma", html_queue)
-        self.assertIn("ING-104", html_queue)
+        self.assertIn("B1-INT-01", html_queue)
         self.assertIn("Uploaded Deliverables", html_queue)
         self.assertIn("Astraea_Kafka_Architecture_Spec.pdf", html_queue)
         self.assertIn("custom_kafka_idempotent_consumer.py", html_queue)

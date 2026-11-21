@@ -375,6 +375,56 @@ class StarAppController:
                     payload = {}
             if isinstance(payload, dict):
                 b_data = payload.get("badge_data", payload)
+                # Strictly prioritize active band already selected in workspace
+                payload_band = payload.get("band")
+                if self.create_badge_band:
+                    current_band = self.create_badge_band
+                elif payload_band:
+                    self.create_badge_band = payload_band
+                    current_band = payload_band
+                else:
+                    current_band = "B1"
+
+                if isinstance(b_data, dict):
+                    b_data["target_band"] = current_band
+                    skill = b_data.get("skill") or self.create_badge_skill
+                    cap = b_data.get("capability") or self.create_badge_capability
+                    power = b_data.get("power") or self.create_badge_power
+                    suffix = "Foundations" if current_band in ("B1", "B2") else ("Architecture" if current_band in ("B3", "B4") else "Mastery")
+                    title = b_data.get("title") or f"{skill} {suffix}"
+                    b_data["title"] = title
+                    outcomes = b_data.get("outcomes") or []
+                    topics = b_data.get("learning_topics") or []
+
+                    # Align band in location and description
+                    b_data["location"] = f"{title} -> {skill} -> {cap} -> {power} -> Band {current_band}"
+                    desc = b_data.get("description", "")
+                    if not desc or "Foundational badge" in desc or (desc.startswith("B1 badge") and current_band != "B1"):
+                        b_data["description"] = f"{current_band} badge specializing in {skill} under the {cap} capability ({power} domain). {self.create_badge_outcome_sentence or ''}".strip()
+                    elif desc.startswith("B1 badge") and current_band != "B1":
+                        b_data["description"] = f"{current_band} badge" + desc[8:]
+
+                    from starapp.badge_generator import build_practice_project_prompt, build_learning_resources_prompt
+                    p_prompt = b_data.get("practice_prompt", "")
+                    if not p_prompt or len(p_prompt.strip()) < 120 or "\n-" not in p_prompt:
+                        p_prompt = build_practice_project_prompt(title, skill, cap, power, current_band, topics, outcomes)
+                        b_data["practice_prompt"] = p_prompt
+                        b_data["practice_project"] = {
+                            "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
+                            "prompt": p_prompt,
+                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                        }
+
+                    r_prompt = b_data.get("resources_prompt", "")
+                    if not r_prompt or len(r_prompt.strip()) < 120 or "\n-" not in r_prompt:
+                        r_prompt = build_learning_resources_prompt(title, skill, cap, power, current_band, topics, outcomes)
+                        b_data["resources_prompt"] = r_prompt
+                        b_data["learning_resources"] = {
+                            "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                            "prompt": r_prompt,
+                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                        }
+
                 self.created_badge_data = b_data
                 if "power" in payload: self.create_badge_power = payload["power"]
                 if "capability" in payload: self.create_badge_capability = payload["capability"]
@@ -424,10 +474,27 @@ class StarAppController:
                         self.created_badge_data["outcomes"] = payload["outcomes"]
                     elif isinstance(payload["outcomes"], str):
                         self.created_badge_data["outcomes"] = [o.strip() for o in payload["outcomes"].split("\n") if o.strip()]
-                if "practice_prompt" in payload and "practice_project" in self.created_badge_data:
-                    self.created_badge_data["practice_project"]["prompt"] = payload["practice_prompt"]
-                if "resources_prompt" in payload and "learning_resources" in self.created_badge_data:
-                    self.created_badge_data["learning_resources"]["prompt"] = payload["resources_prompt"]
+                if "practice_prompt" in payload:
+                    if "practice_project" not in self.created_badge_data or not isinstance(self.created_badge_data["practice_project"], dict):
+                        self.created_badge_data["practice_project"] = {
+                            "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
+                            "prompt": payload["practice_prompt"],
+                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                        }
+                    else:
+                        self.created_badge_data["practice_project"]["prompt"] = payload["practice_prompt"]
+                    self.created_badge_data["practice_prompt"] = payload["practice_prompt"]
+
+                if "resources_prompt" in payload:
+                    if "learning_resources" not in self.created_badge_data or not isinstance(self.created_badge_data["learning_resources"], dict):
+                        self.created_badge_data["learning_resources"] = {
+                            "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                            "prompt": payload["resources_prompt"],
+                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                        }
+                    else:
+                        self.created_badge_data["learning_resources"]["prompt"] = payload["resources_prompt"]
+                    self.created_badge_data["resources_prompt"] = payload["resources_prompt"]
                 if "topics" in payload and isinstance(payload["topics"], list):
                     self.created_badge_data["learning_topics"] = payload["topics"]
                 t = self.created_badge_data.get("title", "")
@@ -436,23 +503,27 @@ class StarAppController:
                 self.set_flash("Badge edits applied successfully.", "info")
 
         elif action == "save_generated_badge":
+            active_band = self.create_badge_band or "B1"
             if not self.created_badge_data:
                 from starapp.badge_generator import generate_badge_data
                 self.created_badge_data = generate_badge_data(
-                    band=self.create_badge_band or "B1",
+                    band=active_band,
                     power=self.create_badge_power,
                     capability=self.create_badge_capability,
                     skill=self.create_badge_skill,
                     outcome_sentence=self.create_badge_outcome_sentence
                 )
+            if self.created_badge_data:
+                self.created_badge_data["target_band"] = active_band
             success, msg, b_obj = store.save_generated_badge(
                 self.created_badge_data,
                 creator_id=self.current_user.id if self.current_user else "guardian_1"
             )
             if success:
                 saved_title = self.created_badge_data.get('title')
-                loc = self.created_badge_data.get("location", f"{saved_title} -> {self.create_badge_skill} -> {self.create_badge_capability} -> {self.create_badge_power} -> Band {self.create_badge_band}")
-                self.created_badge_data = None  # Hide badge preview until another is created or viewed!
+                loc = self.created_badge_data.get("location", f"{saved_title} -> {self.create_badge_skill} -> {self.create_badge_capability} -> {self.create_badge_power} -> Band {active_band}")
+                self.created_badge_data = None  # Hide badge preview, stays on band workspace!
+                self.create_badge_band = active_band  # Strictly preserve active band workspace!
                 self.is_editing_badge = False
                 self.set_flash(f"Badge '{saved_title}' saved successfully! View it anytime under Saved Badges below.", "success")
             else:
@@ -476,6 +547,21 @@ class StarAppController:
                         skill=getattr(b, "skill", "Hardware"),
                         outcome_sentence=self.create_badge_outcome_sentence
                     )
+                if self.created_badge_data and isinstance(self.created_badge_data, dict):
+                    if not self.created_badge_data.get("practice_project"):
+                        p_prompt = self.created_badge_data.get("practice_prompt") or getattr(b, "project_requirements", "")
+                        if p_prompt:
+                            self.created_badge_data["practice_project"] = {
+                                "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
+                                "prompt": p_prompt,
+                                "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
+                            }
+                    if not self.created_badge_data.get("learning_resources") and self.created_badge_data.get("resources_prompt"):
+                        self.created_badge_data["learning_resources"] = {
+                            "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
+                            "prompt": self.created_badge_data.get("resources_prompt"),
+                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
+                        }
                 self.create_badge_band = getattr(b, "target_band", "B1")
                 self.create_badge_power = getattr(b, "power", "Tech")
                 self.create_badge_capability = getattr(b, "capability", "Data & Machine")
@@ -695,6 +781,10 @@ class StarAppController:
         elif action == "filter_badge_approval":
             self.badge_approval_filter = payload if isinstance(payload, str) else payload.get("filter", "all")
 
+        elif action == "filter_badge_approval_band":
+            band = payload if isinstance(payload, str) else payload.get("band", "all")
+            self.badge_approval_band_filter = band
+
         elif action == "search_badge_approval":
             self.badge_approval_search = payload if isinstance(payload, str) else payload.get("query", "")
 
@@ -740,12 +830,29 @@ class StarAppController:
                         "capability": payload.get("capability", getattr(badge, "capability", "Data & Machine")),
                         "skill": payload.get("skill", getattr(badge, "skill", "Hardware")),
                         "description": payload.get("description", badge.description),
+                        "learning_outcomes": payload.get("learning_outcomes", badge.learning_outcomes),
+                        "learning_topics": payload.get("learning_topics", badge.learning_topics),
                         "project_requirements": payload.get("project_requirements", badge.project_requirements),
                         "prompt_json": payload.get("prompt_json", getattr(badge, "prompt_json", "{}"))
                     }
-                    success, msg = store.update_badge_by_reviewer(b_id, self.current_user.id, updates)
+                    reviewer_id = self.current_user.id if self.current_user else "reviewer_1"
+                    reviewer_name = self.current_user.name if self.current_user else "Reviewer"
+                    success, msg = store.update_badge_by_reviewer(b_id, reviewer_id, updates)
                     if success:
-                        self.set_flash(f"Changes to '{badge.code}' saved successfully. Badge remains pending authorization.", "success")
+                        notes_val = payload.get("notes", "")
+                        if notes_val and store.db and store.db.conn:
+                            try:
+                                store.db.conn.execute("UPDATE badge_review_events SET notes = ? WHERE badge_id = ? AND actor_id = ? ORDER BY timestamp DESC LIMIT 1", (notes_val, b_id, reviewer_id))
+                            except Exception:
+                                pass
+                        if payload.get("and_approve", False):
+                            ok, app_msg = store.approve_badge(b_id, reviewer_id, reviewer_name, notes=notes_val)
+                            if ok:
+                                self.set_flash(f"Badge '{badge.code}: {updates['title']}' updated and authorized successfully!", "success")
+                            else:
+                                self.set_flash(f"Edits saved, but authorization failed: {app_msg}", "warning")
+                        else:
+                            self.set_flash(f"Changes to '{badge.code}' saved successfully. Badge remains pending authorization.", "success")
                         self.active_modal = None
                         self.modal_payload = {}
                     else:
@@ -970,6 +1077,7 @@ class StarAppController:
         elif action == "select_mapping_band":
             band = payload if isinstance(payload, str) else (payload.get("band", "B1") if isinstance(payload, dict) else "B1")
             self.mapping_selected_band = band
+            self.create_badge_band = band  # Synchronize workspace band
             hb = get_higher_bands(band)
             self.mapping_selected_reviewer_bands = [b for b in getattr(self, "mapping_selected_reviewer_bands", []) if b in hb]
             if not self.mapping_selected_reviewer_bands and hb:
@@ -978,6 +1086,10 @@ class StarAppController:
             self.mapping_selected_cosmonauts = []
             self.mapping_selected_reviewers = []
             self.mapping_show_final_stage = False
+            # Pick first approved badge for this band from SQLite if available
+            app_badges = [b for b in store.get_saved_badges(band) if b.get("workflow_status") == "approved"]
+            if app_badges:
+                self.mapping_selected_badge = app_badges[0].get("title") or app_badges[0].get("code")
 
         elif action == "toggle_mapping_role":
             role = payload if isinstance(payload, str) else (payload.get("role") if isinstance(payload, dict) else "")
@@ -1152,16 +1264,64 @@ class StarAppController:
             }
             store.save_band_mapping(mapping_record)
             self.editing_mapping_id = None
+
+            # Locate badge in SQLite and update badge_timelines & publishing status
+            matched_badge_id = None
+            if store.db and store.db.conn:
+                try:
+                    b_row = store.db.conn.execute(
+                        "SELECT id FROM badges WHERE (title = ? OR code = ? OR id = ?) AND target_band = ?",
+                        (self.mapping_selected_badge, self.mapping_selected_badge, self.mapping_selected_badge, self.mapping_selected_band)
+                    ).fetchone()
+                    if b_row:
+                        matched_badge_id = b_row["id"]
+                except Exception:
+                    pass
+            if not matched_badge_id:
+                for b in store.badges.values():
+                    if (b.title == self.mapping_selected_badge or b.code == self.mapping_selected_badge or b.id == self.mapping_selected_badge) and getattr(b, "target_band", "") == self.mapping_selected_band:
+                        matched_badge_id = b.id
+                        break
+
+            if matched_badge_id and store.db and store.db.conn:
+                try:
+                    with store.db.conn:
+                        store.db.conn.execute("UPDATE badges SET is_allocated = 1, is_published = 1 WHERE id = ?", (matched_badge_id,))
+                        r_dates = list(self.mapping_review_dates)
+                        start_d = r_dates[0] if r_dates else current_iso_timestamp()[:10]
+                        end_d = r_dates[-1] if r_dates else current_iso_timestamp()[:10]
+                        for c_id in self.mapping_selected_cosmonauts:
+                            store.db.conn.execute("""
+                                INSERT OR REPLACE INTO badge_timelines (
+                                    badge_id, cosmonaut_id, assignment_date, publication_date,
+                                    learning_start_date, learning_end_date, project_start_date,
+                                    project_end_date, submission_deadline, review_date, expected_award_date, status
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                            """, (
+                                matched_badge_id, c_id, current_iso_timestamp()[:10], current_iso_timestamp()[:10],
+                                start_d, end_d, start_d, end_d, end_d, end_d, end_d
+                            ))
+                except Exception:
+                    pass
+                b_obj = store.get_badge(matched_badge_id)
+                if b_obj:
+                    b_obj.is_allocated = True
+                    b_obj.is_published = True
+                    for c_id in self.mapping_selected_cosmonauts:
+                        if c_id not in b_obj.assigned_cosmonaut_ids:
+                            b_obj.assigned_cosmonaut_ids.append(c_id)
+                store.mark_dirty()
+
             store.add_activity(
                 event_type="badge_mapped",
                 actor_id=self.current_user.id if self.current_user else "guardian_1",
                 actor_name=self.current_user.name if self.current_user else "Guardian",
                 cosmonaut_id="",
-                badge_id="",
+                badge_id=matched_badge_id or "",
                 summary=f"{action_word} Badge '{self.mapping_selected_badge}' for Band {self.mapping_selected_band}",
-                details=f"Roles: {', '.join(self.mapping_selected_roles)} &bull; {len(self.mapping_selected_cosmonauts)} Cosmonaut(s) &bull; Reviewers: {len(self.mapping_selected_reviewers)} ({self.mapping_selected_reviewer_band}) &bull; Review Dates: {', '.join(self.mapping_review_dates)}"
+                details=f"Roles: {', '.join(self.mapping_selected_roles)} &bull; {len(self.mapping_selected_cosmonauts)} Cosmonaut(s) &bull; Reviewers: {len(self.mapping_selected_reviewers)} ({self.mapping_selected_reviewer_band}) &bull; Review Dates: {', '.join(self.mapping_review_dates)} &bull; Ready for publishing"
             )
-            self.set_flash(f"Successfully {action_word.lower()} '{self.mapping_selected_badge}' mapping for Band {self.mapping_selected_band} ({len(self.mapping_selected_cosmonauts)} cosmonaut(s), {len(self.mapping_selected_reviewers)} reviewer(s), review window: {', '.join(self.mapping_review_dates)}).", "success")
+            self.set_flash(f"Successfully {action_word.lower()} '{self.mapping_selected_badge}' mapping for Band {self.mapping_selected_band} ({len(self.mapping_selected_cosmonauts)} cosmonaut(s), {len(self.mapping_selected_reviewers)} reviewer(s), review window: {', '.join(self.mapping_review_dates)}). Saved to SQLite and ready for publishing!", "success")
 
         elif action == "delete_band_mapping":
             m_id = payload if isinstance(payload, str) else (payload.get("mapping_id") if isinstance(payload, dict) else "")
@@ -1171,25 +1331,24 @@ class StarAppController:
 
         elif action == "send_mapping_requests":
             import time
-            from starapp.mapping_data import MEMBERS_MAP
             if not self.mapping_selected_cosmonauts:
                 self.set_flash("Please select at least 1 cosmonaut before sending requests.", "warning")
             elif not self.mapping_selected_reviewers:
-                self.set_flash("Please select at least 1 reviewer/guardian before sending requests.", "warning")
+                self.set_flash("Please select at least 1 reviewer before sending requests.", "warning")
             else:
                 created_count = 0
                 for r_id in self.mapping_selected_reviewers:
-                    rev_info = MEMBERS_MAP.get(r_id, {})
+                    u = store.get_user_by_id(r_id)
                     req_id = f"req_{self.mapping_selected_band}_{r_id}"
                     new_req = {
                         "id": req_id,
                         "band": self.mapping_selected_band,
                         "badge": self.mapping_selected_badge,
                         "reviewer_id": r_id,
-                        "reviewer_name": rev_info.get("name", r_id),
-                        "reviewer_role": rev_info.get("role", "AI Engineer"),
-                        "reviewer_band": rev_info.get("band", self.mapping_selected_reviewer_band),
-                        "reviewer_avatar": rev_info.get("avatar", "REV"),
+                        "reviewer_name": u.name if u else r_id,
+                        "reviewer_role": u.role if u else "Reviewer",
+                        "reviewer_band": getattr(u, "band", self.mapping_selected_reviewer_band),
+                        "reviewer_avatar": getattr(u, "avatar", (u.name[:2].upper() if u else "REV")),
                         "cosmonaut_ids": list(self.mapping_selected_cosmonauts),
                         "review_dates": list(self.mapping_review_dates),
                         "status": "pending",
@@ -1198,19 +1357,19 @@ class StarAppController:
                     store.add_mapping_request(new_req)
                     created_count += 1
                 self.mapping_show_final_stage = True
-                self.set_flash(f"Sent review request for '{self.mapping_selected_badge}' to {created_count} guardian(s). Please review and accept their participation below.", "success")
+                self.set_flash(f"Sent review request for '{self.mapping_selected_badge}' to {created_count} reviewer(s). Please review and accept their participation below.", "success")
 
         elif action == "accept_mapping_request":
             req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
             if req_id:
                 store.update_mapping_request_status(req_id, "accepted")
-                self.set_flash("Guardian review request accepted. You can now execute equal distribution mapping.", "success")
+                self.set_flash("Review request accepted. Reviewer confirmed for milestone mapping.", "success")
 
         elif action == "reject_mapping_request":
             req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
             if req_id:
                 store.update_mapping_request_status(req_id, "rejected")
-                self.set_flash("Guardian review request declined / rejected.", "info")
+                self.set_flash("Review request declined / rejected.", "info")
 
         elif action == "delete_mapping_request":
             req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
@@ -1220,7 +1379,6 @@ class StarAppController:
 
         elif action == "execute_cosmonaut_mapping":
             import time
-            from starapp.mapping_data import MEMBERS_MAP
             requests = store.get_mapping_requests()
             accepted_reqs = [r for r in requests if r.get("band") == self.mapping_selected_band and r.get("status") == "accepted"]
             if not accepted_reqs:
@@ -1228,7 +1386,7 @@ class StarAppController:
                 accepted_reqs = [r for r in requests if r.get("status") == "accepted"]
             
             if not accepted_reqs:
-                self.set_flash("No accepted guardians available. Please accept at least one guardian request above first.", "warning")
+                self.set_flash("No accepted reviewers available. Please accept at least one reviewer request above first.", "warning")
             elif not self.mapping_selected_cosmonauts:
                 self.set_flash("No cosmonauts selected for mapping. Please select cosmonauts above.", "warning")
             else:
@@ -1264,18 +1422,64 @@ class StarAppController:
                     store.save_band_mapping(mapping_record)
                     created_mappings += 1
 
+                # Locate badge in SQLite and update badge_timelines & publishing status
+                matched_badge_id = None
+                if store.db and store.db.conn:
+                    try:
+                        b_row = store.db.conn.execute(
+                            "SELECT id FROM badges WHERE (title = ? OR code = ? OR id = ?) AND target_band = ?",
+                            (self.mapping_selected_badge, self.mapping_selected_badge, self.mapping_selected_badge, self.mapping_selected_band)
+                        ).fetchone()
+                        if b_row:
+                            matched_badge_id = b_row["id"]
+                    except Exception:
+                        pass
+                if not matched_badge_id:
+                    for b in store.badges.values():
+                        if (b.title == self.mapping_selected_badge or b.code == self.mapping_selected_badge or b.id == self.mapping_selected_badge) and getattr(b, "target_band", "") == self.mapping_selected_band:
+                            matched_badge_id = b.id
+                            break
+
+                if matched_badge_id and store.db and store.db.conn:
+                    try:
+                        with store.db.conn:
+                            store.db.conn.execute("UPDATE badges SET is_allocated = 1, is_published = 1 WHERE id = ?", (matched_badge_id,))
+                            r_dates = list(self.mapping_review_dates)
+                            start_d = r_dates[0] if r_dates else current_iso_timestamp()[:10]
+                            end_d = r_dates[-1] if r_dates else current_iso_timestamp()[:10]
+                            for c_id in self.mapping_selected_cosmonauts:
+                                store.db.conn.execute("""
+                                    INSERT OR REPLACE INTO badge_timelines (
+                                        badge_id, cosmonaut_id, assignment_date, publication_date,
+                                        learning_start_date, learning_end_date, project_start_date,
+                                        project_end_date, submission_deadline, review_date, expected_award_date, status
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                                """, (
+                                    matched_badge_id, c_id, current_iso_timestamp()[:10], current_iso_timestamp()[:10],
+                                    start_d, end_d, start_d, end_d, end_d, end_d, end_d
+                                ))
+                    except Exception:
+                        pass
+                    b_obj = store.get_badge(matched_badge_id)
+                    if b_obj:
+                        b_obj.is_allocated = True
+                        b_obj.is_published = True
+                        for c_id in self.mapping_selected_cosmonauts:
+                            if c_id not in b_obj.assigned_cosmonaut_ids:
+                                b_obj.assigned_cosmonaut_ids.append(c_id)
+
                 store.mark_dirty()
                 store.add_activity(
                     event_type="badge_mapped",
                     actor_id=self.current_user.id if self.current_user else "guardian_1",
                     actor_name=self.current_user.name if self.current_user else "Guardian",
                     cosmonaut_id="",
-                    badge_id="",
-                    summary=f"Equally Mapped {len(self.mapping_selected_cosmonauts)} Cosmonauts across {len(accepted_reqs)} Accepted Guardians for {self.mapping_selected_band}",
-                    details=f"Badge: {self.mapping_selected_badge} &bull; Review Dates: {', '.join(self.mapping_review_dates)}"
+                    badge_id=matched_badge_id or "",
+                    summary=f"Equally Mapped {len(self.mapping_selected_cosmonauts)} Cosmonauts across {len(accepted_reqs)} Accepted Reviewers for {self.mapping_selected_band}",
+                    details=f"Badge: {self.mapping_selected_badge} &bull; Review Dates: {', '.join(self.mapping_review_dates)} &bull; Published and saved to SQLite"
                 )
                 self.mapping_show_final_stage = True
-                store.mark_dirty()
+                self.set_flash(f"Successfully mapped '{self.mapping_selected_badge}' to {len(self.mapping_selected_cosmonauts)} cosmonaut(s) across {len(accepted_reqs)} accepted reviewer(s). Saved in SQLite and ready for publishing!", "success")
 
         elif action == "clear_band_mappings":
             band = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("band", self.mapping_selected_band) if isinstance(payload, dict) else self.mapping_selected_band)
@@ -3182,13 +3386,15 @@ if __name__ == "__main__":
             elif self.current_view == "g_badge_approval":
                 page_title = "Reviewer Badge Approval — StarApp"
                 all_badges = store.get_all_badges()
-                if self.create_badge_band:
-                    all_badges = [b for b in all_badges if getattr(b, "target_band", "") == self.create_badge_band]
+                band_filter = getattr(self, "badge_approval_band_filter", "all")
+                if band_filter and band_filter != "all":
+                    all_badges = [b for b in all_badges if getattr(b, "target_band", "") == band_filter]
                 main_content_html = render_guardian_badge_approval_queue(
                     badges=all_badges,
                     current_user=self.current_user,
                     status_filter=self.badge_approval_filter,
-                    search_query=self.badge_approval_search
+                    search_query=self.badge_approval_search,
+                    selected_band=band_filter
                 )
 
             elif self.current_view == "g_dashboard":
@@ -3257,7 +3463,8 @@ if __name__ == "__main__":
                     badge_search=getattr(self, "mapping_badge_search", ""),
                     all_mappings=store.get_band_mappings(),
                     all_requests=store.get_mapping_requests(),
-                    show_final_stage=getattr(self, "mapping_show_final_stage", False)
+                    show_final_stage=getattr(self, "mapping_show_final_stage", False),
+                    store=store
                 )
 
             elif self.current_view == "g_reviews":

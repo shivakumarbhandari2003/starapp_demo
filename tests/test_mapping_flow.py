@@ -45,15 +45,15 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertNotIn("g_mapping", StarAppController._COSMONAUT_VIEWS)
 
     def test_6_band_cards_render(self):
-        """Verify all 6 Band cards (B1 to B6) render with their titles and 6 members."""
+        """Verify Mapping loads into the 4-card matrix for the active band context."""
         self.ctrl.handle_event("nav_guardian", "g_mapping")
         html = self.ctrl.render()
-        for code in ["B1", "B2", "B3", "B4", "B5", "B6"]:
-            self.assertIn(f">{code}<", html)
-            self.assertIn(f"select_mapping_band', '{code}'", html)
+        self.assertIn("Role & Competency Mapping Matrix", html)
+        self.assertIn("Map Approved Badge", html)
+        self.assertIn("Band B1", html)
 
     def test_clicking_band_updates_heading_and_higher_reviewers(self):
-        """Clicking on B1, B3, B5 updates respective heading and adjusts higher-band reviewers."""
+        """Selecting band updates respective heading and adjusts higher-band reviewers."""
         self.ctrl.handle_event("nav_guardian", "g_mapping")
 
         # Test selecting B1
@@ -63,8 +63,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(get_higher_bands("B1"), ["B2", "B3", "B4", "B5", "B6"])
         self.assertIn(self.ctrl.mapping_selected_reviewer_band, ["B2", "B3", "B4", "B5", "B6"])
         html = self.ctrl.render()
-        self.assertIn("mapping-band-card active", html)
-        self.assertIn("Foundation Associate", html)
+        self.assertIn("Band B1", html)
 
         # Test selecting B3
         self.ctrl.handle_event("select_mapping_band", "B3")
@@ -72,13 +71,13 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(get_higher_bands("B3"), ["B4", "B5", "B6"])
         self.assertIn(self.ctrl.mapping_selected_reviewer_band, ["B4", "B5", "B6"])
         html = self.ctrl.render()
-        self.assertIn("Senior Specialist", html)
+        self.assertIn("Band B3", html)
 
     def test_create_badge_4_cards_matrix(self):
         """Verify Create Badge box has the 4 cards: Roles, Badge, Cosmonaut, Reviewers."""
         self.ctrl.handle_event("nav_guardian", "g_mapping")
         html = self.ctrl.render()
-        self.assertIn("Create Badge", html)
+        self.assertIn("Map Approved Badge", html)
         self.assertIn("1. Select Roles", html)
         self.assertIn("2. Select Badge", html)
         self.assertIn("3. Select Cosmonaut", html)
@@ -89,10 +88,9 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("AI Engineer", html)
         self.assertIn("Systems Engineer", html)
 
-        # Verify badges list includes AIOS, Network, Data Modelling
-        self.assertIn("AIOS", html)
-        self.assertIn("Network", html)
-        self.assertIn("Data Modelling", html)
+        # Verify badges list includes real approved B1 badge from SQLite
+        self.assertIn("B1-INT-01", html)
+        self.assertIn("Intelligent Apps Foundations", html)
 
         # Verify search inputs in dropdowns
         self.assertIn('id="mapping-badge-search-input"', html)

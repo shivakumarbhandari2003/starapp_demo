@@ -15,6 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 from starapp.app import StarAppController
+from starapp.models import ProjectSubmission
 from starapp.storage import store
 
 
@@ -126,10 +127,10 @@ class TestUIRemediation(unittest.TestCase):
         self.ctrl.handle_event("nav_cosmonaut", "c_roadmap")
         page_snapshot = self.captured_regions[-1]
 
-        self.ctrl.handle_event("open_badge_detail_modal", "badge_gov_101")
+        self.ctrl.handle_event("open_badge_detail_modal", "b1_int_01")
         open_snapshot = self.captured_regions[-1]
         self.assertEqual(open_snapshot["activeModal"], "badge_detail")
-        self.assertIn("badge_gov_101", open_snapshot["modalKey"])
+        self.assertIn("b1_int_01", open_snapshot["modalKey"])
         self.assertEqual(open_snapshot["routeKey"], page_snapshot["routeKey"])
         self.assertEqual(open_snapshot["mainContentHtml"], page_snapshot["mainContentHtml"])
 
@@ -141,6 +142,18 @@ class TestUIRemediation(unittest.TestCase):
 
     def test_review_detail_tab_switch_preserves_route_key_and_removes_iframe_translatez(self):
         """Switching g_review_detail viewer tabs keeps the same routeKey and clean PDF iframe wrapper."""
+        sub = ProjectSubmission(
+            id="sub_test_review",
+            badge_id="b1_int_01",
+            cosmonaut_id="cosmo_1",
+            attempt_number=1,
+            submission_type="pdf",
+            payload="data:application/pdf;base64,JVBERi0xLjQK",
+            file_name="test.pdf",
+            submitted_at="2026-11-20T10:00:00Z",
+            status="pending"
+        )
+        store.save_submission(sub)
         self._login("guardian")
         subs = store.get_all_submissions()
         self.assertTrue(subs)
@@ -164,14 +177,14 @@ class TestUIRemediation(unittest.TestCase):
         self.ctrl.handle_event(
             "save_bulk_materials",
             json.dumps({
-                "badge_id": "badge_ing_104",
+                "badge_id": "b1_int_01",
                 "topic": "Remediation Verification PDF",
                 "description": "Single-dispatch verification artifact.",
                 "pdfs": [{"name": "Remediation_Spec.pdf", "dataUrl": "data:application/pdf;base64,JVBERi0xLjQK"}],
                 "youtube_links": [],
             }),
         )
-        mats = store.get_materials("badge_ing_104")
+        mats = store.get_materials("b1_int_01")
         self.assertEqual(len(mats), 1)
         mat_id = mats[0].id
 

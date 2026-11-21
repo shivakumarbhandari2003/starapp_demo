@@ -441,6 +441,48 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.assertIn("Quantum Systems", html)
         self.assertIn("Qubits &amp; Gates", html)
 
+    def test_gemini_fallback_badge_learning_resources_and_practice_project_content(self):
+        """Verify Gemini fallback badge generates rich practice project and learning resource content."""
+        from backend.app.integrations.gemini.router import generate_fallback_badge
+        badge = generate_fallback_badge("B2", "Tech", "Data & Machine", "Hardware", "Can optimize memory bus and cache timings.")
+
+        # Check practice project
+        self.assertIn("practice_project", badge)
+        self.assertIn("prompt", badge["practice_project"])
+        self.assertTrue(len(badge["practice_project"]["prompt"]) > 100)
+        self.assertIn("Hardware", badge["practice_project"]["prompt"])
+        self.assertIn("practice_prompt", badge)
+
+        # Check learning resources
+        self.assertIn("learning_resources", badge)
+        self.assertIn("prompt", badge["learning_resources"])
+        self.assertTrue(len(badge["learning_resources"]["prompt"]) > 100)
+        self.assertIn("free, current, high-quality learning resources", badge["learning_resources"]["prompt"])
+        self.assertIn("resources_prompt", badge)
+
+        # Verify preview render in Guardian UI displays non-empty practice project and learning resources
+        self.ctrl.handle_event("select_create_badge_band", "B2")
+        self.ctrl.handle_event("on_badge_generated", {"badge_data": badge})
+        html = self.ctrl.render()
+
+        self.assertIn('id="practice-prompt-text"', html)
+        self.assertIn("Design one small, hands-on practice project", html)
+        self.assertIn('id="resources-prompt-text"', html)
+        self.assertIn("learning resources (official docs, free courses, tutorials, videos)", html)
+
+        # Save and verify inspect modal displays them
+        self.ctrl.handle_event("save_generated_badge", {})
+        saved_badge_id = self.ctrl.last_flash_message  # Just verify it saved
+        saved_badges = store.get_saved_badges("B2")
+        self.assertTrue(len(saved_badges) > 0)
+        sb = saved_badges[0]
+
+        # Inspect modal
+        self.ctrl.handle_event("open_badge_for_review", sb["id"])
+        modal_html = self.ctrl.render()
+        self.assertIn("Practice Project Prompt:", modal_html)
+        self.assertIn("Learning Resources Prompt:", modal_html)
+
 
 if __name__ == "__main__":
     unittest.main()

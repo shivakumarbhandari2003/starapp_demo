@@ -692,6 +692,22 @@ class DatabaseManager:
         c.execute("INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES ('cosmo_1', 'cosmonaut', ?)", (current_iso_timestamp(),))
         c.execute("INSERT OR REPLACE INTO user_band_memberships (user_id, band_code, track_code, assigned_at) VALUES ('cosmo_1', 'B1', 'SD', ?)", (current_iso_timestamp(),))
 
+        # Seed admin guardian account
+        c.execute(
+            """
+            INSERT OR REPLACE INTO users (
+                id, username, email, name, age, role, learning_track, track_code, band,
+                password, primary_role, avatar, status, is_demo, created_at
+            )
+            VALUES ('admin', 'admin', 'admin@starapp.io', 'Guardian Admin', 40, 'Guardian Administrator', 'Curriculum Authority', 'EXEC', 'B6',
+                    '12345678', 'guardian', 'GA', 'active', 1, ?)
+            """,
+            (current_iso_timestamp(),)
+        )
+        c.execute("INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES ('admin', 'guardian', ?)", (current_iso_timestamp(),))
+        c.execute("INSERT OR IGNORE INTO user_role_assignments (user_id, role_id, assigned_at) VALUES ('admin', 'badge_reviewer', ?)", (current_iso_timestamp(),))
+        c.execute("INSERT OR REPLACE INTO user_band_memberships (user_id, band_code, track_code, assigned_at) VALUES ('admin', 'B6', 'EXEC', ?)", (current_iso_timestamp(),))
+
         # 7. Seed 2 Initial B1 Badges for Band B1 Card & Review Workflow
         b1_badges_seed = [
             (
@@ -2398,6 +2414,61 @@ class DatabaseManager:
                     prompt_obj = {}
             d["prompt"] = prompt_obj
             d["location"] = prompt_obj.get("location") or f"{d['title']} -> {d.get('skill', 'General')} -> {d.get('capability', 'Core')} -> {d.get('power', 'Tech')} -> Band {d.get('target_band', 'B1')}"
+            results.append(d)
+        return results
+
+    def get_badge_review_history(
+        self,
+        badge_id: Optional[str] = None,
+        reviewer_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves complete audit trail of badge review events.
+        Includes badge details, taxonomy tree, actor metadata, timestamps, and notes.
+        """
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return []
+        
+        conditions = []
+        params = []
+        if badge_id:
+            conditions.append("e.badge_id = ?")
+            params.append(badge_id)
+        if reviewer_id:
+            conditions.append("(e.actor_id = ? OR b.assigned_reviewer_id = ?)")
+            params.extend([reviewer_id, reviewer_id])
+            
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        
+        query = f"""
+        SELECT
+            e.id, e.badge_id, e.actor_id, e.event_type, e.previous_status, e.new_status, e.notes, e.timestamp,
+            b.code AS badge_code, b.title AS badge_title, b.target_band, b.power, b.capability, b.skill,
+            u.name AS actor_name, m.band_code AS actor_band
+        FROM badge_review_events e
+        LEFT JOIN badges b ON e.badge_id = b.id
+        LEFT JOIN users u ON e.actor_id = u.id
+        LEFT JOIN user_band_memberships m ON u.id = m.user_id
+        {where_clause}
+        ORDER BY e.timestamp DESC
+        """
+        rows = self.conn.execute(query, tuple(params)).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            b_title = d.get("badge_title") or "Milestone Badge"
+            skill = d.get("skill") or "Engineering"
+            cap = d.get("capability") or "Systems"
+            power = d.get("power") or "Tech"
+            band = d.get("target_band") or "B1"
+            d["taxonomy_tree"] = f"{b_title} → {skill} → {cap} → {power} → Band {band}"
+            ts = d.get("timestamp") or ""
+            if "T" in ts:
+                date_part, time_part = ts.split("T", 1)
+                time_clean = time_part[:5]
+                d["formatted_timestamp"] = f"{date_part} {time_clean}"
+            else:
+                d["formatted_timestamp"] = ts[:16]
             results.append(d)
         return results
 

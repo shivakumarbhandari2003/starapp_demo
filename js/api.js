@@ -19,8 +19,12 @@
 
   async function request(endpoint, options = {}) {
     const url = `${BASE_URL}${endpoint}`;
+    const sid = (window.StarAppBridge && typeof window.StarAppBridge.getWindowSessionId === "function")
+      ? window.StarAppBridge.getWindowSessionId()
+      : sessionStorage.getItem("starapp_window_session_id");
     const headers = {
       "Content-Type": "application/json",
+      ...(sid ? { "X-Session-Id": sid } : {}),
       ...(options.headers || {})
     };
 
