@@ -36,7 +36,7 @@ StarApp is a fully functional, enterprise training, curriculum engineering, and 
 StarApp is built as a **clean, modular Full-Stack Monolith**:
 - **Backend Framework**: Python 3.12 / 3.13 + **FastAPI** with versioned `/api/v1` REST endpoints.
 - **Database Engine**: Authoritative persistent disk **SQLite3** database (`data/starapp.db`) configured with `PRAGMA foreign_keys = ON;`, `PRAGMA journal_mode = WAL;`, and `PRAGMA busy_timeout = 5000;`.
-- **Security & RBAC**: Server-side Role-Based Access Control enforcing non-negotiable reviewer rules ($\text{Reviewer\_Band} > \text{Badge\_Band}$), bcrypt password hashing, and HttpOnly SameSite session cookies.
+- **Security & RBAC**: Server-side Role-Based Access Control enforcing non-negotiable reviewer rules ($\texttt{Reviewer\_Band} > \texttt{Badge\_Band}$), bcrypt password hashing, and HttpOnly SameSite session cookies.
 - **Frontend Layer**: Native HTML5, Liquid-Glass CSS design tokens, and a typed reusable API client (`js/api.js`).
 
 ```mermaid
