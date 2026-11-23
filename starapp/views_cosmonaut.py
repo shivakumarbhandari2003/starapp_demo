@@ -3,6 +3,7 @@ STARAPP COSMONAUT PORTAL VIEWS
 Implements the 10 personalized learning workspaces for learners.
 """
 
+import json
 from typing import List, Dict, Any, Optional
 from starapp.models import (
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
@@ -67,33 +68,58 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         try:
             reqs = store.get_badge_review_requests_for_user(current_user.id)
             pending_requests_count = len([r for r in reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+            if hasattr(store, "get_mapping_requests"):
+                pending_requests_count += len([m for m in store.get_mapping_requests() if m.get("reviewer_id") == current_user.id and m.get("status") == "pending"])
         except Exception:
             pending_requests_count = 0
 
     nav_items = [
         {"id": "c_dashboard", "label": "My Dashboard", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>', "badge": 0},
         {"id": "c_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
-        {"id": "c_submission", "label": "Project Submission", "icon": '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>', "badge": 0},
+        {"id": "c_submission", "label": "Badges", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>', "badge": 0},
         {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
         {"id": "c_materials", "label": "Study Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
         {"id": "c_profile", "label": "Cosmonaut Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
         {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0}
     ]
 
-    # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Review Requests view
+    # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Review Requests & Cadet Assessments view
     u_band = getattr(current_user, "band", "")
     is_eligible = (u_band in ("B2", "B3", "B4", "B5", "B6")) or current_user.has_role("badge_reviewer") or (pending_requests_count > 0)
     if is_eligible:
+        pending_asms_count = 0
+        try:
+            cadet_subs = [
+                s for s in store.get_all_submissions()
+                if (store.get_timeline(s.badge_id, s.cosmonaut_id) and getattr(store.get_timeline(s.badge_id, s.cosmonaut_id), "reviewer_id", "") == current_user.id)
+                or any(current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []) for m in store.get_band_mappings())
+            ]
+            pending_asms_count = len([s for s in cadet_subs if s.status in ("pending", "submitted")])
+        except Exception:
+            pending_asms_count = 0
+
         nav_items.insert(2, {
             "id": "c_requests",
             "label": "Review Requests",
             "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
             "badge": pending_requests_count
         })
+        nav_items.insert(3, {
+            "id": "c_badge_reviews",
+            "label": "Badge Reviews",
+            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+            "badge": 0
+        })
+        nav_items.insert(4, {
+            "id": "c_assessments",
+            "label": "Cadet Assessments",
+            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+            "badge": pending_asms_count
+        })
 
     links_html = []
     for item in nav_items:
-        is_active = item["id"] == active_view
+        is_active = (item["id"] == active_view) or (item["id"] == "c_assessments" and active_view == "c_assessment_detail")
         cls = "nav-link active" if is_active else "nav-link"
         badge_html = f'<span class="nav-badge" data-badge-for="{item["id"]}">{item["badge"]}</span>' if item["badge"] > 0 else ""
         links_html.append(f"""
@@ -1406,75 +1432,934 @@ def render_badge_detail_modal_content(
     """
 
 # ==============================================================================
-# 6.5 PROJECT SUBMISSION WORKSPACE
+# 6.5 BADGES & PROJECT SUBMISSION WORKSPACE
 # ==============================================================================
+
+def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Optional[User] = None) -> str:
+    import json
+    from starapp.badge_generator import (
+        generate_badge_data, build_practice_project_prompt, build_learning_resources_prompt
+    )
+
+    badge_title = getattr(badge, "title", "Milestone Badge")
+    badge_code = getattr(badge, "code", "")
+    badge_desc = getattr(badge, "description", "")
+    selected_band = getattr(badge, "target_band", "B1")
+    active_power = getattr(badge, "power", "Tech") or "Tech"
+    active_cap = getattr(badge, "capability", "Data & Machine") or "Data & Machine"
+    active_skill = getattr(badge, "skill", "Curation") or "Curation"
+
+    prompt_str = getattr(badge, "prompt_json", "{}")
+    p_data = {}
+    if prompt_str:
+        try:
+            p_data = json.loads(prompt_str) if isinstance(prompt_str, str) else prompt_str
+            if not isinstance(p_data, dict):
+                p_data = {}
+        except Exception:
+            p_data = {}
+
+    # Extract outcomes
+    outcomes = p_data.get("outcomes") or p_data.get("expected_outcomes") or getattr(badge, "learning_outcomes", [])
+    if not outcomes:
+        synth = generate_badge_data(selected_band, active_power, active_cap, active_skill, "")
+        outcomes = synth.get("outcomes", [])
+
+    # Extract practice prompt
+    practice_prompt = ""
+    if isinstance(p_data.get("practice_project"), dict):
+        practice_prompt = p_data["practice_project"].get("prompt", "")
+    if not practice_prompt:
+        practice_prompt = p_data.get("practice_prompt", "")
+    if not practice_prompt or len(practice_prompt.strip()) < 80:
+        practice_prompt = getattr(badge, "project_requirements", "")
+    if not practice_prompt or len(practice_prompt.strip()) < 80:
+        practice_prompt = build_practice_project_prompt(
+            badge_title, active_skill, active_cap, active_power, selected_band, [], outcomes
+        )
+
+    # Extract learning topics (expect 6)
+    learning_topics = p_data.get("learning_topics", [])
+    if not learning_topics or len(learning_topics) < 6:
+        synth = generate_badge_data(selected_band, active_power, active_cap, active_skill, "")
+        learning_topics = synth.get("learning_topics", [])
+
+    total_topics = len(learning_topics) if learning_topics else 6
+    completed_topics_count = sum(1 for t in learning_topics if t.get("completed", False) or t.get("status", "").lower() == "completed")
+    progress_pct = int(round((completed_topics_count / total_topics) * 100)) if total_topics > 0 else 0
+
+    # Extract learning resources prompt
+    resources_prompt = ""
+    if isinstance(p_data.get("learning_resources"), dict):
+        resources_prompt = p_data["learning_resources"].get("prompt", "")
+    if not resources_prompt:
+        resources_prompt = p_data.get("resources_prompt", "")
+    if not resources_prompt or len(resources_prompt.strip()) < 80:
+        resources_prompt = build_learning_resources_prompt(
+            badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
+        )
+
+    # Section 1: Outcomes HTML
+    outcomes_list_items = "".join([
+        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#10B981; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+            <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
+        </div>'''
+        for o in outcomes
+    ])
+    outcomes_html = f"""
+    <div style="display:flex; flex-direction:column; gap:2px;">
+        {outcomes_list_items}
+    </div>
+    """
+
+    # Section 4: Topics HTML
+    topics_card_items = []
+    for idx, t in enumerate(learning_topics):
+        t_title = t.get("title", "")
+        t_desc = t.get("description", "")
+        is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
+
+        border_color = "#10B981" if is_comp else "rgba(6,182,212,0.3)"
+        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);"
+        status_text = "Completed" if is_comp else "In Progress"
+        status_bg = "rgba(16,185,129,0.15)" if is_comp else "rgba(157,183,213,0.18)"
+        status_color = "#10B981" if is_comp else "var(--frost-navy-50)"
+        status_border = "rgba(16,185,129,0.3)" if is_comp else "rgba(157,183,213,0.3)"
+
+        btn_class = "is-completed" if is_comp else ""
+        btn_bg = "#10B981" if is_comp else "rgba(255,255,255,0.9)"
+        btn_color = "white" if is_comp else "var(--frost-navy-75)"
+        btn_border = "#059669" if is_comp else "var(--icy-steel)"
+        btn_shadow = "0 2px 8px rgba(16,185,129,0.3)" if is_comp else "none"
+        btn_content = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Completed' if is_comp else "Mark Complete"
+
+        topics_card_items.append(f"""
+        <div id="topic-card-{idx}" class="topic-row-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
+                </div>
+                <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
+                <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
+            </div>
+            <div style="flex-shrink:0;">
+                <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
+                    onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
+                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:12px; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                    {btn_content}
+                </button>
+            </div>
+        </div>
+        """)
+    topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
+
+    return f"""
+    <div class="liquid-glass-card badge-card-item expanded-badge-card" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12); transition:all 0.25s ease;">
+        <!-- LOCATION BAR & ACTIONS -->
+        <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+            <div>
+                <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                    Badge Location
+                </span>
+                <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
+                    Toggle All
+                </button>
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
+                    <span>Collapse Badge</span>
+                    <span>▲</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
+        <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
+            <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                    <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
+                    {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                    <span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        Allocated Project
+                    </span>
+                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 0 4px;">{escape(badge_title)}</h2>
+                </div>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
+            </div>
+        </div>
+
+        <!-- SECTION 1: OUTCOMES -->
+        <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
+                </div>
+                <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
+                {outcomes_html}
+            </div>
+        </div>
+
+        <!-- SECTION 2: EARN THE BADGE -->
+        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                </span>
+                <div>
+                    <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                    <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Great job submitting your project — your guardian is reviewing it now.</div>
+                </div>
+            </div>
+            <div>
+                <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    Allocated Milestone
+                </span>
+            </div>
+        </div>
+
+        <!-- SECTION 3: PRACTICE PROJECT -->
+        <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('practice')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
+                </div>
+                <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
+                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
+                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                    <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: LEARNING TOPICS -->
+        <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
+                    <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
+                        {completed_topics_count}/{total_topics} Completed
+                    </span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
+                            <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
+                        </div>
+                        <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
+                    </div>
+                </div>
+                <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
+                {topics_html}
+            </div>
+        </div>
+
+        <!-- SECTION 5: LEARNING RESOURCES -->
+        <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
+                </div>
+                <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
+                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
+                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                    <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 6: RELATED SKILLS, CAPABILITIES & POWERS -->
+        <div id="badge-section-related" class="liquid-glass-card" style="margin-bottom:20px; border-radius:var(--radius-lg); border:1.5px solid #8B5CF6; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('related')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+                </div>
+                <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                    </div>
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
+                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    </div>
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EXPANDED CARD FOOTER ACTIONS -->
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:20px; flex-wrap:wrap;">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                <span>Collapse Badge Details</span>
+                <span>▲</span>
+            </button>
+            <button type="button" class="btn-metal" onclick="const sel=document.getElementById('submission-badge-id'); if(sel){{ sel.value='{badge.id}'; sel.dispatchEvent(new Event('change')); }} const formSec=document.getElementById('submission-portal-section'); if(formSec){{ formSec.scrollIntoView({{behavior:'smooth'}}); }}" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Submit Deliverables for this Badge &rarr;
+            </button>
+        </div>
+    </div>
+    """
 
 def render_cosmonaut_submission_workspace(
     badges: List[Badge],
     selected_badge_id: str,
-    submissions: List[ProjectSubmission]
+    submissions: List[ProjectSubmission],
+    current_user: Optional[User] = None,
+    store: Any = None,
+    expanded_badge_id: Optional[str] = None
 ) -> str:
+    import json
+    from starapp.badge_generator import generate_badge_data
+
     badge_options = []
     for b in badges:
         sel = " selected" if b.id == selected_badge_id else ""
         badge_options.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
+
+    # Determine retake state and attempt number
+    target_subs = [s for s in submissions if s.badge_id == selected_badge_id]
+    latest_sub = target_subs[-1] if target_subs else None
+    is_retake = bool(latest_sub and latest_sub.status in ("retake_required", "resubmission_requested"))
+    next_attempt = (latest_sub.attempt_number + 1) if latest_sub else 1
+
+    retake_banner = ""
+    if is_retake:
+        latest_asm = store.get_assessment_for_submission(latest_sub.id) if store else None
+        feedback_txt = latest_asm.overall_feedback if latest_asm else "Revisions required."
+        score_txt = f"{latest_asm.total_marks:.1f}/50 ({latest_asm.percentage:.1f}%)" if latest_asm else "Score below threshold"
+        retake_banner = f"""
+        <div style="background:linear-gradient(135deg, rgba(254,242,242,0.95) 0%, rgba(254,226,226,0.9) 100%); border:1.5px solid #EF4444; border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:20px; box-shadow:0 4px 14px rgba(239,68,68,0.12);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="background:#EF4444; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">RETAKE REQUIRED</span>
+                    <span style="font-weight:800; font-size:13.5px; color:#991B1B;">Attempt #{latest_sub.attempt_number} Did Not Meet Passing Threshold</span>
+                </div>
+                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626;">Previous Score: {score_txt}</span>
+            </div>
+            <p style="font-size:12.5px; color:#7F1D1D; margin:0 0 8px 0; line-height:1.4;">
+                <strong>Guardian Feedback:</strong> {escape(feedback_txt)}
+            </p>
+            <div style="font-size:11.5px; color:#B91C1C;">
+                Please review the feedback above, improve your technical deliverable, and upload revised materials below for <strong>Attempt #{next_attempt}</strong>. Your Attempt #{latest_sub.attempt_number} history is preserved in your permanent record.
+            </div>
+        </div>
+        """
+
+    # Look up timeline for selected badge
+    selected_tl = store.get_timeline(selected_badge_id, current_user.id) if (store and current_user) else None
+    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else ""
+    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
+    rev_name = rev_user.name if rev_user else ""
+    rev_band = getattr(rev_user, "band", "") if rev_user else ""
+    r_window = []
+    if selected_tl and getattr(selected_tl, "review_window_json", None):
+        try:
+            r_window = json.loads(selected_tl.review_window_json)
+        except Exception:
+            r_window = []
+    window_str = " &rarr; ".join(r_window) if r_window else ""
+
+    mapping_info_banner = ""
+    if rev_name or window_str:
+        mapping_info_banner = f"""
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 14px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); margin-bottom:20px;">
+            <div style="font-size:12px; color:var(--frost-navy);">
+                <strong>Assigned Peer Reviewer:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)} {f'(Band {escape(rev_band)})' if rev_band else ''}</span>
+            </div>
+            {f'<div style=\"font-size:12px; color:var(--frost-navy-75);\"><strong>Review Window:</strong> <span style=\"font-family:var(--font-family-mono); font-weight:700;\">{escape(window_str)}</span></div>' if window_str else ''}
+        </div>
+        """
+
+    assigned_proj = store.get_project_prompt_for_cadet(selected_badge_id, current_user.id) if (store and current_user) else None
+    assigned_project_banner = ""
+    if assigned_proj:
+        deliv = getattr(assigned_proj, "deliverables", {}) or {}
+        code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
+        pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
+        gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
+        req_items = getattr(assigned_proj, "requirements", []) or []
+        req_items_html = "".join([f'<li style="margin-bottom:3px;">{escape(str(r))}</li>' for r in req_items[:4]]) if req_items else '<li>Follow standard rubric requirements.</li>'
+        rev_author = getattr(assigned_proj, "reviewer_id", "")
+        author_u = store.get_user_by_id(rev_author) if (store and rev_author) else None
+        author_name = author_u.name if author_u else "Assigned Reviewer"
+
+        assigned_project_banner = f"""
+        <div class="liquid-glass-card" style="padding:16px 20px; border:2px solid var(--deep-frozen-midnight); border-radius:var(--radius-sm); margin-bottom:20px; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%); box-shadow:0 4px 16px rgba(23,52,92,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
+                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Reviewer: {escape(author_name)}</span>
+                </div>
+                <span class="status-pill status-approved" style="font-size:10.5px; font-weight:800;">✓ Ready for Submission</span>
+            </div>
+            <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
+            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 10px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
+            <ul style="margin:0 0 12px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
+                {req_items_html}
+            </ul>
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Required Deliverable Files:</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px;">
+                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:11px; font-weight:800; color:#059669;">💻 Source Code (.py)</div>
+                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(code_info)}</div>
+                </div>
+                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:11px; font-weight:800; color:#DC2626;">📄 Architecture PDF</div>
+                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(pdf_info)}</div>
+                </div>
+                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                    <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">🔗 GitHub Repository</div>
+                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(gh_info)}</div>
+                </div>
+            </div>
+        </div>
+        """
+
+    submit_btn_label = f"Submit Deliverables for Attempt #{next_attempt} &rarr;" if is_retake else "Submit Deliverables for Assessment &rarr;"
+
+    # 1. Build Allocated Badges Cards Grid (3x3 layout)
+    if badges:
+        badge_cards = []
+        for b in badges:
+            b_code = escape(getattr(b, "code", ""))
+            b_title = escape(getattr(b, "title", "Milestone Badge"))
+            b_band = escape(getattr(b, "target_band", "B1"))
+            b_power = escape(getattr(b, "power", "Tech") or "Tech")
+            b_cap = escape(getattr(b, "capability", "Data & Machine") or "Data & Machine")
+            b_skill = escape(getattr(b, "skill", "Curation") or "Curation")
+            b_desc = escape(getattr(b, "description", "") or "")
+
+            is_expanded = (b.id == expanded_badge_id)
+
+            if is_expanded:
+                # Render full 6-accordion content inside the card (spanning the grid, NOT as a popup)
+                badge_cards.append(render_cosmonaut_badge_card_expanded_content(b, current_user))
+            else:
+                # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
+                badge_cards.append(f"""
+                <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06); display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 28px rgba(7,22,41,0.12)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 6px 24px rgba(7,22,41,0.06)';">
+                    <div>
+                        <!-- Meta Row -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
+                                {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
+                            </div>
+                            <span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                Allocated Project
+                            </span>
+                        </div>
+
+                        <!-- Hierarchy Breadcrumb -->
+                        <div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-bottom:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            <span style="color:#7C3AED;">{b_power}</span>
+                            <span>&rsaquo;</span>
+                            <span style="color:#2563EB;">{b_cap}</span>
+                            <span>&rsaquo;</span>
+                            <span style="color:#0891B2;">{b_skill}</span>
+                        </div>
+
+                        <!-- Headline Title -->
+                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
+                            {b_title}
+                        </h3>
+                    </div>
+
+                    <!-- Expansion Prompt Hint -->
+                    <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px;">
+                            <span>Click to view curriculum &amp; practice</span>
+                            <span style="font-size:12px;">&darr;</span>
+                        </span>
+                        <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:2px 8px; border-radius:10px;">Expand</span>
+                    </div>
+                </div>
+                """)
+
+        badges_grid_html = f"""
+        <div class="badges-grid-3x3" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:20px; margin-bottom:32px;">
+            {"".join(badge_cards)}
+        </div>
+        """
+    else:
+        badges_grid_html = """
+        <div class="liquid-glass-card" style="padding:32px 24px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel-30); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.7) 100%); margin-bottom:32px;">
+            <div style="width:48px; height:48px; border-radius:50%; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; margin:0 auto 12px auto;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+                </svg>
+            </div>
+            <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">No Badges Allocated Yet</h3>
+            <p style="font-size:13px; color:var(--frost-navy-75); max-width:540px; margin:0 auto 16px auto; line-height:1.5;">
+                Your Guardian has not yet allocated curriculum badges to your profile. Once mapped and published, your assigned badges with learning outcomes and deliverables will appear here.
+            </p>
+        </div>
+        """
 
     return f"""
     <div>
         <div style="display:flex; align-items:center; margin-bottom:16px;">
             {render_back_button()}
         </div>
-        <div style="margin-bottom:24px; text-align:center;">
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Project Deliverable Submission Portal</h2>
-            <p style="font-size:13.5px; color:var(--frost-navy-50);">Provide your technical deliverables, executable scripts, and repository links for formal review.</p>
+
+        <!-- PAGE HEADER -->
+        <div style="margin-bottom:28px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <h2 style="font-size:1.6rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0; letter-spacing:-0.3px;">Allocated Badges &amp; Milestone Projects</h2>
+                    <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
+                        Review your allocated curriculum badges, learning outcomes, and technical milestones. Click any badge to preview the complete syllabus and practice project.
+                    </p>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">Allocated Badges:</span>
+                    <span style="font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 12px; border-radius:12px;">{len(badges)}</span>
+                </div>
+            </div>
         </div>
 
-        <div style="display:flex; justify-content:center; width:100%; margin-bottom:32px;">
-            <div class="liquid-submission-portal" style="width:100%; max-width:680px; padding:32px 36px;">
-                <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
-                    <!-- 1. Target Badge Milestone Dropdown -->
-                    <div class="liquid-form-group" style="margin-bottom:22px;">
-                        <label class="liquid-form-label" for="submission-badge-id">Target Badge Milestone</label>
-                        <div class="liquid-select-wrapper">
-                            <select id="submission-badge-id" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_submission_target_badge', this.value)">
-                                {"".join(badge_options)}
-                            </select>
-                        </div>
-                        <span class="liquid-form-hint">Choose the milestone badge you are fulfilling with this project.</span>
-                    </div>
+        <!-- 1. BADGES CARDS GRID -->
+        {badges_grid_html}
 
-                    <!-- 2. PDF Document Deliverable Field -->
-                    <div class="liquid-form-group" style="margin-bottom:22px;">
-                        <label class="liquid-form-label" for="submission-pdf-file">PDF Document Deliverable</label>
-                        <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
-                        <span class="liquid-form-hint">Upload formal design charter, architecture report, or documentation (.pdf)</span>
-                    </div>
-
-                    <!-- 3. Code / Script File Deliverable Field -->
-                    <div class="liquid-form-group" style="margin-bottom:22px;">
-                        <label class="liquid-form-label" for="submission-code-file">Code / Script File Deliverable</label>
-                        <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
-                        <span class="liquid-form-hint">Upload executable script, queries, algorithm package, or zip archive (.py, .sql, .zip)</span>
-                    </div>
-
-                    <!-- 4. GitHub Repository Link Field -->
-                    <div class="liquid-form-group" style="margin-bottom:26px;">
-                        <label class="liquid-form-label" for="submission-github-url">GitHub Repository Link</label>
-                        <input type="url" id="submission-github-url" class="liquid-glass-control" placeholder="https://github.com/username/project-repo">
-                        <span class="liquid-form-hint">Direct link to version-controlled repository or pull request</span>
-                    </div>
-
-                    <!-- 5. Submit Button -->
-                    <div style="display:flex; justify-content:flex-end; margin-top:28px;">
-                        <div class="btn-metal-wrapper" style="width:100%;">
-                            <div class="btn-metal-inner"></div>
-                            <button type="submit" class="btn-metal" style="width:100%; height:46px; font-size:14px; font-weight:700; letter-spacing:0.3px;">
-                                Submit Deliverables for Guardian Assessment →
-                            </button>
-                        </div>
-                    </div>
-                </form>
+        <!-- 2. DELIVERABLE SUBMISSION PORTAL SECTION -->
+        <div id="submission-portal-section" style="padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:24px;">
+            <div style="margin-bottom:20px; text-align:center;">
+                <h3 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Project Deliverable Submission Portal</h3>
+                <p style="font-size:13px; color:var(--frost-navy-50); margin:0;">Provide your technical deliverables, executable scripts, and repository links for formal review.</p>
             </div>
+
+            <div style="display:flex; justify-content:center; width:100%; margin-bottom:32px;">
+                <div class="liquid-submission-portal" style="width:100%; max-width:680px; padding:32px 36px;">
+                    {retake_banner}
+                    {mapping_info_banner}
+                    {assigned_project_banner}
+                    <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
+                        <!-- 1. Target Badge Milestone Dropdown -->
+                        <div class="liquid-form-group" style="margin-bottom:22px;">
+                            <label class="liquid-form-label" for="submission-badge-id">Target Badge Milestone</label>
+                            <div class="liquid-select-wrapper">
+                                <select id="submission-badge-id" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_submission_target_badge', this.value)">
+                                    {"".join(badge_options)}
+                                </select>
+                            </div>
+                            <span class="liquid-form-hint">Choose the milestone badge you are fulfilling with this project.</span>
+                        </div>
+
+                        <!-- 2. PDF Document Deliverable Field -->
+                        <div class="liquid-form-group" style="margin-bottom:22px;">
+                            <label class="liquid-form-label" for="submission-pdf-file">PDF Document Deliverable</label>
+                            <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
+                            <span class="liquid-form-hint">Upload formal design charter, architecture report, or documentation (.pdf)</span>
+                        </div>
+
+                        <!-- 3. Code / Script File Deliverable Field -->
+                        <div class="liquid-form-group" style="margin-bottom:22px;">
+                            <label class="liquid-form-label" for="submission-code-file">Code / Script File Deliverable</label>
+                            <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
+                            <span class="liquid-form-hint">Upload executable script, queries, algorithm package, or zip archive (.py, .sql, .zip)</span>
+                        </div>
+
+                        <!-- 4. GitHub Repository Link Field -->
+                        <div class="liquid-form-group" style="margin-bottom:26px;">
+                            <label class="liquid-form-label" for="submission-github-url">GitHub Repository Link</label>
+                            <input type="url" id="submission-github-url" class="liquid-glass-control" placeholder="https://github.com/username/project-repo">
+                            <span class="liquid-form-hint">Direct link to version-controlled repository or pull request</span>
+                        </div>
+
+                        <!-- 5. Submit Button -->
+                        <div style="display:flex; justify-content:flex-end; margin-top:28px;">
+                            <div class="btn-metal-wrapper" style="width:100%;">
+                                <div class="btn-metal-inner"></div>
+                                <button type="submit" class="btn-metal" style="width:100%; height:46px; font-size:14px; font-weight:700; letter-spacing:0.3px;">
+                                    {submit_btn_label}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+
+
+# ==============================================================================
+# 6.5.1 COSMONAUT BADGE PREVIEW MODAL (MATCHING GUARDIAN CREATION VIEW)
+# ==============================================================================
+
+def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[User] = None) -> str:
+    import json
+    from starapp.badge_generator import (
+        generate_badge_data, build_practice_project_prompt, build_learning_resources_prompt
+    )
+
+    badge_title = getattr(badge, "title", "Milestone Badge")
+    badge_code = getattr(badge, "code", "")
+    badge_desc = getattr(badge, "description", "")
+    selected_band = getattr(badge, "target_band", "B1")
+    active_power = getattr(badge, "power", "Tech") or "Tech"
+    active_cap = getattr(badge, "capability", "Data & Machine") or "Data & Machine"
+    active_skill = getattr(badge, "skill", "Curation") or "Curation"
+
+    prompt_str = getattr(badge, "prompt_json", "{}")
+    p_data = {}
+    if prompt_str:
+        try:
+            p_data = json.loads(prompt_str) if isinstance(prompt_str, str) else prompt_str
+            if not isinstance(p_data, dict):
+                p_data = {}
+        except Exception:
+            p_data = {}
+
+    # Extract outcomes
+    outcomes = p_data.get("outcomes") or p_data.get("expected_outcomes") or getattr(badge, "learning_outcomes", [])
+    if not outcomes:
+        synth = generate_badge_data(selected_band, active_power, active_cap, active_skill, "")
+        outcomes = synth.get("outcomes", [])
+
+    # Extract practice prompt
+    practice_prompt = ""
+    if isinstance(p_data.get("practice_project"), dict):
+        practice_prompt = p_data["practice_project"].get("prompt", "")
+    if not practice_prompt:
+        practice_prompt = p_data.get("practice_prompt", "")
+    if not practice_prompt or len(practice_prompt.strip()) < 80:
+        practice_prompt = getattr(badge, "project_requirements", "")
+    if not practice_prompt or len(practice_prompt.strip()) < 80:
+        practice_prompt = build_practice_project_prompt(
+            badge_title, active_skill, active_cap, active_power, selected_band, [], outcomes
+        )
+
+    # Extract learning topics (expect 6)
+    learning_topics = p_data.get("learning_topics", [])
+    if not learning_topics or len(learning_topics) < 6:
+        synth = generate_badge_data(selected_band, active_power, active_cap, active_skill, "")
+        learning_topics = synth.get("learning_topics", [])
+
+    total_topics = len(learning_topics) if learning_topics else 6
+    completed_topics_count = sum(1 for t in learning_topics if t.get("completed", False) or t.get("status", "").lower() == "completed")
+    progress_pct = int(round((completed_topics_count / total_topics) * 100)) if total_topics > 0 else 0
+
+    # Extract learning resources prompt
+    resources_prompt = ""
+    if isinstance(p_data.get("learning_resources"), dict):
+        resources_prompt = p_data["learning_resources"].get("prompt", "")
+    if not resources_prompt:
+        resources_prompt = p_data.get("resources_prompt", "")
+    if not resources_prompt or len(resources_prompt.strip()) < 80:
+        resources_prompt = build_learning_resources_prompt(
+            badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
+        )
+
+    # Section 1: Outcomes HTML
+    outcomes_list_items = "".join([
+        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#10B981; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+            <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
+        </div>'''
+        for o in outcomes
+    ])
+    outcomes_html = f"""
+    <div style="display:flex; flex-direction:column; gap:2px;">
+        {outcomes_list_items}
+    </div>
+    """
+
+    # Section 4: Topics HTML
+    topics_card_items = []
+    for idx, t in enumerate(learning_topics):
+        t_title = t.get("title", "")
+        t_desc = t.get("description", "")
+        is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
+
+        border_color = "#10B981" if is_comp else "rgba(6,182,212,0.3)"
+        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);"
+        status_text = "Completed" if is_comp else "In Progress"
+        status_bg = "rgba(16,185,129,0.15)" if is_comp else "rgba(157,183,213,0.18)"
+        status_color = "#10B981" if is_comp else "var(--frost-navy-50)"
+        status_border = "rgba(16,185,129,0.3)" if is_comp else "rgba(157,183,213,0.3)"
+
+        btn_class = "is-completed" if is_comp else ""
+        btn_bg = "#10B981" if is_comp else "rgba(255,255,255,0.9)"
+        btn_color = "white" if is_comp else "var(--frost-navy-75)"
+        btn_border = "#059669" if is_comp else "var(--icy-steel)"
+        btn_shadow = "0 2px 8px rgba(16,185,129,0.3)" if is_comp else "none"
+        btn_content = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Completed' if is_comp else "Mark Complete"
+
+        topics_card_items.append(f"""
+        <div id="topic-card-{idx}" class="topic-row-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
+                </div>
+                <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
+                <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
+            </div>
+            <div style="flex-shrink:0;">
+                <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
+                    onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
+                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:12px; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                    {btn_content}
+                </button>
+            </div>
+        </div>
+        """)
+    topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
+
+    return f"""
+    <div style="padding:4px 0 10px 0;">
+        <!-- LOCATION BAR -->
+        <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
+            <div>
+                <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                    Badge Location
+                </span>
+                <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                    <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
+                    Toggle All
+                </button>
+            </div>
+        </div>
+
+        <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
+        <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
+            <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                    {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(badge_title)}</h2>
+                </div>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
+            </div>
+        </div>
+
+        <!-- SECTION 1: OUTCOMES -->
+        <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
+                </div>
+                <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
+                {outcomes_html}
+            </div>
+        </div>
+
+        <!-- SECTION 2: EARN THE BADGE -->
+        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                </span>
+                <div>
+                    <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                    <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Great job submitting your project — your guardian is reviewing it now.</div>
+                </div>
+            </div>
+            <div>
+                <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    Allocated Milestone
+                </span>
+            </div>
+        </div>
+
+        <!-- SECTION 3: PRACTICE PROJECT -->
+        <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('practice')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
+                </div>
+                <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
+                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
+                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                    <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: LEARNING TOPICS -->
+        <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
+                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
+                    <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
+                        {completed_topics_count}/{total_topics} Completed
+                    </span>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
+                            <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
+                        </div>
+                        <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
+                    </div>
+                </div>
+                <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
+                {topics_html}
+            </div>
+        </div>
+
+        <!-- SECTION 5: LEARNING RESOURCES -->
+        <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
+                </div>
+                <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
+                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
+                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                    <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 6: RELATED SKILLS, CAPABILITIES & POWERS -->
+        <div id="badge-section-related" class="liquid-glass-card" style="margin-bottom:20px; border-radius:var(--radius-lg); border:1.5px solid #8B5CF6; overflow:hidden; background:rgba(255,255,255,0.98);">
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('related')">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                    </span>
+                    <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+                </div>
+                <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            </div>
+            <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                    </div>
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
+                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    </div>
+                    <div>
+                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL FOOTER ACTIONS -->
+        <div style="display:flex; justify-content:flex-end; align-items:center; gap:12px; padding-top:14px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap;">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+                Close
+            </button>
+            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}'); const sel=document.getElementById('submission-badge-id'); if(sel){{ sel.value='{badge.id}'; sel.dispatchEvent(new Event('change')); }} const formSec=document.getElementById('submission-portal-section'); if(formSec){{ formSec.scrollIntoView({{behavior:'smooth'}}); }}" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Submit Deliverables for this Badge &rarr;
+            </button>
         </div>
     </div>
     """
@@ -1492,8 +2377,16 @@ def render_cosmonaut_results(
 ) -> str:
     # 1. Determine list of selectable badges (the present 4 badges plus any assigned or catalog badges)
     badge_list = list(available_badges) if available_badges else []
-    present_4_ids = ["badge_gov_101", "badge_cur_102", "badge_dat_103", "badge_ing_104"]
     existing_ids = {b.id for b in badge_list}
+    # Also include any badges for which this user has assessments
+    for a in assessments:
+        if a.badge_id not in existing_ids and a.badge_id in badges_map:
+            badge_list.append(badges_map[a.badge_id])
+            existing_ids.add(a.badge_id)
+    if selected_badge_id and selected_badge_id not in existing_ids and selected_badge_id in badges_map:
+        badge_list.append(badges_map[selected_badge_id])
+        existing_ids.add(selected_badge_id)
+    present_4_ids = ["badge_gov_101", "badge_cur_102", "badge_dat_103", "badge_ing_104"]
     for pid in present_4_ids:
         if pid not in existing_ids and pid in badges_map:
             badge_list.append(badges_map[pid])
@@ -2085,8 +2978,9 @@ def render_cosmonaut_review_requests(
             creator_name = escape(r.get("creator_name") or "Guardian")
             assigned_ts = r.get("assigned_at") or ""
             assigned_at = assigned_ts[:16].replace("T", " ") if assigned_ts else "2026-11-20"
-            due_date = escape(r.get("review_due_at", "")[:10] or "2026-11-27")
-            dec_notes = escape(r.get("decision_notes", ""))
+            due_ts = r.get("review_due_at") or ""
+            due_date = escape(due_ts[:10] if due_ts else "2026-11-27")
+            dec_notes = escape(r.get("decision_notes") or "")
 
             if wf_status == "pending_review":
                 status_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Pending Review</span>'
@@ -2229,6 +3123,92 @@ def render_cosmonaut_review_requests(
     </div>
     """
 
+    # === REVIEWER ASSIGNMENT / MAPPING REQUESTS SECTION ===
+    mapping_reqs = []
+    try:
+        all_m_reqs = store.get_mapping_requests() if hasattr(store, "get_mapping_requests") else []
+        mapping_reqs = [r for r in all_m_reqs if r.get("reviewer_id") == current_user.id]
+    except Exception:
+        mapping_reqs = []
+
+    m_req_cards = []
+    for req in mapping_reqs:
+        r_id = req.get("id", "")
+        r_status = req.get("status", "pending")
+        badge_name = req.get("badge", "Badge")
+        band = req.get("band", "B1")
+        cosmo_ids = req.get("cosmonaut_ids", [])
+        cosmo_count = len(cosmo_ids)
+        cosmo_names = []
+        for cid in cosmo_ids:
+            u = store.get_user_by_id(cid)
+            cosmo_names.append(u.name if u else cid)
+        cosmo_names_str = ", ".join(cosmo_names[:4]) + (f" +{len(cosmo_names)-4} more" if len(cosmo_names) > 4 else "")
+        dates = req.get("review_dates") or []
+        dates_str = " → ".join(dates[:3]) if dates else "Schedule Pending"
+        sent_ts = req.get("sent_at") or ""
+        sent_at = sent_ts[:10] if sent_ts else ""
+
+        if r_status == "accepted":
+            status_badge = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Request Accepted</span>'
+            action_btns = f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'reject_mapping_request\', \'{r_id}\')" style="font-size:11px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">✕ Decline / Revoke</button>'
+            card_border = "border:1.5px solid #059669; background:rgba(5,150,105,0.03);"
+        elif r_status == "rejected":
+            status_badge = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">✕ Request Declined</span>'
+            action_btns = f'<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'accept_mapping_request\', \'{r_id}\')" style="font-size:11px; font-weight:700;">✓ Accept Request</button>'
+            card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
+        else:
+            status_badge = '<span class="status-pill status-pending" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ Awaiting Your Decision</span>'
+            action_btns = f'''<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="font-size:11.5px; padding:6px 14px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">✓ Accept & Confirm</button>
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="font-size:11.5px; padding:6px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">✕ Decline</button>'''
+            card_border = "border:1.5px solid var(--icy-steel-50); background:rgba(255,255,255,0.95);"
+
+        m_req_cards.append(f"""
+        <div class="liquid-glass-card" style="padding:16px 20px; {card_border} display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:14.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_name)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 7px; border-radius:3px;">BAND {escape(band)}</span>
+                    {status_badge}
+                </div>
+                <div style="font-size:12px; color:var(--frost-navy-75);">
+                    <span>👥 <strong>{cosmo_count}</strong> Assigned Cosmonaut(s): <span style="color:var(--deep-frozen-midnight); font-weight:600;">{escape(cosmo_names_str)}</span></span>
+                </div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                    <span>📅 3-Day Review Window: <strong style="color:#059669;">{escape(dates_str)}</strong></span>
+                    {f'&nbsp;&bull;&nbsp;<span>Sent: {escape(sent_at)}</span>' if sent_at else ''}
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                {action_btns}
+            </div>
+        </div>
+        """)
+
+    mapping_section_html = f"""
+    <div class="liquid-glass-card" style="padding:22px; margin-top:32px; border:1.5px solid var(--icy-steel-50);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        Reviewer Selected Requests (Cadet Evaluation Mapping)
+                    </h3>
+                </div>
+                <p style="font-size:12px; color:var(--frost-navy-50); margin:4px 0 0 0;">
+                    Guardian invitations for you to evaluate cohort projects during the scheduled review window. Accept or decline to confirm availability.
+                </p>
+            </div>
+            <span class="status-pill status-active" style="font-weight:700; font-size:11px;">
+                {len(mapping_reqs)} Review Assignment(s)
+            </span>
+        </div>
+        <div>
+            {''.join(m_req_cards) if m_req_cards else "<div style='text-align:center; padding:32px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No pending reviewer mapping requests. When a Guardian selects you in the Mapping Matrix, assignments will appear here.</div>"}
+        </div>
+    </div>
+    """
+
     return f"""
     <div>
         <!-- Heading -->
@@ -2251,19 +3231,1016 @@ def render_cosmonaut_review_requests(
             </div>
         </div>
 
-        <!-- Filter tabs & Search -->
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
-            {tabs_html}
-            <div style="min-width:240px; max-width:320px; width:100%;">
-                <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px;"
-                       oninput="window.StarAppBridge.dispatchAction('search_cosmo_requests', this.value)">
+        <!-- Section 1: Badge Approval Requests -->
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        Badge Approval Requests (Specification Oversight)
+                    </h3>
+                    <p style="font-size:12px; color:var(--frost-navy-50); margin:4px 0 0 0;">
+                        Inspect, verify, edit specifications, and approve newly authored badges for lower bands.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Filter tabs & Search -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
+                {tabs_html}
+                <div style="min-width:240px; max-width:320px; width:100%;">
+                    <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px;"
+                           oninput="window.StarAppBridge.dispatchAction('search_cosmo_requests', this.value)">
+                </div>
+            </div>
+
+            <!-- Request Cards List -->
+            <div>
+                {"".join(cards_html) if cards_html else empty_html}
             </div>
         </div>
 
-        <!-- Request Cards List -->
-        <div>
-            {"".join(cards_html) if cards_html else empty_html}
+        <!-- Section 2: Reviewer Selected Requests (Cadet Evaluation Mapping) -->
+        {mapping_section_html}
+    </div>
+    """
+
+
+# ==============================================================================
+# 6.12B REVIEWER BADGE REVIEW SCHEDULE WORKSPACE
+# ==============================================================================
+
+def render_reviewer_badge_schedule(
+    current_user: User,
+    store: Any,
+    badges_map: Optional[Dict[str, Badge]] = None,
+    cosmo_map: Optional[Dict[str, User]] = None
+) -> str:
+    """
+    Renders the Reviewer Badge Review Schedule Workspace.
+    Displays upcoming and completed badge review assignments for higher-band reviewers.
+    """
+    if store is None:
+        from starapp.storage import store as global_store
+        store = global_store
+    badges_map = badges_map or store.badges
+    cosmo_map = cosmo_map or store.users
+
+    user_band = getattr(current_user, "band", "B2")
+
+    upcoming_entries = []
+    completed_entries = []
+
+    all_timelines = list(store.timelines.values()) if hasattr(store, "timelines") else []
+    if store.db and store.db.conn:
+        try:
+            t_rows = store.db.conn.execute(
+                "SELECT * FROM badge_timelines WHERE reviewer_id = ? ORDER BY review_date",
+                (current_user.id,)
+            ).fetchall()
+            for r in t_rows:
+                rd = dict(r)
+                if not any(t.badge_id == rd.get("badge_id") and t.cosmonaut_id == rd.get("cosmonaut_id") for t in all_timelines):
+                    from starapp.models import BadgeTimeline
+                    all_timelines.append(BadgeTimeline.from_dict(rd))
+        except Exception:
+            pass
+
+    seen_pairs = set()
+    for tl in all_timelines:
+        if getattr(tl, "reviewer_id", "") == current_user.id:
+            pair = (tl.badge_id, tl.cosmonaut_id)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            b = badges_map.get(tl.badge_id) or store.get_badge(tl.badge_id)
+            c = cosmo_map.get(tl.cosmonaut_id) or store.get_user_by_id(tl.cosmonaut_id)
+            item = {
+                "badge": b,
+                "cosmonaut": c,
+                "badge_id": tl.badge_id,
+                "cosmonaut_id": tl.cosmonaut_id,
+                "timeline": tl,
+                "status": getattr(tl, "status", "active"),
+                "review_date": getattr(tl, "review_date", "TBD"),
+                "deadline": getattr(tl, "submission_deadline", "TBD"),
+                "award_date": getattr(tl, "actual_award_date", "") or getattr(tl, "expected_award_date", "")
+            }
+            if getattr(tl, "status", "") in ("completed", "awarded") or getattr(tl, "actual_award_date", ""):
+                completed_entries.append(item)
+            else:
+                upcoming_entries.append(item)
+
+    try:
+        mappings = store.get_band_mappings()
+        for m in mappings:
+            if current_user.id in m.get("reviewers", []):
+                b_name = m.get("badge", "")
+                b_obj = None
+                for b in badges_map.values():
+                    if b.title == b_name or b.code == b_name or b.id == b_name:
+                        b_obj = b
+                        break
+                r_dates = m.get("review_dates", [])
+                r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"
+                for cid in m.get("cosmonauts", []):
+                    pair = (b_obj.id if b_obj else b_name, cid)
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        c_obj = cosmo_map.get(cid) or store.get_user_by_id(cid)
+                        upcoming_entries.append({
+                            "badge": b_obj,
+                            "cosmonaut": c_obj,
+                            "badge_id": b_obj.id if b_obj else b_name,
+                            "cosmonaut_id": cid,
+                            "badge_title": b_name,
+                            "timeline": None,
+                            "status": "active",
+                            "review_date": r_dates_str,
+                            "deadline": r_dates[-1] if r_dates else "TBD",
+                            "award_date": ""
+                        })
+    except Exception:
+        pass
+
+    upcoming_cards_html = []
+    for item in upcoming_entries:
+        b = item.get("badge")
+        c = item.get("cosmonaut")
+        b_title = b.title if b else item.get("badge_title", item.get("badge_id", "Milestone"))
+        b_code = b.code if b else ""
+        b_band = getattr(b, "target_band", "B1") if b else ""
+        b_cat = getattr(b, "category", "") or getattr(b, "skill", "")
+        c_name = c.name if c else item.get("cosmonaut_id", "Cosmonaut")
+        c_band = getattr(c, "band", "B1") if c else "B1"
+        c_avatar = getattr(c, "avatar", (c_name[:2].upper() if c_name else "CO"))
+        r_date = item.get("review_date", "TBD")
+        deadline = item.get("deadline", "TBD")
+
+        b_actual_id = b.id if b else item.get("badge_id", "")
+        c_actual_id = c.id if c else item.get("cosmonaut_id", "")
+
+        # Check if project prompt has been authored/sent
+        assigned_proj = store.get_project_prompt_for_cadet(b_actual_id, c_actual_id) if (store and b_actual_id) else None
+        if assigned_proj and getattr(assigned_proj, "status", "") == "sent":
+            proj_pill = '<span class="status-pill status-approved" style="font-size:10.5px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Project Released to Cadets</span>'
+            proj_btn_text = "✏️ Edit Project"
+        else:
+            proj_pill = '<span class="status-pill status-warning" style="font-size:10.5px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
+            proj_btn_text = "✨ Create Project (AI)"
+
+        upcoming_cards_html.append(f"""
+        <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%); margin-bottom:14px; box-shadow:0 4px 14px rgba(23,52,92,0.06);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                        {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 7px; border-radius:3px;">BAND {escape(b_band)}</span>
+                        {f'<span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">{escape(b_cat)}</span>' if b_cat else ''}
+                        <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Upcoming Review</span>
+                        {proj_pill}
+                    </div>
+                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">{escape(b_title)}</h3>
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12.5px; color:var(--frost-navy);">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <div style="width:22px; height:22px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.15), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800; color:var(--deep-frozen-midnight);">
+                                {escape(c_avatar)}
+                            </div>
+                            <span>Assigned Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)})</span>
+                        </div>
+                        <span>&bull;</span>
+                        <span>📅 Review Window: <strong style="color:#059669;">{escape(r_date)}</strong></span>
+                        <span>&bull;</span>
+                        <span>⏰ Submission Deadline: <strong style="color:#DC2626;">{escape(deadline)}</strong></span>
+                        <span>&bull;</span>
+                        <span>⚡ <strong>3-Day Window:</strong> Reviewer creates project, Cadet learns concepts</span>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_actual_id)}')" style="font-size:11.5px; padding:6px 13px; font-weight:700;">
+                        📅 View Timeline
+                    </button>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_actual_id)}')" style="font-size:11.5px; padding:6px 15px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
+                        {proj_btn_text}
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:11.5px; padding:6px 13px; font-weight:700;">
+                        Cadet Assessments &rarr;
+                    </button>
+                </div>
+            </div>
+        </div>
+        """)
+
+    completed_cards_html = []
+    for item in completed_entries:
+        b = item.get("badge")
+        c = item.get("cosmonaut")
+        b_title = b.title if b else item.get("badge_title", item.get("badge_id", "Milestone"))
+        b_code = b.code if b else ""
+        b_band = getattr(b, "target_band", "B1") if b else ""
+        c_name = c.name if c else item.get("cosmonaut_id", "Cosmonaut")
+        c_band = getattr(c, "band", "B1") if c else "B1"
+        c_avatar = getattr(c, "avatar", (c_name[:2].upper() if c_name else "CO"))
+        award_date = item.get("award_date", "Completed")
+
+        completed_cards_html.append(f"""
+        <div class="liquid-glass-card" style="padding:16px 20px; border:1px solid var(--icy-steel-30); background:rgba(255,255,255,0.85); margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 5px; border-radius:3px;">BAND {escape(b_band)}</span>
+                        <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">✓ Completed & Certified</span>
+                    </div>
+                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(b_title)}</div>
+                    <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">
+                        Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)}) &bull; Awarded / Completed: <strong>{escape(award_date)}</strong>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:11px; font-weight:700;">
+                    View Assessment Record
+                </button>
+            </div>
+        </div>
+        """)
+
+    return f"""
+    <div>
+        <!-- Top Heading -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(user_band)}</span>
+                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Project Reviewer</span>
+                </div>
+                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review Schedule</h1>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
+                    Your upcoming and completed cadet evaluation commitments across assigned curriculum badges.
+                </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
+                    &larr; Dashboard
+                </button>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-weight:700;">
+                    Assessment Queue &rarr;
+                </button>
+            </div>
+        </div>
+
+        <!-- Upcoming Badge Reviews Section -->
+        <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        Upcoming Reviews ({len(upcoming_cards_html)})
+                    </h3>
+                </div>
+                <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Active Cohort Commitments</span>
+            </div>
+            <div>
+                {"".join(upcoming_cards_html) if upcoming_cards_html else "<div style='text-align:center; padding:36px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No upcoming badge reviews scheduled. When a Guardian allocates badges to cadets and designates you as reviewer, they will appear here.</div>"}
+            </div>
+        </div>
+
+        <!-- Completed Reviews Section -->
+        <div class="liquid-glass-card" style="padding:22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
+                        Completed Reviews ({len(completed_cards_html)})
+                    </h3>
+                </div>
+                <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Certified & Finalized</span>
+            </div>
+            <div>
+                {"".join(completed_cards_html) if completed_cards_html else "<div style='text-align:center; padding:30px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No completed badge evaluations on record yet.</div>"}
+            </div>
         </div>
     </div>
     """
+
+
+# ==============================================================================
+# 6.13 REVIEWER ASSESSMENT OF CADET DELIVERABLES WORKSPACE
+# ==============================================================================
+
+def render_reviewer_assessment_queue(
+    submissions: List[ProjectSubmission],
+    assessments_by_sub: Dict[str, AssessmentMarksheet],
+    badges_map: Dict[str, Badge],
+    cosmonauts_map: Dict[str, User],
+    current_user: User,
+    status_filter: str = "all"
+) -> str:
+    """
+    Renders the Cadet Project Assessments queue for eligible higher-band reviewers.
+    Allows reviewers to view mapped cadets, submitted deliverables, and submit their 50-mark review assessment.
+    """
+    from starapp.storage import store
+
+    # Find submissions of cadets assigned strictly to this reviewer
+    assigned_subs = []
+    is_guardian = (getattr(current_user, "role", "") == "guardian" or "guardian" in getattr(current_user, "roles", []))
+    for s in submissions:
+        tl = store.get_timeline(s.badge_id, s.cosmonaut_id)
+        is_assigned = (tl and getattr(tl, "reviewer_id", "") == current_user.id)
+        if not is_assigned:
+            for m in store.get_band_mappings():
+                if current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []):
+                    m_badge = m.get("badge_id") or m.get("badge")
+                    b_obj = badges_map.get(s.badge_id)
+                    if (m_badge == s.badge_id) or (b_obj and m_badge in (b_obj.title, b_obj.code, b_obj.id)):
+                        is_assigned = True
+                        break
+        # Guardian oversight
+        if is_guardian:
+            is_assigned = True
+
+        if is_assigned:
+            assigned_subs.append(s)
+
+    filtered = assigned_subs
+    if status_filter != "all":
+        if status_filter == "pending":
+            filtered = [s for s in assigned_subs if s.status in ("pending", "submitted")]
+        elif status_filter == "reviewed":
+            filtered = [s for s in assigned_subs if s.status == "reviewer_assessed"]
+        elif status_filter == "approved":
+            filtered = [s for s in assigned_subs if s.status == "approved"]
+        elif status_filter == "retake":
+            filtered = [s for s in assigned_subs if s.status in ("retake_required", "resubmission_requested")]
+
+    pending_cnt = len([s for s in assigned_subs if s.status in ("pending", "submitted")])
+    reviewed_cnt = len([s for s in assigned_subs if s.status == "reviewer_assessed"])
+    approved_cnt = len([s for s in assigned_subs if s.status == "approved"])
+    retake_cnt = len([s for s in assigned_subs if s.status in ("retake_required", "resubmission_requested")])
+
+    filter_tabs = [
+        ("all", "All Assigned", len(assigned_subs)),
+        ("pending", "Awaiting Your Review", pending_cnt),
+        ("reviewed", "Assessed by You", reviewed_cnt),
+        ("approved", "Awarded by Guardian", approved_cnt),
+        ("retake", "Retake Required", retake_cnt)
+    ]
+    filter_buttons = []
+    for f_id, f_label, f_count in filter_tabs:
+        is_active = f_id == status_filter
+        st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:700;" if is_active else "background:rgba(255,255,255,0.7); color:var(--frost-navy); font-weight:600;"
+        filter_buttons.append(
+            f'<button type="button" class="btn-secondary btn-sm" style="{st}" onclick="window.StarAppBridge.dispatchAction(\'filter_reviewer_assessments\', \'{f_id}\')">{f_label} ({f_count})</button>'
+        )
+
+    cards = []
+    for sub in filtered:
+        cosmo = cosmonauts_map.get(sub.cosmonaut_id)
+        badge = badges_map.get(sub.badge_id)
+        cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
+        cosmo_avatar = getattr(cosmo, "avatar", "AN") or "AN"
+        cosmo_band = getattr(cosmo, "band", "B1")
+        badge_code = badge.code if badge else sub.badge_id
+        badge_title = badge.title if badge else "Milestone Deliverable"
+        badge_category = getattr(badge, "category", "Core Engineering")
+
+        tl = store.get_timeline(sub.badge_id, sub.cosmonaut_id)
+        r_window = []
+        if tl and getattr(tl, "review_window_json", None):
+            try:
+                r_window = json.loads(tl.review_window_json)
+            except Exception:
+                r_window = []
+        window_str = " &rarr; ".join(r_window) if r_window else "3-Day Window"
+
+        rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
+
+        # File names / payloads
+        pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Deliverable.pdf"
+        code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
+        github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or ""
+
+        pdf_ic = get_icon("file_text", 13, "margin-right:4px; color:#D32F2F;")
+        code_ic = get_icon("code", 13, "margin-right:4px; color:var(--deep-frozen-midnight);")
+        gh_ic = get_icon("github", 13, "margin-right:4px; color:var(--frost-navy);")
+        clock_ic = get_icon("clock", 12, "margin-right:4px; opacity:0.7;")
+        arrow_ic = get_icon("arrow_right", 12, "margin-left:5px;")
+
+        card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.88) 100%);"
+        if sub.status in ("pending", "submitted"):
+            card_border = "border:2px solid #06B6D4; box-shadow:0 6px 20px rgba(6,182,212,0.15); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%);"
+
+        submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
+
+        # Assessment status badges
+        if rev_asm:
+            rev_badge = f'<span style="font-size:11.5px; font-weight:800; color:#059669; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
+        else:
+            rev_badge = '<span style="font-size:11.5px; font-weight:800; color:#D97706; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
+
+        cards.append(f"""
+        <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
+            <!-- Top Row: Cadet & Status -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:34px; height:34px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; box-shadow:0 2px 6px rgba(7,22,41,0.25);">
+                        {escape(cosmo_avatar)}
+                    </div>
+                    <div>
+                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:#06B6D4;">(Band {escape(cosmo_band)})</span></div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned to You as Peer Reviewer</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:3px 8px; border-radius:var(--radius-xs);">Attempt #{sub.attempt_number}</span>
+                    {render_status_pill(sub.status)}
+                </div>
+            </div>
+
+            <!-- Middle Row: Badge Milestone & Date -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                        <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_category)}</span>
+                    </div>
+                    <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); line-height:1.3;">{escape(badge_title)}</div>
+                </div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50); font-family:var(--font-family-mono); display:flex; align-items:center;">
+                    {clock_ic} Submitted: {submitted_date_str}
+                </div>
+            </div>
+
+            <!-- Window & Score Row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding:8px 12px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                <div style="font-size:11px; color:var(--frost-navy-75);">
+                    <strong>Assigned Review Window:</strong> <span style="font-family:var(--font-family-mono);">{escape(window_str)}</span>
+                </div>
+                <div>
+                    {rev_badge}
+                </div>
+            </div>
+
+            <!-- Deliverables Files Tray -->
+            <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:14px;">
+                <div style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Submitted Deliverables:</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {pdf_ic} {escape(pdf_name)}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {code_ic} {escape(code_name)}
+                    </span>
+                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                        {gh_ic} {escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Repo')}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Footer Action Row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Click to inspect PDF, Code &amp; evaluate against 5-criterion 50-mark rubric</span>
+                <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:12px; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
+                    Inspect Deliverables &amp; Evaluate (50 Marks) {arrow_ic}
+                </button>
+            </div>
+        </div>
+        """)
+
+    filter_tray = "".join(filter_buttons)
+    cards_html = "".join(cards) if cards else f"""
+    <div class="liquid-glass-card" style="padding:48px 24px; text-align:center; border-radius:var(--radius-md); border:1.5px dashed var(--icy-steel-40);">
+        <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:rgba(6,182,212,0.1); display:flex; align-items:center; justify-content:center; color:#0891B2;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Cadet Deliverables in this Queue</h3>
+        <p style="font-size:13px; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
+            When cadets mapped to you submit project deliverables, they will appear here for your formal technical inspection and 50-mark rubric scoring.
+        </p>
+    </div>
+    """
+
+    return f"""
+    <div>
+        <!-- Heading -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {getattr(current_user, 'band', 'B2')}</span>
+                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Authorized Peer Reviewer Workspace</span>
+                </div>
+                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Cadet Project Assessments</h1>
+                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
+                    Review incoming project deliverables submitted by mapped cadets. Grade the 5-criterion 50-mark rubric and submit your assessment.
+                </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                {render_back_button()}
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
+                    &larr; Dashboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter tabs -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                {filter_tray}
+            </div>
+        </div>
+
+        <!-- Cards List -->
+        <div>
+            {cards_html}
+        </div>
+    </div>
+    """
+
+
+def render_reviewer_assessment_detail(
+    submission: ProjectSubmission,
+    badge: Badge,
+    cosmonaut: User,
+    existing_reviewer_asm: Optional[AssessmentMarksheet] = None,
+    previous_assessments: Optional[List[AssessmentMarksheet]] = None,
+    selected_tab: str = "pdf"
+) -> str:
+    """
+    Dedicated in-website technical inspection & assessment workspace for Reviewers.
+    Reviewer can toggle between PDF and Code viewer directly, and submit 50-mark rubric.
+    """
+    cosmo_name = cosmonaut.name if cosmonaut else submission.cosmonaut_id
+    badge_code = badge.code if badge else submission.badge_id
+    badge_title = badge.title if badge else "Milestone Deliverable"
+
+    pdf_name = getattr(submission, "pdf_name", "") or (submission.file_name if submission.submission_type == "pdf" else "") or "Deliverable.pdf"
+    pdf_payload = getattr(submission, "pdf_payload", "") or (submission.payload if submission.submission_type == "pdf" else "") or ""
+    code_name = getattr(submission, "code_name", "") or (submission.file_name if submission.submission_type == "code" else "") or "script.py"
+    code_payload = getattr(submission, "code_payload", "") or (submission.payload if submission.submission_type == "code" else "") or "# Source script"
+    github_url = getattr(submission, "github_url", "") or ""
+
+    base_pdf_url = pdf_payload.split("#")[0]
+    clean_pdf_url = f"{base_pdf_url}#toolbar=1&navpanes=0&pagemode=none&view=FitH"
+
+    download_ic = get_icon("download", 13, "margin-right:5px;")
+    copy_ic = get_icon("copy", 13, "margin-right:5px;")
+    expand_ic = get_icon("external_link", 13, "margin-right:5px;")
+
+    init_bu = existing_reviewer_asm.business_understanding if existing_reviewer_asm else 9.0
+    init_ar = existing_reviewer_asm.architecture_report if existing_reviewer_asm else 9.0
+    init_tk = existing_reviewer_asm.technical_knowledge if existing_reviewer_asm else 9.0
+    init_pr = existing_reviewer_asm.presentation if existing_reviewer_asm else 9.0
+    init_qa = existing_reviewer_asm.qa if existing_reviewer_asm else 9.0
+    init_total = init_bu + init_ar + init_tk + init_pr + init_qa
+    init_pct = (init_total / 50.0) * 100.0
+
+    init_strengths = existing_reviewer_asm.strength_areas if existing_reviewer_asm else "Robust technical architecture patterns and clean modular code."
+    init_improvements = existing_reviewer_asm.improvement_areas if existing_reviewer_asm else "Ensure comprehensive unit testing across edge cases."
+    init_feedback = existing_reviewer_asm.overall_feedback if existing_reviewer_asm else "Deliverables satisfy all criteria. Recommended for Guardian approval."
+
+    # Viewer body
+    if selected_tab == "pdf":
+        viewer_body = f"""
+        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:hidden; position:relative; background:#FFFFFF;">
+            <iframe id="pdf-document-frame" src="{clean_pdf_url}" style="width:100%; height:100%; border:none; display:block; background:#FFFFFF;" title="PDF Preview"></iframe>
+        </div>
+        """
+        toolbar_extra = f"""
+        <div style="display:flex; align-items:center; gap:8px;">
+            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+                {download_ic} Download PDF
+            </a>
+        </div>
+        """
+    elif selected_tab == "code":
+        lines = code_payload.strip().split("\n")
+        code_lines_html = []
+        for l_num, line in enumerate(lines, 1):
+            code_lines_html.append(
+                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:12px; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
+                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:12.5px; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
+            )
+        code_table = "".join(code_lines_html)
+        viewer_body = f"""
+        <div id="deliverable-viewport-container" style="flex:1; min-height:0; width:100%; height:100%; background:#071629; overflow:auto; padding:14px 16px;">
+            <table style="width:100%; border-collapse:collapse;">
+                <tbody>
+                    {code_table}
+                </tbody>
+            </table>
+        </div>
+        <pre id="raw-code-store" style="display:none;">{escape(code_payload)}</pre>
+        """
+        toolbar_extra = f"""
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
+            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
+                {copy_ic} Copy Code
+            </button>
+        </div>
+        """
+    else:  # github
+        viewer_body = f"""
+        <div style="flex:1; min-height:0; width:100%; height:100%; overflow:auto; padding:24px; background:#FFFFFF;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <div style="width:40px; height:40px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center;">
+                    {get_icon("github", 20)}
+                </div>
+                <div>
+                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
+                    <div style="font-size:12px; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
+                </div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
+                    {escape(github_url)}
+                </div>
+            </div>
+            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; text-decoration:none; padding:8px 18px;">
+                {expand_ic} Open Repository in New Tab &nearr;
+            </a>
+        </div>
+        """
+        toolbar_extra = f"""
+        <div>
+            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+                {expand_ic} Open Repo ↗
+            </a>
+        </div>
+        """
+
+    return f"""
+    <div class="review-detail-workspace" style="height:calc(100vh - 16px); max-height:calc(100vh - 16px); display:flex; flex-direction:column; overflow:hidden;">
+        <div class="review-workspace-grid" style="display:grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap:12px; flex:1; min-height:0; height:100%; overflow:hidden;">
+            <!-- Column 1: PDF and Code Viewer -->
+            <div class="review-left-column" style="background:#FFFFFF; border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 18px rgba(7,22,41,0.06); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px; background:rgba(234,244,255,0.7); border-bottom:1px solid var(--icy-steel-50); flex-shrink:0; height:44px; box-sizing:border-box;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px; padding:5px 12px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')">
+                            &larr; Back to Cadet Assessments
+                        </button>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <select id="deliverable-type-select" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:4px 10px; min-width:170px;" onchange="window.StarAppBridge.dispatchAction('change_viewer_tab', this.value)">
+                                <option value="pdf"{" selected" if selected_tab == "pdf" else ""}>📄 View PDF Document</option>
+                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code</option>
+                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo</option>
+                            </select>
+                        </div>
+                    </div>
+                    {toolbar_extra}
+                </div>
+                {viewer_body}
+            </div>
+
+            <!-- Column 2: 50-Mark Rubric for Reviewer -->
+            <div class="review-right-column" style="background:#FFFFFF; border:1.5px solid var(--deep-frozen-midnight); border-radius:var(--radius-md); box-shadow:0 4px 20px rgba(23,52,92,0.1); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
+                <div style="padding:10px 14px; border-bottom:1.5px solid var(--icy-steel-30); background:linear-gradient(135deg, rgba(234,244,255,0.9) 0%, #FFFFFF 100%); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; height:44px; box-sizing:border-box;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:11px; font-weight:800; background:#06B6D4; color:var(--snow-white); padding:2px 6px; border-radius:var(--radius-xs);">REVIEWER RUBRIC</div>
+                        <h3 style="font-size:1.05rem; font-weight:800; color:var(--frost-navy); margin:0;">Technical Assessment</h3>
+                    </div>
+                    <span id="rubric-total-display" style="display:none;"></span>
+                </div>
+
+                <form id="reviewer-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); window.StarAppBridge.submitReviewerAssessment('{submission.id}');">
+                    <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 14px;">
+                        <!-- Cadet Details Pill -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(234,244,255,0.7); border-radius:var(--radius-xs); margin-bottom:12px; border:1px solid var(--icy-steel-30);">
+                            <div>
+                                <div style="font-size:12px; font-weight:800; color:var(--frost-navy);">{escape(cosmo_name)}</div>
+                                <div style="font-size:11px; color:var(--frost-navy-50);">{escape(badge_code)}: {escape(badge_title)}</div>
+                            </div>
+                            <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs);">Attempt #{submission.attempt_number}</span>
+                        </div>
+
+                        <!-- 5 Criteria Compact Rows -->
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">1. Business Understanding</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Domain scope &amp; formulation (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">2. Architecture Report</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">PDF technical spec &amp; design (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">3. Technical Knowledge</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Source code execution &amp; depth (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">4. Presentation</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Code clean layout &amp; modularity (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                                <div>
+                                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy);">5. Q&amp;A Technical Defense</div>
+                                    <div style="font-size:10.5px; color:var(--frost-navy-50);">Edge cases &amp; justification (Max: 10)</div>
+                                </div>
+                                <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="liquid-glass-control" style="font-size:13px; font-weight:800; padding:4px 8px; width:75px; text-align:center;" oninput="window.StarAppBridge.recalcRubricTotal();">
+                            </div>
+                        </div>
+
+                        <!-- Real-time Sum -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:linear-gradient(135deg, rgba(234,244,255,0.95) 0%, #FFFFFF 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-xs); margin-bottom:12px;">
+                            <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px;">Sum of Rubric Marks:</span>
+                            <span id="rubric-sum-display" style="font-size:14px; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
+                        </div>
+
+                        <!-- Qualitative Feedback -->
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Identified Technical Strengths</label>
+                            <textarea id="rubric-strengths" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_strengths)}</textarea>
+                        </div>
+
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Improvement Recommendations</label>
+                            <textarea id="rubric-improvements" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_improvements)}</textarea>
+                        </div>
+
+                        <div style="margin-bottom:8px;">
+                            <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Reviewer Remarks &amp; Recommendations</label>
+                            <textarea id="rubric-feedback" rows="2" class="liquid-glass-control" style="font-size:12px; padding:6px 8px; width:100%;">{escape(init_feedback)}</textarea>
+                        </div>
+                    </div>
+
+                    <div style="padding:10px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
+                        <button type="submit" class="btn-metal" style="width:100%; height:40px; font-size:13px; font-weight:800; letter-spacing:0.2px;">
+                            Submit Reviewer Assessment &rarr;
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    """
+
+
+# ==============================================================================
+# 6.13 REVIEWER MODALS: TIMELINE & GEMINI AI PROJECT CREATOR
+# ==============================================================================
+
+def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: User, store: Any = None) -> str:
+    if not badge:
+        return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
+    dt = badge.default_timeline or {}
+    tl = store.get_timeline(badge.id, "m_b1_1") if store else None
+    if tl:
+        dt = {
+            "assignment_date": getattr(tl, "assignment_date", "2026-11-10"),
+            "publication_date": getattr(tl, "publication_date", "2026-11-10"),
+            "learning_start_date": getattr(tl, "learning_start_date", "2026-11-11"),
+            "learning_end_date": getattr(tl, "learning_end_date", "2026-11-20"),
+            "project_start_date": getattr(tl, "project_start_date", "2026-11-21"),
+            "project_end_date": getattr(tl, "project_end_date", "2026-12-01"),
+            "submission_deadline": getattr(tl, "submission_deadline", "2026-12-03"),
+            "review_date": getattr(tl, "review_date", "2026-12-06"),
+            "expected_award_date": getattr(tl, "expected_award_date", "2026-12-08")
+        }
+    alloc_date = dt.get("assignment_date", "2026-11-10")
+    learn_start = dt.get("learning_start_date", "2026-11-11")
+    learn_end = dt.get("learning_end_date", "2026-11-20")
+    proj_start = dt.get("project_start_date", "2026-11-21")
+    proj_end = dt.get("project_end_date", "2026-12-01")
+    sub_deadline = dt.get("submission_deadline", "2026-12-03")
+    review_date = dt.get("review_date", "2026-12-06")
+    award_date = dt.get("expected_award_date", "2026-12-08")
+
+    return f"""
+    <div style="padding:10px 6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(badge.code)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
+                    <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Milestone Timeline</span>
+                </div>
+                <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:6px 0 0 0;">{escape(badge.title)}</h3>
+            </div>
+            <span style="font-size:12px; font-weight:700; color:#059669; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
+                Reviewer: {escape(current_user.name)}
+            </span>
+        </div>
+
+        <!-- 3-Day Allocation Window Notice -->
+        <div style="background:linear-gradient(135deg, rgba(2,132,199,0.08) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:20px;">
+            <div style="font-size:13px; font-weight:800; color:#0369A1; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                <span>⏱️ 3-Day Milestone Preparation Window Active</span>
+            </div>
+            <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">
+                Both Reviewer and Cadets have an allocated 3-day window:
+                <br>&bull; <strong>Cadets:</strong> Dedicated time for foundational self-study and learning concepts.
+                <br>&bull; <strong>Reviewer ({escape(current_user.name)}):</strong> Dedicated window to author and dispatch the milestone project prompt via Gemini AI.
+            </div>
+        </div>
+
+        <!-- Milestone Steppers Deck -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px;">
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">1. Allocation &amp; Publish</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(alloc_date)}</div>
+                <div style="font-size:11px; color:#059669; margin-top:2px;">Guardian Approved</div>
+            </div>
+            <div style="background:#fff; border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:#0284C7; text-transform:uppercase;">2. 3-Day Prep &amp; Learning</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#0369A1; margin-top:4px;">{escape(learn_start)} &rarr; {escape(learn_end)}</div>
+                <div style="font-size:11px; color:#0284C7; margin-top:2px;">Project Draft &amp; Study</div>
+            </div>
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">3. Project Sprint</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(proj_start)} &rarr; {escape(proj_end)}</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Code &amp; PDF Implementation</div>
+            </div>
+            <div style="background:rgba(239,68,68,0.05); border:1.5px solid rgba(239,68,68,0.3); border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:#DC2626; text-transform:uppercase;">4. Submission Cutoff</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626; margin-top:4px;">{escape(sub_deadline)}</div>
+                <div style="font-size:11px; color:#DC2626; margin-top:2px;">Strict Deliverables Due</div>
+            </div>
+            <div style="background:rgba(5,150,105,0.05); border:1.5px solid rgba(5,150,105,0.3); border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:#059669; text-transform:uppercase;">5. 3-Day Review Window</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#059669; margin-top:4px;">{escape(review_date)}</div>
+                <div style="font-size:11px; color:#059669; margin-top:2px;">50-Mark Rubric Assessment</div>
+            </div>
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
+                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">6. Certification Award</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(award_date)}</div>
+                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Guardian Final Publication</div>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--icy-steel-30); padding-top:14px;">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
+                Close
+            </button>
+            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(badge.id)}')">
+                ✨ Author Project Specification &rarr;
+            </button>
+        </div>
+    </div>
+    """
+
+
+def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: User, store: Any = None, project_draft: Optional[Dict[str, Any]] = None) -> str:
+    if not badge:
+        return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
+
+    # Look up mapped cadets for this reviewer and badge
+    mapped_cadets = []
+    if store:
+        mappings = store.get_band_mappings()
+        for m in mappings:
+            if current_user.id in m.get("reviewers", []):
+                m_b = m.get("badge_id") or m.get("badge")
+                if m_b in (badge.id, badge.code, badge.title):
+                    for cid in m.get("cosmonauts", []):
+                        u = store.get_user_by_id(cid)
+                        if u and u not in mapped_cadets:
+                            mapped_cadets.append(u)
+        # Also include directly assigned cadets from timelines
+        if hasattr(store, "timelines") and store.timelines:
+            for tl in store.timelines.values():
+                if getattr(tl, "reviewer_id", "") == current_user.id and getattr(tl, "badge_id", "") == badge.id:
+                    u = store.get_user_by_id(getattr(tl, "cosmonaut_id", ""))
+                    if u and u not in mapped_cadets:
+                        mapped_cadets.append(u)
+
+    cadet_chips = []
+    cadet_ids = []
+    for c in mapped_cadets:
+        cadet_ids.append(c.id)
+        c_av = getattr(c, "avatar", c.name[:2].upper())
+        cadet_chips.append(f"""
+        <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); border-radius:var(--radius-xs); font-size:11.5px; font-weight:700; color:var(--frost-navy);">
+            <span style="width:16px; height:16px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:800;">{escape(c_av)}</span>
+            {escape(c.name)}
+        </span>
+        """)
+    cadet_chips_html = "".join(cadet_chips) if cadet_chips else '<span style="font-size:12px; color:var(--frost-navy-50);">All Assigned Cohort Cadets</span>'
+
+    from starapp.badge_generator import generate_reviewer_project_spec
+    spec = project_draft or generate_reviewer_project_spec(
+        band=getattr(badge, "target_band", "B1"),
+        power=getattr(badge, "power", "Tech"),
+        capability=getattr(badge, "capability", "Data & Machine"),
+        skill=getattr(badge, "skill", "Signals"),
+        badge_title=badge.title,
+        reviewer_name=current_user.name
+    )
+
+    proj_title = spec.get("title", f"{badge.title} Project")
+    scenario = spec.get("scenario", "")
+    reqs = spec.get("requirements", [])
+    reqs_text = "\n".join(reqs) if isinstance(reqs, list) else str(reqs)
+
+    deliv = spec.get("deliverables", {})
+    code_desc = deliv.get("code", {}).get("description", "Source code implementation")
+    pdf_desc = deliv.get("pdf", {}).get("description", "Architecture document")
+    gh_desc = deliv.get("github", {}).get("description", "GitHub repository")
+
+    return f"""
+    <div style="padding:10px 6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">GEMINI AI CURRICULUM</span>
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
+                </div>
+                <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0;">Author Milestone Project for Mapped Cadets</h3>
+                <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Reviewer-guided project specification tailored to '{escape(badge.title)}'.</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
+                    ✓ AI Generated Draft
+                </span>
+            </div>
+        </div>
+
+        <!-- Recipient Mapped Cadets Box -->
+        <div style="background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
+            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:6px;">
+                👥 Target Recipient Cadets (Mapped to You as Reviewer):
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {cadet_chips_html}
+            </div>
+            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:6px;">
+                When you click 'Send Project to Mapped Cadets', this exact specification will be dispatched to each of these cadets' submission portals.
+            </div>
+        </div>
+
+        <!-- Project Form -->
+        <form id="reviewer-project-spec-form" onsubmit="event.preventDefault();">
+            <div style="margin-bottom:14px;">
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Title</label>
+                <input type="text" id="rev_proj_title" class="form-input" value="{escape(proj_title)}" style="font-size:13px; font-weight:700; width:100%;">
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Real-World Problem Scenario &amp; Brief</label>
+                <textarea id="rev_proj_scenario" rows="3" class="form-input" style="font-size:12.5px; line-height:1.45; width:100%;">{escape(scenario)}</textarea>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Detailed Project Requirements (1 per line)</label>
+                <textarea id="rev_proj_reqs" rows="4" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(reqs_text)}</textarea>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:6px;">Mandatory Deliverables Checklist (Mapped to 50-Mark Rubric)</label>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+                    <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
+                        <div style="font-size:11px; font-weight:800; color:#059669; display:flex; align-items:center; gap:5px;">💻 1. Source Code File (.py)</div>
+                        <input type="text" id="rev_proj_code_desc" class="form-input" value="{escape(code_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                    </div>
+                    <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
+                        <div style="font-size:11px; font-weight:800; color:#DC2626; display:flex; align-items:center; gap:5px;">📄 2. Architecture PDF Report</div>
+                        <input type="text" id="rev_proj_pdf_desc" class="form-input" value="{escape(pdf_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                    </div>
+                    <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
+                        <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); display:flex; align-items:center; gap:5px;">🔗 3. GitHub Repository URL</div>
+                        <input type="text" id="rev_proj_gh_desc" class="form-input" value="{escape(gh_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--icy-steel-30); padding-top:14px; flex-wrap:wrap; gap:10px;">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
+                    Cancel
+                </button>
+                <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;"
+                    onclick="const p = {{
+                        badge_id: '{escape(badge.id)}',
+                        reviewer_id: '{escape(current_user.id)}',
+                        title: document.getElementById('rev_proj_title').value,
+                        description: document.getElementById('rev_proj_scenario').value,
+                        requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
+                        deliverables: {{
+                            code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py'))}', description: document.getElementById('rev_proj_code_desc').value }},
+                            pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf'))}', description: document.getElementById('rev_proj_pdf_desc').value }},
+                            github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
+                        }},
+                        cosmonaut_ids: {json.dumps(cadet_ids)}
+                    }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
+                    🚀 Send Project to Mapped Cadets &rarr;
+                </button>
+            </div>
+        </form>
+    </div>
+    """
+
 

@@ -6,6 +6,8 @@ All models serialize to/from clean JSON-compatible dictionaries.
 
 from typing import List, Dict, Any, Optional
 import datetime
+import json
+import time
 
 def current_iso_timestamp() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -153,7 +155,10 @@ class Badge:
         assigned_reviewer_id: str = "",
         review_due_at: str = "",
         created_at: str = "",
-        updated_at: str = ""
+        updated_at: str = "",
+        passing_percentage: float = 70.0,
+        published_at: str = "",
+        published_by: str = ""
     ):
         self.id = id
         self.code = code
@@ -179,6 +184,9 @@ class Badge:
         self.review_due_at = review_due_at
         self.created_at = created_at or current_iso_timestamp()
         self.updated_at = updated_at or current_iso_timestamp()
+        self.passing_percentage = float(passing_percentage) if passing_percentage is not None else 70.0
+        self.published_at = published_at or ""
+        self.published_by = published_by or ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -205,7 +213,10 @@ class Badge:
             "assigned_reviewer_id": getattr(self, "assigned_reviewer_id", ""),
             "review_due_at": getattr(self, "review_due_at", ""),
             "created_at": getattr(self, "created_at", ""),
-            "updated_at": getattr(self, "updated_at", "")
+            "updated_at": getattr(self, "updated_at", ""),
+            "passing_percentage": getattr(self, "passing_percentage", 70.0),
+            "published_at": getattr(self, "published_at", ""),
+            "published_by": getattr(self, "published_by", "")
         }
 
     @classmethod
@@ -234,7 +245,10 @@ class Badge:
             assigned_reviewer_id=data.get("assigned_reviewer_id", ""),
             review_due_at=data.get("review_due_at", ""),
             created_at=data.get("created_at", ""),
-            updated_at=data.get("updated_at", "")
+            updated_at=data.get("updated_at", ""),
+            passing_percentage=data.get("passing_percentage", 70.0),
+            published_at=data.get("published_at", ""),
+            published_by=data.get("published_by", "")
         )
 
 
@@ -254,7 +268,9 @@ class BadgeTimeline:
         review_date: str,
         expected_award_date: str,
         actual_award_date: str = "",
-        status: str = "active"  # upcoming, active, completed, overdue, awaiting_review
+        status: str = "active",  # upcoming, active, completed, overdue, awaiting_review
+        reviewer_id: str = "",
+        review_window_json: str = "[]"
     ):
         self.badge_id = badge_id
         self.cosmonaut_id = cosmonaut_id
@@ -269,6 +285,15 @@ class BadgeTimeline:
         self.expected_award_date = expected_award_date
         self.actual_award_date = actual_award_date
         self.status = status
+        self.reviewer_id = reviewer_id
+        self.review_window_json = review_window_json
+
+    @property
+    def review_window(self) -> List[str]:
+        try:
+            return json.loads(self.review_window_json or "[]")
+        except Exception:
+            return []
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -284,7 +309,9 @@ class BadgeTimeline:
             "review_date": self.review_date,
             "expected_award_date": self.expected_award_date,
             "actual_award_date": self.actual_award_date,
-            "status": self.status
+            "status": self.status,
+            "reviewer_id": getattr(self, "reviewer_id", ""),
+            "review_window_json": getattr(self, "review_window_json", "[]")
         }
 
     @classmethod
@@ -302,7 +329,9 @@ class BadgeTimeline:
             review_date=data.get("review_date", ""),
             expected_award_date=data.get("expected_award_date", ""),
             actual_award_date=data.get("actual_award_date", ""),
-            status=data.get("status", "active")
+            status=data.get("status", "active"),
+            reviewer_id=data.get("reviewer_id", ""),
+            review_window_json=data.get("review_window_json", "[]")
         )
 
 
@@ -401,7 +430,9 @@ class AssessmentMarksheet:
         qa: float,
         strength_areas: str,
         improvement_areas: str,
-        overall_feedback: str
+        overall_feedback: str,
+        assessor_role: str = "guardian",
+        remarks: str = ""
     ):
         self.id = id
         self.submission_id = submission_id
@@ -434,6 +465,12 @@ class AssessmentMarksheet:
         self.strength_areas = strength_areas
         self.improvement_areas = improvement_areas
         self.overall_feedback = overall_feedback
+        self.assessor_role = assessor_role
+        self.remarks = remarks
+
+    @property
+    def total_score(self) -> float:
+        return self.total_marks
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -455,7 +492,9 @@ class AssessmentMarksheet:
             "percentage": self.percentage,
             "strength_areas": self.strength_areas,
             "improvement_areas": self.improvement_areas,
-            "overall_feedback": self.overall_feedback
+            "overall_feedback": self.overall_feedback,
+            "assessor_role": getattr(self, "assessor_role", "guardian"),
+            "remarks": getattr(self, "remarks", "")
         }
 
     @classmethod
@@ -477,7 +516,9 @@ class AssessmentMarksheet:
             qa=data.get("qa", 0),
             strength_areas=data.get("strength_areas", ""),
             improvement_areas=data.get("improvement_areas", ""),
-            overall_feedback=data.get("overall_feedback", "")
+            overall_feedback=data.get("overall_feedback", ""),
+            assessor_role=data.get("assessor_role", "guardian"),
+            remarks=data.get("remarks", "")
         )
 
 
@@ -734,4 +775,98 @@ class Notification:
             created_at=data.get("created_at", ""),
             is_read=data.get("is_read", False)
         )
+
+
+class ReviewerProjectPrompt:
+    def __init__(
+        self,
+        id: str = "",
+        badge_id: str = "",
+        reviewer_id: str = "",
+        cosmonaut_ids: Optional[List[str]] = None,
+        title: str = "Milestone Implementation Project",
+        description: str = "",
+        deliverables: Optional[Dict[str, Any]] = None,
+        requirements: Optional[List[str]] = None,
+        created_at: str = "",
+        sent_at: Optional[str] = None,
+        status: str = "released",
+        reviewer_name: str = "",
+        objective: str = "",
+        technical_requirements: Optional[List[str]] = None,
+        evaluation_criteria: Optional[List[str]] = None,
+        submission_deadline: str = "",
+        **kwargs
+    ):
+        self.id = id or f"rpp_{badge_id}_{reviewer_id}_{int(time.time()*1000)}"
+        self.badge_id = badge_id
+        self.reviewer_id = reviewer_id
+        self.reviewer_name = reviewer_name
+        self.cosmonaut_ids = list(cosmonaut_ids) if cosmonaut_ids else []
+        self.title = title
+        self.description = description or objective
+        self.objective = self.description
+        self.deliverables = deliverables or {}
+        self.requirements = requirements or technical_requirements or []
+        self.technical_requirements = self.requirements
+        self.evaluation_criteria = evaluation_criteria or []
+        self.submission_deadline = submission_deadline
+        self.created_at = created_at or current_iso_timestamp()
+        self.sent_at = sent_at or self.created_at
+        self.status = status
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "badge_id": self.badge_id,
+            "reviewer_id": self.reviewer_id,
+            "reviewer_name": getattr(self, "reviewer_name", ""),
+            "cosmonaut_ids": self.cosmonaut_ids,
+            "title": self.title,
+            "description": self.description,
+            "objective": self.description,
+            "deliverables": self.deliverables,
+            "requirements": self.requirements,
+            "technical_requirements": self.requirements,
+            "evaluation_criteria": getattr(self, "evaluation_criteria", []),
+            "submission_deadline": getattr(self, "submission_deadline", ""),
+            "created_at": self.created_at,
+            "sent_at": self.sent_at,
+            "status": self.status
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ReviewerProjectPrompt":
+        deliverables = data.get("deliverables")
+        if isinstance(deliverables, str):
+            try:
+                deliverables = json.loads(deliverables)
+            except Exception:
+                deliverables = {}
+        requirements = data.get("requirements")
+        if isinstance(requirements, str):
+            try:
+                requirements = json.loads(requirements)
+            except Exception:
+                requirements = [requirements]
+        cosmonauts = data.get("cosmonaut_ids") or data.get("cosmonaut_ids_json") or []
+        if isinstance(cosmonauts, str):
+            try:
+                cosmonauts = json.loads(cosmonauts)
+            except Exception:
+                cosmonauts = []
+        return cls(
+            id=data["id"],
+            badge_id=data["badge_id"],
+            reviewer_id=data.get("reviewer_id", ""),
+            cosmonaut_ids=cosmonauts,
+            title=data.get("title", "Milestone Implementation Project"),
+            description=data.get("description", ""),
+            deliverables=deliverables or {},
+            requirements=requirements or [],
+            created_at=data.get("created_at", ""),
+            sent_at=data.get("sent_at"),
+            status=data.get("status", "draft")
+        )
+
 

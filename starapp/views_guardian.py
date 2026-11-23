@@ -77,7 +77,7 @@ def render_guardian_sidebar(
         {"id": "g_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
         {"id": "g_allotment", "label": "Badge Allotment", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
         {"id": "g_mapping", "label": "Mapping", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>', "badge": 0},
-        {"id": "g_reviews", "label": "Project Reviews", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
+        {"id": "g_reviews", "label": "Assessment", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
         {"id": "g_materials", "label": "Learning Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
         {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count}
     ]
@@ -1265,7 +1265,9 @@ def render_individual_cosmo_dossier(
 def render_guardian_badge_allotment(
     badges: List[Badge],
     cosmonauts: List[User],
-    filter_tab: str = "all"
+    filter_tab: str = "all",
+    all_band_mappings: list = None,
+    all_timelines: dict = None
 ) -> str:
     """
     Renders Guardian Badge Catalog & Allotment Manager in a clean 2-in-a-row card layout.
@@ -1282,6 +1284,86 @@ def render_guardian_badge_allotment(
             unallocated.append(b)
 
     completed_codes = {"GOV-101", "CUR-102", "DAT-103"}
+    cosmo_users_map = {c.id: c for c in cosmonauts}
+    all_band_mappings = all_band_mappings or []
+
+    def get_badge_mapping_info(b: Badge):
+        b_band = getattr(b, "target_band", "") or "B1"
+        matched_mappings = []
+        for m in all_band_mappings:
+            m_b_id = m.get("badge_id")
+            m_badge = m.get("badge")
+            is_match = (m_b_id == b.id) or (m_badge in (b.title, b.code, b.id)) or (b.title and b.title in (m_badge or ""))
+            if is_match and m.get("band") == b_band:
+                matched_mappings.append(m)
+
+        rev_names = []
+        rev_id = ""
+        rev_dates = []
+        c_ids = list(getattr(b, "assigned_cosmonaut_ids", []))
+        for m in matched_mappings:
+            rev_list = m.get("reviewers", [])
+            for rid in rev_list:
+                if not rev_id:
+                    rev_id = rid
+                u = cosmo_users_map.get(rid)
+                rname = u.name if u else rid
+                if rname not in rev_names:
+                    rev_names.append(rname)
+            if not rev_dates:
+                rev_dates = m.get("review_dates", [])
+            for cid in m.get("cosmonauts", []):
+                if cid not in c_ids:
+                    c_ids.append(cid)
+
+        rev_name_str = ", ".join(rev_names) if rev_names else "Unassigned"
+        return rev_id, rev_name_str, rev_dates, c_ids
+
+    def render_timeline_config_drawer(b: Badge, dt: dict, rev_date_val: str) -> str:
+        return f"""
+        <details style="margin:12px 0; border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 14px; background:rgba(255,255,255,0.95);">
+            <summary style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+                <span>📅 Configure Milestone Timeline Dates</span>
+                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Click to Expand / Edit</span>
+            </summary>
+            <div style="margin-top:12px; display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:var(--frost-navy-50);">Learning Start</label>
+                    <input type="date" id="tl_ls_{b.id}" class="form-input" value="{dt.get('learning_start_date', '2026-11-10')}" style="font-size:11.5px; padding:4px 8px;">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:var(--frost-navy-50);">Learning End</label>
+                    <input type="date" id="tl_le_{b.id}" class="form-input" value="{dt.get('learning_end_date', '2026-11-20')}" style="font-size:11.5px; padding:4px 8px;">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:var(--frost-navy-50);">Sprint Start</label>
+                    <input type="date" id="tl_ps_{b.id}" class="form-input" value="{dt.get('project_start_date', '2026-11-21')}" style="font-size:11.5px; padding:4px 8px;">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:var(--frost-navy-50);">Sprint End</label>
+                    <input type="date" id="tl_pe_{b.id}" class="form-input" value="{dt.get('project_end_date', '2026-12-01')}" style="font-size:11.5px; padding:4px 8px;">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:#D32F2F;">Submission Deadline</label>
+                    <input type="date" id="tl_dl_{b.id}" class="form-input" value="{dt.get('submission_deadline', '2026-12-03')}" style="font-size:11.5px; padding:4px 8px; border-color:rgba(211,47,47,0.4);">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:#059669;">Review Date (Mapping Locked)</label>
+                    <input type="date" id="tl_rd_{b.id}" class="form-input" value="{dt.get('review_date', rev_date_val) if dt.get('review_date') != 'TBD' else rev_date_val}" style="font-size:11.5px; padding:4px 8px; border-color:rgba(5,150,105,0.4);">
+                </div>
+                <div>
+                    <label style="font-size:10px; font-weight:800; color:#2E7D32;">Award Date</label>
+                    <input type="date" id="tl_aw_{b.id}" class="form-input" value="{dt.get('expected_award_date', '2026-12-08')}" style="font-size:11.5px; padding:4px 8px; border-color:rgba(46,125,50,0.4);">
+                </div>
+            </div>
+            <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; padding:6px 16px; font-weight:800;"
+                    onclick="const p={{badge_id:'{b.id}', learning_start_date:document.getElementById('tl_ls_{b.id}').value, learning_end_date:document.getElementById('tl_le_{b.id}').value, project_start_date:document.getElementById('tl_ps_{b.id}').value, project_end_date:document.getElementById('tl_pe_{b.id}').value, submission_deadline:document.getElementById('tl_dl_{b.id}').value, review_date:document.getElementById('tl_rd_{b.id}').value, expected_award_date:document.getElementById('tl_aw_{b.id}').value}}; window.StarAppBridge.dispatchAction('save_allotment_timeline', JSON.stringify(p));">
+                    💾 Save Timeline
+                </button>
+            </div>
+        </details>
+        """
 
     def render_timeline_stepper(dt: dict, is_allocated: bool) -> str:
         alloc_date = dt.get("assignment_date", "TBD")
@@ -1371,6 +1453,23 @@ def render_guardian_badge_allotment(
         flash_ic_11 = get_icon("flash", 11, "margin-right:4px;")
         revoke_ic_13 = get_icon("revoke", 13, "margin-right:4px;")
 
+        b_band = getattr(b, "target_band", "B1") or "B1"
+        b_power = getattr(b, "power", "Tech") or "Tech"
+        b_cap = getattr(b, "capability", b.category) or "Data & Machine"
+        b_skill = getattr(b, "skill", "Foundations") or "Foundations"
+
+        rev_id, rev_name, rev_dates, assigned_cosmo_ids = get_badge_mapping_info(b)
+        rev_date_val = rev_dates[0] if rev_dates else "2026-11-18"
+
+        cosmo_chips = []
+        for cid in assigned_cosmo_ids[:5]:
+            cu = cosmo_users_map.get(cid)
+            cname = cu.name if cu else cid
+            cosmo_chips.append(f'<span style="display:inline-block; font-size:10.5px; background:rgba(23,52,92,0.06); color:var(--deep-frozen-midnight); padding:2px 7px; border-radius:3px; font-weight:700;">{escape(cname)}</span>')
+        if len(assigned_cosmo_ids) > 5:
+            cosmo_chips.append(f'<span style="font-size:10.5px; color:var(--frost-navy-50);">+{len(assigned_cosmo_ids)-5} more</span>')
+        cosmo_chips_html = " ".join(cosmo_chips) if cosmo_chips else '<span style="font-size:11px; color:var(--frost-navy-50);">All Cohort Cadets</span>'
+
         if is_completed:
             status_pill = f'<span class="status-pill status-approved" style="font-weight:700; font-size:11px; padding:3px 9px;">{check_ic_11} Certified</span>'
             card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);"
@@ -1381,6 +1480,7 @@ def render_guardian_badge_allotment(
             revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
 
         timeline_html = render_timeline_stepper(dt, is_allocated=True)
+        config_drawer_html = render_timeline_config_drawer(b, dt, rev_date_val)
 
         allocated_cards.append(f"""
         <div class="liquid-glass-card" style="{card_border} border-radius:var(--radius-md); padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between;">
@@ -1389,21 +1489,63 @@ def render_guardian_badge_allotment(
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:var(--radius-xs);">BAND {escape(b_band)}</span>
                         <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b.category)}</span>
                     </div>
                     {status_pill}
                 </div>
                 <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0; line-height:1.3;">{escape(b.title)}</h4>
 
+                <!-- Taxonomy Hierarchy Strip -->
+                <div style="font-size:11.5px; color:var(--frost-navy-75); margin:6px 0 10px 0; padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                    <span>⚡ <strong>{escape(b_power)}</strong></span>
+                    &nbsp;&rsaquo;&nbsp;
+                    <span>🌐 <strong>{escape(b_cap)}</strong></span>
+                    &nbsp;&rsaquo;&nbsp;
+                    <span>🎯 <strong>{escape(b_skill)}</strong></span>
+                </div>
+
+                <!-- Dedicated Badge Personnel & Competency Mapping Box -->
+                <div style="background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 12px; margin:8px 0 12px 0; box-shadow:0 1px 3px rgba(23,52,92,0.04);">
+                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                        <span>👥 Mapped Evaluation Personnel</span>
+                        <button type="button" class="btn-metal btn-sm" style="font-size:10px; padding:2px 8px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')">✏️ Manage Mapping</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
+                        <div style="background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                            <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase;">Authorized Reviewer</div>
+                            <div style="font-size:12px; font-weight:800; color:#059669; margin-top:2px; display:flex; align-items:center; gap:6px;">
+                                <span style="width:18px; height:18px; border-radius:50%; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:800;">{escape(rev_name[:2].upper() if rev_name else "R")}</span>
+                                {escape(rev_name)}
+                            </div>
+                        </div>
+                        <div style="background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                            <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase;">Review Window</div>
+                            <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy); margin-top:2px; font-family:var(--font-family-mono);">
+                                📅 {escape(rev_date_val)}
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase; margin-bottom:4px;">Assigned Cadets ({len(assigned_cosmo_ids)})</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                            {cosmo_chips_html}
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Visual Timeline Stepper -->
                 {timeline_html}
+
+                <!-- Collapsible Set Timeline Form -->
+                {config_drawer_html}
             </div>
 
             <!-- Clean Action Buttons Row -->
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:10px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap;">
                 <div style="display:flex; gap:6px;">
                     <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:11.5px; display:flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                        {get_icon("calendar", 13, "margin-right:4px;")} Update Timeline
+                        {get_icon("calendar", 13, "margin-right:4px;")} Edit Badge
                     </button>
                     <button type="button" class="btn-secondary btn-sm" style="font-weight:600; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{b.id}')">
                         {get_icon("eye", 13, "margin-right:4px;")} View Timeline
@@ -1418,7 +1560,16 @@ def render_guardian_badge_allotment(
     unallocated_cards = []
     for b in unallocated:
         dt = b.default_timeline or {}
+        b_band = getattr(b, "target_band", "B1") or "B1"
+        b_power = getattr(b, "power", "Tech") or "Tech"
+        b_cap = getattr(b, "capability", b.category) or "Data & Machine"
+        b_skill = getattr(b, "skill", "Foundations") or "Foundations"
+
+        rev_id, rev_name, rev_dates, assigned_cosmo_ids = get_badge_mapping_info(b)
+        rev_date_val = rev_dates[0] if rev_dates else "2026-11-18"
+
         timeline_html = render_timeline_stepper(dt, is_allocated=False)
+        config_drawer_html = render_timeline_config_drawer(b, dt, rev_date_val)
 
         unallocated_cards.append(f"""
         <div class="liquid-glass-card" style="border:1.5px dashed var(--icy-steel); background:rgba(234,244,255,0.45); border-radius:var(--radius-md); padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between;">
@@ -1427,23 +1578,38 @@ def render_guardian_badge_allotment(
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:rgba(23,52,92,0.15); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:var(--radius-xs);">BAND {escape(b_band)}</span>
                         <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b.category)}</span>
                     </div>
                     <span class="status-pill status-locked" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("lock", 11, "margin-right:4px;")} Not Allocated</span>
                 </div>
                 <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0; line-height:1.3;">{escape(b.title)}</h4>
 
+                <!-- Taxonomy Hierarchy Strip -->
+                <div style="font-size:11.5px; color:var(--frost-navy-75); margin:6px 0 10px 0; padding:6px 10px; background:rgba(255,255,255,0.7); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                    <span>⚡ <strong>{escape(b_power)}</strong></span>
+                    &nbsp;&rsaquo;&nbsp;
+                    <span>🌐 <strong>{escape(b_cap)}</strong></span>
+                    &nbsp;&rsaquo;&nbsp;
+                    <span>🎯 <strong>{escape(b_skill)}</strong></span>
+                </div>
+
+                <!-- Assigned Personnel Information -->
+                <div style="font-size:11.5px; color:var(--frost-navy); margin-bottom:12px;">
+                    <span>👤 <strong>Reviewer:</strong> <span style="color:#059669; font-weight:700;">{escape(rev_name)}</span></span>
+                </div>
+
                 <!-- Visual Timeline Stepper -->
                 {timeline_html}
+
+                <!-- Collapsible Set Timeline Form -->
+                {config_drawer_html}
             </div>
 
             <!-- Clean Action Buttons Row -->
             <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-top:10px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap;">
-                <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                    {get_icon("calendar", 13, "margin-right:4px;")} Set Timeline
-                </button>
-                <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:11.5px; display:flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('publish_and_unlock_badge', '{b.id}')">
-                    {get_icon("rocket", 13, "margin-right:4px;")} Publish to Cosmonaut
+                <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:11.5px; display:flex; align-items:center; gap:5px; background:linear-gradient(135deg, #059669, #047857); color:#fff;" onclick="window.StarAppBridge.publishBadge('{b.id}')">
+                    {get_icon("rocket", 13, "margin-right:4px;")} 🚀 Publish to Roadmap
                 </button>
             </div>
         </div>
@@ -1510,19 +1676,29 @@ def render_guardian_badge_allotment(
     from starapp.storage import store
     all_mappings = store.get_band_mappings() if store else []
 
+    # Filter mappings strictly scoped by the badges active in this allotment view
+    valid_badge_ids = {b.id for b in badges}
+    valid_badge_keys = {b.title.lower() for b in badges} | {b.code.lower() for b in badges} | {b.id.lower() for b in badges}
+
+    filtered_mappings = [
+        mp for mp in all_mappings
+        if (mp.get("badge_id") and mp.get("badge_id") in valid_badge_ids)
+        or (mp.get("badge") and mp.get("badge").lower() in valid_badge_keys)
+    ]
+
     users_map = {u.id: u for u in cosmonauts}
     if store and hasattr(store, "users") and store.users:
         users_map.update(store.users)
 
     mapping_rows = []
-    for idx, mp in enumerate(all_mappings, start=1):
+    for idx, mp in enumerate(filtered_mappings, start=1):
         m_id = mp.get("id", "")
         m_band = mp.get("band", "B1")
         m_badge = mp.get("badge", "Milestone")
-        m_cosmo_ids = mp.get("cosmonauts", [])
-        m_rev_ids = mp.get("reviewers", [])
-        m_dates = mp.get("review_dates", [])
-        m_created = mp.get("created_at", "")[:10]
+        m_cosmo_ids = mp.get("cosmonauts") or []
+        m_rev_ids = mp.get("reviewers") or []
+        m_dates = mp.get("review_dates") or []
+        m_created = (mp.get("created_at") or "")[:10]
 
         rev_id = m_rev_ids[0] if m_rev_ids else ""
         rev_user = users_map.get(rev_id)
@@ -1705,17 +1881,34 @@ def render_guardian_review_queue(
     cosmonauts_map: Dict[str, User],
     status_filter: str = "all"
 ) -> str:
+    from starapp.storage import store
+
     # Filter submissions
     filtered = submissions
     if status_filter != "all":
-        filtered = [s for s in submissions if s.status == status_filter]
+        if status_filter == "pending":
+            filtered = [s for s in submissions if s.status in ("pending", "submitted")]
+        elif status_filter == "reviewer_assessed":
+            filtered = [s for s in submissions if s.status == "reviewer_assessed"]
+        elif status_filter == "approved":
+            filtered = [s for s in submissions if s.status == "approved"]
+        elif status_filter == "retake_required":
+            filtered = [s for s in submissions if s.status in ("retake_required", "resubmission_requested")]
+        else:
+            filtered = [s for s in submissions if s.status == status_filter]
+
+    pending_cnt = len([s for s in submissions if s.status in ("pending", "submitted")])
+    rev_assessed_cnt = len([s for s in submissions if s.status == "reviewer_assessed"])
+    approved_cnt = len([s for s in submissions if s.status == "approved"])
+    retake_cnt = len([s for s in submissions if s.status in ("retake_required", "resubmission_requested")])
 
     filter_buttons = []
     filter_tabs = [
         ("all", "All Submissions", len(submissions)),
-        ("pending", "Pending Review", len([s for s in submissions if s.status == "pending"])),
-        ("approved", "Approved", len([s for s in submissions if s.status == "approved"])),
-        ("resubmission_requested", "Resubmission Requested", len([s for s in submissions if s.status == "resubmission_requested"]))
+        ("pending", "Pending Review", pending_cnt),
+        ("reviewer_assessed", "Reviewer Assessed", rev_assessed_cnt),
+        ("approved", "Awarded / Passed", approved_cnt),
+        ("retake_required", "Retake Required", retake_cnt)
     ]
     for f_id, f_label, f_count in filter_tabs:
         is_active = f_id == status_filter
@@ -1730,9 +1923,37 @@ def render_guardian_review_queue(
         badge = badges_map.get(sub.badge_id)
         cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
         cosmo_avatar = getattr(cosmo, "avatar", "AN") or "AN"
+        cosmo_band = getattr(cosmo, "band", "B1")
         badge_code = badge.code if badge else sub.badge_id
         badge_title = badge.title if badge else "Milestone Deliverable"
         badge_category = getattr(badge, "category", "Core Engineering")
+        badge_thresh = getattr(badge, "passing_percentage", 70.0)
+
+        # Lookup Review Window and Reviewer
+        tl = store.get_timeline(sub.badge_id, sub.cosmonaut_id)
+        rev_id = getattr(tl, "reviewer_id", "") if tl else ""
+        if not rev_id:
+            for m in store.get_band_mappings():
+                if sub.cosmonaut_id in m.get("cosmonauts", []) and m.get("reviewers"):
+                    rev_id = m["reviewers"][0]
+                    break
+        rev_user = store.get_user_by_id(rev_id) if rev_id else None
+        rev_name = rev_user.name if rev_user else (rev_id or "Unassigned")
+        rev_band = getattr(rev_user, "band", "") if rev_user else ""
+
+        r_window = []
+        if tl and getattr(tl, "review_window_json", None):
+            try:
+                r_window = json.loads(tl.review_window_json)
+            except Exception:
+                r_window = []
+        window_str = " &rarr; ".join(r_window) if r_window else "3-Day Window"
+
+        # Lookup Reviewer Assessment
+        rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
+        # Lookup Guardian Assessment
+        g_asm = store.get_guardian_assessment_for_submission(sub.id)
+
         pill = render_status_pill(sub.status)
 
         # File names / payloads
@@ -1740,7 +1961,7 @@ def render_guardian_review_queue(
         code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
         github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or ""
 
-        # Precomputed Vector Icons
+        # Icons
         pdf_ic = get_icon("file_text", 13, "margin-right:4px; color:#D32F2F;")
         code_ic = get_icon("code", 13, "margin-right:4px; color:var(--deep-frozen-midnight);")
         gh_ic = get_icon("github", 13, "margin-right:4px; color:var(--frost-navy);")
@@ -1749,10 +1970,26 @@ def render_guardian_review_queue(
 
         # Container styling
         card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.88) 100%);"
-        if sub.status == "pending":
+        if sub.status in ("pending", "submitted", "reviewer_assessed"):
             card_border = "border:2px solid var(--deep-frozen-midnight); box-shadow:0 6px 20px rgba(23,52,92,0.12); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%);"
 
         submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
+
+        # Reviewer score pill
+        if rev_asm:
+            rev_score_pill = f'<span style="font-size:11.5px; font-weight:800; color:#059669; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Reviewer Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
+        else:
+            rev_score_pill = '<span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:3px 10px; border-radius:var(--radius-xs);">Reviewer: Pending Evaluation</span>'
+
+        # Guardian score pill
+        if g_asm:
+            is_pass = g_asm.percentage >= badge_thresh
+            g_color = "#059669" if is_pass else "#DC2626"
+            g_bg = "rgba(16,185,129,0.12)" if is_pass else "rgba(239,68,68,0.1)"
+            g_border = "rgba(16,185,129,0.3)" if is_pass else "rgba(239,68,68,0.3)"
+            g_score_pill = f'<span style="font-size:11.5px; font-weight:800; color:{g_color}; background:{g_bg}; border:1px solid {g_border}; padding:3px 10px; border-radius:var(--radius-xs);">Guardian Final: {g_asm.total_marks:.1f}/50 ({g_asm.percentage:.1f}%) &bull; {"PASS" if is_pass else "RETAKE"}</span>'
+        else:
+            g_score_pill = '<span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:3px 10px; border-radius:var(--radius-xs);">Guardian: Awaiting Final Assessment</span>'
 
         cards.append(f"""
         <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
@@ -1763,8 +2000,8 @@ def render_guardian_review_queue(
                         {escape(cosmo_avatar)}
                     </div>
                     <div>
-                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)}</div>
-                        <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet</div>
+                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:#06B6D4;">(Band {escape(cosmo_band)})</span></div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned Reviewer: <strong>{escape(rev_name)}</strong> {f'(Band {escape(rev_band)})' if rev_band else ''}</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -1774,7 +2011,7 @@ def render_guardian_review_queue(
             </div>
 
             <!-- Middle Row: Badge Milestone & Submission Date -->
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                         <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
@@ -1787,9 +2024,20 @@ def render_guardian_review_queue(
                 </div>
             </div>
 
+            <!-- Review Window & 50-Mark Scores Row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding:8px 12px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
+                <div style="font-size:11px; color:var(--frost-navy-75);">
+                    <strong>Review Window:</strong> <span style="font-family:var(--font-family-mono);">{escape(window_str)}</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    {rev_score_pill}
+                    {g_score_pill}
+                </div>
+            </div>
+
             <!-- Deliverables Files Tray (All Three Files/Links) -->
-            <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:14px;">
-                <div style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Uploaded Deliverables (All Files Available):</div>
+            <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:14px;">
+                <div style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Uploaded Deliverables:</div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                     <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
                         {pdf_ic} {escape(pdf_name)}
@@ -1805,9 +2053,9 @@ def render_guardian_review_queue(
 
             <!-- Footer Action Row -->
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Click container to open interactive in-website Code & PDF viewer</span>
+                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Passing Threshold: <strong>{badge_thresh:.1f}% ({badge_thresh * 0.5:.1f}/50)</strong></span>
                 <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:12px; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
-                    Inspect Deliverables & Evaluate {arrow_ic}
+                    Inspect Deliverables & Final Assessment {arrow_ic}
                 </button>
             </div>
         </div>
@@ -1820,8 +2068,8 @@ def render_guardian_review_queue(
     <div>
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
             <div>
-                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Project Deliverable Review Queue</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Incoming deliverables from cohort cosmonauts awaiting technical inspection and rubric evaluation.</p>
+                <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Assessment Dashboard &amp; Submission Queue</h2>
+                <p style="font-size:13px; color:var(--frost-navy-50);">Live tracking of cadet project submissions, authorized reviewer scores, and Guardian final rubric evaluations.</p>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 {filter_tray}
@@ -1848,11 +2096,14 @@ def render_guardian_review_detail(
     Allows Guardian to toggle between PDF document and Source Code directly in the website,
     with an embedded 50-mark rubric evaluation panel.
     """
+    from starapp.storage import store
+
     cosmo_name = cosmonaut.name if cosmonaut else submission.cosmonaut_id
     cosmo_avatar = getattr(cosmonaut, "avatar", "AN") or "AN"
     badge_code = badge.code if badge else submission.badge_id
     badge_title = badge.title if badge else "Milestone Deliverable"
     badge_cat = getattr(badge, "category", "Core Engineering")
+    badge_thresh = getattr(badge, "passing_percentage", 70.0)
     pill = render_status_pill(submission.status)
 
     # Deliverables info
@@ -1878,19 +2129,57 @@ def run():
     download_ic = get_icon("download", 13, "margin-right:5px;")
     expand_ic = get_icon("external_link", 13, "margin-right:5px;")
 
-    # Default rubric scores (or existing)
-    init_bu = existing_assessment.business_understanding if existing_assessment else 9.5
-    init_ar = existing_assessment.architecture_report if existing_assessment else 9.0
-    init_tk = existing_assessment.technical_knowledge if existing_assessment else 9.5
-    init_pr = existing_assessment.presentation if existing_assessment else 9.0
-    init_qa = existing_assessment.qa if existing_assessment else 9.0
+    # Lookup Reviewer Assessment & Guardian Assessment
+    rev_asm = store.get_reviewer_assessment_for_submission(submission.id)
+    g_asm = store.get_guardian_assessment_for_submission(submission.id) or existing_assessment
+
+    # Default rubric scores (Guardian preferred, then Reviewer, then defaults)
+    active_eval = g_asm or rev_asm
+    init_bu = active_eval.business_understanding if active_eval else 9.0
+    init_ar = active_eval.architecture_report if active_eval else 9.0
+    init_tk = active_eval.technical_knowledge if active_eval else 9.0
+    init_pr = active_eval.presentation if active_eval else 9.0
+    init_qa = active_eval.qa if active_eval else 9.0
     init_total = init_bu + init_ar + init_tk + init_pr + init_qa
     init_pct = (init_total / 50.0) * 100.0
 
-    init_strengths = existing_assessment.strength_areas if existing_assessment else "Robust atomic deduplication store prevents duplicate writes on Kafka consumer rebalance."
-    init_improvements = existing_assessment.improvement_areas if existing_assessment else "Consider configuring exponential backoff with jitter for DLQ retries."
-    init_feedback = existing_assessment.overall_feedback if existing_assessment else "Exemplary resolution of the idempotency flaw identified in Attempt #1. Enterprise-grade ingestion pipeline approved."
-    init_decision = existing_assessment.decision if existing_assessment else "approve"
+    init_strengths = active_eval.strength_areas if active_eval else "Robust atomic deduplication store prevents duplicate writes on Kafka consumer rebalance."
+    init_improvements = active_eval.improvement_areas if active_eval else "Consider configuring exponential backoff with jitter for DLQ retries."
+    init_feedback = active_eval.overall_feedback if active_eval else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
+    init_decision = active_eval.decision if active_eval else ("approve" if init_pct >= badge_thresh else "resubmission_requested")
+
+    # Authorized Reviewer Summary Panel
+    if rev_asm:
+        rev_user = store.get_user_by_id(rev_asm.reviewer_id)
+        rev_band = getattr(rev_user, "band", "") if rev_user else ""
+        rev_panel = f"""
+        <div style="background:linear-gradient(135deg, rgba(234,244,255,0.95) 0%, rgba(255,255,255,0.9) 100%); border:1.5px solid #06B6D4; border-radius:var(--radius-xs); padding:10px 12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(6,182,212,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="font-size:10px; font-weight:800; color:#0891B2; text-transform:uppercase; letter-spacing:0.5px;">Authorized Reviewer Score</span>
+                <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; color:#059669; background:rgba(16,185,129,0.15); padding:2px 8px; border-radius:8px;">{rev_asm.total_marks:.1f} / 50.0 ({rev_asm.percentage:.1f}%)</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--frost-navy); font-weight:700; margin-bottom:4px;">
+                Assessed by {escape(rev_asm.reviewer_name)} {f'(Band {escape(rev_band)})' if rev_band else ''}
+            </div>
+            <div style="font-size:10.5px; color:var(--frost-navy-75); font-family:var(--font-family-mono); margin-bottom:6px;">
+                BU: {rev_asm.business_understanding:.1f} &bull; AR: {rev_asm.architecture_report:.1f} &bull; TK: {rev_asm.technical_knowledge:.1f} &bull; PR: {rev_asm.presentation:.1f} &bull; QA: {rev_asm.qa:.1f}
+            </div>
+            {f'<div style=\"font-size:11px; color:var(--frost-navy); font-style:italic; background:#fff; padding:6px 8px; border-radius:4px; border:1px solid var(--icy-steel-30);\">\"{escape(rev_asm.overall_feedback)}\"</div>' if rev_asm.overall_feedback else ''}
+        </div>
+        """
+    else:
+        rev_panel = """
+        <div style="background:rgba(245,158,11,0.06); border:1px dashed #F59E0B; border-radius:var(--radius-xs); padding:8px 10px; margin-bottom:12px; font-size:11px; color:#B45309;">
+            <strong>Reviewer Assessment Pending:</strong> Assigned reviewer has not yet submitted preliminary marks. Guardian may evaluate directly.
+        </div>
+        """
+
+    threshold_banner = f"""
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.3); border-radius:var(--radius-xs); margin-bottom:10px;">
+        <span style="font-size:11px; font-weight:700; color:#0891B2; text-transform:uppercase;">Passing Threshold:</span>
+        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{badge_thresh:.1f}% ({badge_thresh * 0.5:.1f} / 50 marks)</span>
+    </div>
+    """
 
     # 1. Selector Tab Buttons Styling
     tab_pdf_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "pdf" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
@@ -2019,8 +2308,11 @@ def run():
                 </div>
 
                 <!-- Scrollable Rubric Form Body -->
-                <form id="guardian-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); window.StarAppBridge.submitEvaluationMarksheet('{submission.id}');">
+                <form id="guardian-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); window.StarAppBridge.submitGuardianFinalAssessment('{submission.id}');">
                     <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 14px;">
+                        {rev_panel}
+                        {threshold_banner}
+
                         <!-- 5 Criteria Compact Rows -->
                         <div style="margin-bottom:12px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); margin-bottom:6px; border:1px solid var(--icy-steel-30);">
@@ -2695,8 +2987,8 @@ def render_guardian_mapping(
     ]
 
     # Auto-select first approved badge if current selected_badge is not present
-    badge_names = [b["name"] for b in clean_badges] + [b["code"] for b in clean_badges]
-    if clean_badges and selected_badge not in badge_names:
+    badge_names = [b["name"] for b in clean_badges] + [b["code"] for b in clean_badges] + [b["id"] for b in clean_badges]
+    if clean_badges and (selected_badge not in badge_names or selected_badge == "AIOS"):
         selected_badge = clean_badges[0]["name"]
 
     # Calendar Grid calculation
@@ -2916,10 +3208,24 @@ def render_guardian_mapping(
     # 7. GUARDIAN REVIEW REQUESTS & DECISIONS DATA
     # --------------------------------------------------------------------------
     all_requests = all_requests or []
-    band_requests = [r for r in all_requests if r.get("band") == selected_band]
+
+    def matches_badge_req(r):
+        if r.get("band") != selected_band:
+            return False
+        r_b = r.get("badge", "")
+        r_bid = r.get("badge_id", "")
+        if selected_badge:
+            if r_b == selected_badge or r_b in selected_badge or selected_badge in r_b or (r_bid and r_bid == selected_badge):
+                return True
+        return False
+
+    badge_specific_requests = [r for r in all_requests if matches_badge_req(r)]
+    # Use badge-specific requests if any exist, otherwise fallback to unassigned band requests
+    band_requests = badge_specific_requests if badge_specific_requests else [r for r in all_requests if r.get("band") == selected_band and not r.get("badge_id")]
     accepted_band_requests = [r for r in band_requests if r.get("status") == "accepted"]
     pending_band_requests = [r for r in band_requests if r.get("status") == "pending"]
     rejected_band_requests = [r for r in band_requests if r.get("status") == "rejected"]
+    other_band_badge_reqs = [r for r in all_requests if r.get("band") == selected_band and not matches_badge_req(r)]
 
     num_accepted = len(accepted_band_requests)
     num_selected_cosmo = len(selected_cosmonauts)
@@ -3047,7 +3353,19 @@ def render_guardian_mapping(
 
     for mp in band_active_mappings:
         m_id = mp.get("id", "")
-        m_badge = mp.get("badge", selected_badge)
+        m_badge = mp.get("badge") or selected_badge
+        m_badge_id = mp.get("badge_id", "")
+        if (m_badge == "AIOS" or not m_badge) and clean_badges:
+            for cb in clean_badges:
+                if cb["id"] == m_badge_id or cb["name"] == m_badge or cb["code"] == m_badge:
+                    m_badge = cb["name"]
+                    break
+            else:
+                m_badge = clean_badges[0]["name"]
+        elif m_badge_id and store:
+            b_lookup = store.get_badge(m_badge_id)
+            if b_lookup and b_lookup.title:
+                m_badge = b_lookup.title
         m_cosmo_ids = mp.get("cosmonauts", [])
         m_rev_ids = mp.get("reviewers", [])
         m_rev_band = mp.get("reviewer_band", "B2")
@@ -3113,6 +3431,11 @@ def render_guardian_mapping(
                     {len(m_cosmo_ids)} Cadets
                 </span>
             </td>
+            <td style="vertical-align:middle; padding:16px 14px; text-align:center;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_band_mapping', '{m_id}')" title="Delete this mapping" style="font-size:11px; padding:4px 8px; color:#DC2626; border-color:rgba(220,38,38,0.3);">
+                    ✕ Delete
+                </button>
+            </td>
         </tr>
         """)
 
@@ -3128,7 +3451,7 @@ def render_guardian_mapping(
         if editing_mapping_id else
         f"Map Approved Badge &bull; Band {selected_band}"
     )
-    submit_btn_text = "Update Badge Mapping" if editing_mapping_id else "Create Badge Mapping"
+    submit_btn_text = "💾 Update Badge Mapping" if editing_mapping_id else "💾 Save Mapping"
 
     return f"""
     <div>
@@ -3365,11 +3688,16 @@ def render_guardian_mapping(
         <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
-                        Guardian Review Requests & Decisions &bull; Band {selected_band}
-                    </h3>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">
+                            Reviewer Selected Requests &bull; Band {selected_band}
+                        </h3>
+                        <span class="status-pill" style="font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight);">
+                            {escape(selected_badge)}
+                        </span>
+                    </div>
                     <p style="font-size:12px; color:var(--frost-navy-50); margin:0;">
-                        Requests dispatched to higher-band guardians. Accept guardian participation to unlock automated equal cosmonaut distribution.
+                        Requests dispatched for <strong>{escape(selected_badge)}</strong>. When reviewers accept, their availability is locked for equal cosmonaut distribution for this badge.
                     </p>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -3385,6 +3713,13 @@ def render_guardian_mapping(
                 </div>
             </div>
 
+            {f'''
+            <div style="margin-bottom:14px; padding:8px 14px; background:rgba(23,52,92,0.04); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-size:11.5px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <span>⚡ Active Badge: <strong>{escape(selected_badge)}</strong> &bull; Showing {len(band_requests)} request(s)</span>
+                <span>Other badge requests in Band {selected_band}: <strong>{len(other_band_badge_reqs)}</strong> (independent badge mappings)</span>
+            </div>
+            ''' if other_band_badge_reqs else ''}
+
             <!-- Request Cards List -->
             <div style="display:flex; flex-direction:column; gap:12px;">
                 {"".join(request_cards_html) if request_cards_html else f'''
@@ -3392,7 +3727,7 @@ def render_guardian_mapping(
                     <div style="margin-bottom:8px; color:var(--frost-navy-50);">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                     </div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">No Review Requests Dispatched Yet for Band {selected_band}</div>
+                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">No Review Requests Dispatched Yet for '{escape(selected_badge)}' (Band {selected_band})</div>
                     <div style="font-size:12px; color:var(--frost-navy-50); max-width:480px; margin:4px auto 14px auto;">
                         Select candidate cosmonauts in Card 3, higher-band reviewers in Card 4, pick 3 review dates on the calendar, then click <strong>"Send Request"</strong> above.
                     </div>
@@ -3470,7 +3805,7 @@ def render_guardian_mapping(
                 <div class="liquid-glass-panel" style="padding:16px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                         <h4 style="font-size:13.5px; font-weight:800; color:#059669; margin:0;">
-                            2. Accepted Reviewers ({num_accepted})
+                            2. Accepted Reviewers for {escape(selected_badge)} ({num_accepted})
                         </h4>
                         <span class="status-pill status-approved" style="font-size:10px; font-weight:800;">
                             Confirmed
@@ -3486,7 +3821,7 @@ def render_guardian_mapping(
                                 </tr>
                             </thead>
                             <tbody>
-                                {"".join(accepted_reviewer_table_rows) if accepted_reviewer_table_rows else "<tr><td colspan='3' style='text-align:center; padding:24px; color:var(--frost-navy-50);'>No guardians accepted yet. Accept review requests in Section 4 above.</td></tr>"}
+                                {"".join(accepted_reviewer_table_rows) if accepted_reviewer_table_rows else f"<tr><td colspan='3' style='text-align:center; padding:24px; color:var(--frost-navy-50);'>No reviewers accepted yet for '{escape(selected_badge)}'. Accept review requests in Section 4 above.</td></tr>"}
                             </tbody>
                         </table>
                     </div>
@@ -3497,7 +3832,7 @@ def render_guardian_mapping(
             <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(5,150,105,0.08), rgba(23,52,92,0.04)); border:1.5px solid rgba(5,150,105,0.3); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <span style="font-size:14px; font-weight:800; color:var(--frost-navy);">
-                        Equal Partition Allocation
+                        Equal Partition Allocation: {escape(selected_badge)}
                     </span>
                     <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
                         {num_accepted} Confirmed Reviewer(s) &bull; {num_selected_cosmo} Candidate(s)
@@ -3506,11 +3841,11 @@ def render_guardian_mapping(
                 {f'''
                 <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction(\'execute_cosmonaut_mapping\', \'{{}}\')" style="padding:10px 22px; font-size:13px; font-weight:800; background:linear-gradient(135deg, #059669, #047857); color:#fff; border:none; border-radius:var(--radius-sm); cursor:pointer; display:flex; align-items:center; gap:6px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    Map Cosmonauts
+                    💾 Save Mapping ({escape(selected_badge)})
                 </button>
                 ''' if num_accepted > 0 and num_selected_cosmo > 0 else f'''
                 <button type="button" class="btn-secondary" disabled style="opacity:0.5; padding:10px 20px; font-size:12.5px; font-weight:700; cursor:not-allowed;">
-                    Map Cosmonauts (Accept at least 1 Guardian)
+                    💾 Save Mapping ({escape(selected_badge)}) (Accept at least 1 Reviewer)
                 </button>
                 '''}
             </div>
@@ -3552,6 +3887,7 @@ def render_guardian_mapping(
                             <th style="width:180px; padding:12px 16px;">Milestone</th>
                             <th style="padding:12px 16px;">Mapped Cosmonauts</th>
                             <th style="width:90px; text-align:center; padding:12px 16px;">Cadets</th>
+                            <th style="width:90px; text-align:center; padding:12px 16px;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4004,12 +4340,24 @@ def render_guardian_create_badge(
                 notes_html = f'<div style="margin-top:6px; padding:6px 10px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:11.5px; color:#DC2626;"><strong>Reviewer Feedback:</strong> {escape(sb_notes)}</div>'
 
             allot_btn = ""
+            sb_is_published = sb.get("is_published", False)
             if sb_status == "approved":
-                allot_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')" style="font-size:11.5px; font-weight:700;">
-                    Allot &rarr;
-                </button>
-                """
+                if sb_is_published:
+                    allot_btn = f"""
+                    <span class="status-pill status-approved" style="font-size:10.5px; font-weight:800; background:#059669; color:#fff; padding:3px 9px;">Published</span>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-size:11.5px; font-weight:700;">
+                        Go to Mapping &rarr;
+                    </button>
+                    """
+                else:
+                    allot_btn = f"""
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.publishBadge('{sb_id}')" style="background:#06B6D4; color:#fff; border-color:#0891B2; font-size:11.5px; font-weight:800; box-shadow:0 2px 8px rgba(6,182,212,0.25);">
+                        Publish Badge &rarr;
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')" style="font-size:11.5px; font-weight:700;">
+                        Allot &rarr;
+                    </button>
+                    """
 
             saved_cards.append(f"""
             <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-40); margin-bottom:12px; background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);">

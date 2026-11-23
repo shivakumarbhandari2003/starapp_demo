@@ -48,5 +48,7 @@ async def get_pending_submissions(
 ):
     repo = SubmissionsRepository(conn)
     service = SubmissionsService(repo)
-    pending = service.get_pending()
+    # Guardians and Admins can see all pending submissions; reviewers only see assigned
+    reviewer_id = None if (user.get("role") == "guardian" or "guardian" in user.get("roles", [])) else user["id"]
+    pending = service.get_pending(reviewer_id=reviewer_id)
     return {"success": True, "count": len(pending), "submissions": pending}

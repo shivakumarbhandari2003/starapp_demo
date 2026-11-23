@@ -23,6 +23,17 @@ class GenerateBadgeRequest(BaseModel):
     outcome_sentence: Optional[str] = ""
 
 
+class GenerateProjectRequest(BaseModel):
+    band: str = "B1"
+    power: str = "Tech"
+    capability: str = "Data & Machine"
+    skill: str = "Hardware"
+    badge_title: str = "Hardware Foundations"
+    reviewer_name: Optional[str] = "Institutional Reviewer"
+    cosmonaut_ids: Optional[List[str]] = []
+
+
+
 class MentorChatRequest(BaseModel):
     message: str
     badge_title: Optional[str] = "Engineering Badge"
@@ -228,3 +239,96 @@ async def mentor_chat(req: MentorChatRequest, user=Depends(get_current_user)):
         "success": True,
         "reply": f"Hello {user['name']}! Regarding '{req.badge_title}': Focus on structuring your architecture diagram and demonstrating concrete trade-offs across the 5 evaluation criteria (Business Understanding, Architecture, Technical Knowledge, Presentation, and Q&A). Let me know which criterion you'd like guidance on!"
     }
+
+
+@router.post("/generate-project")
+async def generate_project(req: GenerateProjectRequest, user=Depends(get_current_user_optional)):
+    """Generate structured project specifications via Gemini API with deterministic fallback."""
+    from starapp.badge_generator import generate_reviewer_project_spec
+    api_key = GEMINI_API_KEY
+    if not api_key:
+        return {
+            "success": True,
+            "project": generate_reviewer_project_spec(
+                band=req.band,
+                power=req.power,
+                capability=req.capability,
+                skill=req.skill,
+                badge_title=req.badge_title,
+                reviewer_name=req.reviewer_name or "Institutional Reviewer"
+            ),
+            "mode": "deterministic_fallback"
+        }
+
+    prompt = f"""You are a Principal Engineering Reviewer at StarApp.
+Generate a structured, professional engineering project specification for an engineering cadet working toward:
+- Badge Title: "{req.badge_title}"
+- Band: {req.band}
+- Power: {req.power}
+- Capability: {req.capability}
+- Skill: {req.skill}
+
+The project must be doable within a 3-day sprint and evaluated across a standard 50-mark rubric (Business Understanding [10], Architecture Report [10], Technical Knowledge [10], Presentation [10], Q&A Technical Defense [10]).
+
+Return ONLY valid JSON matching this exact structure:
+{{
+  "title": "{req.skill} Enterprise Pipeline & Architecture Project",
+  "scenario": "A concise, real-world engineering problem scenario...",
+  "requirements": [
+    "1. Implement core pipeline logic meeting Band {req.band} standards.",
+    "2. Author a comprehensive PDF Architecture Report answering scalability and resilience.",
+    "3. Provide a GitHub repository link with clean commit history.",
+    "4. Prepare for 15-minute technical defense."
+  ],
+  "deliverables": {{
+    "code": {{"name": "{req.skill.lower().replace(' ', '_')}_pipeline.py", "format": "Python Script (.py)", "description": "Executable implementation..."}},
+    "pdf": {{"name": "{req.skill.replace(' ', '_')}_Architecture_Report.pdf", "format": "PDF Technical Spec", "description": "Architecture report..."}},
+    "github": {{"name": "https://github.com/starapp-cadets/{req.skill.lower().replace(' ', '-')}-project", "format": "Git Repository", "description": "Version-controlled repo..."}}
+  }},
+  "rubric_guidelines": {{
+    "business_understanding": "Domain scope formulation and objectives (Max: 10 Marks)",
+    "architecture_report": "System topology and trade-offs (Max: 10 Marks)",
+    "technical_knowledge": "Code execution and modularity (Max: 10 Marks)",
+    "presentation": "Documentation clarity and repository layout (Max: 10 Marks)",
+    "qa": "Technical justification and defense (Max: 10 Marks)"
+  }},
+  "timeline_prep_note": "3 Days allocated for concept learning and project sprint preparation before milestone deliverable submission."
+}}
+"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    payload_data = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1024}
+    }
+
+    try:
+        req_obj = urllib.request.Request(
+            url,
+            data=json.dumps(payload_data).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            parsed = json.loads(text.strip())
+            return {"success": True, "project": parsed, "mode": "gemini_live"}
+    except Exception:
+        return {
+            "success": True,
+            "project": generate_reviewer_project_spec(
+                band=req.band,
+                power=req.power,
+                capability=req.capability,
+                skill=req.skill,
+                badge_title=req.badge_title,
+                reviewer_name=req.reviewer_name or "Institutional Reviewer"
+            ),
+            "mode": "fallback_on_error"
+        }
+

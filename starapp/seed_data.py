@@ -7,6 +7,8 @@ Provides clean, unpolluted initial seed metadata:
 """
 
 from typing import Dict, Any
+import json
+from starapp.badge_generator import generate_badge_data
 
 def get_initial_seed_data() -> Dict[str, Any]:
     users = [
@@ -110,7 +112,67 @@ def get_initial_seed_data() -> Dict[str, Any]:
         }
     ]
 
+    # Seed 3rd Badge: Signals Foundations (B1-SIG-01), mapped to cohort cosmonauts
+    badge_signals_gen = generate_badge_data(
+        band="B1",
+        power="Tech",
+        capability="Data & Machine",
+        skill="Signals",
+        outcome_sentence=""
+    )
+    badge_signals = {
+        "id": "badge_b1_signals",
+        "is_allocated": True,
+        "code": "B1-SIG-01",
+        "title": "Signals Foundations",
+        "category": "Foundations",
+        "description": badge_signals_gen["description"],
+        "learning_outcomes": badge_signals_gen["outcomes"],
+        "learning_topics": [t["title"] for t in badge_signals_gen["learning_topics"]],
+        "prerequisites": [],
+        "project_requirements": badge_signals_gen["practice_prompt"],
+        "is_published": True,
+        "target_band": "B1",
+        "power": "Tech",
+        "capability": "Data & Machine",
+        "skill": "Signals",
+        "workflow_status": "approved",
+        "assigned_cosmonaut_ids": ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"],
+        "prompt_json": json.dumps(badge_signals_gen),
+        "default_timeline": {
+            "assignment_date": "2026-11-20",
+            "publication_date": "2026-11-20",
+            "learning_start_date": "2026-11-21",
+            "learning_end_date": "2026-11-30",
+            "project_start_date": "2026-12-01",
+            "project_end_date": "2026-12-10",
+            "submission_deadline": "2026-12-12",
+            "review_date": "2026-12-15",
+            "expected_award_date": "2026-12-16"
+        }
+    }
+    badges.append(badge_signals)
+
     timelines = []
+    for cid in ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"]:
+        timelines.append({
+            "badge_id": "badge_b1_signals",
+            "cosmonaut_id": cid,
+            "assignment_date": "2026-11-20",
+            "publication_date": "2026-11-20",
+            "learning_start_date": "2026-11-21",
+            "learning_end_date": "2026-11-30",
+            "project_start_date": "2026-12-01",
+            "project_end_date": "2026-12-10",
+            "submission_deadline": "2026-12-12",
+            "review_date": "2026-12-15",
+            "expected_award_date": "2026-12-16",
+            "actual_award_date": None,
+            "status": "active"
+        })
+
+    band_mappings = []
+
     submissions = []
     assessments = []
     materials = []
@@ -177,7 +239,8 @@ def get_initial_seed_data() -> Dict[str, Any]:
         "extensions": extensions,
         "announcements": announcements,
         "activities": activities,
-        "notifications": notifications
+        "notifications": notifications,
+        "band_mappings": band_mappings
     }
 
 if __name__ == "__main__":

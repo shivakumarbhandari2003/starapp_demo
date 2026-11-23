@@ -404,6 +404,21 @@ CREATE TABLE IF NOT EXISTS mapping_requests (
     data_json TEXT NOT NULL
 );
 
+-- 26. Reviewer Authored Project Prompts for Mapped Cadets
+CREATE TABLE IF NOT EXISTS reviewer_project_prompts (
+    id TEXT PRIMARY KEY,
+    badge_id TEXT NOT NULL,
+    reviewer_id TEXT NOT NULL REFERENCES users(id),
+    cosmonaut_ids_json TEXT NOT NULL DEFAULT '[]',
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    deliverables_json TEXT NOT NULL DEFAULT '{}',
+    requirements_text TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+);
+
 -- Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_badges_target_band ON badges(target_band);
 CREATE INDEX IF NOT EXISTS idx_badges_workflow_status ON badges(workflow_status);
@@ -412,6 +427,8 @@ CREATE INDEX IF NOT EXISTS idx_assessments_sub_id ON assessment_marksheets(submi
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_activity_events_timestamp ON activity_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_badge_reviewer_assignments_reviewer ON badge_reviewer_assignments(reviewer_id, status);
+CREATE INDEX IF NOT EXISTS idx_rev_proj_badge ON reviewer_project_prompts(badge_id);
+CREATE INDEX IF NOT EXISTS idx_rev_proj_reviewer ON reviewer_project_prompts(reviewer_id);
 """
 
 # ==============================================================================
@@ -517,6 +534,22 @@ class DatabaseManager:
         except Exception:
             pass
 
+        # Safe Column Migrations for Complete Assessment & Mapping Workflow
+        workflow_cols = [
+            ("assessment_marksheets", "assessor_role", "TEXT DEFAULT 'guardian'"),
+            ("assessment_marksheets", "remarks", "TEXT DEFAULT ''"),
+            ("badges", "passing_percentage", "REAL DEFAULT 70.0"),
+            ("badges", "published_at", "TEXT DEFAULT ''"),
+            ("badges", "published_by", "TEXT DEFAULT ''"),
+            ("badge_timelines", "reviewer_id", "TEXT DEFAULT ''"),
+            ("badge_timelines", "review_window_json", "TEXT DEFAULT '[]'"),
+        ]
+        for tbl, col, col_def in workflow_cols:
+            try:
+                self.conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_def};")
+            except Exception:
+                pass
+
         self.conn.commit()
 
     def clear_all_tables(self):
@@ -531,7 +564,7 @@ class DatabaseManager:
                 "assessment_marksheets", "project_submissions", "deadline_extensions",
                 "learning_materials", "announcement_read_receipts", "announcement_recipients",
                 "announcements", "notifications", "activity_events", "band_mappings",
-                "mapping_requests", "custom_capabilities", "custom_skills", "cosmonaut_profiles",
+                "mapping_requests", "reviewer_project_prompts", "custom_capabilities", "custom_skills", "cosmonaut_profiles",
                 "user_band_memberships", "badge_reviewer_qualifications", "user_role_assignments",
                 "employee_reporting", "badges", "users"
             ]
@@ -1022,8 +1055,9 @@ class DatabaseManager:
                         learning_outcomes_json, learning_topics_json, project_requirements,
                         is_published, is_allocated, target_band, power, capability, skill,
                         prompt_json, workflow_status, creator_id, assigned_reviewer_id,
-                        assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at,
+                        passing_percentage, published_at, published_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         b_id,
@@ -1047,7 +1081,10 @@ class DatabaseManager:
                         json.dumps(b.get("assigned_cosmonaut_ids", [])),
                         json.dumps(b.get("default_timeline", {})),
                         b.get("created_at", current_iso_timestamp()),
-                        b.get("updated_at", current_iso_timestamp())
+                        b.get("updated_at", current_iso_timestamp()),
+                        float(b.get("passing_percentage", 70.0)),
+                        b.get("published_at", ""),
+                        b.get("published_by", "")
                     )
                 )
 
@@ -1073,8 +1110,9 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO badge_timelines (
                         badge_id, cosmonaut_id, assignment_date, publication_date,
                         learning_start_date, learning_end_date, project_start_date, project_end_date,
-                        submission_deadline, review_date, expected_award_date, actual_award_date, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        submission_deadline, review_date, expected_award_date, actual_award_date, status,
+                        reviewer_id, review_window_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         t["badge_id"],
@@ -1089,7 +1127,9 @@ class DatabaseManager:
                         t.get("review_date", ""),
                         t.get("expected_award_date", ""),
                         t.get("actual_award_date", ""),
-                        t.get("status", "active")
+                        t.get("status", "active"),
+                        t.get("reviewer_id", ""),
+                        t.get("review_window_json", "[]")
                     )
                 )
 
@@ -1130,8 +1170,9 @@ class DatabaseManager:
                         reviewer_id, reviewer_name, reviewed_at, decision,
                         business_understanding, architecture_report, technical_knowledge,
                         presentation, qa, total_marks, percentage,
-                        strength_areas, improvement_areas, overall_feedback
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        strength_areas, improvement_areas, overall_feedback,
+                        assessor_role, remarks
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         a["id"],
@@ -1152,7 +1193,9 @@ class DatabaseManager:
                         float(a.get("percentage", 0.0)),
                         a.get("strength_areas", ""),
                         a.get("improvement_areas", ""),
-                        a.get("overall_feedback", "")
+                        a.get("overall_feedback", ""),
+                        a.get("assessor_role", "guardian"),
+                        a.get("remarks", "")
                     )
                 )
 
@@ -1290,6 +1333,38 @@ class DatabaseManager:
                         (mr_id, mr.get("band", ""), mr.get("reviewer_id", ""), mr.get("status", "pending"), json.dumps(mr))
                     )
 
+            # 14. Reviewer Project Prompts
+            rpp_list = data.get("reviewer_projects") or data.get("reviewer_project_prompts") or []
+            for rp in rpp_list:
+                rp_id = rp.get("id") or f"proj_{rp.get('badge_id')}_{rp.get('reviewer_id')}"
+                c_ids_json = json.dumps(rp.get("cosmonaut_ids", [])) if isinstance(rp.get("cosmonaut_ids"), list) else (rp.get("cosmonaut_ids_json") or "[]")
+                deliv_json = json.dumps(rp.get("deliverables", {})) if isinstance(rp.get("deliverables"), (dict, list)) else (rp.get("deliverables_json") or "{}")
+                req_text = json.dumps(rp.get("requirements", [])) if isinstance(rp.get("requirements"), list) else (rp.get("requirements_text") or str(rp.get("requirements") or ""))
+                c.execute(
+                    """INSERT OR REPLACE INTO reviewer_project_prompts (
+                        id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
+                        deliverables_json, requirements_text, status, created_at, sent_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        rp_id,
+                        rp.get("badge_id"),
+                        rp.get("reviewer_id"),
+                        c_ids_json,
+                        rp.get("title", ""),
+                        rp.get("description", ""),
+                        deliv_json,
+                        req_text,
+                        rp.get("status", "sent"),
+                        rp.get("created_at") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        rp.get("sent_at")
+                    )
+                )
+
+    migrate_from_dict = migrate_from_dict
+
+    def import_from_dict(self, data: Dict[str, Any]):
+        return self.migrate_from_dict(data)
+
     def export_to_dict(self) -> Dict[str, Any]:
         """
         Extracts structured relational records from SQLite into a clean JSON-serializable dictionary.
@@ -1354,7 +1429,10 @@ class DatabaseManager:
                 "creator_id": r["creator_id"],
                 "assigned_reviewer_id": r["assigned_reviewer_id"],
                 "assigned_cosmonaut_ids": json.loads(r["assigned_cosmonaut_ids_json"]),
-                "default_timeline": json.loads(r["default_timeline_json"])
+                "default_timeline": json.loads(r["default_timeline_json"]),
+                "passing_percentage": float(r["passing_percentage"]) if "passing_percentage" in r.keys() and r["passing_percentage"] is not None else 70.0,
+                "published_at": r["published_at"] if "published_at" in r.keys() and r["published_at"] else "",
+                "published_by": r["published_by"] if "published_by" in r.keys() and r["published_by"] else ""
             })
 
         # Timelines
@@ -1417,6 +1495,29 @@ class DatabaseManager:
         mr_rows = c.execute("SELECT data_json FROM mapping_requests").fetchall()
         mapping_requests = [json.loads(r[0]) for r in mr_rows]
 
+        # Reviewer Project Prompts
+        reviewer_projects = []
+        try:
+            rpp_rows = c.execute("SELECT * FROM reviewer_project_prompts ORDER BY created_at DESC").fetchall()
+            for r in rpp_rows:
+                req_text = r["requirements_text"] or ""
+                req_list = json.loads(req_text) if req_text.startswith("[") else [x.strip() for x in req_text.split("\n") if x.strip()]
+                reviewer_projects.append({
+                    "id": r["id"],
+                    "badge_id": r["badge_id"],
+                    "reviewer_id": r["reviewer_id"],
+                    "cosmonaut_ids": json.loads(r["cosmonaut_ids_json"]) if r["cosmonaut_ids_json"] else [],
+                    "title": r["title"],
+                    "description": r["description"],
+                    "deliverables": json.loads(r["deliverables_json"]) if r["deliverables_json"] else {},
+                    "requirements": req_list,
+                    "status": r["status"],
+                    "created_at": r["created_at"],
+                    "sent_at": r["sent_at"]
+                })
+        except Exception:
+            pass
+
         return {
             "schema_version": SCHEMA_VERSION,
             "users": users,
@@ -1431,7 +1532,9 @@ class DatabaseManager:
             "activities": activities,
             "notifications": notifications,
             "band_mappings": band_mappings,
-            "mapping_requests": mapping_requests
+            "mapping_requests": mapping_requests,
+            "reviewer_projects": reviewer_projects,
+            "reviewer_project_prompts": reviewer_projects
         }
 
     # ==========================================================================

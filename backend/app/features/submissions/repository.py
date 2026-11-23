@@ -68,8 +68,21 @@ class SubmissionsRepository:
         """, (badge_id, cosmonaut_id))
         return [dict(row) for row in cur.fetchall()]
 
-    def get_pending_submissions(self) -> List[Dict[str, Any]]:
+    def get_pending_submissions(self, reviewer_id: Optional[str] = None) -> List[Dict[str, Any]]:
         cur = self.conn.cursor()
+        if not reviewer_id:
+            cur.execute("""
+                SELECT s.*, b.code AS badge_code, b.title AS badge_title, b.target_band,
+                       u.name AS cosmonaut_name, u.band AS cosmonaut_band, u.email AS cosmonaut_email
+                FROM project_submissions s
+                JOIN badges b ON s.badge_id = b.id
+                JOIN users u ON s.cosmonaut_id = u.id
+                WHERE s.status = 'pending'
+                ORDER BY s.submitted_at ASC;
+            """)
+            return [dict(row) for row in cur.fetchall()]
+
+        # Filter strictly to submissions assigned to reviewer_id
         cur.execute("""
             SELECT s.*, b.code AS badge_code, b.title AS badge_title, b.target_band,
                    u.name AS cosmonaut_name, u.band AS cosmonaut_band, u.email AS cosmonaut_email
@@ -79,4 +92,37 @@ class SubmissionsRepository:
             WHERE s.status = 'pending'
             ORDER BY s.submitted_at ASC;
         """)
-        return [dict(row) for row in cur.fetchall()]
+        all_pending = [dict(row) for row in cur.fetchall()]
+        assigned = []
+        for s in all_pending:
+            # 1. Check badge_timelines
+            cur.execute(
+                "SELECT reviewer_id FROM badge_timelines WHERE badge_id = ? AND cosmonaut_id = ?;",
+                (s["badge_id"], s["cosmonaut_id"])
+            )
+            tl_row = cur.fetchone()
+            if tl_row and tl_row[0] == reviewer_id:
+                assigned.append(s)
+                continue
+
+            # 2. Check band_mappings
+            cur.execute(
+                "SELECT data_json FROM band_mappings WHERE badge_id = ? OR badge_id = '' OR badge_id IS NULL;",
+                (s["badge_id"],)
+            )
+            is_mapped = False
+            for bm_row in cur.fetchall():
+                try:
+                    import json
+                    bm = json.loads(bm_row[0])
+                    if reviewer_id in bm.get("reviewers", []) and s["cosmonaut_id"] in bm.get("cosmonauts", []):
+                        m_b = bm.get("badge_id") or bm.get("badge")
+                        if not m_b or m_b in (s["badge_id"], s["badge_code"], s["badge_title"]):
+                            is_mapped = True
+                            break
+                except Exception:
+                    pass
+            if is_mapped:
+                assigned.append(s)
+
+        return assigned

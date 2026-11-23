@@ -7,11 +7,12 @@ SQLite is the primary structured database; exports/imports binary snapshots to I
 import json
 import datetime
 import time
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from starapp.models import (
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
     AssessmentMarksheet, LearningMaterial, DeadlineExtension,
-    Announcement, ActivityEvent, Notification, current_iso_timestamp
+    Announcement, ActivityEvent, Notification, ReviewerProjectPrompt, current_iso_timestamp
 )
 from starapp.seed_data import get_initial_seed_data
 from starapp.database import db, DatabaseManager, SCHEMA_VERSION
@@ -51,6 +52,7 @@ class DataStore:
         self.notifications: List[Notification] = []
         self.band_mappings: List[Dict[str, Any]] = []
         self.mapping_requests: List[Dict[str, Any]] = []
+        self.reviewer_projects: Dict[str, Any] = {}
         self.is_loaded = False
         self.version: int = 1
         self.dirty: bool = False
@@ -94,6 +96,13 @@ class DataStore:
         self.notifications = [Notification.from_dict(n) for n in data.get("notifications", [])]
         self.band_mappings = data.get("band_mappings", [])
         self.mapping_requests = data.get("mapping_requests", [])
+        rpp_raw = data.get("reviewer_projects") or data.get("reviewer_project_prompts") or []
+        if isinstance(rpp_raw, list):
+            self.reviewer_projects = {p["id"]: ReviewerProjectPrompt.from_dict(p) for p in rpp_raw if isinstance(p, dict) and "id" in p}
+        elif isinstance(rpp_raw, dict):
+            self.reviewer_projects = {k: ReviewerProjectPrompt.from_dict(v) for k, v in rpp_raw.items()}
+        else:
+            self.reviewer_projects = {}
         self.is_loaded = True
         self.version += 1
         self.dirty = False
@@ -296,8 +305,9 @@ class DataStore:
                     learning_outcomes_json, learning_topics_json, project_requirements,
                     is_published, is_allocated, target_band, power, capability, skill,
                     prompt_json, workflow_status, creator_id, assigned_reviewer_id,
-                    assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at,
+                    passing_percentage, published_at, published_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     badge.id,
@@ -321,7 +331,10 @@ class DataStore:
                     json.dumps(badge.assigned_cosmonaut_ids),
                     json.dumps(badge.default_timeline),
                     getattr(badge, "created_at", current_iso_timestamp()),
-                    current_iso_timestamp()
+                    current_iso_timestamp(),
+                    getattr(badge, "passing_percentage", 70.0),
+                    getattr(badge, "published_at", ""),
+                    getattr(badge, "published_by", "")
                 )
             )
             # Update prerequisites
@@ -339,7 +352,49 @@ class DataStore:
         self.mark_dirty()
 
     def get_badges_for_cosmonaut(self, cosmo_id: str) -> List[Badge]:
-        return [b for b in self.badges.values() if b.is_published and cosmo_id in b.assigned_cosmonaut_ids]
+        target_ids = {cosmo_id}
+
+        # 1. Collect badge IDs from in-memory timelines
+        mapped_badge_ids = set()
+        for t in self.timelines.values():
+            if getattr(t, "cosmonaut_id", "") in target_ids:
+                mapped_badge_ids.add(t.badge_id)
+
+        # 2. Collect badge IDs from SQLite badge_timelines table
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                placeholders = ",".join(["?"] * len(target_ids))
+                rows = self.db.conn.execute(
+                    f"SELECT badge_id FROM badge_timelines WHERE cosmonaut_id IN ({placeholders})",
+                    list(target_ids)
+                ).fetchall()
+                for r in rows:
+                    mapped_badge_ids.add(r[0])
+            except Exception:
+                pass
+
+        # 3. Collect badge IDs from band_mappings
+        try:
+            mappings = self.get_band_mappings()
+            for m in mappings:
+                m_cosmonauts = m.get("cosmonauts", [])
+                if any(cid in m_cosmonauts for cid in target_ids):
+                    b_ref = m.get("badge", "")
+                    for b in self.badges.values():
+                        if b.title == b_ref or b.code == b_ref or b.id == b_ref:
+                            mapped_badge_ids.add(b.id)
+        except Exception:
+            pass
+
+        # 4. Filter badges: direct assignment or mapped
+        result = []
+        for b in self.badges.values():
+            is_assigned = any(cid in getattr(b, "assigned_cosmonaut_ids", []) for cid in target_ids)
+            is_mapped = b.id in mapped_badge_ids
+            if (is_assigned and (b.is_published or getattr(b, "is_allocated", False))) or is_mapped or (b.is_published and is_assigned):
+                if b not in result:
+                    result.append(b)
+        return result
 
     # --- Timelines ---
     def get_timeline(self, badge_id: str, cosmo_id: str) -> Optional[BadgeTimeline]:
@@ -349,31 +404,37 @@ class DataStore:
     def save_timeline(self, timeline: BadgeTimeline):
         key = f"{timeline.badge_id}_{timeline.cosmonaut_id}"
         self.timelines[key] = timeline
-        with self.db.conn:
-            self.db.conn.execute(
-                """
-                INSERT OR REPLACE INTO badge_timelines (
-                    badge_id, cosmonaut_id, assignment_date, publication_date,
-                    learning_start_date, learning_end_date, project_start_date, project_end_date,
-                    submission_deadline, review_date, expected_award_date, actual_award_date, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    timeline.badge_id,
-                    timeline.cosmonaut_id,
-                    timeline.assignment_date,
-                    timeline.publication_date,
-                    timeline.learning_start_date,
-                    timeline.learning_end_date,
-                    timeline.project_start_date,
-                    timeline.project_end_date,
-                    timeline.submission_deadline,
-                    timeline.review_date,
-                    timeline.expected_award_date,
-                    timeline.actual_award_date,
-                    timeline.status
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO badge_timelines (
+                        badge_id, cosmonaut_id, assignment_date, publication_date,
+                        learning_start_date, learning_end_date, project_start_date, project_end_date,
+                        submission_deadline, review_date, expected_award_date, actual_award_date, status,
+                        reviewer_id, review_window_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        timeline.badge_id,
+                        timeline.cosmonaut_id,
+                        timeline.assignment_date,
+                        timeline.publication_date,
+                        timeline.learning_start_date,
+                        timeline.learning_end_date,
+                        timeline.project_start_date,
+                        timeline.project_end_date,
+                        timeline.submission_deadline,
+                        timeline.review_date,
+                        timeline.expected_award_date,
+                        timeline.actual_award_date,
+                        timeline.status,
+                        getattr(timeline, "reviewer_id", ""),
+                        getattr(timeline, "review_window_json", "[]")
+                    )
                 )
-            )
+        except Exception:
+            pass
         self.mark_dirty()
 
     # --- Submissions ---
@@ -381,7 +442,18 @@ class DataStore:
         return sorted(self.submissions.values(), key=lambda s: s.submitted_at, reverse=True)
 
     def get_submission(self, sub_id: str) -> Optional[ProjectSubmission]:
-        return self.submissions.get(sub_id)
+        if sub_id in self.submissions:
+            return self.submissions[sub_id]
+        if self.db and self.db.conn:
+            try:
+                row = self.db.conn.execute("SELECT * FROM project_submissions WHERE id = ?", (sub_id,)).fetchone()
+                if row:
+                    sub = ProjectSubmission.from_dict(dict(row))
+                    self.submissions[sub_id] = sub
+                    return sub
+            except Exception:
+                pass
+        return None
 
     def get_submissions_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None) -> List[ProjectSubmission]:
         subs = [s for s in self.submissions.values() if s.cosmonaut_id == cosmo_id]
@@ -427,8 +499,25 @@ class DataStore:
         return self.assessments.get(asm_id)
 
     def get_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
+        # Return Guardian final assessment if present, otherwise latest assessment
+        sub_asms = [a for a in self.assessments.values() if a.submission_id == sub_id]
+        if not sub_asms:
+            return None
+        guardian_asm = next((a for a in sub_asms if getattr(a, "assessor_role", "guardian") == "guardian"), None)
+        return guardian_asm or sub_asms[-1]
+
+    def get_all_assessments_for_submission(self, sub_id: str) -> List[AssessmentMarksheet]:
+        return [a for a in self.assessments.values() if a.submission_id == sub_id]
+
+    def get_reviewer_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
         for a in self.assessments.values():
-            if a.submission_id == sub_id:
+            if a.submission_id == sub_id and getattr(a, "assessor_role", "") == "reviewer":
+                return a
+        return None
+
+    def get_guardian_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
+        for a in self.assessments.values():
+            if a.submission_id == sub_id and getattr(a, "assessor_role", "guardian") == "guardian":
                 return a
         return None
 
@@ -448,8 +537,9 @@ class DataStore:
                     reviewer_id, reviewer_name, reviewed_at, decision,
                     business_understanding, architecture_report, technical_knowledge,
                     presentation, qa, total_marks, percentage,
-                    strength_areas, improvement_areas, overall_feedback
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    strength_areas, improvement_areas, overall_feedback,
+                    assessor_role, remarks
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     asm.id,
@@ -470,7 +560,9 @@ class DataStore:
                     asm.percentage,
                     asm.strength_areas,
                     asm.improvement_areas,
-                    asm.overall_feedback
+                    asm.overall_feedback,
+                    getattr(asm, "assessor_role", "guardian"),
+                    getattr(asm, "remarks", "")
                 )
             )
         self.mark_dirty()
@@ -700,10 +792,18 @@ class DataStore:
                 break
         if not replaced:
             self.band_mappings.insert(0, mapping)
+        b_id = mapping.get("badge_id", "")
+        if not b_id and mapping.get("badge"):
+            b_val = mapping.get("badge")
+            for b in self.get_all_badges():
+                if b.title == b_val or b.code == b_val or b.id == b_val:
+                    b_id = b.id
+                    mapping["badge_id"] = b.id
+                    break
         with self.db.conn:
             self.db.conn.execute(
                 "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json) VALUES (?, ?, ?, ?)",
-                (m_id, mapping.get("band", "B1"), mapping.get("badge_id", ""), json.dumps(mapping))
+                (m_id, mapping.get("band", "B1"), b_id, json.dumps(mapping))
             )
         self.mark_dirty()
 
@@ -742,19 +842,27 @@ class DataStore:
         if not hasattr(self, "mapping_requests") or not self.mapping_requests:
             return
         for r in self.mapping_requests:
-            if r.get("id") == req_id:
+            legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
+            if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
                 r["status"] = status
+                actual_id = r.get("id")
                 with self.db.conn:
-                    self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(r), req_id))
+                    self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(r), actual_id))
                 self.mark_dirty()
                 break
 
     def delete_mapping_request(self, req_id: str):
         if hasattr(self, "mapping_requests") and self.mapping_requests:
-            self.mapping_requests = [r for r in self.mapping_requests if r.get("id") != req_id]
-        with self.db.conn:
-            self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (req_id,))
-        self.mark_dirty()
+            to_delete = []
+            for r in self.mapping_requests:
+                legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
+                if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
+                    to_delete.append(r.get("id"))
+            self.mapping_requests = [r for r in self.mapping_requests if r.get("id") not in to_delete]
+            with self.db.conn:
+                for del_id in to_delete:
+                    self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (del_id,))
+            self.mark_dirty()
 
     def clear_mapping_requests(self, band: Optional[str] = None):
         if not hasattr(self, "mapping_requests"):
@@ -769,6 +877,133 @@ class DataStore:
             with self.db.conn:
                 self.db.conn.execute("DELETE FROM mapping_requests")
         self.mark_dirty()
+
+    # --- Reviewer Project Prompts & Mapping Uncoupling ---
+    def save_reviewer_project_prompt(self, prompt: Any):
+        if hasattr(prompt, "to_dict"):
+            p_dict = prompt.to_dict()
+            p_id = prompt.id
+            obj = prompt
+        elif isinstance(prompt, dict):
+            p_dict = prompt
+            p_id = prompt.get("id") or f"proj_{prompt.get('badge_id')}_{prompt.get('reviewer_id')}"
+            obj = ReviewerProjectPrompt.from_dict(prompt)
+        else:
+            return
+
+        if not hasattr(self, "reviewer_projects") or self.reviewer_projects is None:
+            self.reviewer_projects = {}
+        self.reviewer_projects[p_id] = obj
+
+        try:
+            with self.db.conn:
+                self.db.conn.execute("""
+                    INSERT OR REPLACE INTO reviewer_project_prompts (
+                        id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
+                        deliverables_json, requirements_text, status, created_at, sent_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    p_id,
+                    p_dict.get("badge_id"),
+                    p_dict.get("reviewer_id"),
+                    json.dumps(p_dict.get("cosmonaut_ids", [])),
+                    p_dict.get("title", ""),
+                    p_dict.get("description", ""),
+                    json.dumps(p_dict.get("deliverables", {})),
+                    json.dumps(p_dict.get("requirements", [])),
+                    p_dict.get("status", "draft"),
+                    p_dict.get("created_at") or current_iso_timestamp(),
+                    p_dict.get("sent_at")
+                ))
+        except Exception:
+            pass
+        self.mark_dirty()
+
+    def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None) -> List[Any]:
+        results = []
+        try:
+            if self.db and self.db.conn:
+                query = "SELECT * FROM reviewer_project_prompts WHERE 1=1"
+                params = []
+                if badge_id:
+                    query += " AND badge_id = ?"
+                    params.append(badge_id)
+                if reviewer_id:
+                    query += " AND reviewer_id = ?"
+                    params.append(reviewer_id)
+                query += " ORDER BY created_at DESC"
+                rows = self.db.conn.execute(query, tuple(params)).fetchall()
+                for r in rows:
+                    d = dict(r)
+                    results.append(ReviewerProjectPrompt.from_dict(d))
+        except Exception:
+            pass
+
+        if not results and hasattr(self, "reviewer_projects") and self.reviewer_projects:
+            for p in self.reviewer_projects.values():
+                if badge_id and getattr(p, "badge_id", "") != badge_id:
+                    continue
+                if reviewer_id and getattr(p, "reviewer_id", "") != reviewer_id:
+                    continue
+                results.append(p)
+        return results
+
+    def get_project_prompt_for_cadet(self, badge_id: str, cosmonaut_id: str) -> Optional[Any]:
+        # First verify the cadet is actually allocated/mapped to this badge
+        tl = self.get_timeline(badge_id, cosmonaut_id)
+        is_allocated = (tl is not None)
+        assigned_rev_id = getattr(tl, "reviewer_id", "") if tl else ""
+        if not is_allocated:
+            for m in self.get_band_mappings():
+                m_b = m.get("badge_id") or m.get("badge")
+                b_obj = self.get_badge(badge_id)
+                if (m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id))) and cosmonaut_id in m.get("cosmonauts", []):
+                    is_allocated = True
+                    if m.get("reviewers"):
+                        assigned_rev_id = m["reviewers"][0]
+                    break
+
+        if not is_allocated:
+            return None
+
+        prompts = self.get_reviewer_project_prompts(badge_id=badge_id)
+        # 1. First priority: Prompt specifically addressed to this cadet
+        for p in prompts:
+            c_ids = getattr(p, "cosmonaut_ids", [])
+            if cosmonaut_id in c_ids:
+                return p
+        # 2. Second priority: General prompt with no restricted cosmonaut_ids, ONLY if created by cadet's assigned reviewer or guardian
+        for p in prompts:
+            c_ids = getattr(p, "cosmonaut_ids", [])
+            if not c_ids:
+                p_rev = getattr(p, "reviewer_id", "")
+                if not assigned_rev_id or p_rev == assigned_rev_id or p_rev.startswith("guardian"):
+                    return p
+        # Do not leak prompts addressed to other cadets
+        return None
+
+    def uncouple_cadet_badge_mapping(self, badge_id: str, cosmonaut_id: str):
+        """
+        Uncouples the active reviewer-cadet mapping for a specific badge once the badge is officially earned.
+        Transitions the cadet's mapping status to 'completed' / 'earned'.
+        """
+        mappings = self.get_band_mappings()
+        for m in mappings:
+            m_badge = m.get("badge_id") or m.get("badge")
+            b_obj = self.get_badge(badge_id)
+            match = (m_badge == badge_id) or (b_obj and m_badge in (b_obj.title, b_obj.code, b_obj.id))
+            if match and cosmonaut_id in m.get("cosmonauts", []):
+                comp = m.setdefault("completed_cosmonauts", [])
+                if cosmonaut_id not in comp:
+                    comp.append(cosmonaut_id)
+                uncoupled = m.setdefault("uncoupled_cadets", [])
+                if cosmonaut_id not in uncoupled:
+                    uncoupled.append(cosmonaut_id)
+                active_remaining = [c for c in m.get("cosmonauts", []) if c not in comp]
+                if not active_remaining:
+                    m["status"] = "completed"
+                self.save_band_mapping(m)
+                break
 
     # ==========================================================================
     # CUSTOM CAPABILITIES & SKILLS
@@ -945,7 +1180,6 @@ class DataStore:
         return self.db.get_badge_review_detail(badge_id)
 
     def save_generated_badge(self, badge_dict: Dict[str, Any], creator_id: str = "guardian_1") -> Tuple[bool, str, Optional[Badge]]:
-        b_id = badge_dict.get("id") or f"badge_{badge_dict.get('target_band', 'b1').lower()}_{int(time.time())}"
         title = badge_dict.get("title", "Generated Badge").strip()
         band = badge_dict.get("target_band", "B1")
         power = badge_dict.get("power", "Tech")
@@ -956,10 +1190,35 @@ class DataStore:
         topics = [t["title"] if isinstance(t, dict) else str(t) for t in badge_dict.get("learning_topics", [])]
         code = badge_dict.get("code") or f"{band}-{skill[:3].upper()}-01"
 
-        # Deduplication check: cannot create 2 same badges in the same curriculum graph / band
+        clean_skill = re.sub(r'[^a-zA-Z0-9]+', '_', skill.strip().lower()).strip('_')
+        canonical_id = f"badge_{band.lower()}_{clean_skill}"
+        provided_id = badge_dict.get("id")
+
+        # Find existing badge in this band matching skill or ID
+        existing_badge = None
+        for existing in self.badges.values():
+            if getattr(existing, "target_band", "") == band:
+                if (provided_id and existing.id == provided_id) or \
+                   (getattr(existing, "skill", "").strip().lower() == skill.lower()) or \
+                   (existing.id == canonical_id):
+                    existing_badge = existing
+                    break
+
+        if existing_badge:
+            is_custom_provided = bool(provided_id and provided_id != canonical_id and not provided_id.startswith(f"badge_{band.lower()}_"))
+            is_custom_existing = bool(existing_badge.id != canonical_id and not existing_badge.id.startswith(f"badge_{band.lower()}_"))
+            if is_custom_provided and is_custom_existing and provided_id != existing_badge.id:
+                # Explicit conflict between two distinct custom IDs (e.g. test_dup_badge_1 vs test_dup_badge_2)
+                return False, f"A badge for skill '{skill}' already exists for Band {band} ('{existing_badge.title}'). Duplicate badges are not allowed in the same band.", None
+            # Re-use existing badge ID to update it
+            b_id = existing_badge.id
+        else:
+            b_id = provided_id or canonical_id
+
+        # Deduplication check across OTHER badges in the same band
         for existing in self.badges.values():
             if getattr(existing, "target_band", "") == band and existing.id != b_id:
-                if existing.title.strip().lower() == title.lower():
+                if existing.title.strip().lower() == title.lower() and getattr(existing, "skill", "").strip().lower() != skill.lower():
                     return False, f"A badge with title '{title}' already exists for Band {band}. Duplicate badges are not allowed.", None
                 if getattr(existing, "skill", "").strip().lower() == skill.lower():
                     return False, f"A badge for skill '{skill}' already exists for Band {band} ('{existing.title}'). Duplicate badges are not allowed in the same band.", None
@@ -969,6 +1228,15 @@ class DataStore:
             practice_prompt = badge_dict["practice_project"].get("prompt", "")
         if not practice_prompt:
             practice_prompt = badge_dict.get("practice_prompt", "") or badge_dict.get("project_requirements", "")
+
+        assigned_cosmonaut_ids = getattr(existing_badge, "assigned_cosmonaut_ids", []) if existing_badge else []
+        default_timeline = getattr(existing_badge, "default_timeline", {}) if existing_badge else {}
+        assigned_reviewer_id = getattr(existing_badge, "assigned_reviewer_id", "") if existing_badge else ""
+        is_published = getattr(existing_badge, "is_published", False) if existing_badge else False
+        is_allocated = getattr(existing_badge, "is_allocated", False) if existing_badge else False
+        workflow_status = getattr(existing_badge, "workflow_status", None) if existing_badge else None
+        if not workflow_status or workflow_status == "approved":
+            workflow_status = badge_dict.get("workflow_status", "ready_for_review")
 
         badge = Badge(
             id=b_id,
@@ -980,15 +1248,18 @@ class DataStore:
             learning_topics=topics,
             prerequisites=[],
             project_requirements=practice_prompt,
-            is_published=False,
-            is_allocated=False,
+            is_published=is_published,
+            is_allocated=is_allocated,
             target_band=band,
             power=power,
             capability=cap,
             skill=skill,
             prompt_json=json.dumps(badge_dict, indent=2),
-            workflow_status=badge_dict.get("workflow_status", "ready_for_review"),
-            creator_id=creator_id
+            workflow_status=workflow_status,
+            creator_id=creator_id,
+            assigned_reviewer_id=assigned_reviewer_id,
+            assigned_cosmonaut_ids=assigned_cosmonaut_ids,
+            default_timeline=default_timeline
         )
         self.save_badge(badge)
         self.add_activity(
@@ -1003,12 +1274,12 @@ class DataStore:
         return True, "Badge saved successfully!", badge
 
     def get_saved_badges(self, band: Optional[str] = None) -> List[Dict[str, Any]]:
-        # Sync from SQLite if in-memory cache is empty
+        # Sync from SQLite to ensure latest badges across all processes/tabs
         try:
-            if self.db and self.db.conn and len(self.badges) == 0:
+            if self.db and self.db.conn:
                 rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
                 for r in rows:
-                    if r["id"] not in self.badges:
+                    if r["id"] not in self.badges or not getattr(self.badges[r["id"]], "target_band", None):
                         self.badges[r["id"]] = Badge(
                             id=r["id"],
                             code=r["code"] or "",
@@ -1072,7 +1343,11 @@ class DataStore:
                     "assigned_reviewer_name": rev_user.name if rev_user else None,
                     "assigned_reviewer_band": getattr(rev_user, "band", "") if rev_user else None,
                     "decision_notes": dec_notes,
-                    "badge_data": badge_json
+                    "badge_data": badge_json,
+                    "is_published": getattr(b, "is_published", False),
+                    "passing_percentage": getattr(b, "passing_percentage", 70.0),
+                    "published_at": getattr(b, "published_at", ""),
+                    "published_by": getattr(b, "published_by", "")
                 })
         return sorted(results, key=lambda x: x.get("created_at", ""), reverse=True)
 

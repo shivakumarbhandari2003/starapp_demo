@@ -382,6 +382,67 @@
       window.StarAppBridge.dispatchAction("submit_evaluation_marksheet", JSON.stringify(payload));
     },
 
+    // Publish badge from Guardian Approved Badge tray
+    publishBadge(badgeId) {
+      if (!badgeId) return;
+      if (confirm("Publish this approved badge to the Academy curriculum and enable mapping to cadets?")) {
+        window.StarAppBridge.dispatchAction("publish_badge", badgeId);
+      }
+    },
+
+    // Submit technical assessment by assigned higher-band reviewer
+    submitReviewerAssessment(subId) {
+      const bu = parseFloat(document.getElementById("rubric-bu")?.value || 0);
+      const ar = parseFloat(document.getElementById("rubric-ar")?.value || 0);
+      const tk = parseFloat(document.getElementById("rubric-tk")?.value || 0);
+      const pr = parseFloat(document.getElementById("rubric-pr")?.value || 0);
+      const qa = parseFloat(document.getElementById("rubric-qa")?.value || 0);
+      const strengths = document.getElementById("rubric-strengths")?.value || "";
+      const improvements = document.getElementById("rubric-improvements")?.value || "";
+      const feedback = document.getElementById("rubric-feedback")?.value || "";
+
+      const payload = {
+        submission_id: subId,
+        bu: bu,
+        ar: ar,
+        tk: tk,
+        pr: pr,
+        qa: qa,
+        strengths: strengths,
+        improvements: improvements,
+        feedback: feedback,
+        decision: (bu + ar + tk + pr + qa) >= 35.0 ? "approve" : "changes_requested"
+      };
+      window.StarAppBridge.dispatchAction("submit_reviewer_assessment", JSON.stringify(payload));
+    },
+
+    // Submit Guardian final assessment marksheet & badge award determination
+    submitGuardianFinalAssessment(subId) {
+      const bu = parseFloat(document.getElementById("rubric-bu")?.value || 0);
+      const ar = parseFloat(document.getElementById("rubric-ar")?.value || 0);
+      const tk = parseFloat(document.getElementById("rubric-tk")?.value || 0);
+      const pr = parseFloat(document.getElementById("rubric-pr")?.value || 0);
+      const qa = parseFloat(document.getElementById("rubric-qa")?.value || 0);
+      const strengths = document.getElementById("rubric-strengths")?.value || "";
+      const improvements = document.getElementById("rubric-improvements")?.value || "";
+      const feedback = document.getElementById("rubric-feedback")?.value || "";
+      const decision = document.getElementById("rubric-decision")?.value || ((bu + ar + tk + pr + qa) >= 35.0 ? "approve" : "changes_requested");
+
+      const payload = {
+        submission_id: subId,
+        bu: bu,
+        ar: ar,
+        tk: tk,
+        pr: pr,
+        qa: qa,
+        strengths: strengths,
+        improvements: improvements,
+        feedback: feedback,
+        decision: decision
+      };
+      window.StarAppBridge.dispatchAction("submit_guardian_final_assessment", JSON.stringify(payload));
+    },
+
     // Toggle expand deliverable viewer to full window height in-place
     toggleViewerExpand() {
       const container = document.getElementById("deliverable-viewport-container");
@@ -1072,6 +1133,13 @@ Return ONLY valid JSON matching this exact schema:
       if (spinner) spinner.style.display = "none";
       if (loadingTextEl) loadingTextEl.textContent = "Generating badge with Gemini AI...";
 
+      if (parsedBadge) {
+        window.StarAppBridge._lastGeneratedBadge = parsedBadge;
+        try {
+          sessionStorage.setItem("starapp_last_generated_badge", JSON.stringify(parsedBadge));
+        } catch (e) {}
+      }
+
       window.StarAppBridge.dispatchAction("on_badge_generated", JSON.stringify({
         band,
         power,
@@ -1197,6 +1265,10 @@ Return ONLY valid JSON matching this exact schema:
           ch.textContent = anyOpen ? "▼" : "▲";
         }
       }
+    },
+
+    toggleCosmonautBadgeCard(badgeId) {
+      this.dispatchAction("toggle_cosmonaut_badge_card", badgeId);
     },
 
     async copyTextFromElement(elementId, btnElement) {
@@ -1363,7 +1435,48 @@ Return ONLY valid JSON matching this exact schema:
     },
 
     saveGeneratedBadge() {
-      window.StarAppBridge.dispatchAction("save_generated_badge");
+      const titleInput = document.getElementById("edit-badge-title-input");
+      const descInput = document.getElementById("edit-badge-desc-input");
+      const outcomesInput = document.getElementById("edit-badge-outcomes-input");
+      const practicePromptInput = document.getElementById("edit-practice-prompt-input");
+      const resourcesPromptInput = document.getElementById("edit-resources-prompt-input");
+
+      const bandEl = document.getElementById("current-badge-band");
+      const activeBand = (bandEl ? bandEl.textContent.replace(/[^0-9A-Za-z]/g, "") : "") || sessionStorage.getItem("starapp_active_band") || "B1";
+
+      const payload = { band: activeBand };
+
+      if (titleInput || descInput) {
+        const topics = [];
+        for (let i = 0; i < 20; i++) {
+          const titleEl = document.getElementById(`edit-topic-title-${i}`);
+          const descEl = document.getElementById(`edit-topic-desc-${i}`);
+          if (!titleEl && !descEl) break;
+          topics.push({
+            title: titleEl?.value?.trim() || `Topic ${i+1}`,
+            description: descEl?.value?.trim() || "",
+            status: "In Progress",
+            completed: false
+          });
+        }
+        payload.title = titleInput ? titleInput.value.trim() : "";
+        payload.description = descInput ? descInput.value.trim() : "";
+        payload.outcomes = outcomesInput ? outcomesInput.value.split("\n").filter(o => o.trim()) : [];
+        payload.practice_prompt = practicePromptInput ? practicePromptInput.value.trim() : "";
+        payload.resources_prompt = resourcesPromptInput ? resourcesPromptInput.value.trim() : "";
+        if (topics.length > 0) payload.topics = topics;
+      }
+
+      if (window.StarAppBridge._lastGeneratedBadge) {
+        payload.badge_data = window.StarAppBridge._lastGeneratedBadge;
+      } else {
+        try {
+          const cached = sessionStorage.getItem("starapp_last_generated_badge");
+          if (cached) payload.badge_data = JSON.parse(cached);
+        } catch (e) {}
+      }
+
+      window.StarAppBridge.dispatchAction("save_generated_badge", JSON.stringify(payload));
     },
 
     // Read-only telemetry accessor for regression verification

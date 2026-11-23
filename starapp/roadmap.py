@@ -106,8 +106,24 @@ def generate_roadmap_graph(
     for b in ordered_all:
         if b.id in approved_badge_ids:
             completed_badges.append(b)
-        elif getattr(b, "is_allocated", False) and b.is_published and cosmo_id in b.assigned_cosmonaut_ids:
-            active_badges.append(b)
+        elif (getattr(b, "is_allocated", False) or b.is_published) and b.is_published:
+            is_assigned = (cosmo_id in getattr(b, "assigned_cosmonaut_ids", []))
+            if not is_assigned:
+                try:
+                    from starapp.storage import store
+                    if store.get_timeline(b.id, cosmo_id):
+                        is_assigned = True
+                    else:
+                        for m in store.get_band_mappings():
+                            if (m.get("badge_id") == b.id or m.get("badge") in (b.title, b.code, b.id)) and cosmo_id in m.get("cosmonauts", []):
+                                is_assigned = True
+                                break
+                except Exception:
+                    pass
+            if is_assigned:
+                active_badges.append(b)
+            else:
+                locked_badges.append(b)
         else:
             locked_badges.append(b)
 

@@ -389,3 +389,76 @@ def generate_badge_data(
             "power": power_clean
         }
     }
+
+
+# Backward-compatibility alias
+synthesize_badge_data = generate_badge_data
+
+
+def generate_reviewer_project_spec(
+    band: str = "B1",
+    power: str = "Tech",
+    capability: str = "Data & Machine",
+    skill: str = "Signals",
+    badge_title: str = "Signals Foundations",
+    reviewer_name: str = "Institutional Reviewer"
+) -> Dict[str, Any]:
+    """
+    Generates a structured, industry-aligned milestone project specification
+    authored by higher-band reviewers for mapped cadets.
+    """
+    skill_clean = skill.strip() if skill else "Core Engineering"
+    proj_title = f"{skill_clean} Enterprise Pipeline & Architecture Project"
+    scenario = (
+        f"As an engineering cadet working toward '{badge_title}' (Band {band} • {power} › {capability}), "
+        f"you are tasked with implementing a production-ready, fault-tolerant {skill_clean.lower()} system. "
+        f"Your deliverables must satisfy rigorous industry resilience standards, modular design patterns, "
+        f"and include clear telemetry hooks for auditability."
+    )
+    deliverables = {
+        "code": {
+            "name": f"{skill_clean.lower().replace(' ', '_')}_pipeline.py",
+            "format": "Python Script (.py)",
+            "description": f"Modular, executable implementation of core {skill_clean.lower()} mechanics with comprehensive logging and error handling."
+        },
+        "pdf": {
+            "name": f"{skill_clean.replace(' ', '_')}_Architecture_Report.pdf",
+            "format": "PDF Technical Spec",
+            "description": f"End-to-end architecture specification detailing component interfaces, data flow topologies, resilience strategies, and failure recovery."
+        },
+        "github": {
+            "name": f"https://github.com/starapp-cadets/{skill_clean.lower().replace(' ', '-')}-project",
+            "format": "Git Repository",
+            "description": "Version-controlled repository containing source code, README setup instructions, tests, and CI/CD workflow configuration."
+        }
+    }
+    requirements = [
+        f"1. Implement core pipeline logic in executable code meeting Band {band} engineering benchmarks.",
+        f"2. Provide robust exception handling, structured JSON logging, and configuration management.",
+        f"3. Author a structured PDF Architecture Report answering scalability, security, and component trade-offs.",
+        f"4. Provide a public or accessible GitHub repository link with clean commit history.",
+        f"5. Prepare a technical walkthrough and Q&A defense addressing all 5 rubric criteria."
+    ]
+    rubric_guidelines = {
+        "business_understanding": "Domain scope formulation, problem definition, and operational objectives (Max: 10 Marks).",
+        "architecture_report": "System topology, interface specifications, failure mode analysis, and diagrams (Max: 10 Marks).",
+        "technical_knowledge": "Idiomatic code execution, data structure efficiency, and modularity (Max: 10 Marks).",
+        "presentation": "Clean repository structure, documentation clarity, and coherent walkthrough (Max: 10 Marks).",
+        "qa": "Technical justification of architectural trade-offs, edge-case resilience, and defense (Max: 10 Marks)."
+    }
+    return {
+        "title": proj_title,
+        "scenario": scenario,
+        "badge_title": badge_title,
+        "band": band,
+        "power": power,
+        "capability": capability,
+        "skill": skill_clean,
+        "reviewer_name": reviewer_name,
+        "deliverables": deliverables,
+        "requirements": requirements,
+        "rubric_guidelines": rubric_guidelines,
+        "timeline_prep_note": "3 Days allocated for concept learning and project sprint preparation before milestone deliverable submission."
+    }
+
+

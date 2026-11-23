@@ -17,6 +17,54 @@ class EvaluationsRepository:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_badge_by_id(self, badge_id: str) -> Optional[Dict[str, Any]]:
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM badges WHERE id = ?;", (badge_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def is_reviewer_assigned_to_submission(self, reviewer_id: str, submission: Dict[str, Any]) -> bool:
+        cur = self.conn.cursor()
+        # 1. Direct timeline check
+        cur.execute(
+            "SELECT reviewer_id FROM badge_timelines WHERE badge_id = ? AND cosmonaut_id = ?;",
+            (submission["badge_id"], submission["cosmonaut_id"])
+        )
+        tl_row = cur.fetchone()
+        if tl_row and tl_row[0] == reviewer_id:
+            return True
+
+        # 2. Band mappings check
+        cur.execute("SELECT data_json FROM band_mappings WHERE badge_id = ?;", (submission["badge_id"],))
+        for bm_row in cur.fetchall():
+            try:
+                import json
+                bm = json.loads(bm_row[0])
+                if reviewer_id in bm.get("reviewers", []) and submission["cosmonaut_id"] in bm.get("cosmonauts", []):
+                    return True
+            except Exception:
+                pass
+        return False
+
+    def has_assignments_for_submission(self, submission: Dict[str, Any]) -> bool:
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT reviewer_id FROM badge_timelines WHERE badge_id = ? AND cosmonaut_id = ? AND reviewer_id IS NOT NULL AND reviewer_id != '';",
+            (submission["badge_id"], submission["cosmonaut_id"])
+        )
+        if cur.fetchone():
+            return True
+        cur.execute("SELECT data_json FROM band_mappings WHERE badge_id = ?;", (submission["badge_id"],))
+        for bm_row in cur.fetchall():
+            try:
+                import json
+                bm = json.loads(bm_row[0])
+                if bm.get("reviewers") and submission["cosmonaut_id"] in bm.get("cosmonauts", []):
+                    return True
+            except Exception:
+                pass
+        return False
+
     def record_evaluation(self, data: Dict[str, Any]) -> str:
         cur = self.conn.cursor()
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
