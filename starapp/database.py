@@ -787,8 +787,8 @@ class DatabaseManager:
                 }),
                 "ready_for_review",
                 "guardian_1",
-                None,
-                json.dumps([]),
+                "m_b2_1",
+                json.dumps(["cosmo_1", "m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"]),
                 json.dumps({}),
                 current_iso_timestamp(),
                 current_iso_timestamp()
@@ -837,8 +837,8 @@ class DatabaseManager:
                 }),
                 "ready_for_review",
                 "guardian_1",
-                None,
-                json.dumps([]),
+                "m_b2_1",
+                json.dumps(["cosmo_1", "m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"]),
                 json.dumps({}),
                 current_iso_timestamp(),
                 current_iso_timestamp()

@@ -1273,17 +1273,20 @@ def render_guardian_badge_allotment(
     Renders Guardian Badge Catalog & Allotment Manager in a clean 2-in-a-row card layout.
     Displays clear visual timeline steppers for all badges, and supports badge publication and revocation.
     """
-    allocated = []
-    unallocated = []
-
-    for b in badges:
-        is_alloc = getattr(b, "is_allocated", True)
-        if is_alloc:
-            allocated.append(b)
-        else:
-            unallocated.append(b)
+    published = []
+    not_published = []
 
     completed_codes = {"GOV-101", "CUR-102", "DAT-103"}
+    for b in badges:
+        is_pub = getattr(b, "is_published", False) or b.code in completed_codes or b.id in ["badge_gov_101", "badge_cur_102", "badge_dat_103"]
+        if is_pub:
+            published.append(b)
+        else:
+            not_published.append(b)
+
+    # Backward compatibility aliases
+    allocated = published
+    unallocated = not_published
     cosmo_users_map = {c.id: c for c in cosmonauts}
     all_band_mappings = all_band_mappings or []
 
@@ -1571,9 +1574,12 @@ def render_guardian_badge_allotment(
         </div>
         """)
 
-    # Build Not Allocated Yet Cards (Clean, 2 in a row)
-    unallocated_cards = []
-    for b in unallocated:
+    # Backward compatibility alias
+    published_cards = allocated_cards
+
+    # Build Not Published Yet Cards (Clean, 2 in a row)
+    not_published_cards = []
+    for b in not_published:
         dt = b.default_timeline or {}
         b_band = getattr(b, "target_band", "B1") or "B1"
         b_power = getattr(b, "power", "Tech") or "Tech"
@@ -1583,10 +1589,19 @@ def render_guardian_badge_allotment(
         rev_id, rev_name, rev_dates, assigned_cosmo_ids = get_badge_mapping_info(b)
         rev_date_val = rev_dates[0] if rev_dates else "2026-11-18"
 
+        cosmo_chips = []
+        for cid in assigned_cosmo_ids[:5]:
+            cu = cosmo_users_map.get(cid) or global_store.get_user_by_id(cid)
+            cname = cu.name if cu else cid
+            cosmo_chips.append(f'<span style="display:inline-block; font-size:10.5px; background:rgba(23,52,92,0.06); color:var(--deep-frozen-midnight); padding:2px 7px; border-radius:3px; font-weight:700;">{escape(cname)}</span>')
+        if len(assigned_cosmo_ids) > 5:
+            cosmo_chips.append(f'<span style="font-size:10.5px; color:var(--frost-navy-50);">+{len(assigned_cosmo_ids)-5} more</span>')
+        cosmo_chips_html = " ".join(cosmo_chips) if cosmo_chips else '<span style="font-size:11px; color:var(--frost-navy-50);">All Cohort Cadets</span>'
+
         timeline_html = render_timeline_stepper(dt, is_allocated=False)
         config_drawer_html = render_timeline_config_drawer(b, dt, rev_date_val)
 
-        unallocated_cards.append(f"""
+        not_published_cards.append(f"""
         <div class="liquid-glass-card" style="border:1.5px dashed var(--icy-steel); background:rgba(234,244,255,0.45); border-radius:var(--radius-md); padding:18px 20px; display:flex; flex-direction:column; justify-content:space-between;">
             <div>
                 <!-- Header: Code, Title, Category, Status -->
@@ -1596,7 +1611,7 @@ def render_guardian_badge_allotment(
                         <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:var(--radius-xs);">BAND {escape(b_band)}</span>
                         <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b.category)}</span>
                     </div>
-                    <span class="status-pill status-locked" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("lock", 11, "margin-right:4px;")} Not Allocated</span>
+                    <span class="status-pill status-locked" style="font-weight:700; font-size:11px; padding:3px 9px;">{get_icon("lock", 11, "margin-right:4px;")} Not Published Yet &bull; Ready to Publish</span>
                 </div>
                 <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0; line-height:1.3;">{escape(b.title)}</h4>
 
@@ -1609,9 +1624,33 @@ def render_guardian_badge_allotment(
                     <span>🎯 <strong>{escape(b_skill)}</strong></span>
                 </div>
 
-                <!-- Assigned Personnel Information -->
-                <div style="font-size:11.5px; color:var(--frost-navy); margin-bottom:12px;">
-                    <span>👤 <strong>Reviewer:</strong> <span style="color:#059669; font-weight:700;">{escape(rev_name)}</span></span>
+                <!-- Dedicated Badge Personnel & Competency Mapping Box -->
+                <div style="background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 12px; margin:8px 0 12px 0; box-shadow:0 1px 3px rgba(23,52,92,0.04);">
+                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                        <span>👥 Mapped Evaluation Personnel</span>
+                        <span style="font-size:10px; font-weight:700; color:#D97706; background:rgba(245,158,11,0.1); padding:2px 6px; border-radius:3px;">Pre-Mapped</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
+                        <div style="background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                            <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase;">Authorized Reviewer</div>
+                            <div style="font-size:12px; font-weight:800; color:#059669; margin-top:2px; display:flex; align-items:center; gap:6px;">
+                                <span style="width:18px; height:18px; border-radius:50%; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:800;">{escape(rev_name[:2].upper() if rev_name else "R")}</span>
+                                {escape(rev_name)}
+                            </div>
+                        </div>
+                        <div style="background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
+                            <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase;">Review Window</div>
+                            <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy); margin-top:2px; font-family:var(--font-family-mono);">
+                                📅 {escape(rev_date_val)}
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:9.5px; color:var(--frost-navy-50); font-weight:800; text-transform:uppercase; margin-bottom:4px;">Mapped Cadets ({len(assigned_cosmo_ids)})</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                            {cosmo_chips_html}
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Visual Timeline Stepper -->
@@ -1630,57 +1669,60 @@ def render_guardian_badge_allotment(
         </div>
         """)
 
+    # Backward compatibility alias
+    unallocated_cards = not_published_cards
+
     create_btn = render_metal_button("Create New Milestone", "open_create_badge_modal", "{}", icon_svg=get_icon("plus", 13, "margin-right:4px;"))
 
     # Segmented Tab Filtering
     st_all = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "all" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
-    st_alloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "allocated" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
-    st_unalloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab == "unallocated" else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+    st_alloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab in ("published", "allocated") else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
+    st_unalloc = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if filter_tab in ("not_published", "unallocated") else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
 
     tabs_html = f"""
     <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
         <button type="button" class="btn-secondary btn-sm" style="{st_all} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'all')">
             {get_icon("globe", 13, "margin-right:5px;")} All Milestones ({len(badges)})
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="{st_alloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'allocated')">
-            {get_icon("target", 13, "margin-right:5px;")} Allocated Badges ({len(allocated)})
+        <button type="button" class="btn-secondary btn-sm" style="{st_alloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'published')">
+            {get_icon("target", 13, "margin-right:5px;")} Published ({len(published)})
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="{st_unalloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'unallocated')">
-            {get_icon("lock", 11, "margin-right:4px;")} Not Allocated Yet ({len(unallocated)})
+        <button type="button" class="btn-secondary btn-sm" style="{st_unalloc} padding:6px 14px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'not_published')">
+            {get_icon("lock", 11, "margin-right:4px;")} Not Published Yet ({len(not_published)})
         </button>
     </div>
     """
 
     # Sections in 2-in-a-row responsive grid
     sections = []
-    if filter_tab in ["all", "allocated"]:
+    if filter_tab in ["all", "allocated", "published"]:
         sections.append(f"""
         <div style="margin-bottom:30px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px;">
                 <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:8px;">
-                    <span>{get_icon("clipboard", 16, "margin-right:6px;")}</span> Allocated Badges ({len(allocated)})
+                    <span>{get_icon("clipboard", 16, "margin-right:6px;")}</span> Published ({len(published)})
                 </h3>
-                <span class="status-pill status-approved" style="font-weight:700;">{len(allocated)} Active on Roadmap</span>
+                <span class="status-pill status-approved" style="font-weight:700;">{len(published)} Active on Roadmap</span>
             </div>
             <!-- 2 Badges in a Row Responsive Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:18px;">
-                {"".join(allocated_cards)}
+                {"".join(published_cards)}
             </div>
         </div>
         """)
 
-    if filter_tab in ["all", "unallocated"]:
+    if filter_tab in ["all", "unallocated", "not_published"]:
         sections.append(f"""
         <div style="margin-bottom:30px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px;">
                 <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:8px;">
-                    <span>{get_icon("lock", 16, "margin-right:6px;")}</span> Not Allocated Yet ({len(unallocated)})
+                    <span>{get_icon("lock", 16, "margin-right:6px;")}</span> Not Published Yet ({len(not_published)})
                 </h3>
-                <span class="status-pill status-locked" style="font-weight:700;">{len(unallocated)} In Catalog</span>
+                <span class="status-pill status-locked" style="font-weight:700;">{len(not_published)} In Catalog</span>
             </div>
             <!-- 2 Badges in a Row Responsive Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:18px;">
-                {"".join(unallocated_cards)}
+                {"".join(not_published_cards)}
             </div>
         </div>
         """)

@@ -33,10 +33,14 @@ def main():
         print("[WARN] uvicorn not installed. Falling back to static http.server...")
         import http.server
         import socketserver
+        socketserver.TCPServer.allow_reuse_address = True
         handler = http.server.SimpleHTTPRequestHandler
-        with socketserver.TCPServer(("127.0.0.1", 8000), handler) as httpd:
-            print("Serving static StarApp at http://127.0.0.1:8000 ...")
-            httpd.serve_forever()
+        try:
+            with socketserver.TCPServer(("127.0.0.1", 8000), handler) as httpd:
+                print("Serving static StarApp at http://127.0.0.1:8000 (Ctrl+C to stop)...")
+                httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\nStarApp server stopped gracefully.")
 
 
 if __name__ == "__main__":

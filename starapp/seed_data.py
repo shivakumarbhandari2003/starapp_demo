@@ -63,7 +63,8 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "capability": "Intelligent Apps",
             "skill": "Intelligent Apps",
             "workflow_status": "approved",
-            "assigned_cosmonaut_ids": [],
+            "assigned_reviewer_id": "m_b2_1",
+            "assigned_cosmonaut_ids": ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"],
             "default_timeline": {
                 "assignment_date": "2026-11-20",
                 "publication_date": "2026-11-20",
@@ -97,7 +98,8 @@ def get_initial_seed_data() -> Dict[str, Any]:
             "capability": "Data & Machine",
             "skill": "Architecture",
             "workflow_status": "approved",
-            "assigned_cosmonaut_ids": [],
+            "assigned_reviewer_id": "m_b2_1",
+            "assigned_cosmonaut_ids": ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"],
             "default_timeline": {
                 "assignment_date": "2026-11-20",
                 "publication_date": "2026-11-20",
@@ -137,6 +139,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         "capability": "Data & Machine",
         "skill": "Signals",
         "workflow_status": "approved",
+        "assigned_reviewer_id": "m_b2_1",
         "assigned_cosmonaut_ids": ["m_b1_1", "m_b1_2", "m_b1_3", "m_b1_4", "m_b1_5"],
         "prompt_json": json.dumps(badge_signals_gen),
         "default_timeline": {
@@ -158,6 +161,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         timelines.append({
             "badge_id": "badge_b1_signals",
             "cosmonaut_id": cid,
+            "reviewer_id": "m_b2_1",
             "assignment_date": "2026-11-20",
             "publication_date": "2026-11-20",
             "learning_start_date": "2026-11-21",

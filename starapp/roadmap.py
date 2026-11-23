@@ -167,7 +167,7 @@ def generate_roadmap_graph(
         if badge.id in approved_badge_ids:
             state = "completed"
             is_current_active = False
-        elif getattr(badge, "is_allocated", False) and badge.is_published and cosmo_id in badge.assigned_cosmonaut_ids:
+        elif badge in active_badges:
             state = "active"
             if not found_first_active:
                 is_current_active = True

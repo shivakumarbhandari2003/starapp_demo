@@ -1556,6 +1556,9 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
         """)
     topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
 
+    btn_label = "Edit Deliverables for this Badge" if existing_sub else "Submit Deliverables for this Badge"
+    btn_icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' if existing_sub else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+
     return f"""
     <div class="liquid-glass-card badge-card-item expanded-badge-card" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12); transition:all 0.25s ease;">
         <!-- LOCATION BAR & ACTIONS -->
@@ -1746,10 +1749,6 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             </div>
         </div>
 
-        # EXPANDED CARD FOOTER ACTIONS
-        btn_label = "Edit Deliverables for this Badge" if existing_sub else "Submit Deliverables for this Badge"
-        btn_icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' if existing_sub else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
-        return f"""
         <!-- EXPANDED CARD FOOTER ACTIONS -->
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:20px; flex-wrap:wrap;">
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
@@ -1990,6 +1989,10 @@ def render_cosmonaut_submission_workspace(
                 </div>
             </div>
         </div>
+
+        {retake_banner}
+        {mapping_info_banner}
+        {assigned_project_banner}
 
         <!-- 1. BADGES CARDS GRID -->
         {badges_grid_html}
@@ -3405,8 +3408,12 @@ def render_reviewer_badge_schedule(
             pair = (tl.badge_id, tl.cosmonaut_id)
             if pair in seen_pairs:
                 continue
-            seen_pairs.add(pair)
             b = badges_map.get(tl.badge_id) or store.get_badge(tl.badge_id)
+            if b and not getattr(b, "is_published", False) and b.code not in ("GOV-101", "CUR-102", "DAT-103"):
+                continue
+            if getattr(tl, "status", "") == "locked":
+                continue
+            seen_pairs.add(pair)
             c = cosmo_map.get(tl.cosmonaut_id) or store.get_user_by_id(tl.cosmonaut_id)
             item = {
                 "badge": b,
@@ -3431,9 +3438,11 @@ def render_reviewer_badge_schedule(
                 b_name = m.get("badge", "")
                 b_obj = None
                 for b in badges_map.values():
-                    if b.title == b_name or b.code == b_name or b.id == b_name:
+                    if b.title == b_name or b.code == b_name or b.id == b_name or (m.get("badge_id") and b.id == m.get("badge_id")):
                         b_obj = b
                         break
+                if b_obj and not getattr(b_obj, "is_published", False) and b_obj.code not in ("GOV-101", "CUR-102", "DAT-103"):
+                    continue
                 r_dates = m.get("review_dates", [])
                 r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"
                 for cid in m.get("cosmonauts", []):
@@ -3460,6 +3469,8 @@ def render_reviewer_badge_schedule(
     try:
         for b in badges_map.values():
             if getattr(b, "assigned_reviewer_id", "") == current_user.id:
+                if not getattr(b, "is_published", False) and b.code not in ("GOV-101", "CUR-102", "DAT-103"):
+                    continue
                 dt = getattr(b, "default_timeline", {}) or {}
                 r_dates = dt.get("review_dates", [])
                 r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"

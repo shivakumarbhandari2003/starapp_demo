@@ -1958,7 +1958,6 @@ class StarAppController:
                 badge.is_allocated = False
                 badge.is_published = False
                 all_cosmo_ids = [c.id for c in store.get_all_cosmonauts()]
-                badge.assigned_cosmonaut_ids = []
                 for cid in all_cosmo_ids:
                     tl = store.get_timeline(badge.id, cid)
                     if tl:
@@ -2004,9 +2003,47 @@ class StarAppController:
                     and m.get("band") == b_band
                 ]
 
-                all_mapped_cids = set()
+                all_mapped_cids = set(getattr(badge, "assigned_cosmonaut_ids", []) or [])
                 notified_reviewers = set()
                 dt = badge.default_timeline or {}
+
+                # If badge has assigned_reviewer_id directly
+                if getattr(badge, "assigned_reviewer_id", ""):
+                    direct_rev_id = badge.assigned_reviewer_id
+                    if direct_rev_id not in notified_reviewers:
+                        notified_reviewers.add(direct_rev_id)
+                        store.add_notification(
+                            recipient_id=direct_rev_id,
+                            title=f"📋 Milestone Allotted: {badge.code}",
+                            message=f"Milestone '{badge.title}' has been published and assigned to your review queue ({len(all_mapped_cids)} cadet(s)). 3-day project specification window is open.",
+                            event_type="milestone",
+                            link_section="c_badge_reviews"
+                        )
+                    for cid in all_mapped_cids:
+                        start_d = dt.get("learning_start_date", "2026-11-21")
+                        end_d = dt.get("review_date", "2026-12-15")
+                        tl = store.get_timeline(badge.id, cid)
+                        if not tl:
+                            new_tl = BadgeTimeline(
+                                badge_id=badge.id,
+                                cosmonaut_id=cid,
+                                reviewer_id=direct_rev_id,
+                                assignment_date=dt.get("assignment_date", current_iso_timestamp()[:10]),
+                                publication_date=current_iso_timestamp()[:10],
+                                learning_start_date=start_d,
+                                learning_end_date=end_d,
+                                project_start_date=start_d,
+                                project_end_date=end_d,
+                                submission_deadline=end_d,
+                                review_date=end_d,
+                                expected_award_date=end_d,
+                                status="active"
+                            )
+                            store.save_timeline(new_tl)
+                        else:
+                            tl.status = "active"
+                            tl.reviewer_id = direct_rev_id
+                            store.save_timeline(tl)
 
                 for mp in matched_mappings:
                     rev_list = mp.get("reviewers", [])
@@ -2738,8 +2775,15 @@ class StarAppController:
 
             # Determine single submission / edit vs new submission
             existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, badge_id)
-            is_edit = bool(existing_subs)
-            attempt_num = existing_subs[0].attempt_number if is_edit else 1
+            latest_sub = existing_subs[-1] if existing_subs else None
+            # Only treat as edit if latest attempt is still pending or draft
+            is_edit = bool(latest_sub and latest_sub.status in ("pending", "draft"))
+            if is_edit and latest_sub:
+                attempt_num = latest_sub.attempt_number
+            elif latest_sub:
+                attempt_num = latest_sub.attempt_number + 1
+            else:
+                attempt_num = 1
 
             # Extract fields from payload_dict or browser DOM
             pdf_name = payload_dict.get("pdf_name", "")
@@ -2760,15 +2804,16 @@ class StarAppController:
                     gh_url = str(gh_inp.value).strip()
 
             # Ensure high-quality defaults so all deliverables are present and readable in reviews
+            ref_sub = latest_sub if is_edit else None
             if not pdf_name:
-                pdf_name = existing_subs[0].pdf_name if is_edit and getattr(existing_subs[0], "pdf_name", "") else f"{self.current_user.name.split()[0]}_{badge.code}_Architecture_Report.pdf"
+                pdf_name = ref_sub.pdf_name if ref_sub and getattr(ref_sub, "pdf_name", "") else f"{self.current_user.name.split()[0]}_{badge.code}_Architecture_Report.pdf"
             if not pdf_payload:
-                pdf_payload = existing_subs[0].pdf_payload if is_edit and getattr(existing_subs[0], "pdf_payload", "") else "data/Chemistry%20Syllabus.pdf"
+                pdf_payload = ref_sub.pdf_payload if ref_sub and getattr(ref_sub, "pdf_payload", "") else "data/Chemistry%20Syllabus.pdf"
 
             if not code_name:
-                code_name = existing_subs[0].code_name if is_edit and getattr(existing_subs[0], "code_name", "") else f"{badge.code.lower().replace('-', '_')}_implementation.py"
+                code_name = ref_sub.code_name if ref_sub and getattr(ref_sub, "code_name", "") else f"{badge.code.lower().replace('-', '_')}_implementation.py"
             if not code_payload:
-                code_payload = existing_subs[0].code_payload if is_edit and getattr(existing_subs[0], "code_payload", "") else f'''"""
+                code_payload = ref_sub.code_payload if ref_sub and getattr(ref_sub, "code_payload", "") else f'''"""
 StarApp Academy: {badge.code} {badge.title} Implementation
 Cosmonaut: {self.current_user.name} ({self.current_user.id})
 Milestone Deliverable - Attempt #{attempt_num}
@@ -2790,10 +2835,10 @@ if __name__ == "__main__":
 '''
 
             if not gh_url:
-                gh_url = existing_subs[0].github_url if is_edit and getattr(existing_subs[0], "github_url", "") else f"https://github.com/starapp-cosmonauts/{badge.code.lower().replace('-', '_')}-deliverable"
+                gh_url = ref_sub.github_url if ref_sub and getattr(ref_sub, "github_url", "") else f"https://github.com/starapp-cosmonauts/{badge.code.lower().replace('-', '_')}-deliverable"
 
-            if is_edit:
-                sub = existing_subs[0]
+            if is_edit and latest_sub:
+                sub = latest_sub
                 sub.file_name = pdf_name
                 sub.payload = pdf_payload
                 sub.pdf_name = pdf_name
