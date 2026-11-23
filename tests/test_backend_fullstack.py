@@ -208,12 +208,26 @@ class TestStarAppFullStackBackend(unittest.TestCase):
         self.conn.execute("DELETE FROM badges WHERE id = ?;", (badge_id,))
         self.conn.commit()
 
+    def _get_or_create_b1_badge(self):
+        badges = BadgesRepository(self.conn).list_badges(band="B1")
+        if badges:
+            return badges[0]
+        badge_service = BadgesService(BadgesRepository(self.conn))
+        badge_service.create_badge({
+            "code": "B1-TEST-BADGE",
+            "title": "Backend Test Badge",
+            "category": "Tech",
+            "description": "B1 badge for backend testing",
+            "target_band": "B1",
+            "creator_id": "admin"
+        })
+        self.conn.commit()
+        return BadgesRepository(self.conn).list_badges(band="B1")[0]
+
     def test_08_allotments_and_cosmonaut_roadmap(self):
         """Verify badge allotment and Candy Crush roadmap generation."""
         allot_service = AllotmentsService(AllotmentsRepository(self.conn))
-        badges = BadgesRepository(self.conn).list_badges(band="B1")
-        self.assertGreater(len(badges), 0)
-        target_badge = badges[0]
+        target_badge = self._get_or_create_b1_badge()
 
         # Allot to Ananya Iyer
         count = allot_service.allot_badge(target_badge["id"], ["m_b1_2"])
@@ -227,8 +241,7 @@ class TestStarAppFullStackBackend(unittest.TestCase):
     def test_09_multi_attempt_submissions_and_history(self):
         """Verify multi-attempt submission history retention."""
         sub_service = SubmissionsService(SubmissionsRepository(self.conn))
-        badges = BadgesRepository(self.conn).list_badges(band="B1")
-        test_badge = badges[0]
+        test_badge = self._get_or_create_b1_badge()
 
         # Attempt 1
         sub1 = sub_service.submit_project({
@@ -254,8 +267,7 @@ class TestStarAppFullStackBackend(unittest.TestCase):
         """Verify 50-mark scorecard calculation, percentage, and leaderboard."""
         sub_service = SubmissionsService(SubmissionsRepository(self.conn))
         eval_service = EvaluationsService(EvaluationsRepository(self.conn))
-        badges = BadgesRepository(self.conn).list_badges(band="B1")
-        test_badge = badges[0]
+        test_badge = self._get_or_create_b1_badge()
 
         # Create submission
         sub = sub_service.submit_project({

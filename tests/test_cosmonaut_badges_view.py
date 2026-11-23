@@ -61,8 +61,8 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # Strictly verify 'Target Learning Outcomes' is NOT present in the collapsed card view
         self.assertNotIn("Target Learning Outcomes", html)
 
-        # Verify Submission Portal is present below
-        self.assertIn("Project Deliverable Submission Portal", html)
+        # Verify Submission Portal is NOT statically embedded below (pops up as dedicated modal)
+        self.assertNotIn("Project Deliverable Submission Portal", html)
 
     def test_other_mapped_cosmonauts_see_allocated_badge_in_clean_card(self):
         """Verify other cosmonauts in the mapping (m_b1_2, m_b1_3, m_b1_4, m_b1_5) also see the clean collapsed badge card."""
@@ -137,8 +137,14 @@ class TestCosmonautBadgesView(unittest.TestCase):
         self.assertIn("Collapse Badge Details", html)
         self.assertIn("Submit Deliverables for this Badge", html)
 
-        # Below the grid: Deliverable Submission Portal still rendered
-        self.assertIn("Project Deliverable Submission Portal", html)
+        # Below the grid: Deliverable Submission Portal is NOT statically embedded
+        self.assertNotIn("Project Deliverable Submission Portal", html)
+
+        # Clicking 'Submit Deliverables for this Badge' opens the dedicated modal popup
+        self.ctrl.handle_event("open_submission_modal", "badge_b1_signals")
+        self.assertEqual(self.ctrl.active_modal, "submission_portal_modal")
+        modal_html = self.ctrl.render()
+        self.assertIn("Project Deliverable Submission Portal", modal_html)
 
     def test_cosmonaut_badge_card_collapses_back_on_toggle(self):
         """Verify clicking toggle again collapses the expanded badge card back to compact view."""

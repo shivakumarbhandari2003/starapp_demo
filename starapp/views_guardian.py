@@ -1288,6 +1288,7 @@ def render_guardian_badge_allotment(
     all_band_mappings = all_band_mappings or []
 
     def get_badge_mapping_info(b: Badge):
+        from starapp.storage import store as global_store
         b_band = getattr(b, "target_band", "") or "B1"
         matched_mappings = []
         for m in all_band_mappings:
@@ -1298,15 +1299,25 @@ def render_guardian_badge_allotment(
                 matched_mappings.append(m)
 
         rev_names = []
-        rev_id = ""
+        rev_id = getattr(b, "assigned_reviewer_id", "") or ""
         rev_dates = []
         c_ids = list(getattr(b, "assigned_cosmonaut_ids", []))
+
+        if rev_id:
+            u = cosmo_users_map.get(rev_id) or global_store.get_user_by_id(rev_id)
+            rname = u.name if u else rev_id
+            if rname not in rev_names:
+                rev_names.append(rname)
+
+        if getattr(b, "default_timeline", None) and b.default_timeline.get("review_date"):
+            rev_dates = [b.default_timeline.get("review_date")]
+
         for m in matched_mappings:
             rev_list = m.get("reviewers", [])
             for rid in rev_list:
                 if not rev_id:
                     rev_id = rid
-                u = cosmo_users_map.get(rid)
+                u = cosmo_users_map.get(rid) or global_store.get_user_by_id(rid)
                 rname = u.name if u else rid
                 if rname not in rev_names:
                     rev_names.append(rname)
@@ -1463,7 +1474,7 @@ def render_guardian_badge_allotment(
 
         cosmo_chips = []
         for cid in assigned_cosmo_ids[:5]:
-            cu = cosmo_users_map.get(cid)
+            cu = cosmo_users_map.get(cid) or global_store.get_user_by_id(cid)
             cname = cu.name if cu else cid
             cosmo_chips.append(f'<span style="display:inline-block; font-size:10.5px; background:rgba(23,52,92,0.06); color:var(--deep-frozen-midnight); padding:2px 7px; border-radius:3px; font-weight:700;">{escape(cname)}</span>')
         if len(assigned_cosmo_ids) > 5:
@@ -1473,11 +1484,15 @@ def render_guardian_badge_allotment(
         if is_completed:
             status_pill = f'<span class="status-pill status-approved" style="font-weight:700; font-size:11px; padding:3px 9px;">{check_ic_11} Certified</span>'
             card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);"
-            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
-        else:
-            status_pill = f'<span class="status-pill status-active" style="font-weight:700; font-size:11px; padding:3px 9px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} In Progress</span>'
+            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+        elif getattr(b, "is_published", False):
+            status_pill = f'<span class="status-pill status-active" style="font-weight:700; font-size:11px; padding:3px 9px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} Published &bull; In Progress</span>'
             card_border = "border:2px solid var(--deep-frozen-midnight); box-shadow:0 0 0 3px rgba(23,52,92,0.1); background:linear-gradient(135deg, rgba(234,244,255,0.96) 0%, rgba(255,255,255,0.98) 100%);"
-            revoke_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+            action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:700; color:#D32F2F; border-color:rgba(211,47,47,0.35); background:rgba(211,47,47,0.04); font-size:11px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+        else:
+            status_pill = f'<span class="status-pill status-warning" style="font-weight:700; font-size:11px; padding:3px 9px; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ Mapped &bull; Ready to Publish</span>'
+            card_border = "border:2px solid #059669; box-shadow:0 0 0 3px rgba(5,150,105,0.12); background:linear-gradient(135deg, rgba(234,244,255,0.96) 0%, rgba(255,255,255,0.98) 100%);"
+            action_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:11.5px; display:flex; align-items:center; gap:5px; background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">🚀 Publish to Roadmap</button>"""
 
         timeline_html = render_timeline_stepper(dt, is_allocated=True)
         config_drawer_html = render_timeline_config_drawer(b, dt, rev_date_val)
@@ -1551,7 +1566,7 @@ def render_guardian_badge_allotment(
                         {get_icon("eye", 13, "margin-right:4px;")} View Timeline
                     </button>
                 </div>
-                {revoke_btn}
+                {action_btn}
             </div>
         </div>
         """)
@@ -3045,7 +3060,7 @@ def render_guardian_mapping(
             b_cls = "mapping-badge-item selected" if is_b_sel else "mapping-badge-item"
             b_check = '<span style="color:#10B981; font-weight:900; font-size:13px;">✓</span>' if is_b_sel else ''
             badges_list_html.append(f"""
-            <div class="{b_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_badge', '{b['name']}')" data-badge-name="{escape(b['name'].lower())}">
+            <div class="{b_cls}" onclick="const p = {{badge_id: '{b['id']}', badge: '{escape(b['name'])}'}}; window.StarAppBridge.dispatchAction('select_mapping_badge', JSON.stringify(p))" data-badge-name="{escape(b['name'].lower())}">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <div style="min-width:54px; padding:3px 6px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:10.5px; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">
                         {escape(b['code'])}

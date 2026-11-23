@@ -1435,7 +1435,7 @@ def render_badge_detail_modal_content(
 # 6.5 BADGES & PROJECT SUBMISSION WORKSPACE
 # ==============================================================================
 
-def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Optional[User] = None) -> str:
+def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Optional[User] = None, existing_sub: Optional[ProjectSubmission] = None) -> str:
     import json
     from starapp.badge_generator import (
         generate_badge_data, build_practice_project_prompt, build_learning_resources_prompt
@@ -1746,15 +1746,19 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             </div>
         </div>
 
+        # EXPANDED CARD FOOTER ACTIONS
+        btn_label = "Edit Deliverables for this Badge" if existing_sub else "Submit Deliverables for this Badge"
+        btn_icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' if existing_sub else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+        return f"""
         <!-- EXPANDED CARD FOOTER ACTIONS -->
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:20px; flex-wrap:wrap;">
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                 <span>Collapse Badge Details</span>
                 <span>▲</span>
             </button>
-            <button type="button" class="btn-metal" onclick="const sel=document.getElementById('submission-badge-id'); if(sel){{ sel.value='{badge.id}'; sel.dispatchEvent(new Event('change')); }} const formSec=document.getElementById('submission-portal-section'); if(formSec){{ formSec.scrollIntoView({{behavior:'smooth'}}); }}" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Submit Deliverables for this Badge &rarr;
+            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
+                {btn_icon}
+                {btn_label} &rarr;
             </button>
         </div>
     </div>
@@ -1882,6 +1886,7 @@ def render_cosmonaut_submission_workspace(
     if badges:
         badge_cards = []
         for b in badges:
+            cadet_sub = next((s for s in submissions if s.badge_id == b.id), None)
             b_code = escape(getattr(b, "code", ""))
             b_title = escape(getattr(b, "title", "Milestone Badge"))
             b_band = escape(getattr(b, "target_band", "B1"))
@@ -1894,8 +1899,17 @@ def render_cosmonaut_submission_workspace(
 
             if is_expanded:
                 # Render full 6-accordion content inside the card (spanning the grid, NOT as a popup)
-                badge_cards.append(render_cosmonaut_badge_card_expanded_content(b, current_user))
+                badge_cards.append(render_cosmonaut_badge_card_expanded_content(b, current_user, existing_sub=cadet_sub))
             else:
+                if cadet_sub:
+                    sub_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ✓ Submitted</span>'
+                    action_btn_txt = "Edit Deliverables"
+                    btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
+                else:
+                    sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
+                    action_btn_txt = "Submit Deliverables"
+                    btn_color_style = ""
+
                 # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
                 badge_cards.append(f"""
                 <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06); display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 28px rgba(7,22,41,0.12)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 6px 24px rgba(7,22,41,0.06)';">
@@ -1906,10 +1920,7 @@ def render_cosmonaut_submission_workspace(
                                 <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
                                 {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
                             </div>
-                            <span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                                Allocated Project
-                            </span>
+                            {sub_chip}
                         </div>
 
                         <!-- Hierarchy Breadcrumb -->
@@ -1927,13 +1938,13 @@ def render_cosmonaut_submission_workspace(
                         </h3>
                     </div>
 
-                    <!-- Expansion Prompt Hint -->
-                    <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px;">
-                            <span>Click to view curriculum &amp; practice</span>
-                            <span style="font-size:12px;">&darr;</span>
-                        </span>
-                        <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:2px 8px; border-radius:10px;">Expand</span>
+                    <!-- Expansion & Modal Action Footer -->
+                    <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <button type="button" class="btn-metal btn-sm" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
+                            <span>{action_btn_txt}</span>
+                            <span>&rarr;</span>
+                        </button>
+                        <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:4px 8px; border-radius:10px;">Details &darr;</span>
                     </div>
                 </div>
                 """)
@@ -1982,65 +1993,148 @@ def render_cosmonaut_submission_workspace(
 
         <!-- 1. BADGES CARDS GRID -->
         {badges_grid_html}
+    </div>
+    """
 
-        <!-- 2. DELIVERABLE SUBMISSION PORTAL SECTION -->
-        <div id="submission-portal-section" style="padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:24px;">
-            <div style="margin-bottom:20px; text-align:center;">
-                <h3 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Project Deliverable Submission Portal</h3>
-                <p style="font-size:13px; color:var(--frost-navy-50); margin:0;">Provide your technical deliverables, executable scripts, and repository links for formal review.</p>
+
+def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: Any, existing_sub: Optional[ProjectSubmission] = None) -> str:
+    """
+    Renders the dedicated Project Deliverable Submission Portal modal popup for a specific badge.
+    Allows Cosmonauts to submit deliverables for formal evaluation, or edit their existing submission.
+    """
+    import json
+    badge_title = getattr(badge, "title", "Milestone Badge")
+    badge_code = getattr(badge, "code", "")
+    badge_band = getattr(badge, "target_band", "B1")
+    badge_power = getattr(badge, "power", "Tech") or "Tech"
+    badge_cap = getattr(badge, "capability", "Data & Machine") or "Data & Machine"
+    badge_skill = getattr(badge, "skill", "Curation") or "Curation"
+
+    # Assigned Reviewer & Window
+    selected_tl = store.get_timeline(badge.id, current_user.id) if (store and current_user) else None
+    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else getattr(badge, "assigned_reviewer_id", "")
+    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
+    rev_name = rev_user.name if rev_user else (rev_id or "Authorized Reviewer")
+    rev_band = getattr(rev_user, "band", "") if rev_user else ""
+    r_window = []
+    if selected_tl and getattr(selected_tl, "review_window_json", None):
+        try:
+            r_window = json.loads(selected_tl.review_window_json)
+        except Exception:
+            r_window = []
+    elif getattr(badge, "default_timeline", None) and badge.default_timeline.get("review_date"):
+        r_window = [badge.default_timeline.get("review_date")]
+    window_str = " &rarr; ".join(r_window) if r_window else "3-Day Review Window"
+
+    # Assigned Project Specification from Reviewer
+    assigned_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
+    assigned_project_banner = ""
+    if assigned_proj:
+        deliv = getattr(assigned_proj, "deliverables", {}) or {}
+        code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
+        pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
+        gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
+        req_items = getattr(assigned_proj, "requirements", []) or []
+        req_items_html = "".join([f"<li>{escape(r)}</li>" for r in req_items]) if req_items else "<li>Implement scalable enterprise pipeline according to badge outcomes.</li>"
+        assigned_project_banner = f"""
+        <div style="background:rgba(234,244,255,0.7); border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:14px 18px; margin-bottom:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <span style="font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
+                <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Reviewer: {escape(rev_name)}</span>
             </div>
+            <h4 style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
+            <p style="font-size:12px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 8px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+            <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
+            <ul style="margin:0 0 10px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
+                {req_items_html}
+            </ul>
+        </div>
+        """
 
-            <div style="display:flex; justify-content:center; width:100%; margin-bottom:32px;">
-                <div class="liquid-submission-portal" style="width:100%; max-width:680px; padding:32px 36px;">
-                    {retake_banner}
-                    {mapping_info_banner}
-                    {assigned_project_banner}
-                    <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
-                        <!-- 1. Target Badge Milestone Dropdown -->
-                        <div class="liquid-form-group" style="margin-bottom:22px;">
-                            <label class="liquid-form-label" for="submission-badge-id">Target Badge Milestone</label>
-                            <div class="liquid-select-wrapper">
-                                <select id="submission-badge-id" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_submission_target_badge', this.value)">
-                                    {"".join(badge_options)}
-                                </select>
-                            </div>
-                            <span class="liquid-form-hint">Choose the milestone badge you are fulfilling with this project.</span>
-                        </div>
-
-                        <!-- 2. PDF Document Deliverable Field -->
-                        <div class="liquid-form-group" style="margin-bottom:22px;">
-                            <label class="liquid-form-label" for="submission-pdf-file">PDF Document Deliverable</label>
-                            <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
-                            <span class="liquid-form-hint">Upload formal design charter, architecture report, or documentation (.pdf)</span>
-                        </div>
-
-                        <!-- 3. Code / Script File Deliverable Field -->
-                        <div class="liquid-form-group" style="margin-bottom:22px;">
-                            <label class="liquid-form-label" for="submission-code-file">Code / Script File Deliverable</label>
-                            <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
-                            <span class="liquid-form-hint">Upload executable script, queries, algorithm package, or zip archive (.py, .sql, .zip)</span>
-                        </div>
-
-                        <!-- 4. GitHub Repository Link Field -->
-                        <div class="liquid-form-group" style="margin-bottom:26px;">
-                            <label class="liquid-form-label" for="submission-github-url">GitHub Repository Link</label>
-                            <input type="url" id="submission-github-url" class="liquid-glass-control" placeholder="https://github.com/username/project-repo">
-                            <span class="liquid-form-hint">Direct link to version-controlled repository or pull request</span>
-                        </div>
-
-                        <!-- 5. Submit Button -->
-                        <div style="display:flex; justify-content:flex-end; margin-top:28px;">
-                            <div class="btn-metal-wrapper" style="width:100%;">
-                                <div class="btn-metal-inner"></div>
-                                <button type="submit" class="btn-metal" style="width:100%; height:46px; font-size:14px; font-weight:700; letter-spacing:0.3px;">
-                                    {submit_btn_label}
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+    # Existing submission notice
+    existing_notice = ""
+    if existing_sub:
+        submitted_at_fmt = getattr(existing_sub, "submitted_at", "")[:16].replace("T", " ")
+        existing_notice = f"""
+        <div style="background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.3); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="background:#10B981; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
+                    <span style="font-size:12.5px; font-weight:700; color:#047857;">Submitted on {escape(submitted_at_fmt)}</span>
                 </div>
+                <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Status: {escape(getattr(existing_sub, 'status', 'pending').upper())}</span>
+            </div>
+            <div style="font-size:11.5px; color:#065F46; margin-top:4px;">
+                You can edit your deliverables below. Updating will replace your active deliverable files for formal evaluation.
             </div>
         </div>
+        """
+
+    current_pdf_hint = f'<div style="font-size:11px; color:#059669; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
+    current_code_hint = f'<div style="font-size:11px; color:#059669; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
+    gh_val = getattr(existing_sub, "github_url", "") if existing_sub else ""
+
+    submit_btn_txt = "💾 Update Deliverables &rarr;" if existing_sub else "🚀 Submit Deliverables for Assessment &rarr;"
+
+    return f"""
+    <div style="padding:4px 0;">
+        <!-- Hierarchy & Context Bar -->
+        <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
+                <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                <span>Assigned Reviewer: <strong style="color:#059669;">{escape(rev_name)}</strong></span>
+            </div>
+        </div>
+
+        {existing_notice}
+        {assigned_project_banner}
+
+        <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
+            <input type="hidden" id="submission-badge-id" value="{escape(badge.id)}">
+
+            <!-- 1. PDF Document Deliverable Field -->
+            <div class="liquid-form-group" style="margin-bottom:18px;">
+                <label class="liquid-form-label" for="submission-pdf-file" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">
+                    📄 PDF Document Deliverable
+                </label>
+                <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
+                {current_pdf_hint}
+                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload design charter, architecture report, or technical documentation (.pdf)</span>
+            </div>
+
+            <!-- 2. Code / Script File Deliverable Field -->
+            <div class="liquid-form-group" style="margin-bottom:18px;">
+                <label class="liquid-form-label" for="submission-code-file" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">
+                    💻 Code / Script File Deliverable
+                </label>
+                <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
+                {current_code_hint}
+                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload executable script, pipeline package, queries, or zip archive (.py, .sql, .zip)</span>
+            </div>
+
+            <!-- 3. GitHub Repository Link Field -->
+            <div class="liquid-form-group" style="margin-bottom:22px;">
+                <label class="liquid-form-label" for="submission-github-url" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">
+                    🔗 GitHub Repository Link
+                </label>
+                <input type="url" id="submission-github-url" class="liquid-glass-control" value="{escape(gh_val)}" placeholder="https://github.com/username/project-repo" style="width:100%; font-size:12.5px;">
+                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Direct URL to version-controlled repository or pull request</span>
+            </div>
+
+            <!-- Actions Row -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:14px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+                    Cancel
+                </button>
+                <button type="submit" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;">
+                    {submit_btn_txt}
+                </button>
+            </div>
+        </form>
     </div>
     """
 
@@ -2356,7 +2450,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
                 Close
             </button>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}'); const sel=document.getElementById('submission-badge-id'); if(sel){{ sel.value='{badge.id}'; sel.dispatchEvent(new Event('change')); }} const formSec=document.getElementById('submission-portal-section'); if(formSec){{ formSec.scrollIntoView({{behavior:'smooth'}}); }}" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
+            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Submit Deliverables for this Badge &rarr;
             </button>
@@ -3362,6 +3456,33 @@ def render_reviewer_badge_schedule(
     except Exception:
         pass
 
+    # 3. Check badges directly assigned to this reviewer
+    try:
+        for b in badges_map.values():
+            if getattr(b, "assigned_reviewer_id", "") == current_user.id:
+                dt = getattr(b, "default_timeline", {}) or {}
+                r_dates = dt.get("review_dates", [])
+                r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"
+                for cid in getattr(b, "assigned_cosmonaut_ids", []):
+                    pair = (b.id, cid)
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        c_obj = cosmo_map.get(cid) or store.get_user_by_id(cid)
+                        upcoming_entries.append({
+                            "badge": b,
+                            "cosmonaut": c_obj,
+                            "badge_id": b.id,
+                            "cosmonaut_id": cid,
+                            "badge_title": b.title,
+                            "timeline": None,
+                            "status": "active",
+                            "review_date": r_dates_str,
+                            "deadline": r_dates[-1] if r_dates else "TBD",
+                            "award_date": ""
+                        })
+    except Exception:
+        pass
+
     upcoming_cards_html = []
     for item in upcoming_entries:
         b = item.get("badge")
@@ -3540,17 +3661,33 @@ def render_reviewer_assessment_queue(
     """
     from starapp.storage import store
 
+    # Deduplicate submissions so only ONE submission per cadet per badge is shown
+    deduped_subs = {}
+    for s in submissions:
+        key = (s.cosmonaut_id, s.badge_id)
+        if key not in deduped_subs:
+            deduped_subs[key] = s
+        else:
+            if getattr(s, "attempt_number", 1) >= getattr(deduped_subs[key], "attempt_number", 1):
+                deduped_subs[key] = s
+
+    unique_submissions = list(deduped_subs.values())
+
     # Find submissions of cadets assigned strictly to this reviewer
     assigned_subs = []
     is_guardian = (getattr(current_user, "role", "") == "guardian" or "guardian" in getattr(current_user, "roles", []))
-    for s in submissions:
+    for s in unique_submissions:
         tl = store.get_timeline(s.badge_id, s.cosmonaut_id)
         is_assigned = (tl and getattr(tl, "reviewer_id", "") == current_user.id)
+        if not is_assigned:
+            b_obj = badges_map.get(s.badge_id) or store.get_badge(s.badge_id)
+            if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == current_user.id and s.cosmonaut_id in getattr(b_obj, "assigned_cosmonaut_ids", []):
+                is_assigned = True
         if not is_assigned:
             for m in store.get_band_mappings():
                 if current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []):
                     m_badge = m.get("badge_id") or m.get("badge")
-                    b_obj = badges_map.get(s.badge_id)
+                    b_obj = badges_map.get(s.badge_id) or store.get_badge(s.badge_id)
                     if (m_badge == s.badge_id) or (b_obj and m_badge in (b_obj.title, b_obj.code, b_obj.id)):
                         is_assigned = True
                         break
@@ -4118,6 +4255,12 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                     u = store.get_user_by_id(getattr(tl, "cosmonaut_id", ""))
                     if u and u not in mapped_cadets:
                         mapped_cadets.append(u)
+        # Also include directly assigned cadets from badge itself
+        if getattr(badge, "assigned_reviewer_id", "") == current_user.id:
+            for cid in getattr(badge, "assigned_cosmonaut_ids", []):
+                u = store.get_user_by_id(cid)
+                if u and u not in mapped_cadets:
+                    mapped_cadets.append(u)
 
     cadet_chips = []
     cadet_ids = []

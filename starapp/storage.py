@@ -290,10 +290,136 @@ class DataStore:
 
     # --- Badges ---
     def get_all_badges(self) -> List[Badge]:
+        if self.db and self.db.conn:
+            try:
+                rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
+                for r in rows:
+                    rd = dict(r)
+                    b_id = rd.get("id")
+                    if not b_id:
+                        continue
+                    if b_id in self.badges:
+                        b = self.badges[b_id]
+                        b.is_published = bool(rd.get("is_published", 1))
+                        b.is_allocated = bool(rd.get("is_allocated", 1))
+                        b.workflow_status = rd.get("workflow_status", "approved")
+                        if rd.get("assigned_reviewer_id"):
+                            b.assigned_reviewer_id = rd.get("assigned_reviewer_id")
+                        if rd.get("assigned_cosmonaut_ids_json"):
+                            try:
+                                b.assigned_cosmonaut_ids = json.loads(rd["assigned_cosmonaut_ids_json"])
+                            except Exception:
+                                pass
+                        if rd.get("default_timeline_json"):
+                            try:
+                                b.default_timeline = json.loads(rd["default_timeline_json"])
+                            except Exception:
+                                pass
+                    else:
+                        outcomes = []
+                        if rd.get("learning_outcomes_json"):
+                            try: outcomes = json.loads(rd["learning_outcomes_json"])
+                            except Exception: pass
+                        topics = []
+                        if rd.get("learning_topics_json"):
+                            try: topics = json.loads(rd["learning_topics_json"])
+                            except Exception: pass
+                        cids = []
+                        if rd.get("assigned_cosmonaut_ids_json"):
+                            try: cids = json.loads(rd["assigned_cosmonaut_ids_json"])
+                            except Exception: pass
+                        dt = {}
+                        if rd.get("default_timeline_json"):
+                            try: dt = json.loads(rd["default_timeline_json"])
+                            except Exception: pass
+
+                        self.badges[b_id] = Badge(
+                            id=b_id,
+                            code=rd.get("code", ""),
+                            title=rd.get("title", ""),
+                            category=rd.get("category", "Foundations"),
+                            description=rd.get("description", ""),
+                            learning_outcomes=outcomes,
+                            learning_topics=topics,
+                            prerequisites=[],
+                            project_requirements=rd.get("project_requirements", ""),
+                            is_published=bool(rd.get("is_published", 1)),
+                            is_allocated=bool(rd.get("is_allocated", 1)),
+                            target_band=rd.get("target_band", ""),
+                            power=rd.get("power", ""),
+                            capability=rd.get("capability", ""),
+                            skill=rd.get("skill", ""),
+                            prompt_json=rd.get("prompt_json", "{}"),
+                            workflow_status=rd.get("workflow_status", "approved"),
+                            creator_id=rd.get("creator_id", ""),
+                            assigned_reviewer_id=rd.get("assigned_reviewer_id", ""),
+                            assigned_cosmonaut_ids=cids,
+                            default_timeline=dt,
+                            created_at=rd.get("created_at", ""),
+                            updated_at=rd.get("updated_at", "")
+                        )
+            except Exception:
+                pass
         return list(self.badges.values())
 
     def get_badge(self, badge_id: str) -> Optional[Badge]:
-        return self.badges.get(badge_id)
+        if not badge_id:
+            return None
+        if badge_id in self.badges:
+            return self.badges[badge_id]
+        if self.db and self.db.conn:
+            try:
+                row = self.db.conn.execute("SELECT * FROM badges WHERE id = ? OR code = ?", (badge_id, badge_id)).fetchone()
+                if row:
+                    rd = dict(row)
+                    b_id = rd["id"]
+                    outcomes = []
+                    if rd.get("learning_outcomes_json"):
+                        try: outcomes = json.loads(rd["learning_outcomes_json"])
+                        except Exception: pass
+                    topics = []
+                    if rd.get("learning_topics_json"):
+                        try: topics = json.loads(rd["learning_topics_json"])
+                        except Exception: pass
+                    cids = []
+                    if rd.get("assigned_cosmonaut_ids_json"):
+                        try: cids = json.loads(rd["assigned_cosmonaut_ids_json"])
+                        except Exception: pass
+                    dt = {}
+                    if rd.get("default_timeline_json"):
+                        try: dt = json.loads(rd["default_timeline_json"])
+                        except Exception: pass
+
+                    b_obj = Badge(
+                        id=b_id,
+                        code=rd.get("code", ""),
+                        title=rd.get("title", ""),
+                        category=rd.get("category", "Foundations"),
+                        description=rd.get("description", ""),
+                        learning_outcomes=outcomes,
+                        learning_topics=topics,
+                        prerequisites=[],
+                        project_requirements=rd.get("project_requirements", ""),
+                        is_published=bool(rd.get("is_published", 1)),
+                        is_allocated=bool(rd.get("is_allocated", 1)),
+                        target_band=rd.get("target_band", ""),
+                        power=rd.get("power", ""),
+                        capability=rd.get("capability", ""),
+                        skill=rd.get("skill", ""),
+                        prompt_json=rd.get("prompt_json", "{}"),
+                        workflow_status=rd.get("workflow_status", "approved"),
+                        creator_id=rd.get("creator_id", ""),
+                        assigned_reviewer_id=rd.get("assigned_reviewer_id", ""),
+                        assigned_cosmonaut_ids=cids,
+                        default_timeline=dt,
+                        created_at=rd.get("created_at", ""),
+                        updated_at=rd.get("updated_at", "")
+                    )
+                    self.badges[b_id] = b_obj
+                    return b_obj
+            except Exception:
+                pass
+        return None
 
     def save_badge(self, badge: Badge):
         self.badges[badge.id] = badge
@@ -954,14 +1080,18 @@ class DataStore:
         is_allocated = (tl is not None)
         assigned_rev_id = getattr(tl, "reviewer_id", "") if tl else ""
         if not is_allocated:
-            for m in self.get_band_mappings():
-                m_b = m.get("badge_id") or m.get("badge")
-                b_obj = self.get_badge(badge_id)
-                if (m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id))) and cosmonaut_id in m.get("cosmonauts", []):
-                    is_allocated = True
-                    if m.get("reviewers"):
-                        assigned_rev_id = m["reviewers"][0]
-                    break
+            b_obj = self.get_badge(badge_id)
+            if b_obj and cosmonaut_id in getattr(b_obj, "assigned_cosmonaut_ids", []):
+                is_allocated = True
+                assigned_rev_id = getattr(b_obj, "assigned_reviewer_id", "")
+            else:
+                for m in self.get_band_mappings():
+                    m_b = m.get("badge_id") or m.get("badge")
+                    if (m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id))) and cosmonaut_id in m.get("cosmonauts", []):
+                        is_allocated = True
+                        if m.get("reviewers"):
+                            assigned_rev_id = m["reviewers"][0]
+                        break
 
         if not is_allocated:
             return None
