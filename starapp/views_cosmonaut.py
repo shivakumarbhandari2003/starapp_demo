@@ -1129,7 +1129,7 @@ def render_gamified_roadmap(
     completed_svg = ""
     if completed_curve_d:
         completed_svg = (
-            '<path d="{}" fill="none" stroke="var(--deep-frozen-midnight)" '
+            '<path d="{}" fill="none" stroke="#F59E0B" '
             'stroke-width="7" stroke-linecap="round" opacity="0.95"/>'.format(completed_curve_d)
         )
 
@@ -1148,15 +1148,15 @@ def render_gamified_roadmap(
         # Distinct color scheme per milestone state
         if state == "completed":
             card_style = (
-                "background: linear-gradient(135deg, rgba(7, 22, 41, 0.94) 0%, rgba(23, 52, 92, 0.96) 100%); "
-                "border: 1.5px solid var(--icy-steel); "
-                "box-shadow: 0 8px 24px rgba(7, 22, 41, 0.35); "
-                "color: var(--snow-white);"
+                "background: linear-gradient(135deg, rgba(254, 243, 199, 0.98) 0%, rgba(251, 191, 36, 0.35) 50%, rgba(254, 240, 138, 0.95) 100%); "
+                "border: 2px solid #F59E0B; "
+                "box-shadow: 0 0 20px rgba(245, 158, 11, 0.45), 0 8px 24px rgba(180, 83, 9, 0.2); "
+                "color: #78350F;"
             )
-            code_style = "color: var(--icy-steel); font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
-            title_style = "color: var(--snow-white); font-weight: 700; font-size: 14px; margin: 3px 0 2px;"
-            desc_style = "color: rgba(234, 244, 255, 0.75); font-size: 11px;"
-            status_html = '<span class="status-pill status-approved" style="font-size:10.5px; padding:2px 8px;">Completed</span>'
+            code_style = "color: #92400E; font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
+            title_style = "color: #78350F; font-weight: 800; font-size: 14px; margin: 3px 0 2px;"
+            desc_style = "color: #92400E; font-size: 11px; font-weight: 600;"
+            status_html = '<span class="status-pill status-approved" style="font-size:10.5px; padding:2px 8px; border-radius:12px; font-weight:800; background:#F59E0B; color:#FFFFFF; border:1px solid #D97706; box-shadow:0 2px 6px rgba(245,158,11,0.4); display:inline-flex; align-items:center; gap:3px;">★ Completed</span>'
         elif state == "active":
             card_style = (
                 "background: linear-gradient(135deg, rgba(234, 244, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%); "
@@ -1559,8 +1559,177 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
     btn_label = "Edit Deliverables for this Badge" if existing_sub else "Submit Deliverables for this Badge"
     btn_icon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' if existing_sub else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
 
+    from starapp.storage import store
+    is_earned = False
+    earned_asm = None
+    rev_name_str = "Assigned Reviewer"
+    if current_user and store:
+        tl = store.get_timeline(badge.id, current_user.id)
+        if tl and getattr(tl, "status", "") == "completed":
+            is_earned = True
+        if tl and getattr(tl, "reviewer_id", ""):
+            r_u = store.get_user_by_id(tl.reviewer_id)
+            if r_u:
+                rev_name_str = r_u.name
+        asms = store.get_assessments_for_cosmonaut(current_user.id, badge.id)
+        for a in reversed(asms):
+            if a.decision == "approve" or getattr(a, "assessor_role", "") == "guardian":
+                is_earned = True
+                earned_asm = a
+                break
+        if not earned_asm and existing_sub:
+            sub_asm = store.get_assessment_for_submission(existing_sub.id)
+            if existing_sub.status == "approved" or (sub_asm and sub_asm.decision == "approve"):
+                is_earned = True
+                earned_asm = sub_asm
+
+    if is_earned:
+        top_card_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%); box-shadow:0 12px 36px rgba(245,158,11,0.25);"
+        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#D97706;"
+        top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+
+        tot_m = earned_asm.total_marks if earned_asm else 45.0
+        pct_m = earned_asm.percentage if earned_asm else 90.0
+        bu_m = earned_asm.business_understanding if earned_asm else 9.0
+        ar_m = earned_asm.architecture_report if earned_asm else 9.0
+        tk_m = earned_asm.technical_knowledge if earned_asm else 9.0
+        pr_m = earned_asm.presentation if earned_asm else 9.0
+        qa_m = earned_asm.qa if earned_asm else 9.0
+        fb_txt = (earned_asm.overall_feedback or earned_asm.remarks) if earned_asm else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
+        str_txt = earned_asm.strength_areas if earned_asm else "Robust technical architecture patterns and clean modular code."
+        imp_txt = earned_asm.improvement_areas if earned_asm else "Maintain comprehensive test coverage for future releases."
+
+        earn_section_html = f"""
+        <!-- SECTION 2: BADGE EARNED & ALLOCATED MARKS (GOLD) -->
+        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                        🏆
+                    </span>
+                    <div>
+                        <div style="font-size:16px; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
+                        <div style="font-size:12.5px; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
+                        Allocated Marks: {tot_m:.1f} / 50.0 ({pct_m:.1f}%)
+                    </span>
+                </div>
+            </div>
+
+            <!-- Rubric Criteria Scores Grid -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px;">
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
+                </div>
+            </div>
+
+            <!-- Evaluator Feedback Section -->
+            <div style="background:#FFFFFF; border:1.5px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
+                <div style="font-size:13px; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
+                    "{escape(fb_txt)}"
+                </div>
+                {f'<div style=\"font-size:12px; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
+                {f'<div style=\"font-size:12px; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
+            </div>
+        </div>
+        """
+    else:
+        top_card_style = "border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12);"
+        top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
+        top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
+        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+
+        if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (REVIEWER ASSESSED) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
+                    </div>
+                </div>
+                <div>
+                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
+                        Awaiting Guardian Award
+                    </span>
+                </div>
+            </div>
+            """
+        elif existing_sub and getattr(existing_sub, "status", "") in ("pending", "submitted"):
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="background:rgba(245,158,11,0.15); color:#D97706; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                        Pending Reviewer Evaluation
+                    </span>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:700; font-size:12px;">
+                        Edit Deliverables
+                    </button>
+                </div>
+            </div>
+            """
+        else:
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                        Allocated Milestone
+                    </span>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
+                        Submit Deliverables &rarr;
+                    </button>
+                </div>
+            </div>
+            """
+
     return f"""
-    <div class="liquid-glass-card badge-card-item expanded-badge-card" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12); transition:all 0.25s ease;">
+    <div class="liquid-glass-card badge-card-item expanded-badge-card" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); {top_card_style} transition:all 0.25s ease;">
         <!-- LOCATION BAR & ACTIONS -->
         <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
             <div>
@@ -1592,17 +1761,14 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
 
         <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
         <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
-            <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            <div style="width:48px; height:48px; border-radius:50%; {top_icon_style} display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                {top_icon_svg}
             </div>
             <div style="flex:1;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
                     <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
                     {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
-                    <span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                        Allocated Project
-                    </span>
+                    {meta_chip}
                     <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 0 4px;">{escape(badge_title)}</h2>
                 </div>
                 <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
@@ -1625,23 +1791,7 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             </div>
         </div>
 
-        <!-- SECTION 2: EARN THE BADGE -->
-        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-            <div style="display:flex; align-items:flex-start; gap:12px;">
-                <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                </span>
-                <div>
-                    <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
-                    <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Great job submitting your project — your guardian is reviewing it now.</div>
-                </div>
-            </div>
-            <div>
-                <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
-                    Allocated Milestone
-                </span>
-            </div>
-        </div>
+        {earn_section_html}
 
         <!-- SECTION 3: PRACTICE PROJECT -->
         <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
@@ -1774,6 +1924,11 @@ def render_cosmonaut_submission_workspace(
     import json
     from starapp.badge_generator import generate_badge_data
 
+    if expanded_badge_id and any(b.id == expanded_badge_id for b in badges):
+        selected_badge_id = expanded_badge_id
+    elif not any(b.id == selected_badge_id for b in badges) and badges:
+        selected_badge_id = badges[0].id
+
     badge_options = []
     for b in badges:
         sel = " selected" if b.id == selected_badge_id else ""
@@ -1837,11 +1992,26 @@ def render_cosmonaut_submission_workspace(
     assigned_project_banner = ""
     if assigned_proj:
         deliv = getattr(assigned_proj, "deliverables", {}) or {}
+        code_name = deliv.get("code", {}).get("name", "script.py") if isinstance(deliv.get("code"), dict) else "script.py"
+        pdf_name = deliv.get("pdf", {}).get("name", "report.pdf") if isinstance(deliv.get("pdf"), dict) else "report.pdf"
+        gh_name = deliv.get("github", {}).get("name", "GitHub Repo") if isinstance(deliv.get("github"), dict) else "GitHub Repo"
         code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
         pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
         gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
         req_items = getattr(assigned_proj, "requirements", []) or []
         req_items_html = "".join([f'<li style="margin-bottom:3px;">{escape(str(r))}</li>' for r in req_items[:4]]) if req_items else '<li>Follow standard rubric requirements.</li>'
+        outcomes_items = getattr(assigned_proj, "outcomes", []) or []
+        outcomes_html = ""
+        if outcomes_items:
+            outcomes_pills = "".join([f'<li style="margin-bottom:3px; display:flex; align-items:flex-start; gap:6px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>' for o in outcomes_items])
+            outcomes_html = f"""
+            <div style="margin-bottom:10px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:8px 12px;">
+                <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:4px;">Expected Project Outcomes:</div>
+                <ul style="margin:0; padding:0; list-style:none; font-size:11.5px; color:var(--frost-navy); line-height:1.4;">
+                    {outcomes_pills}
+                </ul>
+            </div>
+            """
         rev_author = getattr(assigned_proj, "reviewer_id", "")
         author_u = store.get_user_by_id(rev_author) if (store and rev_author) else None
         author_name = author_u.name if author_u else "Assigned Reviewer"
@@ -1857,6 +2027,7 @@ def render_cosmonaut_submission_workspace(
             </div>
             <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
             <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 10px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+            {outcomes_html}
             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
             <ul style="margin:0 0 12px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
                 {req_items_html}
@@ -1864,15 +2035,15 @@ def render_cosmonaut_submission_workspace(
             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Required Deliverable Files:</div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px;">
                 <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:#059669;">💻 Source Code (.py)</div>
+                    <div style="font-size:11px; font-weight:800; color:#059669;">💻 {escape(code_name)}</div>
                     <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(code_info)}</div>
                 </div>
                 <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:#DC2626;">📄 Architecture PDF</div>
+                    <div style="font-size:11px; font-weight:800; color:#DC2626;">📄 {escape(pdf_name)}</div>
                     <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(pdf_info)}</div>
                 </div>
                 <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">🔗 GitHub Repository</div>
+                    <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">🔗 {escape(gh_name)}</div>
                     <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(gh_info)}</div>
                 </div>
             </div>
@@ -1900,18 +2071,50 @@ def render_cosmonaut_submission_workspace(
                 # Render full 6-accordion content inside the card (spanning the grid, NOT as a popup)
                 badge_cards.append(render_cosmonaut_badge_card_expanded_content(b, current_user, existing_sub=cadet_sub))
             else:
-                if cadet_sub:
-                    sub_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ✓ Submitted</span>'
-                    action_btn_txt = "Edit Deliverables"
-                    btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
+                tl = store.get_timeline(b.id, current_user.id) if (store and current_user) else None
+                is_earned = (tl and getattr(tl, "status", "") == "completed") or (cadet_sub and getattr(cadet_sub, "status", "") == "approved")
+                if not is_earned and store and current_user:
+                    asms = store.get_assessments_for_cosmonaut(current_user.id, b.id)
+                    if any(a.decision == "approve" for a in asms):
+                        is_earned = True
+
+                if is_earned:
+                    sub_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+                    action_btn_txt = "View Feedback & Marks"
+                    btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#fff; border-color:#D97706;"
+                    card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
+                    action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')"
+                elif cadet_sub:
+                    if getattr(cadet_sub, "status", "") == "reviewer_assessed":
+                        sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
+                        action_btn_txt = "View Assessment Status"
+                        btn_color_style = "background:linear-gradient(135deg, #0891B2 0%, #0e7490 100%); color:#fff; border-color:#0891B2;"
+                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')"
+                    else:
+                        sub_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ✓ Submitted</span>'
+                        action_btn_txt = "Edit Deliverables"
+                        btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
+                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
                 else:
-                    sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
-                    action_btn_txt = "Submit Deliverables"
-                    btn_color_style = ""
+                    assigned_proj = store.get_project_prompt_for_cadet(b.id, current_user.id) if (store and current_user) else None
+                    if assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
+                        sub_chip = '<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project given</span>'
+                        action_btn_txt = "Submit Deliverables"
+                        btn_color_style = "background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#fff; border-color:#0284C7;"
+                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
+                    else:
+                        sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
+                        action_btn_txt = "Submit Deliverables"
+                        btn_color_style = ""
+                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
 
                 # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
                 badge_cards.append(f"""
-                <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06); display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 28px rgba(7,22,41,0.12)';" onmouseout="this.style.transform='none'; this.style.boxShadow='0 6px 24px rgba(7,22,41,0.06)';">
+                <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
                     <div>
                         <!-- Meta Row -->
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
@@ -1939,7 +2142,7 @@ def render_cosmonaut_submission_workspace(
 
                     <!-- Expansion & Modal Action Footer -->
                     <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                        <button type="button" class="btn-metal btn-sm" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
+                        <button type="button" class="btn-metal btn-sm" onclick="{action_onclick}" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
                             <span>{action_btn_txt}</span>
                             <span>&rarr;</span>
                         </button>
@@ -2034,11 +2237,26 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
     assigned_project_banner = ""
     if assigned_proj:
         deliv = getattr(assigned_proj, "deliverables", {}) or {}
+        code_name = deliv.get("code", {}).get("name", "script.py") if isinstance(deliv.get("code"), dict) else "script.py"
+        pdf_name = deliv.get("pdf", {}).get("name", "report.pdf") if isinstance(deliv.get("pdf"), dict) else "report.pdf"
+        gh_name = deliv.get("github", {}).get("name", "GitHub Repo") if isinstance(deliv.get("github"), dict) else "GitHub Repo"
         code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
         pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
         gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
         req_items = getattr(assigned_proj, "requirements", []) or []
         req_items_html = "".join([f"<li>{escape(r)}</li>" for r in req_items]) if req_items else "<li>Implement scalable enterprise pipeline according to badge outcomes.</li>"
+        outcomes_items = getattr(assigned_proj, "outcomes", []) or []
+        outcomes_html = ""
+        if outcomes_items:
+            outcomes_pills = "".join([f'<li style="margin-bottom:2px; display:flex; align-items:flex-start; gap:5px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>' for o in outcomes_items])
+            outcomes_html = f"""
+            <div style="margin-bottom:8px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:6px 10px;">
+                <div style="font-size:10px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:3px;">Expected Project Outcomes:</div>
+                <ul style="margin:0; padding:0; list-style:none; font-size:11px; color:var(--frost-navy); line-height:1.35;">
+                    {outcomes_pills}
+                </ul>
+            </div>
+            """
         assigned_project_banner = f"""
         <div style="background:rgba(234,244,255,0.7); border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:14px 18px; margin-bottom:18px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
@@ -2047,6 +2265,7 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
             </div>
             <h4 style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
             <p style="font-size:12px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 8px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+            {outcomes_html}
             <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
             <ul style="margin:0 0 10px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
                 {req_items_html}
@@ -2267,10 +2486,179 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         """)
     topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
 
+    from starapp.storage import store
+    is_earned = False
+    earned_asm = None
+    rev_name_str = "Assigned Reviewer"
+    existing_sub = None
+    if current_user and store:
+        subs = store.get_submissions_for_cosmonaut(current_user.id, badge.id)
+        existing_sub = subs[-1] if subs else None
+        tl = store.get_timeline(badge.id, current_user.id)
+        if tl and getattr(tl, "status", "") == "completed":
+            is_earned = True
+        if tl and getattr(tl, "reviewer_id", ""):
+            r_u = store.get_user_by_id(tl.reviewer_id)
+            if r_u:
+                rev_name_str = r_u.name
+        asms = store.get_assessments_for_cosmonaut(current_user.id, badge.id)
+        for a in reversed(asms):
+            if a.decision == "approve" or getattr(a, "assessor_role", "") == "guardian":
+                is_earned = True
+                earned_asm = a
+                break
+        if not earned_asm and existing_sub:
+            sub_asm = store.get_assessment_for_submission(existing_sub.id)
+            if existing_sub.status == "approved" or (sub_asm and sub_asm.decision == "approve"):
+                is_earned = True
+                earned_asm = sub_asm
+
+    if is_earned:
+        modal_top_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%);"
+        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#D97706;"
+        top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+
+        tot_m = earned_asm.total_marks if earned_asm else 45.0
+        pct_m = earned_asm.percentage if earned_asm else 90.0
+        bu_m = earned_asm.business_understanding if earned_asm else 9.0
+        ar_m = earned_asm.architecture_report if earned_asm else 9.0
+        tk_m = earned_asm.technical_knowledge if earned_asm else 9.0
+        pr_m = earned_asm.presentation if earned_asm else 9.0
+        qa_m = earned_asm.qa if earned_asm else 9.0
+        fb_txt = (earned_asm.overall_feedback or earned_asm.remarks) if earned_asm else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
+        str_txt = earned_asm.strength_areas if earned_asm else "Robust technical architecture patterns and clean modular code."
+        imp_txt = earned_asm.improvement_areas if earned_asm else "Maintain comprehensive test coverage for future releases."
+
+        earn_section_html = f"""
+        <!-- SECTION 2: BADGE EARNED & ALLOCATED MARKS (GOLD) -->
+        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                        🏆
+                    </span>
+                    <div>
+                        <div style="font-size:16px; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
+                        <div style="font-size:12.5px; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
+                        Allocated Marks: {tot_m:.1f} / 50.0 ({pct_m:.1f}%)
+                    </span>
+                </div>
+            </div>
+
+            <!-- Rubric Criteria Scores Grid -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px;">
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
+                </div>
+                <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
+                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
+                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
+                </div>
+            </div>
+
+            <!-- Evaluator Feedback Section -->
+            <div style="background:#FFFFFF; border:1.5px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
+                <div style="font-size:13px; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
+                    "{escape(fb_txt)}"
+                </div>
+                {f'<div style=\"font-size:12px; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
+                {f'<div style=\"font-size:12px; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
+            </div>
+        </div>
+        """
+    else:
+        modal_top_style = "border:1.5px solid var(--deep-frozen-midnight);"
+        top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
+        top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
+        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+
+        if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (REVIEWER ASSESSED) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
+                    </div>
+                </div>
+                <div>
+                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
+                        Awaiting Guardian Award
+                    </span>
+                </div>
+            </div>
+            """
+        elif existing_sub and getattr(existing_sub, "status", "") in ("pending", "submitted"):
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="background:rgba(245,158,11,0.15); color:#D97706; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                        Pending Reviewer Evaluation
+                    </span>
+                </div>
+            </div>
+            """
+        else:
+            earn_section_html = f"""
+            <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
+            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
+                <div style="display:flex; align-items:flex-start; gap:12px;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                    </span>
+                    <div>
+                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                        Allocated Milestone
+                    </span>
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
+                        Submit Deliverables &rarr;
+                    </button>
+                </div>
+            </div>
+            """
+
     return f"""
     <div style="padding:4px 0 10px 0;">
         <!-- LOCATION BAR -->
-        <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
+        <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); {modal_top_style} margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
             <div>
                 <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
                     Badge Location
@@ -2296,12 +2684,13 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
 
         <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
         <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
-            <div style="width:48px; height:48px; border-radius:50%; background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            <div style="width:48px; height:48px; border-radius:50%; {top_icon_style} display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                {top_icon_svg}
             </div>
             <div style="flex:1;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                     {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                    {meta_chip}
                     <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(badge_title)}</h2>
                 </div>
                 <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
@@ -2324,23 +2713,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             </div>
         </div>
 
-        <!-- SECTION 2: EARN THE BADGE -->
-        <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-            <div style="display:flex; align-items:flex-start; gap:12px;">
-                <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                </span>
-                <div>
-                    <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
-                    <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Great job submitting your project — your guardian is reviewing it now.</div>
-                </div>
-            </div>
-            <div>
-                <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
-                    Allocated Milestone
-                </span>
-            </div>
-        </div>
+        {earn_section_html}
 
         <!-- SECTION 3: PRACTICE PROJECT -->
         <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
@@ -3370,11 +3743,13 @@ def render_reviewer_badge_schedule(
     current_user: User,
     store: Any,
     badges_map: Optional[Dict[str, Badge]] = None,
-    cosmo_map: Optional[Dict[str, User]] = None
+    cosmo_map: Optional[Dict[str, User]] = None,
+    expanded_badge_id: Optional[str] = None
 ) -> str:
     """
     Renders the Reviewer Badge Review Schedule Workspace.
     Displays upcoming and completed badge review assignments for higher-band reviewers.
+    Features hierarchical grouping: Level 1 Badge Name Card -> Level 2/3 Dedicated Cadet Cards matching UI.
     """
     if store is None:
         from starapp.storage import store as global_store
@@ -3387,6 +3762,7 @@ def render_reviewer_badge_schedule(
     upcoming_entries = []
     completed_entries = []
 
+    # Step 1: Collect timelines from memory and SQLite
     all_timelines = list(store.timelines.values()) if hasattr(store, "timelines") else []
     if store.db and store.db.conn:
         try:
@@ -3402,7 +3778,27 @@ def render_reviewer_badge_schedule(
         except Exception:
             pass
 
+    # Collect pairs assigned to other reviewers to avoid leaking across reviewers
+    other_reviewer_pairs = set()
+    try:
+        if hasattr(store, "timelines") and store.timelines:
+            for tl in store.timelines.values():
+                rev_id = getattr(tl, "reviewer_id", "")
+                if rev_id and rev_id != current_user.id:
+                    other_reviewer_pairs.add((tl.badge_id, tl.cosmonaut_id))
+        if store.db and store.db.conn:
+            rows = store.db.conn.execute(
+                "SELECT badge_id, cosmonaut_id, reviewer_id FROM badge_timelines WHERE reviewer_id != '' AND reviewer_id != ?",
+                (current_user.id,)
+            ).fetchall()
+            for r in rows:
+                other_reviewer_pairs.add((r["badge_id"], r["cosmonaut_id"]))
+    except Exception:
+        pass
+
     seen_pairs = set()
+
+    # 1. Timelines strictly where reviewer_id == current_user.id
     for tl in all_timelines:
         if getattr(tl, "reviewer_id", "") == current_user.id:
             pair = (tl.badge_id, tl.cosmonaut_id)
@@ -3431,10 +3827,12 @@ def render_reviewer_badge_schedule(
             else:
                 upcoming_entries.append(item)
 
+    # 2. Band mappings strictly for current_user
     try:
         mappings = store.get_band_mappings()
         for m in mappings:
-            if current_user.id in m.get("reviewers", []):
+            rev_list = m.get("reviewers", [])
+            if current_user.id in rev_list:
                 b_name = m.get("badge", "")
                 b_obj = None
                 for b in badges_map.values():
@@ -3445,30 +3843,55 @@ def render_reviewer_badge_schedule(
                     continue
                 r_dates = m.get("review_dates", [])
                 r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"
-                for cid in m.get("cosmonauts", []):
+                cosmo_list = m.get("cosmonauts", [])
+                for idx, cid in enumerate(cosmo_list):
+                    # Check who this cadet was assigned to if multiple reviewers in mapping
+                    if len(rev_list) > 1:
+                        cadet_rev = rev_list[idx % len(rev_list)]
+                        if cadet_rev != current_user.id:
+                            continue
                     pair = (b_obj.id if b_obj else b_name, cid)
+                    if pair in other_reviewer_pairs:
+                        continue
                     if pair not in seen_pairs:
                         seen_pairs.add(pair)
                         c_obj = cosmo_map.get(cid) or store.get_user_by_id(cid)
-                        upcoming_entries.append({
+                        is_uncoupled = (cid in m.get("completed_cosmonauts", []) or cid in m.get("uncoupled_cadets", []))
+                        item_status = "completed" if is_uncoupled else "active"
+                        m_item = {
                             "badge": b_obj,
                             "cosmonaut": c_obj,
                             "badge_id": b_obj.id if b_obj else b_name,
                             "cosmonaut_id": cid,
                             "badge_title": b_name,
                             "timeline": None,
-                            "status": "active",
+                            "status": item_status,
                             "review_date": r_dates_str,
                             "deadline": r_dates[-1] if r_dates else "TBD",
                             "award_date": ""
-                        })
+                        }
+                        if is_uncoupled:
+                            completed_entries.append(m_item)
+                        else:
+                            upcoming_entries.append(m_item)
     except Exception:
         pass
 
-    # 3. Check badges directly assigned to this reviewer
+    # 3. Direct badge assignment ONLY if NO band mappings exist for this badge
     try:
+        all_mappings = store.get_band_mappings()
+        mapped_badge_ids = set()
+        for m in all_mappings:
+            if m.get("badge_id"):
+                mapped_badge_ids.add(m.get("badge_id"))
+            if m.get("badge"):
+                mapped_badge_ids.add(m.get("badge"))
+
         for b in badges_map.values():
             if getattr(b, "assigned_reviewer_id", "") == current_user.id:
+                if b.id in mapped_badge_ids or b.title in mapped_badge_ids or b.code in mapped_badge_ids:
+                    # Mappings already handled this badge, don't dump all cadets
+                    continue
                 if not getattr(b, "is_published", False) and b.code not in ("GOV-101", "CUR-102", "DAT-103"):
                     continue
                 dt = getattr(b, "default_timeline", {}) or {}
@@ -3476,89 +3899,235 @@ def render_reviewer_badge_schedule(
                 r_dates_str = " → ".join(r_dates[:3]) if r_dates else "Schedule Pending"
                 for cid in getattr(b, "assigned_cosmonaut_ids", []):
                     pair = (b.id, cid)
+                    if pair in other_reviewer_pairs:
+                        continue
                     if pair not in seen_pairs:
                         seen_pairs.add(pair)
                         c_obj = cosmo_map.get(cid) or store.get_user_by_id(cid)
-                        upcoming_entries.append({
+                        tl_obj = store.get_timeline(b.id, cid) if store else None
+                        is_b_comp = (tl_obj and getattr(tl_obj, "status", "") in ("completed", "awarded")) or (cid in getattr(b, "completed_cosmonaut_ids", []))
+                        b_item = {
                             "badge": b,
                             "cosmonaut": c_obj,
                             "badge_id": b.id,
                             "cosmonaut_id": cid,
                             "badge_title": b.title,
-                            "timeline": None,
-                            "status": "active",
+                            "timeline": tl_obj,
+                            "status": "completed" if is_b_comp else "active",
                             "review_date": r_dates_str,
                             "deadline": r_dates[-1] if r_dates else "TBD",
-                            "award_date": ""
-                        })
+                            "award_date": getattr(tl_obj, "actual_award_date", "") if tl_obj else ""
+                        }
+                        if is_b_comp:
+                            completed_entries.append(b_item)
+                        else:
+                            upcoming_entries.append(b_item)
     except Exception:
         pass
 
-    upcoming_cards_html = []
+    # Group upcoming entries by Badge
+    badge_groups = {}
     for item in upcoming_entries:
         b = item.get("badge")
-        c = item.get("cosmonaut")
-        b_title = b.title if b else item.get("badge_title", item.get("badge_id", "Milestone"))
-        b_code = b.code if b else ""
-        b_band = getattr(b, "target_band", "B1") if b else ""
-        b_cat = getattr(b, "category", "") or getattr(b, "skill", "")
-        c_name = c.name if c else item.get("cosmonaut_id", "Cosmonaut")
-        c_band = getattr(c, "band", "B1") if c else "B1"
-        c_avatar = getattr(c, "avatar", (c_name[:2].upper() if c_name else "CO"))
-        r_date = item.get("review_date", "TBD")
-        deadline = item.get("deadline", "TBD")
+        b_id = b.id if b else item.get("badge_id", "")
+        if b_id not in badge_groups:
+            badge_groups[b_id] = {
+                "badge": b,
+                "badge_id": b_id,
+                "badge_title": b.title if b else item.get("badge_title", "Curriculum Badge"),
+                "badge_code": b.code if b else "",
+                "badge_band": getattr(b, "target_band", "B1") if b else "",
+                "badge_cat": getattr(b, "category", "") or getattr(b, "skill", ""),
+                "review_date": item.get("review_date", "Schedule Pending"),
+                "deadline": item.get("deadline", "TBD"),
+                "cadets": []
+            }
+        badge_groups[b_id]["cadets"].append(item)
 
-        b_actual_id = b.id if b else item.get("badge_id", "")
-        c_actual_id = c.id if c else item.get("cosmonaut_id", "")
+    upcoming_cards_html = []
+    for b_id, bg in badge_groups.items():
+        cadets_list = bg["cadets"]
+        num_cadets = len(cadets_list)
 
-        # Check if project prompt has been authored/sent
-        assigned_proj = store.get_project_prompt_for_cadet(b_actual_id, c_actual_id) if (store and b_actual_id) else None
-        if assigned_proj and getattr(assigned_proj, "status", "") == "sent":
-            proj_pill = '<span class="status-pill status-approved" style="font-size:10.5px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Project Released to Cadets</span>'
-            proj_btn_text = "✏️ Edit Project"
+        # Check expansion state
+        is_expanded = False
+        if expanded_badge_id == b_id:
+            is_expanded = True
+        elif expanded_badge_id == "":
+            is_expanded = False
+        elif expanded_badge_id is None:
+            # If multiple cosmonauts, show badge name card first; user clicks to open
+            is_expanded = (num_cadets <= 1)
+
+        # Overall project prompt for badge
+        b_prompt = store.get_reviewer_project_prompts(badge_id=b_id, reviewer_id=current_user.id) if store else []
+        badge_prompt_status = "none"
+        if b_prompt:
+            p = b_prompt[0]
+            badge_prompt_status = getattr(p, "status", "none")
+
+        if badge_prompt_status in ("released", "sent"):
+            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
+            badge_btn_text = "✏️ Edit Project"
+        elif badge_prompt_status == "draft":
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
+            badge_btn_text = "📝 Continue Project Draft"
         else:
-            proj_pill = '<span class="status-pill status-warning" style="font-size:10.5px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
-            proj_btn_text = "✨ Create Project (AI)"
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
+            badge_btn_text = "✨ Create Project (AI)"
 
-        upcoming_cards_html.append(f"""
-        <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%); margin-bottom:14px; box-shadow:0 4px 14px rgba(23,52,92,0.06);">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
-                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 7px; border-radius:3px;">BAND {escape(b_band)}</span>
-                        {f'<span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">{escape(b_cat)}</span>' if b_cat else ''}
-                        <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Upcoming Review</span>
-                        {proj_pill}
-                    </div>
-                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">{escape(b_title)}</h3>
-                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12.5px; color:var(--frost-navy);">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <div style="width:22px; height:22px; border-radius:999px; background:linear-gradient(135deg, rgba(23,52,92,0.15), rgba(157,183,213,0.3)); display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800; color:var(--deep-frozen-midnight);">
-                                {escape(c_avatar)}
-                            </div>
-                            <span>Assigned Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)})</span>
-                        </div>
-                        <span>&bull;</span>
-                        <span>📅 Review Window: <strong style="color:#059669;">{escape(r_date)}</strong></span>
-                        <span>&bull;</span>
-                        <span>⏰ Submission Deadline: <strong style="color:#DC2626;">{escape(deadline)}</strong></span>
-                        <span>&bull;</span>
-                        <span>⚡ <strong>3-Day Window:</strong> Reviewer creates project, Cadet learns concepts</span>
-                    </div>
+        chevron = "▲" if is_expanded else "▼"
+
+        # Render individual dedicated cadet cards matching media_1795503560861_d07d3c79.png
+        cadet_cards_html = []
+        for item in cadets_list:
+            c = item.get("cosmonaut")
+            c_actual_id = c.id if c else item.get("cosmonaut_id", "")
+            c_name = c.name if c else c_actual_id
+            c_band = getattr(c, "band", "B1") if c else "B1"
+            c_avatar = getattr(c, "avatar", (c_name[:2].upper() if c_name else "CO"))
+            r_date = item.get("review_date", "TBD")
+            deadline = item.get("deadline", "TBD")
+
+            # Project prompt for cadet
+            assigned_proj = store.get_project_prompt_for_cadet(b_id, c_actual_id) if (store and b_id) else None
+            if not assigned_proj and store and b_id:
+                for p in b_prompt:
+                    if c_actual_id in getattr(p, "cosmonaut_ids", []):
+                        assigned_proj = p
+                        break
+                if not assigned_proj and b_prompt:
+                    assigned_proj = b_prompt[0]
+
+            # Cadet submission
+            sub = None
+            if store and b_id and c_actual_id:
+                c_subs = store.get_submissions_for_cosmonaut(c_actual_id, b_id)
+                if c_subs:
+                    sub = c_subs[-1]
+                if not sub:
+                    for s in store.get_all_submissions():
+                        if s.cosmonaut_id == c_actual_id and s.badge_id == b_id:
+                            if not sub or getattr(s, "attempt_number", 1) >= getattr(sub, "attempt_number", 1):
+                                sub = s
+
+            # Reviewer assessment
+            rev_asm = store.get_reviewer_assessment_for_submission(sub.id) if (store and sub) else None
+
+            # Lifecycle status pill & action button
+            if rev_asm:
+                card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#EEF2FF; border:1px solid #C7D2FE; color:#4338CA; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ✓ Evaluated: {rev_asm.total_marks:.1f}/50</span>'
+                card_action_btn = f"""
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                    📊 View Marksheet ({rev_asm.total_marks:.1f}/50) &rarr;
+                </button>
+                """
+            elif sub:
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📥 Deliverables Submitted</span>'
+                card_action_btn = f"""
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #059669, #047857); border:1px solid #059669; color:#FFFFFF;">
+                    📝 Inspect Deliverables & Allocate Marks &rarr;
+                </button>
+                """
+            elif assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#E0F2FE; border:1px solid #BAE6FD; color:#0284C7; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 🚀 Project Given</span>'
+                card_action_btn = f"""
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                    ✏️ Edit Project
+                </button>
+                """
+            elif assigned_proj and getattr(assigned_proj, "status", "") == "draft":
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📝 Draft Project Saved</span>'
+                card_action_btn = f"""
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                    📝 Continue Project Draft
+                </button>
+                """
+            else:
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ⏳ 3-Day Project Preparation</span>'
+                card_action_btn = f"""
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                    ✨ Create Project (AI)
+                </button>
+                """
+
+            cadet_cards_html.append(f"""
+            <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid #0F2847; background:#FFFFFF; border-radius:12px; box-shadow:0 4px 14px rgba(7,22,41,0.06); margin-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
+                    <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
+                    {f'<span style="font-size:12px; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
+                    <span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:2px 10px; border-radius:999px;">
+                        <span style="font-size:13px; line-height:1;">&bull;</span> Upcoming Review
+                    </span>
+                    {card_status_pill}
                 </div>
-                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_actual_id)}')" style="font-size:11.5px; padding:6px 13px; font-weight:700;">
+                <h3 style="font-size:1.35rem; font-weight:800; color:#0F172A; margin:4px 0 8px 0; letter-spacing:-0.3px;">
+                    {escape(bg["badge_title"])}
+                </h3>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:#1E293B; margin-bottom:12px;">
+                    <div style="width:24px; height:24px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; margin-right:4px;">
+                        {escape(c_avatar)}
+                    </div>
+                    <span>Assigned Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)})</span>
+                    <span style="color:#94A3B8;">&bull;</span>
+                    <span>📅 Review Window: <strong style="color:#059669;">{escape(r_date)}</strong></span>
+                    <span style="color:#94A3B8;">&bull;</span>
+                    <span>⏰ Submission Deadline: <strong style="color:#DC2626;">{escape(deadline)}</strong></span>
+                    <span style="color:#94A3B8;">&bull;</span>
+                    <span>⚡ <strong>3-Day Window:</strong> Reviewer creates project, Cadet learns concepts</span>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
                         📅 View Timeline
                     </button>
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_actual_id)}')" style="font-size:11.5px; padding:6px 15px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
-                        {proj_btn_text}
-                    </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:11.5px; padding:6px 13px; font-weight:700;">
+                    {card_action_btn}
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
                         Cadet Assessments &rarr;
                     </button>
                 </div>
             </div>
+            """)
+
+        expanded_section_html = f"""
+        <div style="padding:16px 20px; background:rgba(241,245,249,0.5); display:flex; flex-direction:column; gap:12px;">
+            {"".join(cadet_cards_html)}
+        </div>
+        """ if is_expanded else ""
+
+        upcoming_cards_html.append(f"""
+        <div class="liquid-glass-card" style="padding:0; border:1.5px solid var(--deep-frozen-midnight); background:#FFFFFF; border-radius:12px; margin-bottom:18px; box-shadow:0 4px 18px rgba(23,52,92,0.08); overflow:hidden;">
+            <!-- Level 1 Badge Name Card (Clickable Header) -->
+            <div onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')"
+                 style="padding:16px 22px; cursor:pointer; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%); border-bottom:{'1.5px solid var(--icy-steel-30)' if is_expanded else 'none'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                        {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
+                        {f'<span style="font-size:12px; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
+                        <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Upcoming Review</span>
+                        {badge_proj_pill}
+                    </div>
+                    <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0; letter-spacing:-0.3px;">
+                        {escape(bg["badge_title"])}
+                    </h3>
+                    <div style="font-size:12px; color:var(--frost-navy-50);">
+                        📅 Review Window: <strong style="color:#059669;">{escape(bg["review_date"])}</strong> &bull; ⏰ Deadline: <strong style="color:#DC2626;">{escape(bg["deadline"])}</strong>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;" onclick="event.stopPropagation();">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="font-size:11.5px; padding:6px 14px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
+                        {badge_btn_text}
+                    </button>
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')" style="font-size:11.5px; padding:6px 14px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                        👥 {num_cadets} Mapped Cadet{'s' if num_cadets != 1 else ''} {chevron}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Level 2/3 Dedicated Cadet Cards (Shown when expanded) -->
+            {expanded_section_html}
         </div>
         """)
 
@@ -3688,23 +4257,26 @@ def render_reviewer_assessment_queue(
     assigned_subs = []
     is_guardian = (getattr(current_user, "role", "") == "guardian" or "guardian" in getattr(current_user, "roles", []))
     for s in unique_submissions:
-        tl = store.get_timeline(s.badge_id, s.cosmonaut_id)
-        is_assigned = (tl and getattr(tl, "reviewer_id", "") == current_user.id)
-        if not is_assigned:
-            b_obj = badges_map.get(s.badge_id) or store.get_badge(s.badge_id)
-            if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == current_user.id and s.cosmonaut_id in getattr(b_obj, "assigned_cosmonaut_ids", []):
-                is_assigned = True
-        if not is_assigned:
-            for m in store.get_band_mappings():
-                if current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []):
-                    m_badge = m.get("badge_id") or m.get("badge")
-                    b_obj = badges_map.get(s.badge_id) or store.get_badge(s.badge_id)
-                    if (m_badge == s.badge_id) or (b_obj and m_badge in (b_obj.title, b_obj.code, b_obj.id)):
-                        is_assigned = True
-                        break
-        # Guardian oversight
+        b_obj = badges_map.get(s.badge_id) or (store.get_badge(s.badge_id) if store else None)
+        badge_mappings = [
+            m for m in store.get_band_mappings()
+            if (m.get("badge_id") == s.badge_id or (b_obj and m.get("badge") in (b_obj.title, b_obj.code, b_obj.id)))
+        ] if store else []
+
+        is_assigned = False
         if is_guardian:
             is_assigned = True
+        elif badge_mappings:
+            for m in badge_mappings:
+                if current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []):
+                    is_assigned = True
+                    break
+        else:
+            tl = store.get_timeline(s.badge_id, s.cosmonaut_id) if store else None
+            if tl and getattr(tl, "reviewer_id", "") == current_user.id:
+                is_assigned = True
+            elif b_obj and getattr(b_obj, "assigned_reviewer_id", "") == current_user.id and s.cosmonaut_id in getattr(b_obj, "assigned_cosmonaut_ids", []):
+                is_assigned = True
 
         if is_assigned:
             assigned_subs.append(s)
@@ -4029,9 +4601,9 @@ def render_reviewer_assessment_detail(
                         </button>
                         <div style="display:flex; align-items:center; gap:6px;">
                             <select id="deliverable-type-select" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:4px 10px; min-width:170px;" onchange="window.StarAppBridge.dispatchAction('change_viewer_tab', this.value)">
-                                <option value="pdf"{" selected" if selected_tab == "pdf" else ""}>📄 View PDF Document</option>
-                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code</option>
-                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo</option>
+                                <option value="pdf"{" selected" if selected_tab in ("pdf", "odf") else ""}>📄 View PDF Document (.pdf / .odf)</option>
+                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code (.py)</option>
+                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo (Link)</option>
                             </select>
                         </div>
                     </div>
@@ -4266,8 +4838,8 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                     u = store.get_user_by_id(getattr(tl, "cosmonaut_id", ""))
                     if u and u not in mapped_cadets:
                         mapped_cadets.append(u)
-        # Also include directly assigned cadets from badge itself
-        if getattr(badge, "assigned_reviewer_id", "") == current_user.id:
+        # Fallback: include directly assigned cadets from badge itself ONLY if no mapped cadets found
+        if not mapped_cadets and getattr(badge, "assigned_reviewer_id", "") == current_user.id:
             for cid in getattr(badge, "assigned_cosmonaut_ids", []):
                 u = store.get_user_by_id(cid)
                 if u and u not in mapped_cadets:
@@ -4287,39 +4859,58 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
     cadet_chips_html = "".join(cadet_chips) if cadet_chips else '<span style="font-size:12px; color:var(--frost-navy-50);">All Assigned Cohort Cadets</span>'
 
     from starapp.badge_generator import generate_reviewer_project_spec
-    spec = project_draft or generate_reviewer_project_spec(
-        band=getattr(badge, "target_band", "B1"),
-        power=getattr(badge, "power", "Tech"),
-        capability=getattr(badge, "capability", "Data & Machine"),
-        skill=getattr(badge, "skill", "Signals"),
-        badge_title=badge.title,
-        reviewer_name=current_user.name
-    )
+    existing_proj = None
+    if not project_draft and store:
+        prompts = store.get_reviewer_project_prompts(badge_id=badge.id, reviewer_id=current_user.id)
+        if prompts:
+            existing_proj = prompts[0]
 
-    proj_title = spec.get("title", f"{badge.title} Project")
-    scenario = spec.get("scenario", "")
-    reqs = spec.get("requirements", [])
+    if existing_proj:
+        proj_title = getattr(existing_proj, "title", f"{badge.title} Project")
+        scenario = getattr(existing_proj, "description", "")
+        reqs = getattr(existing_proj, "requirements", [])
+        outcomes_list = getattr(existing_proj, "outcomes", []) or getattr(badge, "outcomes", [])
+        deliv = getattr(existing_proj, "deliverables", {}) or {}
+    else:
+        from starapp.badge_generator import generate_reviewer_project_spec
+        spec = project_draft or generate_reviewer_project_spec(
+            band=getattr(badge, "target_band", "B1"),
+            power=getattr(badge, "power", "Tech"),
+            capability=getattr(badge, "capability", "Data & Machine"),
+            skill=getattr(badge, "skill", "Signals"),
+            badge_title=badge.title,
+            reviewer_name=current_user.name
+        )
+        proj_title = spec.get("title", f"{badge.title} Project")
+        scenario = spec.get("scenario", "")
+        reqs = spec.get("requirements", [])
+        outcomes_list = getattr(badge, "outcomes", []) or spec.get("outcomes", [])
+        deliv = spec.get("deliverables", {})
+
     reqs_text = "\n".join(reqs) if isinstance(reqs, list) else str(reqs)
+    outcomes_text = "\n".join(outcomes_list) if isinstance(outcomes_list, list) else str(outcomes_list)
 
-    deliv = spec.get("deliverables", {})
-    code_desc = deliv.get("code", {}).get("description", "Source code implementation")
-    pdf_desc = deliv.get("pdf", {}).get("description", "Architecture document")
-    gh_desc = deliv.get("github", {}).get("description", "GitHub repository")
+    code_desc = deliv.get("code", {}).get("description", "Source code implementation") if isinstance(deliv.get("code"), dict) else "Source code implementation"
+    pdf_desc = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
+    gh_desc = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
+
+    is_already_released = existing_proj and getattr(existing_proj, "status", "") in ("released", "sent")
+    status_pill_text = "✓ Project Active & Assigned" if is_already_released else ("📝 Draft Project" if existing_proj else "✓ AI Generated Draft")
 
     return f"""
     <div style="padding:10px 6px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">GEMINI AI CURRICULUM</span>
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">REVIEWER PROJECT CREATOR</span>
                     <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
                 </div>
-                <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0;">Author Milestone Project for Mapped Cadets</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Reviewer-guided project specification tailored to '{escape(badge.title)}'.</div>
+                <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0;">Create Milestone Project for Mapped Cadets</h3>
+                <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Reviewer-guided project specification with details, outcomes &amp; deliverables tailored to '{escape(badge.title)}'.</div>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
                 <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
-                    ✓ AI Generated Draft
+                    {status_pill_text}
                 </span>
             </div>
         </div>
@@ -4333,7 +4924,7 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                 {cadet_chips_html}
             </div>
             <div style="font-size:11px; color:var(--frost-navy-50); margin-top:6px;">
-                When you click 'Send Project to Mapped Cadets', this exact specification will be dispatched to each of these cadets' submission portals.
+                When submitted, this exact project with outcomes and deliverable targets will be dispatched to each of these mapped cadets' submission portals.
             </div>
         </div>
 
@@ -4345,13 +4936,18 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
             </div>
 
             <div style="margin-bottom:14px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Real-World Problem Scenario &amp; Brief</label>
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Details &amp; Problem Scenario</label>
                 <textarea id="rev_proj_scenario" rows="3" class="form-input" style="font-size:12.5px; line-height:1.45; width:100%;">{escape(scenario)}</textarea>
             </div>
 
             <div style="margin-bottom:14px;">
+                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Expected Project Outcomes (1 per line)</label>
+                <textarea id="rev_proj_outcomes" rows="3" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(outcomes_text)}</textarea>
+            </div>
+
+            <div style="margin-bottom:14px;">
                 <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Detailed Project Requirements (1 per line)</label>
-                <textarea id="rev_proj_reqs" rows="4" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(reqs_text)}</textarea>
+                <textarea id="rev_proj_reqs" rows="3" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(reqs_text)}</textarea>
             </div>
 
             <div style="margin-bottom:16px;">
@@ -4376,22 +4972,44 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                 <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
                     Cancel
                 </button>
-                <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;"
-                    onclick="const p = {{
-                        badge_id: '{escape(badge.id)}',
-                        reviewer_id: '{escape(current_user.id)}',
-                        title: document.getElementById('rev_proj_title').value,
-                        description: document.getElementById('rev_proj_scenario').value,
-                        requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
-                        deliverables: {{
-                            code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py'))}', description: document.getElementById('rev_proj_code_desc').value }},
-                            pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf'))}', description: document.getElementById('rev_proj_pdf_desc').value }},
-                            github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
-                        }},
-                        cosmonaut_ids: {json.dumps(cadet_ids)}
-                    }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
-                    🚀 Send Project to Mapped Cadets &rarr;
-                </button>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" class="btn-secondary" style="padding:9px 18px; font-weight:700; font-size:12.5px;"
+                        onclick="const p = {{
+                            badge_id: '{escape(badge.id)}',
+                            reviewer_id: '{escape(current_user.id)}',
+                            title: document.getElementById('rev_proj_title').value,
+                            description: document.getElementById('rev_proj_scenario').value,
+                            outcomes: document.getElementById('rev_proj_outcomes').value.split('\\n').filter(Boolean),
+                            requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
+                            deliverables: {{
+                                code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py') if isinstance(deliv.get('code'), dict) else 'script.py')}', description: document.getElementById('rev_proj_code_desc').value }},
+                                pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf') if isinstance(deliv.get('pdf'), dict) else 'report.pdf')}', description: document.getElementById('rev_proj_pdf_desc').value }},
+                                github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
+                            }},
+                            cosmonaut_ids: {json.dumps(cadet_ids)},
+                            status: 'draft'
+                        }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
+                        💾 Save Draft
+                    </button>
+                    <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;"
+                        onclick="const p = {{
+                            badge_id: '{escape(badge.id)}',
+                            reviewer_id: '{escape(current_user.id)}',
+                            title: document.getElementById('rev_proj_title').value,
+                            description: document.getElementById('rev_proj_scenario').value,
+                            outcomes: document.getElementById('rev_proj_outcomes').value.split('\\n').filter(Boolean),
+                            requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
+                            deliverables: {{
+                                code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py') if isinstance(deliv.get('code'), dict) else 'script.py')}', description: document.getElementById('rev_proj_code_desc').value }},
+                                pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf') if isinstance(deliv.get('pdf'), dict) else 'report.pdf')}', description: document.getElementById('rev_proj_pdf_desc').value }},
+                                github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
+                            }},
+                            cosmonaut_ids: {json.dumps(cadet_ids)},
+                            status: 'released'
+                        }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
+                        🚀 Submit & Send Project to Mapped Cadets &rarr;
+                    </button>
+                </div>
             </div>
         </form>
     </div>

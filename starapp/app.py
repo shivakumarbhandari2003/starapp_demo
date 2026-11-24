@@ -81,6 +81,7 @@ class StarAppController:
         self.selected_viewer_tab: str = "pdf"
         self.cosmonaut_submission_badge_id: str = "badge_cur_102"
         self.cosmonaut_expanded_badge_id: Optional[str] = None
+        self.reviewer_expanded_badge_id: Optional[str] = None
         self.cosmonaut_results_badge_id: str = "badge_gov_101"
         self.materials_badge_filter: str = "all"
         self.materials_type_filter: str = "all"
@@ -356,6 +357,7 @@ class StarAppController:
 
         elif action == "select_demo_account":
             self.view_history = []
+            self.reviewer_expanded_badge_id = None
             user_id = payload.get("user_id") if isinstance(payload, dict) else payload
             user = store.get_user_by_id(user_id)
             if user:
@@ -945,7 +947,16 @@ class StarAppController:
                 self.cosmonaut_expanded_badge_id = None
             else:
                 self.cosmonaut_expanded_badge_id = b_id
+                self.cosmonaut_submission_badge_id = b_id
             self.active_modal = None
+
+        elif action == "toggle_reviewer_badge_expand":
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '')
+            if getattr(self, "reviewer_expanded_badge_id", None) == b_id:
+                self.reviewer_expanded_badge_id = ""
+            else:
+                self.reviewer_expanded_badge_id = b_id
 
         elif action == "edit_submitted_badge":
             b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
@@ -2008,7 +2019,7 @@ class StarAppController:
                 dt = badge.default_timeline or {}
 
                 # If badge has assigned_reviewer_id directly
-                if getattr(badge, "assigned_reviewer_id", ""):
+                if getattr(badge, "assigned_reviewer_id", "") and not matched_mappings:
                     direct_rev_id = badge.assigned_reviewer_id
                     if direct_rev_id not in notified_reviewers:
                         notified_reviewers.add(direct_rev_id)
@@ -2313,9 +2324,11 @@ class StarAppController:
 
         elif action == "change_viewer_tab":
             tab = payload if isinstance(payload, str) else payload.get("tab", "pdf")
+            if tab == "odf":
+                tab = "pdf"
             self.selected_viewer_tab = tab
 
-        elif action in ("submit_evaluation_marksheet", "submit_evaluation_rubric", "submit_guardian_final_assessment"):
+        elif action in ("submit_evaluation_marksheet", "submit_evaluation_rubric", "submit_guardian_final_assessment", "earn_badge", "award_badge"):
             self.execute_submit_evaluation(payload, default_role="guardian")
             self.current_view = "g_reviews"
 
@@ -2373,7 +2386,7 @@ class StarAppController:
             self.active_modal = "reviewer_project_creator"
             self.modal_payload = {"badge_id": b_id}
 
-        elif action == "send_reviewer_project":
+        elif action in ("send_reviewer_project", "save_reviewer_project_prompt"):
             if isinstance(payload, str) and payload.strip():
                 try:
                     payload = json.loads(payload)
@@ -2389,9 +2402,29 @@ class StarAppController:
             sub_deadline = payload.get("submission_deadline", "")
             deliverables = payload.get("deliverables", {})
             cosmonaut_ids = payload.get("cosmonaut_ids", [])
+            status = payload.get("status") or "released"
+
+            raw_outcomes = payload.get("outcomes") or []
+            if isinstance(raw_outcomes, str):
+                outcomes = [x.strip() for x in raw_outcomes.split("\n") if x.strip()]
+            elif isinstance(raw_outcomes, list):
+                outcomes = [str(x).strip() for x in raw_outcomes if str(x).strip()]
+            else:
+                outcomes = []
 
             rev_id = self.current_user.id if self.current_user else "reviewer_1"
             rev_name = self.current_user.name if self.current_user else "Authorized Reviewer"
+
+            # Auto-resolve mapped cadets if not explicitly passed
+            if not cosmonaut_ids and badge_id:
+                for m in store.get_band_mappings():
+                    if rev_id in m.get("reviewers", []):
+                        m_b = m.get("badge_id") or m.get("badge")
+                        b_obj = store.get_badge(badge_id)
+                        if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
+                            for cid in m.get("cosmonauts", []):
+                                if cid not in cosmonaut_ids:
+                                    cosmonaut_ids.append(cid)
 
             prompt = ReviewerProjectPrompt(
                 badge_id=badge_id,
@@ -2399,31 +2432,48 @@ class StarAppController:
                 reviewer_name=rev_name,
                 title=title,
                 objective=objective,
+                description=objective,
                 technical_requirements=tech_reqs,
                 evaluation_criteria=eval_crit,
                 submission_deadline=sub_deadline,
                 deliverables=deliverables,
                 cosmonaut_ids=cosmonaut_ids,
-                created_at=current_iso_timestamp()
+                outcomes=outcomes,
+                status=status,
+                created_at=current_iso_timestamp(),
+                sent_at=current_iso_timestamp() if status != "draft" else None
             )
             store.save_reviewer_project_prompt(prompt)
 
             badge = store.get_badge(badge_id)
             b_title = badge.title if badge else "Assigned Milestone"
-            for cid in cosmonaut_ids:
-                store.add_notification(
-                    recipient_id=cid,
-                    title="🚀 New Capstone Project Specification Assigned!",
-                    message=f"{rev_name} has released the project specification for '{b_title}'. Review requirements & submit deliverables in your Badges portal.",
-                    event_type="milestone",
-                    link_section="c_submission"
-                )
 
-            self.set_flash(f"Project '{title}' successfully generated and released to {len(cosmonaut_ids)} mapped cadets!", "success")
+            if status == "draft":
+                self.set_flash(f"Project draft for '{title}' saved successfully.", "success")
+            else:
+                for cid in cosmonaut_ids:
+                    store.add_notification(
+                        recipient_id=cid,
+                        title=f"🚀 New Project Assigned: {title}",
+                        message=f"{rev_name} has assigned milestone project '{title}' for '{b_title}'. Review project details, outcomes & deliverables in your Badges portal.",
+                        event_type="milestone",
+                        link_section="c_submission"
+                    )
+                store.add_activity(
+                    event_type="reviewer_project_assigned",
+                    actor_id=rev_id,
+                    actor_name=rev_name,
+                    cosmonaut_id=cosmonaut_ids[0] if cosmonaut_ids else "",
+                    badge_id=badge_id,
+                    summary=f"Project Assigned: '{title}' by {rev_name}",
+                    details=f"{rev_name} released project '{title}' to {len(cosmonaut_ids)} mapped cadets for {b_title}."
+                )
+                self.set_flash(f"Project '{title}' successfully submitted and assigned to {len(cosmonaut_ids)} mapped cadets!", "success")
+
             self.active_modal = None
             self.modal_payload = {}
 
-        elif action == "submit_project_deliverable":
+        elif action in ("submit_project_deliverable", "submit_project_deliverables"):
             self.execute_submit_project(payload)
 
         elif action == "submit_deadline_extension_request":
@@ -2638,6 +2688,15 @@ class StarAppController:
                     details=f"{self.current_user.name} graded Attempt #{sub.attempt_number}. Awaiting Guardian final marksheet."
                 )
 
+                self.cosmonaut_results_badge_id = sub.badge_id
+
+                store.add_notification(
+                    recipient_id=sub.cosmonaut_id,
+                    title=f"Assessment Graded: {b_name}",
+                    message=f"{self.current_user.name} has evaluated your deliverables for {b_name} with score {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%). Check your Assessment Marksheet for details.",
+                    link_section="c_results"
+                )
+
                 store.add_notification(
                     recipient_id="guardian_1",
                     title=f"Reviewer Assessed: {cosmo_name}",
@@ -2708,11 +2767,11 @@ class StarAppController:
                     )
                     store.add_notification(
                         recipient_id=sub.cosmonaut_id,
-                        title=f"Milestone Awarded: {b_name}",
+                        title=f"🏆 Badge Earned: {b_name}",
                         message=f"Congratulations! You were awarded {b_name} with a final score of {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%).",
-                        link_section="c_results"
+                        link_section="c_submission"
                     )
-                    self.set_flash(f"Final assessment published! {cosmo_name} achieved {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}% >= {badge_thresh}% threshold). Badge awarded!", "success")
+                    self.set_flash(f"🏆 Badge Earned! Final assessment published! {cosmo_name} achieved {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}% >= {badge_thresh}% threshold). Badge awarded! (Gold certification)", "success")
                 else:
                     store.add_activity(
                         event_type="retake_required",
@@ -2732,11 +2791,6 @@ class StarAppController:
                     self.set_flash(f"Final assessment published. Score {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%) is below {badge_thresh}% threshold. Retake required for {cosmo_name}.", "warning")
 
             self.active_modal = None
-        except Exception as e:
-            self.set_flash(f"Assessment error: {e}", "error")
-
-            self.active_modal = None
-            self.set_flash(f"Assessment marksheet for {cosmo_name} saved successfully. Marks: {marksheet.total_marks:.1f}/50.", "success")
         except Exception as e:
             self.set_flash(f"Assessment error: {e}", "error")
 
@@ -2877,7 +2931,7 @@ if __name__ == "__main__":
                 tl.status = "awaiting_review"
                 store.save_timeline(tl)
 
-            # Log activity & notify Guardian
+            # Log activity
             store.add_activity(
                 event_type="project_submitted",
                 actor_id=self.current_user.id,
@@ -2888,13 +2942,7 @@ if __name__ == "__main__":
                 details=f"{self.current_user.name} submitted {badge.code}: {badge.title} with PDF, Code, and GitHub repository."
             )
 
-            store.add_notification(
-                recipient_id="guardian_1",
-                title=f"New Deliverable: {self.current_user.name}",
-                message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title} with all deliverables.",
-                link_section="g_reviews"
-            )
-
+            # Route deliverable strictly to assigned reviewer (not guardian)
             assigned_rev_id = getattr(tl, "reviewer_id", "") if tl else ""
             if not assigned_rev_id:
                 for mp in store.get_band_mappings():
@@ -4499,7 +4547,8 @@ if __name__ == "__main__":
                     current_user=self.current_user,
                     store=store,
                     badges_map=badges_map,
-                    cosmo_map=cosmo_map
+                    cosmo_map=cosmo_map,
+                    expanded_badge_id=getattr(self, "reviewer_expanded_badge_id", None)
                 )
 
             elif self.current_view == "c_assessments":

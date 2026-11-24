@@ -1962,9 +1962,9 @@ def render_guardian_review_queue(
     filter_buttons = []
     filter_tabs = [
         ("all", "All Submissions", len(submissions)),
-        ("pending", "Pending Review", pending_cnt),
-        ("reviewer_assessed", "Reviewer Assessed", rev_assessed_cnt),
-        ("approved", "Awarded / Passed", approved_cnt),
+        ("reviewer_assessed", "Ready for Guardian Sign-off", rev_assessed_cnt),
+        ("pending", "Awaiting Reviewer", pending_cnt),
+        ("approved", "Earned / Certified", approved_cnt),
         ("retake_required", "Retake Required", retake_cnt)
     ]
     for f_id, f_label, f_count in filter_tabs:
@@ -2048,6 +2048,28 @@ def render_guardian_review_queue(
         else:
             g_score_pill = '<span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:3px 10px; border-radius:var(--radius-xs);">Guardian: Awaiting Final Assessment</span>'
 
+        routing_banner = ""
+        if sub.status in ("pending", "submitted") and not rev_asm:
+            routing_banner = f"""
+            <div style="font-size:11.5px; font-weight:700; color:#D97706; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:var(--radius-xs); padding:6px 12px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <span>⏳ Routed to Assigned Reviewer: <strong>{escape(rev_name)}</strong></span>
+                <span style="font-weight:500; color:var(--frost-navy-50);">&bull; Awaiting Reviewer Evaluation before Guardian Sign-off</span>
+            </div>
+            """
+            action_btn_text = f"Inspect Deliverables (Awaiting Reviewer) {arrow_ic}"
+        elif sub.status == "reviewer_assessed":
+            routing_banner = f"""
+            <div style="font-size:11.5px; font-weight:800; color:#059669; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); border-radius:var(--radius-xs); padding:6px 12px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                <span>✓ Reviewer Assessment Completed ({rev_asm.total_marks:.1f}/50)</span>
+                <span style="font-weight:600; color:var(--frost-navy);">&bull; Ready for Guardian Review &amp; Earn Badge Award</span>
+            </div>
+            """
+            action_btn_text = f"Review Marks &amp; Earn Badge &rarr;"
+        elif sub.status == "approved":
+            action_btn_text = f"View Awarded Certification &rarr;"
+        else:
+            action_btn_text = f"Inspect Deliverables & Final Assessment {arrow_ic}"
+
         cards.append(f"""
         <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
             <!-- Top Row: Cadet & Status -->
@@ -2066,6 +2088,8 @@ def render_guardian_review_queue(
                     {pill}
                 </div>
             </div>
+
+            {routing_banner}
 
             <!-- Middle Row: Badge Milestone & Submission Date -->
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
@@ -2112,7 +2136,7 @@ def render_guardian_review_queue(
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Passing Threshold: <strong>{badge_thresh:.1f}% ({badge_thresh * 0.5:.1f}/50)</strong></span>
                 <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:12px; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
-                    Inspect Deliverables & Final Assessment {arrow_ic}
+                    {action_btn_text}
                 </button>
             </div>
         </div>
@@ -2340,9 +2364,9 @@ def run():
                         </button>
                         <div style="display:flex; align-items:center; gap:6px;">
                             <select id="deliverable-type-select" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:4px 10px; min-width:170px;" onchange="window.StarAppBridge.dispatchAction('change_viewer_tab', this.value)">
-                                <option value="pdf"{" selected" if selected_tab == "pdf" else ""}>📄 View PDF Document</option>
-                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code</option>
-                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo</option>
+                                <option value="pdf"{" selected" if selected_tab in ("pdf", "odf") else ""}>📄 View PDF Document (.pdf / .odf)</option>
+                                <option value="code"{" selected" if selected_tab == "code" else ""}>💻 View Source Code (.py)</option>
+                                <option value="github"{" selected" if selected_tab == "github" else ""}>🔗 View GitHub Repo (Link)</option>
                             </select>
                         </div>
                     </div>
@@ -2438,7 +2462,7 @@ def run():
                         <div style="margin-bottom:8px;">
                             <label style="font-size:11px; font-weight:700; color:var(--frost-navy); display:block; margin-bottom:2px;">Assessment Decision</label>
                             <select id="rubric-decision" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:6px 8px; width:100%;">
-                                <option value="approve"{" selected" if init_decision == "approve" else ""}>Approve &amp; Award Milestone (Pass)</option>
+                                <option value="approve"{" selected" if init_decision == "approve" else ""}>🏆 Earn the Badge (Approve &amp; Certify Milestone)</option>
                                 <option value="resubmission_requested"{" selected" if init_decision == "resubmission_requested" else ""}>Request Resubmission (Preserve Attempt)</option>
                                 <option value="reject"{" selected" if init_decision == "reject" else ""}>Reject Deliverable</option>
                             </select>
@@ -2447,8 +2471,8 @@ def run():
 
                     <!-- Pinned Bottom Action Footer -->
                     <div style="padding:10px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
-                        <button type="submit" class="btn-metal" style="width:100%; height:40px; font-size:13px; font-weight:800; letter-spacing:0.2px;">
-                            Save &amp; Publish Marksheet &rarr;
+                        <button type="submit" class="btn-metal" style="width:100%; height:44px; font-size:13.5px; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 14px rgba(245,158,11,0.35);">
+                            🏆 Earn the Badge &rarr;
                         </button>
                     </div>
                 </form>

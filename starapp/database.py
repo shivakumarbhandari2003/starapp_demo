@@ -414,6 +414,7 @@ CREATE TABLE IF NOT EXISTS reviewer_project_prompts (
     description TEXT NOT NULL,
     deliverables_json TEXT NOT NULL DEFAULT '{}',
     requirements_text TEXT NOT NULL DEFAULT '',
+    outcomes_json TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL,
     sent_at TEXT
@@ -510,6 +511,10 @@ class DatabaseManager:
         self.conn.executescript(DDL_SCHEMA)
         try:
             self.conn.execute("ALTER TABLE custom_skills ADD COLUMN capability_name TEXT DEFAULT '';")
+        except Exception:
+            pass
+        try:
+            self.conn.execute("ALTER TABLE reviewer_project_prompts ADD COLUMN outcomes_json TEXT DEFAULT '[]';")
         except Exception:
             pass
 
@@ -1340,11 +1345,12 @@ class DatabaseManager:
                 c_ids_json = json.dumps(rp.get("cosmonaut_ids", [])) if isinstance(rp.get("cosmonaut_ids"), list) else (rp.get("cosmonaut_ids_json") or "[]")
                 deliv_json = json.dumps(rp.get("deliverables", {})) if isinstance(rp.get("deliverables"), (dict, list)) else (rp.get("deliverables_json") or "{}")
                 req_text = json.dumps(rp.get("requirements", [])) if isinstance(rp.get("requirements"), list) else (rp.get("requirements_text") or str(rp.get("requirements") or ""))
+                outcomes_json = json.dumps(rp.get("outcomes", [])) if isinstance(rp.get("outcomes"), list) else (rp.get("outcomes_json") or "[]")
                 c.execute(
                     """INSERT OR REPLACE INTO reviewer_project_prompts (
                         id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
-                        deliverables_json, requirements_text, status, created_at, sent_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         rp_id,
                         rp.get("badge_id"),
@@ -1354,6 +1360,7 @@ class DatabaseManager:
                         rp.get("description", ""),
                         deliv_json,
                         req_text,
+                        outcomes_json,
                         rp.get("status", "sent"),
                         rp.get("created_at") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
                         rp.get("sent_at")
@@ -1502,6 +1509,8 @@ class DatabaseManager:
             for r in rpp_rows:
                 req_text = r["requirements_text"] or ""
                 req_list = json.loads(req_text) if req_text.startswith("[") else [x.strip() for x in req_text.split("\n") if x.strip()]
+                outcomes_raw = r["outcomes_json"] if "outcomes_json" in r.keys() else "[]"
+                outcomes_list = json.loads(outcomes_raw) if outcomes_raw and outcomes_raw.startswith("[") else [x.strip() for x in (outcomes_raw or "").split("\n") if x.strip()]
                 reviewer_projects.append({
                     "id": r["id"],
                     "badge_id": r["badge_id"],
@@ -1511,6 +1520,7 @@ class DatabaseManager:
                     "description": r["description"],
                     "deliverables": json.loads(r["deliverables_json"]) if r["deliverables_json"] else {},
                     "requirements": req_list,
+                    "outcomes": outcomes_list,
                     "status": r["status"],
                     "created_at": r["created_at"],
                     "sent_at": r["sent_at"]

@@ -1017,7 +1017,7 @@ class DataStore:
         else:
             return
 
-        if not hasattr(self, "reviewer_projects") or self.reviewer_projects is None:
+        if not hasattr(self, "reviewer_projects") or not isinstance(self.reviewer_projects, dict):
             self.reviewer_projects = {}
         self.reviewer_projects[p_id] = obj
 
@@ -1026,8 +1026,8 @@ class DataStore:
                 self.db.conn.execute("""
                     INSERT OR REPLACE INTO reviewer_project_prompts (
                         id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
-                        deliverables_json, requirements_text, status, created_at, sent_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     p_id,
                     p_dict.get("badge_id"),
@@ -1037,6 +1037,7 @@ class DataStore:
                     p_dict.get("description", ""),
                     json.dumps(p_dict.get("deliverables", {})),
                     json.dumps(p_dict.get("requirements", [])),
+                    json.dumps(p_dict.get("outcomes", [])),
                     p_dict.get("status", "draft"),
                     p_dict.get("created_at") or current_iso_timestamp(),
                     p_dict.get("sent_at")
@@ -1097,13 +1098,17 @@ class DataStore:
             return None
 
         prompts = self.get_reviewer_project_prompts(badge_id=badge_id)
-        # 1. First priority: Prompt specifically addressed to this cadet
+        # 1. First priority: Prompt specifically addressed to this cadet (must be released/sent)
         for p in prompts:
+            if getattr(p, "status", "") in ("draft",):
+                continue
             c_ids = getattr(p, "cosmonaut_ids", [])
             if cosmonaut_id in c_ids:
                 return p
         # 2. Second priority: General prompt with no restricted cosmonaut_ids, ONLY if created by cadet's assigned reviewer or guardian
         for p in prompts:
+            if getattr(p, "status", "") in ("draft",):
+                continue
             c_ids = getattr(p, "cosmonaut_ids", [])
             if not c_ids:
                 p_rev = getattr(p, "reviewer_id", "")

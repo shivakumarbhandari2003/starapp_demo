@@ -796,9 +796,10 @@ class ReviewerProjectPrompt:
         technical_requirements: Optional[List[str]] = None,
         evaluation_criteria: Optional[List[str]] = None,
         submission_deadline: str = "",
+        outcomes: Optional[List[str]] = None,
         **kwargs
     ):
-        self.id = id or f"rpp_{badge_id}_{reviewer_id}_{int(time.time()*1000)}"
+        self.id = id or f"proj_{badge_id}_{reviewer_id}"
         self.badge_id = badge_id
         self.reviewer_id = reviewer_id
         self.reviewer_name = reviewer_name
@@ -811,6 +812,7 @@ class ReviewerProjectPrompt:
         self.technical_requirements = self.requirements
         self.evaluation_criteria = evaluation_criteria or []
         self.submission_deadline = submission_deadline
+        self.outcomes = list(outcomes) if outcomes else []
         self.created_at = created_at or current_iso_timestamp()
         self.sent_at = sent_at or self.created_at
         self.status = status
@@ -830,6 +832,7 @@ class ReviewerProjectPrompt:
             "technical_requirements": self.requirements,
             "evaluation_criteria": getattr(self, "evaluation_criteria", []),
             "submission_deadline": getattr(self, "submission_deadline", ""),
+            "outcomes": getattr(self, "outcomes", []),
             "created_at": self.created_at,
             "sent_at": self.sent_at,
             "status": self.status
@@ -837,18 +840,24 @@ class ReviewerProjectPrompt:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ReviewerProjectPrompt":
-        deliverables = data.get("deliverables")
+        deliverables = data.get("deliverables") or data.get("deliverables_json")
         if isinstance(deliverables, str):
             try:
                 deliverables = json.loads(deliverables)
             except Exception:
                 deliverables = {}
-        requirements = data.get("requirements")
+        requirements = data.get("requirements") or data.get("requirements_text") or data.get("requirements_json")
         if isinstance(requirements, str):
             try:
                 requirements = json.loads(requirements)
             except Exception:
                 requirements = [requirements]
+        outcomes = data.get("outcomes") or data.get("outcomes_json") or []
+        if isinstance(outcomes, str):
+            try:
+                outcomes = json.loads(outcomes)
+            except Exception:
+                outcomes = [x.strip() for x in outcomes.split("\n") if x.strip()]
         cosmonauts = data.get("cosmonaut_ids") or data.get("cosmonaut_ids_json") or []
         if isinstance(cosmonauts, str):
             try:
@@ -864,9 +873,15 @@ class ReviewerProjectPrompt:
             description=data.get("description", ""),
             deliverables=deliverables or {},
             requirements=requirements or [],
+            outcomes=outcomes or [],
             created_at=data.get("created_at", ""),
             sent_at=data.get("sent_at"),
-            status=data.get("status", "draft")
+            status=data.get("status", "released"),
+            reviewer_name=data.get("reviewer_name", ""),
+            objective=data.get("objective", ""),
+            technical_requirements=requirements or [],
+            evaluation_criteria=data.get("evaluation_criteria", []),
+            submission_deadline=data.get("submission_deadline", "")
         )
 
 

@@ -162,6 +162,7 @@ def render_status_pill(status: str) -> str:
         "active": "status-active",
         "pending": "status-pending",
         "awaiting_review": "status-awaiting-review",
+        "reviewer_assessed": "status-warning",
         "resubmission_requested": "status-resubmit",
         "rejected": "status-rejected",
         "locked": "status-locked"
@@ -203,6 +204,7 @@ def render_standard_marksheet(
         </div>
         '''
 
+    assessor_title = "Peer Reviewer" if getattr(marksheet, "assessor_role", "") == "reviewer" else "Guardian"
     decision_pill = render_status_pill(marksheet.decision)
 
     criteria = [
@@ -284,7 +286,7 @@ def render_standard_marksheet(
                 </div>
                 <h2 style="font-size:1.6rem; font-weight:800; margin:0 0 6px 0; color:var(--snow-white); letter-spacing:-0.3px;">{escape(badge_title)}</h2>
                 <div style="font-size:12.5px; color:rgba(234,244,255,0.8); display:flex; align-items:center; gap:8px;">
-                    <span>Evaluated by: <strong>{escape(marksheet.reviewer_name)}</strong> (Guardian)</span>
+                    <span>Evaluated by: <strong>{escape(marksheet.reviewer_name)}</strong> ({assessor_title})</span>
                     <span>&bull;</span>
                     <span>Evaluation Date: <strong>{escape(marksheet.reviewed_at[:10])}</strong></span>
                 </div>
