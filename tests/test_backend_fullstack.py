@@ -301,6 +301,19 @@ class TestStarAppFullStackBackend(unittest.TestCase):
         leaderboard = eval_service.get_leaderboard()
         self.assertGreater(len(leaderboard), 0)
 
+    def test_11_favicon_and_sw_routes_no_content_length_error(self):
+        """Verify /favicon.ico returns 204 with empty body (no Content-Length mismatch) and /sw.js returns 200."""
+        from fastapi.testclient import TestClient
+        from backend.app.main import app
+
+        with TestClient(app) as client:
+            fav_res = client.get("/favicon.ico")
+            self.assertEqual(fav_res.status_code, 204)
+            self.assertEqual(fav_res.content, b"")
+
+            sw_res = client.get("/sw.js")
+            self.assertEqual(sw_res.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 
 from backend.app.core.config import DEBUG, BASE_DIR
 from backend.app.core.exceptions import StarAppException, starapp_exception_handler
@@ -23,6 +23,7 @@ from backend.app.features.allotments.router import router as allotments_router
 from backend.app.features.submissions.router import router as submissions_router
 from backend.app.features.evaluations.router import router as evaluations_router
 from backend.app.features.audit.router import router as audit_router
+from backend.app.features.cycles.router import router as cycles_router
 from backend.app.integrations.gemini.router import router as gemini_router
 from pydantic import BaseModel
 from typing import Any, Optional, Dict, Union
@@ -107,6 +108,7 @@ app.include_router(allotments_router, prefix=api_v1_prefix)
 app.include_router(submissions_router, prefix=api_v1_prefix)
 app.include_router(evaluations_router, prefix=api_v1_prefix)
 app.include_router(audit_router, prefix=api_v1_prefix)
+app.include_router(cycles_router, prefix=api_v1_prefix)
 app.include_router(gemini_router, prefix=api_v1_prefix)
 
 
@@ -201,7 +203,7 @@ async def favicon():
     fav_file = BASE_DIR / "favicon.ico"
     if fav_file.exists():
         return FileResponse(str(fav_file))
-    return JSONResponse(status_code=204, content={})
+    return Response(status_code=204)
 
 
 @app.get("/")

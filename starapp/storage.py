@@ -8,11 +8,16 @@ import json
 import datetime
 import time
 import re
+import contextvars
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
 from starapp.models import (
+    DEFAULT_CYCLE_ID, DEFAULT_HIKE_POLICY,
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
     AssessmentMarksheet, LearningMaterial, DeadlineExtension,
-    Announcement, ActivityEvent, Notification, ReviewerProjectPrompt, current_iso_timestamp
+    Announcement, ActivityEvent, Notification, ReviewerProjectPrompt,
+    PerformanceCycle, CycleEnrollment, CyclePerformanceAppraisal,
+    current_iso_timestamp
 )
 from starapp.seed_data import get_initial_seed_data
 from starapp.database import db, DatabaseManager, SCHEMA_VERSION
@@ -24,6 +29,8 @@ try:
 except ImportError:
     UserRepository = BadgeRepository = TimelineRepository = AssessmentRepository = None
     MappingRepository = MaterialRepository = ExtensionRepository = AnnouncementRepository = None
+
+_ACTIVE_READ_CYCLE_CTX: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("starapp_read_cycle_id", default=None)
 
 class DataStore:
     def __init__(self, db_manager: Optional[DatabaseManager] = None):
@@ -38,6 +45,9 @@ class DataStore:
         self.extension_repo = ExtensionRepository(self.db) if ExtensionRepository else None
         self.announcement_repo = AnnouncementRepository(self.db) if AnnouncementRepository else None
 
+        self.cycles: Dict[str, PerformanceCycle] = {}
+        self.cycle_enrollments: Dict[str, CycleEnrollment] = {}
+        self.cycle_appraisals: Dict[str, CyclePerformanceAppraisal] = {}
         self.users: Dict[str, User] = {}
         self.profiles: Dict[str, CosmonautProfile] = {}
         self.badges: Dict[str, Badge] = {}
@@ -69,6 +79,42 @@ class DataStore:
         except Exception:
             pass
 
+    @contextmanager
+    def cycle_scope(self, cycle_id: Optional[str]):
+        """Temporarily scopes read queries on the current request/thread to `cycle_id`."""
+        token = _ACTIVE_READ_CYCLE_CTX.set(cycle_id)
+        try:
+            yield
+        finally:
+            _ACTIVE_READ_CYCLE_CTX.reset(token)
+
+    def get_active_cycle_id(self) -> str:
+        """Returns the current active/evaluating 6-month cycle id for new writes and default views."""
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                row = self.db.conn.execute(
+                    "SELECT id FROM performance_cycles WHERE status IN ('active', 'evaluating') ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END, created_at DESC LIMIT 1"
+                ).fetchone()
+                if row and row[0]:
+                    return row[0]
+            except Exception:
+                pass
+        for c in sorted(self.cycles.values(), key=lambda x: getattr(x, "created_at", ""), reverse=True):
+            if getattr(c, "status", "") in ("active", "evaluating"):
+                return c.id
+        if self.cycles:
+            return sorted(self.cycles.values(), key=lambda x: getattr(x, "start_date", ""), reverse=True)[0].id
+        return DEFAULT_CYCLE_ID
+
+    def get_effective_read_cycle_id(self, cycle_id: Optional[str] = None) -> str:
+        """Resolves target cycle_id for reads: explicit arg > context scope > active cycle."""
+        if cycle_id:
+            return cycle_id
+        ctx_cid = _ACTIVE_READ_CYCLE_CTX.get(None)
+        if ctx_cid:
+            return ctx_cid
+        return self.get_active_cycle_id()
+
     def mark_dirty(self):
         """Flags store as modified to trigger targeted SQLite export and persistence."""
         self.version += 1
@@ -77,6 +123,9 @@ class DataStore:
 
     def load_from_dict(self, data: Dict[str, Any]):
         """Loads domain objects into in-memory lookup cache from structured dictionary."""
+        self.cycles = {c["id"]: PerformanceCycle.from_dict(c) for c in data.get("cycles", []) if isinstance(c, dict) and "id" in c}
+        self.cycle_enrollments = {e["id"]: CycleEnrollment.from_dict(e) for e in data.get("cycle_enrollments", []) if isinstance(e, dict) and "id" in e}
+        self.cycle_appraisals = {a["id"]: CyclePerformanceAppraisal.from_dict(a) for a in data.get("cycle_appraisals", []) if isinstance(a, dict) and "id" in a}
         self.users = {u["id"]: User.from_dict(u) for u in data.get("users", [])}
         self.profiles = {p["user_id"]: CosmonautProfile.from_dict(p) for p in data.get("profiles", [])}
         self.badges = {b["id"]: Badge.from_dict(b) for b in data.get("badges", [])}
@@ -290,8 +339,172 @@ class DataStore:
         profile.certifications = certifications
         self.save_profile(profile)
 
+    def save_user_band_update(self, user_id: str, band_code: str):
+        """Updates a user's active Band in SQLite & in-memory cache (e.g., upon end-of-cycle promotion)."""
+        u = self.get_user_by_id(user_id)
+        if u:
+            u.band = band_code
+            self.users[u.id] = u
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                with self.db.conn:
+                    self.db.conn.execute("UPDATE users SET band = ? WHERE id = ?", (band_code, user_id))
+                    self.db.conn.execute("UPDATE user_band_memberships SET band_code = ? WHERE user_id = ?", (band_code, user_id))
+                self.db.conn.commit()
+            except Exception as e:
+                print(f"Error updating user band: {e}")
+        self.mark_dirty()
+
+    # --- 6-Month Performance Cycles, Enrollments & Appraisals ---
+    def get_all_cycles(self) -> List[PerformanceCycle]:
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                rows = self.db.conn.execute("SELECT * FROM performance_cycles ORDER BY start_date DESC, created_at DESC").fetchall()
+                for r in rows:
+                    d = dict(r)
+                    self.cycles[d["id"]] = PerformanceCycle.from_dict(d)
+            except Exception:
+                pass
+        return sorted(self.cycles.values(), key=lambda c: (getattr(c, "start_date", ""), getattr(c, "created_at", "")), reverse=True)
+
+    def get_cycle(self, cycle_id: str) -> Optional[PerformanceCycle]:
+        if not cycle_id:
+            return None
+        if cycle_id in self.cycles:
+            return self.cycles[cycle_id]
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                row = self.db.conn.execute("SELECT * FROM performance_cycles WHERE id = ?", (cycle_id,)).fetchone()
+                if row:
+                    cyc = PerformanceCycle.from_dict(dict(row))
+                    self.cycles[cyc.id] = cyc
+                    return cyc
+            except Exception:
+                pass
+        return None
+
+    def save_cycle(self, cyc: PerformanceCycle):
+        self.cycles[cyc.id] = cyc
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                with self.db.conn:
+                    self.db.conn.execute(
+                        """
+                        INSERT OR REPLACE INTO performance_cycles (
+                            id, code, name, start_date, end_date, status, created_by,
+                            created_at, closed_at, cloned_from_cycle_id, hike_policy_json, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            cyc.id, cyc.code, cyc.name, cyc.start_date, cyc.end_date,
+                            cyc.status, cyc.created_by, cyc.created_at, cyc.closed_at,
+                            cyc.cloned_from_cycle_id, json.dumps(cyc.hike_policy or DEFAULT_HIKE_POLICY), cyc.notes
+                        )
+                    )
+                self.db.conn.commit()
+            except Exception as e:
+                print(f"Error saving performance cycle: {e}")
+        self.mark_dirty()
+
+    def get_cycle_enrollments(self, cycle_id: Optional[str] = None) -> List[CycleEnrollment]:
+        cid = self.get_effective_read_cycle_id(cycle_id)
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                rows = self.db.conn.execute("SELECT * FROM cycle_enrollments WHERE cycle_id = ?", (cid,)).fetchall()
+                for r in rows:
+                    enr = CycleEnrollment.from_dict(dict(r))
+                    self.cycle_enrollments[enr.id] = enr
+            except Exception:
+                pass
+        return [e for e in self.cycle_enrollments.values() if e.cycle_id == cid]
+
+    def save_cycle_enrollment(self, enr: CycleEnrollment):
+        self.cycle_enrollments[enr.id] = enr
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                with self.db.conn:
+                    self.db.conn.execute(
+                        """
+                        INSERT OR REPLACE INTO cycle_enrollments (
+                            id, cycle_id, user_id, cycle_role, band_code, track_code,
+                            base_salary, reporting_manager_id, status, enrolled_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            enr.id, enr.cycle_id, enr.user_id, enr.cycle_role, enr.band_code,
+                            enr.track_code, float(enr.base_salary or 0.0), enr.reporting_manager_id,
+                            enr.status, enr.enrolled_at
+                        )
+                    )
+                self.db.conn.commit()
+            except Exception as e:
+                print(f"Error saving cycle enrollment: {e}")
+        self.mark_dirty()
+
+    def get_cycle_appraisals(self, cycle_id: Optional[str] = None) -> List[CyclePerformanceAppraisal]:
+        cid = self.get_effective_read_cycle_id(cycle_id)
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                rows = self.db.conn.execute(
+                    "SELECT * FROM cycle_performance_appraisals WHERE cycle_id = ? ORDER BY composite_score DESC",
+                    (cid,)
+                ).fetchall()
+                for r in rows:
+                    app_obj = CyclePerformanceAppraisal.from_dict(dict(r))
+                    self.cycle_appraisals[app_obj.id] = app_obj
+            except Exception:
+                pass
+        return sorted([a for a in self.cycle_appraisals.values() if a.cycle_id == cid], key=lambda x: x.composite_score, reverse=True)
+
+    def get_cycle_appraisal(self, cycle_id: str, user_id: str) -> Optional[CyclePerformanceAppraisal]:
+        for a in self.get_cycle_appraisals(cycle_id):
+            if a.cosmonaut_id == user_id:
+                return a
+        return None
+
+    def save_cycle_appraisal(self, app_obj: CyclePerformanceAppraisal):
+        self.cycle_appraisals[app_obj.id] = app_obj
+        if self.db and getattr(self.db, "conn", None):
+            try:
+                with self.db.conn:
+                    self.db.conn.execute(
+                        """
+                        INSERT OR REPLACE INTO cycle_performance_appraisals (
+                            id, cycle_id, cosmonaut_id, band_code,
+                            badges_assigned, badges_submitted, badges_earned, first_attempt_passes, total_attempts,
+                            avg_marks, avg_percentage, cosmo_score,
+                            badge_reviews_assigned, badge_reviews_completed, projects_created, projects_released,
+                            submissions_assigned_to_review, submissions_graded, reviewer_avg_marks_given, reviewer_score,
+                            composite_score, performance_tier, base_salary, recommended_hike_pct, approved_hike_pct,
+                            hike_amount, new_salary, bonus_amount, recommended_promotion_band, guardian_remarks,
+                            status, calculated_at, finalized_by, finalized_at, details_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            app_obj.id, app_obj.cycle_id, app_obj.cosmonaut_id, app_obj.band_code,
+                            app_obj.badges_assigned, app_obj.badges_submitted, app_obj.badges_earned,
+                            app_obj.first_attempt_passes, app_obj.total_attempts,
+                            app_obj.avg_marks, app_obj.avg_percentage, app_obj.cosmo_score,
+                            app_obj.badge_reviews_assigned, app_obj.badge_reviews_completed,
+                            app_obj.projects_created, app_obj.projects_released,
+                            app_obj.submissions_assigned_to_review, app_obj.submissions_graded,
+                            app_obj.reviewer_avg_marks_given, app_obj.reviewer_score,
+                            app_obj.composite_score, app_obj.performance_tier,
+                            app_obj.base_salary, app_obj.recommended_hike_pct, app_obj.approved_hike_pct,
+                            app_obj.hike_amount, app_obj.new_salary, app_obj.bonus_amount,
+                            app_obj.recommended_promotion_band, app_obj.guardian_remarks,
+                            app_obj.status, app_obj.calculated_at, app_obj.finalized_by, app_obj.finalized_at,
+                            json.dumps(app_obj.details or {})
+                        )
+                    )
+                self.db.conn.commit()
+            except Exception as e:
+                print(f"Error saving cycle appraisal: {e}")
+        self.mark_dirty()
+
     # --- Badges ---
-    def get_all_badges(self) -> List[Badge]:
+    def get_all_badges(self, cycle_id: Optional[str] = None) -> List[Badge]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         if self.db and self.db.conn:
             try:
                 rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
@@ -300,8 +513,10 @@ class DataStore:
                     b_id = rd.get("id")
                     if not b_id:
                         continue
+                    b_cid = rd.get("cycle_id") or DEFAULT_CYCLE_ID
                     if b_id in self.badges:
                         b = self.badges[b_id]
+                        b.cycle_id = b_cid
                         b.is_published = bool(rd.get("is_published", 1))
                         b.is_allocated = bool(rd.get("is_allocated", 1))
                         b.workflow_status = rd.get("workflow_status", "approved")
@@ -358,11 +573,12 @@ class DataStore:
                             assigned_cosmonaut_ids=cids,
                             default_timeline=dt,
                             created_at=rd.get("created_at", ""),
-                            updated_at=rd.get("updated_at", "")
+                            updated_at=rd.get("updated_at", ""),
+                            cycle_id=b_cid
                         )
             except Exception:
                 pass
-        return list(self.badges.values())
+        return [b for b in self.badges.values() if (getattr(b, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
 
     def get_badge(self, badge_id: str) -> Optional[Badge]:
         if not badge_id:
@@ -424,6 +640,8 @@ class DataStore:
         return None
 
     def save_badge(self, badge: Badge):
+        if not getattr(badge, "cycle_id", ""):
+            badge.cycle_id = self.get_active_cycle_id()
         self.badges[badge.id] = badge
         with self.db.conn:
             self.db.conn.execute(
@@ -434,8 +652,8 @@ class DataStore:
                     is_published, is_allocated, target_band, power, capability, skill,
                     prompt_json, workflow_status, creator_id, assigned_reviewer_id,
                     assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at,
-                    passing_percentage, published_at, published_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    passing_percentage, published_at, published_by, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     code = excluded.code,
                     title = excluded.title,
@@ -459,7 +677,8 @@ class DataStore:
                     updated_at = excluded.updated_at,
                     passing_percentage = excluded.passing_percentage,
                     published_at = excluded.published_at,
-                    published_by = excluded.published_by
+                    published_by = excluded.published_by,
+                    cycle_id = excluded.cycle_id
                 """,
                 (
                     badge.id,
@@ -486,7 +705,8 @@ class DataStore:
                     current_iso_timestamp(),
                     getattr(badge, "passing_percentage", 70.0),
                     getattr(badge, "published_at", ""),
-                    getattr(badge, "published_by", "")
+                    getattr(badge, "published_by", ""),
+                    badge.cycle_id
                 )
             )
             # Update prerequisites
@@ -505,44 +725,47 @@ class DataStore:
                 self.db.conn.commit()
         self.mark_dirty()
 
-    def get_badges_for_cosmonaut(self, cosmo_id: str) -> List[Badge]:
+    def get_badges_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[Badge]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         target_ids = {cosmo_id}
 
-        # 1. Collect badge IDs from in-memory timelines
+        # 1. Collect badge IDs from in-memory timelines within target cycle
         mapped_badge_ids = set()
         for t in self.timelines.values():
-            if getattr(t, "cosmonaut_id", "") in target_ids:
+            if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid and getattr(t, "cosmonaut_id", "") in target_ids:
                 mapped_badge_ids.add(t.badge_id)
 
-        # 2. Collect badge IDs from SQLite badge_timelines table
+        # 2. Collect badge IDs from SQLite badge_timelines table within target cycle
         if self.db and getattr(self.db, "conn", None):
             try:
                 placeholders = ",".join(["?"] * len(target_ids))
                 rows = self.db.conn.execute(
-                    f"SELECT badge_id FROM badge_timelines WHERE cosmonaut_id IN ({placeholders})",
-                    list(target_ids)
+                    f"SELECT badge_id FROM badge_timelines WHERE cycle_id = ? AND cosmonaut_id IN ({placeholders})",
+                    [target_cid] + list(target_ids)
                 ).fetchall()
                 for r in rows:
                     mapped_badge_ids.add(r[0])
             except Exception:
                 pass
 
-        # 3. Collect badge IDs from band_mappings
+        cycle_badges = self.get_all_badges(cycle_id=target_cid)
+
+        # 3. Collect badge IDs from band_mappings within target cycle
         try:
-            mappings = self.get_band_mappings()
+            mappings = self.get_band_mappings(cycle_id=target_cid)
             for m in mappings:
                 m_cosmonauts = m.get("cosmonauts", [])
                 if any(cid in m_cosmonauts for cid in target_ids):
                     b_ref = m.get("badge", "")
-                    for b in self.badges.values():
+                    for b in cycle_badges:
                         if b.title == b_ref or b.code == b_ref or b.id == b_ref:
                             mapped_badge_ids.add(b.id)
         except Exception:
             pass
 
-        # 4. Filter badges: direct assignment or mapped
+        # 4. Filter badges: direct assignment or mapped within target cycle
         result = []
-        for b in self.badges.values():
+        for b in cycle_badges:
             is_assigned = any(cid in getattr(b, "assigned_cosmonaut_ids", []) for cid in target_ids)
             is_mapped = b.id in mapped_badge_ids
             if (is_assigned and (b.is_published or getattr(b, "is_allocated", False))) or is_mapped or (b.is_published and is_assigned):
@@ -551,6 +774,13 @@ class DataStore:
         return result
 
     # --- Timelines ---
+    def get_timelines_dict(self, cycle_id: Optional[str] = None) -> Dict[str, BadgeTimeline]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return {
+            k: t for k, t in self.timelines.items()
+            if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        }
+
     def get_timeline(self, badge_id: str, cosmo_id: str) -> Optional[BadgeTimeline]:
         key = f"{badge_id}_{cosmo_id}"
         if key in self.timelines:
@@ -567,6 +797,9 @@ class DataStore:
         return None
 
     def save_timeline(self, timeline: BadgeTimeline):
+        if not getattr(timeline, "cycle_id", "") or timeline.cycle_id == DEFAULT_CYCLE_ID:
+            b_obj = self.get_badge(timeline.badge_id)
+            timeline.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         key = f"{timeline.badge_id}_{timeline.cosmonaut_id}"
         self.timelines[key] = timeline
         try:
@@ -577,8 +810,8 @@ class DataStore:
                         badge_id, cosmonaut_id, assignment_date, publication_date,
                         learning_start_date, learning_end_date, project_start_date, project_end_date,
                         submission_deadline, review_date, expected_award_date, actual_award_date, status,
-                        reviewer_id, review_window_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        reviewer_id, review_window_json, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         timeline.badge_id,
@@ -595,7 +828,8 @@ class DataStore:
                         timeline.actual_award_date,
                         timeline.status,
                         getattr(timeline, "reviewer_id", ""),
-                        getattr(timeline, "review_window_json", "[]")
+                        getattr(timeline, "review_window_json", "[]"),
+                        timeline.cycle_id
                     )
                 )
             if self.db and self.db.conn:
@@ -605,8 +839,13 @@ class DataStore:
         self.mark_dirty()
 
     # --- Submissions ---
-    def get_all_submissions(self) -> List[ProjectSubmission]:
-        return sorted(self.submissions.values(), key=lambda s: s.submitted_at, reverse=True)
+    def get_all_submissions(self, cycle_id: Optional[str] = None) -> List[ProjectSubmission]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return sorted(
+            [s for s in self.submissions.values() if (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+            key=lambda s: s.submitted_at,
+            reverse=True
+        )
 
     def get_submission(self, sub_id: str) -> Optional[ProjectSubmission]:
         if sub_id in self.submissions:
@@ -622,13 +861,20 @@ class DataStore:
                 pass
         return None
 
-    def get_submissions_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None) -> List[ProjectSubmission]:
-        subs = [s for s in self.submissions.values() if s.cosmonaut_id == cosmo_id]
+    def get_submissions_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[ProjectSubmission]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        subs = [
+            s for s in self.submissions.values()
+            if s.cosmonaut_id == cosmo_id and (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
         if badge_id:
             subs = [s for s in subs if s.badge_id == badge_id]
         return sorted(subs, key=lambda s: (s.badge_id, s.attempt_number))
 
     def save_submission(self, sub: ProjectSubmission):
+        if not getattr(sub, "cycle_id", "") or sub.cycle_id == DEFAULT_CYCLE_ID:
+            b_obj = self.get_badge(sub.badge_id)
+            sub.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         self.submissions[sub.id] = sub
         try:
             with self.db.conn:
@@ -637,8 +883,8 @@ class DataStore:
                     INSERT INTO project_submissions (
                         id, badge_id, cosmonaut_id, attempt_number, submission_type,
                         payload, file_name, submitted_at, status, pdf_name, pdf_payload,
-                        code_name, code_payload, github_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        code_name, code_payload, github_url, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         badge_id = excluded.badge_id,
                         cosmonaut_id = excluded.cosmonaut_id,
@@ -652,7 +898,8 @@ class DataStore:
                         pdf_payload = excluded.pdf_payload,
                         code_name = excluded.code_name,
                         code_payload = excluded.code_payload,
-                        github_url = excluded.github_url
+                        github_url = excluded.github_url,
+                        cycle_id = excluded.cycle_id
                     """,
                     (
                         sub.id,
@@ -668,7 +915,8 @@ class DataStore:
                         getattr(sub, "pdf_payload", ""),
                         getattr(sub, "code_name", ""),
                         getattr(sub, "code_payload", ""),
-                        getattr(sub, "github_url", "")
+                        getattr(sub, "github_url", ""),
+                        sub.cycle_id
                     )
                 )
             if self.db and self.db.conn:
@@ -678,8 +926,13 @@ class DataStore:
         self.mark_dirty()
 
     # --- Assessments ---
-    def get_all_assessments(self) -> List[AssessmentMarksheet]:
-        return sorted(self.assessments.values(), key=lambda a: a.reviewed_at, reverse=True)
+    def get_all_assessments(self, cycle_id: Optional[str] = None) -> List[AssessmentMarksheet]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return sorted(
+            [a for a in self.assessments.values() if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+            key=lambda a: a.reviewed_at,
+            reverse=True
+        )
 
     def get_assessment(self, asm_id: str) -> Optional[AssessmentMarksheet]:
         return self.assessments.get(asm_id)
@@ -707,13 +960,20 @@ class DataStore:
                 return a
         return None
 
-    def get_assessments_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None) -> List[AssessmentMarksheet]:
-        asms = [a for a in self.assessments.values() if a.cosmonaut_id == cosmo_id]
+    def get_assessments_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[AssessmentMarksheet]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        asms = [
+            a for a in self.assessments.values()
+            if a.cosmonaut_id == cosmo_id and (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
         if badge_id:
             asms = [a for a in asms if a.badge_id == badge_id]
         return sorted(asms, key=lambda a: (a.badge_id, a.attempt_number))
 
     def save_assessment(self, asm: AssessmentMarksheet):
+        if not getattr(asm, "cycle_id", "") or asm.cycle_id == DEFAULT_CYCLE_ID:
+            b_obj = self.get_badge(asm.badge_id)
+            asm.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         self.assessments[asm.id] = asm
         try:
             with self.db.conn:
@@ -725,8 +985,8 @@ class DataStore:
                         business_understanding, architecture_report, technical_knowledge,
                         presentation, qa, total_marks, percentage,
                         strength_areas, improvement_areas, overall_feedback,
-                        assessor_role, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        assessor_role, remarks, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         asm.id,
@@ -749,7 +1009,8 @@ class DataStore:
                         asm.improvement_areas,
                         asm.overall_feedback,
                         getattr(asm, "assessor_role", "guardian"),
-                        getattr(asm, "remarks", "")
+                        getattr(asm, "remarks", ""),
+                        asm.cycle_id
                     )
                 )
             if self.db and self.db.conn:
@@ -759,8 +1020,9 @@ class DataStore:
         self.mark_dirty()
 
     # --- Materials ---
-    def get_materials(self, badge_id: Optional[str] = None) -> List[LearningMaterial]:
-        mats = list(self.materials.values())
+    def get_materials(self, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[LearningMaterial]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        mats = [m for m in self.materials.values() if (getattr(m, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
         if badge_id:
             mats = [m for m in mats if m.badge_id == badge_id]
         return sorted(mats, key=lambda m: m.upload_date, reverse=True)
@@ -769,13 +1031,16 @@ class DataStore:
         return self.materials.get(mat_id)
 
     def save_material(self, mat: LearningMaterial):
+        if not getattr(mat, "cycle_id", "") or mat.cycle_id == DEFAULT_CYCLE_ID:
+            b_obj = self.get_badge(mat.badge_id)
+            mat.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         self.materials[mat.id] = mat
         with self.db.conn:
             self.db.conn.execute(
                 """
                 INSERT OR REPLACE INTO learning_materials (
-                    id, badge_id, topic, title, description, material_type, url_or_data, upload_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, badge_id, topic, title, description, material_type, url_or_data, upload_date, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     mat.id,
@@ -785,7 +1050,8 @@ class DataStore:
                     mat.description,
                     mat.material_type,
                     mat.url_or_data,
-                    mat.upload_date
+                    mat.upload_date,
+                    mat.cycle_id
                 )
             )
         self.mark_dirty()
@@ -798,24 +1064,32 @@ class DataStore:
         self.mark_dirty()
 
     # --- Extensions ---
-    def get_all_extensions(self) -> List[DeadlineExtension]:
-        return sorted(self.extensions.values(), key=lambda e: e.requested_at, reverse=True)
+    def get_all_extensions(self, cycle_id: Optional[str] = None) -> List[DeadlineExtension]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return sorted(
+            [e for e in self.extensions.values() if (getattr(e, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+            key=lambda e: e.requested_at,
+            reverse=True
+        )
 
-    def get_extensions_for_cosmonaut(self, cosmo_id: str) -> List[DeadlineExtension]:
-        return [e for e in self.get_all_extensions() if e.cosmonaut_id == cosmo_id]
+    def get_extensions_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[DeadlineExtension]:
+        return [e for e in self.get_all_extensions(cycle_id=cycle_id) if e.cosmonaut_id == cosmo_id]
 
     def get_extension(self, ext_id: str) -> Optional[DeadlineExtension]:
         return self.extensions.get(ext_id)
 
     def save_extension(self, ext: DeadlineExtension):
+        if not getattr(ext, "cycle_id", "") or ext.cycle_id == DEFAULT_CYCLE_ID:
+            b_obj = self.get_badge(ext.badge_id)
+            ext.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         self.extensions[ext.id] = ext
         with self.db.conn:
             self.db.conn.execute(
                 """
                 INSERT OR REPLACE INTO deadline_extensions (
                     id, badge_id, cosmonaut_id, current_deadline, proposed_deadline,
-                    reason, status, guardian_response, requested_at, decided_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    reason, status, guardian_response, requested_at, decided_at, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ext.id,
@@ -827,30 +1101,38 @@ class DataStore:
                     ext.status,
                     ext.guardian_response,
                     ext.requested_at,
-                    ext.decided_at
+                    ext.decided_at,
+                    ext.cycle_id
                 )
             )
         self.mark_dirty()
 
     # --- Announcements ---
-    def get_all_announcements(self) -> List[Announcement]:
-        return sorted(self.announcements.values(), key=lambda a: a.published_at, reverse=True)
+    def get_all_announcements(self, cycle_id: Optional[str] = None) -> List[Announcement]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return sorted(
+            [a for a in self.announcements.values() if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+            key=lambda a: a.published_at,
+            reverse=True
+        )
 
-    def get_announcements_for_cosmonaut(self, cosmo_id: str) -> List[Announcement]:
+    def get_announcements_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[Announcement]:
         anns = []
-        for a in self.get_all_announcements():
+        for a in self.get_all_announcements(cycle_id=cycle_id):
             if a.target_type == "all" or cosmo_id in a.target_cosmonaut_ids:
                 anns.append(a)
         return anns
 
     def save_announcement(self, ann: Announcement):
+        if not getattr(ann, "cycle_id", "") or ann.cycle_id == DEFAULT_CYCLE_ID:
+            ann.cycle_id = self.get_active_cycle_id()
         self.announcements[ann.id] = ann
         with self.db.conn:
             self.db.conn.execute(
                 """
                 INSERT OR REPLACE INTO announcements (
-                    id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ann.id,
@@ -861,7 +1143,8 @@ class DataStore:
                     ann.target_type,
                     ann.badge_id,
                     ann.published_at,
-                    ann.expiry_date
+                    ann.expiry_date,
+                    ann.cycle_id
                 )
             )
             for recip in ann.target_cosmonaut_ids:
@@ -880,8 +1163,9 @@ class DataStore:
                 self.mark_dirty()
 
     # --- Activities ---
-    def get_activities(self, cosmo_id: Optional[str] = None) -> List[ActivityEvent]:
-        acts = self.activities
+    def get_activities(self, cosmo_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[ActivityEvent]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        acts = [a for a in self.activities if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
         if cosmo_id:
             acts = [a for a in acts if a.cosmonaut_id == cosmo_id or (a.actor_id == cosmo_id)]
         return sorted(acts, key=lambda a: a.timestamp, reverse=True)
@@ -894,8 +1178,10 @@ class DataStore:
         cosmonaut_id: str,
         badge_id: str,
         summary: str,
-        details: str = ""
+        details: str = "",
+        cycle_id: Optional[str] = None
     ):
+        cid = cycle_id or (getattr(self.get_badge(badge_id), "cycle_id", "") if badge_id else "") or self.get_active_cycle_id()
         act_id = f"act_{len(self.activities) + 1}_{int(datetime.datetime.now().timestamp() * 1000)}"
         event = ActivityEvent(
             id=act_id,
@@ -906,26 +1192,32 @@ class DataStore:
             cosmonaut_id=cosmonaut_id,
             badge_id=badge_id,
             summary=summary,
-            details=details
+            details=details,
+            cycle_id=cid
         )
         self.activities.insert(0, event)
         with self.db.conn:
             self.db.conn.execute(
                 """
                 INSERT OR REPLACE INTO activity_events (
-                    id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (event.id, event.timestamp, event.event_type, event.actor_id, event.actor_name, event.cosmonaut_id, event.badge_id, event.summary, event.details)
+                (event.id, event.timestamp, event.event_type, event.actor_id, event.actor_name, event.cosmonaut_id, event.badge_id, event.summary, event.details, cid)
             )
         self.mark_dirty()
 
     # --- Notifications ---
-    def get_notifications(self, user_id: str) -> List[Notification]:
-        notifs = [n for n in self.notifications if n.recipient_id == user_id]
+    def get_notifications(self, user_id: str, cycle_id: Optional[str] = None) -> List[Notification]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        notifs = [
+            n for n in self.notifications
+            if n.recipient_id == user_id and (getattr(n, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
         return sorted(notifs, key=lambda n: n.created_at, reverse=True)
 
-    def add_notification(self, recipient_id: str, title: str, message: str, link_section: str = "", event_type: str = "", related_badge_id: str = ""):
+    def add_notification(self, recipient_id: str, title: str, message: str, link_section: str = "", event_type: str = "", related_badge_id: str = "", cycle_id: Optional[str] = None):
+        cid = cycle_id or (getattr(self.get_badge(related_badge_id), "cycle_id", "") if related_badge_id else "") or self.get_active_cycle_id()
         notif_id = f"notif_{len(self.notifications) + 1}_{int(datetime.datetime.now().timestamp() * 1000)}"
         notif = Notification(
             id=notif_id,
@@ -934,17 +1226,18 @@ class DataStore:
             message=message,
             link_section=link_section,
             created_at=current_iso_timestamp(),
-            is_read=False
+            is_read=False,
+            cycle_id=cid
         )
         self.notifications.insert(0, notif)
         with self.db.conn:
             self.db.conn.execute(
                 """
                 INSERT OR REPLACE INTO notifications (
-                    id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id
-                ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 """,
-                (notif.id, notif.recipient_id, notif.title, notif.message, notif.link_section, notif.created_at, event_type, related_badge_id)
+                (notif.id, notif.recipient_id, notif.title, notif.message, notif.link_section, notif.created_at, event_type, related_badge_id, cid)
             )
         self.mark_dirty()
 
@@ -966,28 +1259,44 @@ class DataStore:
         self.mark_dirty()
 
     # --- Band Mappings & Requests ---
-    def get_band_mappings(self) -> List[Dict[str, Any]]:
+    def get_band_mappings(self, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         if not hasattr(self, "band_mappings") or self.band_mappings is None:
             self.band_mappings = []
         if not self.band_mappings and self.db and self.db.conn:
             try:
-                rows = self.db.conn.execute("SELECT data_json FROM band_mappings").fetchall()
+                rows = self.db.conn.execute("SELECT data_json, cycle_id FROM band_mappings").fetchall()
                 loaded = []
                 for r in rows:
                     try:
-                        loaded.append(json.loads(r[0]))
+                        bm_d = json.loads(r[0])
+                        if not bm_d.get("cycle_id"):
+                            bm_d["cycle_id"] = r[1] if len(r) > 1 and r[1] else DEFAULT_CYCLE_ID
+                        loaded.append(bm_d)
                     except Exception:
                         pass
                 if loaded:
                     self.band_mappings = loaded
             except Exception:
                 pass
-        return self.band_mappings
+        return [m for m in self.band_mappings if (m.get("cycle_id") or DEFAULT_CYCLE_ID) == target_cid]
 
     def save_band_mapping(self, mapping: Dict[str, Any]):
         if not hasattr(self, "band_mappings") or self.band_mappings is None:
             self.band_mappings = []
         m_id = mapping.get("id")
+        b_id = mapping.get("badge_id", "")
+        if not b_id and mapping.get("badge"):
+            b_val = mapping.get("badge")
+            for b in self.get_all_badges(cycle_id=mapping.get("cycle_id")):
+                if b.title == b_val or b.code == b_val or b.id == b_val:
+                    b_id = b.id
+                    mapping["badge_id"] = b.id
+                    break
+        b_obj = self.get_badge(b_id) if b_id else None
+        m_cid = mapping.get("cycle_id") or (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        mapping["cycle_id"] = m_cid
+
         replaced = False
         for idx, m in enumerate(self.band_mappings):
             if m.get("id") == m_id:
@@ -996,19 +1305,11 @@ class DataStore:
                 break
         if not replaced:
             self.band_mappings.insert(0, mapping)
-        b_id = mapping.get("badge_id", "")
-        if not b_id and mapping.get("badge"):
-            b_val = mapping.get("badge")
-            for b in self.get_all_badges():
-                if b.title == b_val or b.code == b_val or b.id == b_val:
-                    b_id = b.id
-                    mapping["badge_id"] = b.id
-                    break
         try:
             with self.db.conn:
                 self.db.conn.execute(
-                    "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json) VALUES (?, ?, ?, ?)",
-                    (m_id, mapping.get("band", "B1"), b_id, json.dumps(mapping))
+                    "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json, cycle_id) VALUES (?, ?, ?, ?, ?)",
+                    (m_id, mapping.get("band", "B1"), b_id, json.dumps(mapping), m_cid)
                 )
             if self.db and self.db.conn:
                 self.db.conn.commit()
@@ -1028,28 +1329,36 @@ class DataStore:
             print(f"Error deleting band_mapping: {e}")
         self.mark_dirty()
 
-    def get_mapping_requests(self) -> List[Dict[str, Any]]:
+    def get_mapping_requests(self, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         if not hasattr(self, "mapping_requests") or self.mapping_requests is None:
             self.mapping_requests = []
         if not self.mapping_requests and self.db and self.db.conn:
             try:
-                rows = self.db.conn.execute("SELECT data_json FROM mapping_requests").fetchall()
+                rows = self.db.conn.execute("SELECT data_json, cycle_id FROM mapping_requests").fetchall()
                 loaded = []
                 for r in rows:
                     try:
-                        loaded.append(json.loads(r[0]))
+                        mr_d = json.loads(r[0])
+                        if not mr_d.get("cycle_id"):
+                            mr_d["cycle_id"] = r[1] if len(r) > 1 and r[1] else DEFAULT_CYCLE_ID
+                        loaded.append(mr_d)
                     except Exception:
                         pass
                 if loaded:
                     self.mapping_requests = loaded
             except Exception:
                 pass
-        return self.mapping_requests
+        return [r for r in self.mapping_requests if (r.get("cycle_id") or DEFAULT_CYCLE_ID) == target_cid]
 
     def add_mapping_request(self, req: Dict[str, Any]):
         if not hasattr(self, "mapping_requests") or self.mapping_requests is None:
             self.mapping_requests = []
         req_id = req.get("id")
+        b_id = req.get("badge_id", "")
+        b_obj = self.get_badge(b_id) if b_id else None
+        r_cid = req.get("cycle_id") or (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        req["cycle_id"] = r_cid
         replaced = False
         for idx, r in enumerate(self.mapping_requests):
             if r.get("id") == req_id:
@@ -1061,8 +1370,8 @@ class DataStore:
         try:
             with self.db.conn:
                 self.db.conn.execute(
-                    "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json) VALUES (?, ?, ?, ?, ?)",
-                    (req_id, req.get("band", ""), req.get("reviewer_id", ""), req.get("status", "pending"), json.dumps(req))
+                    "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json, cycle_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    (req_id, req.get("band", ""), req.get("reviewer_id", ""), req.get("status", "pending"), json.dumps(req), r_cid)
                 )
             if self.db and self.db.conn:
                 self.db.conn.commit()
@@ -1108,24 +1417,31 @@ class DataStore:
                 print(f"Error deleting mapping request: {e}")
             self.mark_dirty()
 
-    def clear_mapping_requests(self, band: Optional[str] = None):
+    def clear_mapping_requests(self, band: Optional[str] = None, cycle_id: Optional[str] = None):
         if not hasattr(self, "mapping_requests"):
             self.mapping_requests = []
             return
+        target_cid = cycle_id or self.get_active_cycle_id()
         if band:
-            self.mapping_requests = [r for r in self.mapping_requests if r.get("band") != band]
+            self.mapping_requests = [
+                r for r in self.mapping_requests
+                if not (r.get("band") == band and (r.get("cycle_id") or DEFAULT_CYCLE_ID) == target_cid)
+            ]
             try:
                 with self.db.conn:
-                    self.db.conn.execute("DELETE FROM mapping_requests WHERE band = ?", (band,))
+                    self.db.conn.execute("DELETE FROM mapping_requests WHERE band = ? AND cycle_id = ?", (band, target_cid))
                 if self.db and self.db.conn:
                     self.db.conn.commit()
             except Exception:
                 pass
         else:
-            self.mapping_requests = []
+            self.mapping_requests = [
+                r for r in self.mapping_requests
+                if (r.get("cycle_id") or DEFAULT_CYCLE_ID) != target_cid
+            ]
             try:
                 with self.db.conn:
-                    self.db.conn.execute("DELETE FROM mapping_requests")
+                    self.db.conn.execute("DELETE FROM mapping_requests WHERE cycle_id = ?", (target_cid,))
                 if self.db and self.db.conn:
                     self.db.conn.commit()
             except Exception:
@@ -1145,6 +1461,13 @@ class DataStore:
         else:
             return
 
+        b_obj = self.get_badge(p_dict.get("badge_id", ""))
+        p_cid = p_dict.get("cycle_id")
+        if not p_cid or p_cid == DEFAULT_CYCLE_ID:
+            p_cid = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        obj.cycle_id = p_cid
+        p_dict["cycle_id"] = p_cid
+
         if not hasattr(self, "reviewer_projects") or not isinstance(self.reviewer_projects, dict):
             self.reviewer_projects = {}
         self.reviewer_projects[p_id] = obj
@@ -1154,8 +1477,8 @@ class DataStore:
                 self.db.conn.execute("""
                     INSERT OR REPLACE INTO reviewer_project_prompts (
                         id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
-                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     p_id,
                     p_dict.get("badge_id"),
@@ -1168,7 +1491,8 @@ class DataStore:
                     json.dumps(p_dict.get("outcomes", [])),
                     p_dict.get("status", "draft"),
                     p_dict.get("created_at") or current_iso_timestamp(),
-                    p_dict.get("sent_at")
+                    p_dict.get("sent_at"),
+                    p_cid
                 ))
             if self.db and self.db.conn:
                 self.db.conn.commit()
@@ -1176,12 +1500,13 @@ class DataStore:
             print(f"Error saving reviewer_project_prompt: {e}")
         self.mark_dirty()
 
-    def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None) -> List[Any]:
+    def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Any]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         results = []
         try:
             if self.db and self.db.conn:
-                query = "SELECT * FROM reviewer_project_prompts WHERE 1=1"
-                params = []
+                query = "SELECT * FROM reviewer_project_prompts WHERE cycle_id = ?"
+                params = [target_cid]
                 if badge_id:
                     query += " AND badge_id = ?"
                     params.append(badge_id)
@@ -1198,6 +1523,8 @@ class DataStore:
 
         if not results and hasattr(self, "reviewer_projects") and self.reviewer_projects:
             for p in self.reviewer_projects.values():
+                if (getattr(p, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) != target_cid:
+                    continue
                 if badge_id and getattr(p, "badge_id", "") != badge_id:
                     continue
                 if reviewer_id and getattr(p, "reviewer_id", "") != reviewer_id:
@@ -1314,8 +1641,8 @@ class DataStore:
     def verify_reviewer_eligibility(self, reviewer_id: str, target_band: str) -> Tuple[bool, str]:
         return self.db.verify_reviewer_eligibility(reviewer_id, target_band)
 
-    def get_pending_badge_approvals(self, reviewer_id: Optional[str] = None, target_band: Optional[str] = None) -> List[Badge]:
-        pending = [b for b in self.badges.values() if getattr(b, "workflow_status", "approved") == "pending_review"]
+    def get_pending_badge_approvals(self, reviewer_id: Optional[str] = None, target_band: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Badge]:
+        pending = [b for b in self.get_all_badges(cycle_id=cycle_id) if getattr(b, "workflow_status", "approved") == "pending_review"]
         if reviewer_id:
             pending = [b for b in pending if getattr(b, "assigned_reviewer_id", "") == reviewer_id]
         if target_band:
@@ -1332,6 +1659,9 @@ class DataStore:
             creator_id = kwargs.get("creator_id", "guardian_1")
             creator = self.get_user_by_id(creator_id)
             creator_name = creator.name if creator else "Arjun Mehta"
+
+        if not badge_data.get("cycle_id"):
+            badge_data["cycle_id"] = self.get_active_cycle_id()
 
         ok, msg, b_id = self.db.create_badge_for_review(badge_data, creator_id, creator_name)
         if ok and b_id:
@@ -1355,7 +1685,8 @@ class DataStore:
                 prompt_json=badge_data.get("prompt_json", "{}"),
                 workflow_status="pending_review",
                 creator_id=creator_id,
-                assigned_reviewer_id=badge_data.get("assigned_reviewer_id") or badge_data.get("reviewer_id", "")
+                assigned_reviewer_id=badge_data.get("assigned_reviewer_id") or badge_data.get("reviewer_id", ""),
+                cycle_id=badge_data["cycle_id"]
             )
             # Reload notifications & activities
             self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
@@ -1439,14 +1770,14 @@ class DataStore:
             self.mark_dirty()
         return ok, msg
 
-    def get_badge_review_requests_for_user(self, user_id: str) -> List[Dict[str, Any]]:
-        return self.db.get_badge_review_requests_for_user(user_id)
+    def get_badge_review_requests_for_user(self, user_id: str, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.db.get_badge_review_requests_for_user(user_id, cycle_id=self.get_effective_read_cycle_id(cycle_id))
 
-    def get_badge_review_history(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        return self.db.get_badge_review_history(badge_id=badge_id, reviewer_id=reviewer_id)
+    def get_badge_review_history(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.db.get_badge_review_history(badge_id=badge_id, reviewer_id=reviewer_id, cycle_id=self.get_effective_read_cycle_id(cycle_id))
 
-    def get_submitted_badges_for_approval(self, status_filter: str = "all") -> List[Dict[str, Any]]:
-        return self.db.get_submitted_badges_for_approval(status_filter)
+    def get_submitted_badges_for_approval(self, status_filter: str = "all", cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.db.get_submitted_badges_for_approval(status_filter, cycle_id=self.get_effective_read_cycle_id(cycle_id))
 
     def get_badge_review_detail(self, badge_id: str) -> Optional[Dict[str, Any]]:
         return self.db.get_badge_review_detail(badge_id)
@@ -1461,18 +1792,20 @@ class DataStore:
         outcomes = badge_dict.get("outcomes", [])
         topics = [t["title"] if isinstance(t, dict) else str(t) for t in badge_dict.get("learning_topics", [])]
         code = badge_dict.get("code") or f"{band}-{skill[:3].upper()}-01"
+        write_cycle_id = badge_dict.get("cycle_id") or self.get_active_cycle_id()
 
         clean_skill = re.sub(r'[^a-zA-Z0-9]+', '_', skill.strip().lower()).strip('_')
         canonical_id = f"badge_{band.lower()}_{clean_skill}"
         provided_id = badge_dict.get("id")
 
-        # Find existing badge in this band matching skill or ID
+        # Find existing badge in this band AND current cycle matching skill or ID
+        cycle_badges = self.get_all_badges(cycle_id=write_cycle_id)
         existing_badge = None
-        for existing in self.badges.values():
+        for existing in cycle_badges:
             if getattr(existing, "target_band", "") == band:
                 if (provided_id and existing.id == provided_id) or \
                    (getattr(existing, "skill", "").strip().lower() == skill.lower()) or \
-                   (existing.id == canonical_id):
+                   (existing.id == canonical_id) or (existing.id == f"{write_cycle_id}__{canonical_id}"):
                     existing_badge = existing
                     break
 
@@ -1480,15 +1813,17 @@ class DataStore:
             is_custom_provided = bool(provided_id and provided_id != canonical_id and not provided_id.startswith(f"badge_{band.lower()}_"))
             is_custom_existing = bool(existing_badge.id != canonical_id and not existing_badge.id.startswith(f"badge_{band.lower()}_"))
             if is_custom_provided and is_custom_existing and provided_id != existing_badge.id:
-                # Explicit conflict between two distinct custom IDs (e.g. test_dup_badge_1 vs test_dup_badge_2)
                 return False, f"A badge for skill '{skill}' already exists for Band {band} ('{existing_badge.title}'). Duplicate badges are not allowed in the same band.", None
-            # Re-use existing badge ID to update it
             b_id = existing_badge.id
         else:
-            b_id = provided_id or canonical_id
+            candidate_id = provided_id or canonical_id
+            # Avoid overwriting a badge with the same ID that belongs to a different cycle
+            if candidate_id in self.badges and (getattr(self.badges[candidate_id], "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) != write_cycle_id:
+                candidate_id = f"{write_cycle_id}__{candidate_id}"
+            b_id = candidate_id
 
-        # Deduplication check across OTHER badges in the same band
-        for existing in self.badges.values():
+        # Deduplication check across OTHER badges in the same band & same cycle
+        for existing in cycle_badges:
             if getattr(existing, "target_band", "") == band and existing.id != b_id:
                 if existing.title.strip().lower() == title.lower() and getattr(existing, "skill", "").strip().lower() != skill.lower():
                     return False, f"A badge with title '{title}' already exists for Band {band}. Duplicate badges are not allowed.", None
@@ -1531,7 +1866,8 @@ class DataStore:
             creator_id=creator_id,
             assigned_reviewer_id=assigned_reviewer_id,
             assigned_cosmonaut_ids=assigned_cosmonaut_ids,
-            default_timeline=default_timeline
+            default_timeline=default_timeline,
+            cycle_id=write_cycle_id
         )
         self.save_badge(badge)
         self.add_activity(
@@ -1540,43 +1876,19 @@ class DataStore:
             actor_name="Guardian",
             cosmonaut_id="",
             badge_id=b_id,
-            summary=f"Saved badge '{title}' -> {skill} -> {cap} -> {power} -> Band {band}."
+            summary=f"Saved badge '{title}' -> {skill} -> {cap} -> {power} -> Band {band}.",
+            cycle_id=write_cycle_id
         )
         self.mark_dirty()
         return True, "Badge saved successfully!", badge
 
-    def get_saved_badges(self, band: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_saved_badges(self, band: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         # Sync from SQLite to ensure latest badges across all processes/tabs
-        try:
-            if self.db and self.db.conn:
-                rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
-                for r in rows:
-                    if r["id"] not in self.badges or not getattr(self.badges[r["id"]], "target_band", None):
-                        self.badges[r["id"]] = Badge(
-                            id=r["id"],
-                            code=r["code"] or "",
-                            title=r["title"] or "",
-                            category=r["category"] or "",
-                            description=r["description"] or "",
-                            learning_outcomes=json.loads(r["learning_outcomes_json"] or "[]"),
-                            learning_topics=json.loads(r["learning_topics_json"] or "[]"),
-                            project_requirements=r["project_requirements"] or "",
-                            is_published=bool(r["is_published"]),
-                            is_allocated=bool(r["is_allocated"]),
-                            target_band=r["target_band"],
-                            power=r["power"],
-                            capability=r["capability"],
-                            skill=r["skill"],
-                            prompt_json=r["prompt_json"],
-                            workflow_status=r["workflow_status"] or "ready_for_review",
-                            creator_id=r["creator_id"] or "guardian_1",
-                            assigned_reviewer_id=r["assigned_reviewer_id"]
-                        )
-        except Exception:
-            pass
+        cycle_badges = self.get_all_badges(cycle_id=target_cid)
 
         results = []
-        for b in self.badges.values():
+        for b in cycle_badges:
             b_band = getattr(b, "target_band", None) or ""
             if not getattr(b, "is_allocated", True) or b_band:
                 if band and b_band != band:

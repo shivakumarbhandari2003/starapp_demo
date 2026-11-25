@@ -79,7 +79,8 @@ def render_guardian_sidebar(
         {"id": "g_mapping", "label": "Mapping", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>', "badge": 0},
         {"id": "g_reviews", "label": "Assessment", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
         {"id": "g_materials", "label": "Learning Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
-        {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count}
+        {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count},
+        {"id": "g_cycles", "label": "Cycles & Performance", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>', "badge": 0}
     ]
 
     links_html = []
@@ -3036,10 +3037,10 @@ def render_guardian_mapping(
                 """
                 SELECT id, code, title, category, description, target_band, workflow_status, is_published, is_allocated, skill
                 FROM badges
-                WHERE target_band = ? AND workflow_status IN ('approved', 'ready_for_review')
+                WHERE target_band = ? AND cycle_id = ? AND workflow_status IN ('approved', 'ready_for_review')
                 ORDER BY code, title
                 """,
-                (selected_band,)
+                (selected_band, store.get_effective_read_cycle_id())
             ).fetchall()
             raw_badges = [dict(r) for r in rows]
         except Exception:
@@ -5857,6 +5858,444 @@ def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) ->
         </div>
     </div>
     """
+
+
+# ==============================================================================
+# 7.15 6-MONTH PERFORMANCE CYCLES & DUAL-ROLE APPRAISAL MANAGEMENT
+# ==============================================================================
+
+def _tier_pill_html(tier: str) -> str:
+    t = (tier or "Not Assessed").lower()
+    if "outstanding" in t:
+        return '<span style="background:rgba(16,185,129,0.14); color:#047857; border:1px solid rgba(16,185,129,0.35); padding:3px 9px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap;">★ Outstanding</span>'
+    if "exceeds" in t or "strong" in t:
+        return f'<span style="background:rgba(6,182,212,0.12); color:#0E7490; border:1px solid rgba(6,182,212,0.35); padding:3px 9px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap;">{escape(tier)}</span>'
+    if "meets" in t:
+        return f'<span style="background:rgba(59,130,246,0.12); color:#1D4ED8; border:1px solid rgba(59,130,246,0.3); padding:3px 9px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap;">{escape(tier)}</span>'
+    if "needs" in t:
+        return f'<span style="background:rgba(245,158,11,0.14); color:#B45309; border:1px solid rgba(245,158,11,0.35); padding:3px 9px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap;">{escape(tier)}</span>'
+    return f'<span style="background:rgba(100,116,139,0.12); color:#475569; border:1px solid #CBD5E1; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap;">{escape(tier)}</span>'
+
+
+def render_guardian_cycles_view(
+    cycles: List[Any],
+    selected_cycle: Any,
+    candidate_rows: List[Dict[str, Any]],
+    band_filter: str = "all",
+    role_filter: str = "all"
+) -> str:
+    """Renders Guardian 6-Month Cycle Manager and Dual-Role Candidate Performance & Hike Matrix."""
+    c_id = getattr(selected_cycle, "id", "cycle_1")
+    c_name = getattr(selected_cycle, "name", "Cycle 1")
+    c_code = getattr(selected_cycle, "code", "C1-2026")
+    c_start = getattr(selected_cycle, "start_date", "")
+    c_end = getattr(selected_cycle, "end_date", "")
+    c_status = (getattr(selected_cycle, "status", "active") or "active").lower()
+    is_closed = (c_status == "closed")
+
+    # Apply band / role activity filters
+    filtered = []
+    for r in candidate_rows:
+        if band_filter and band_filter != "all" and r.get("band_code") != band_filter:
+            continue
+        if role_filter == "cosmonaut_active" and not r.get("cosmo_has_activity"):
+            continue
+        if role_filter == "reviewer_active" and not r.get("reviewer_has_activity"):
+            continue
+        if role_filter == "dual_active" and not (r.get("cosmo_has_activity") and r.get("reviewer_has_activity")):
+            continue
+        filtered.append(r)
+
+    active_candidates = [r for r in candidate_rows if r.get("cosmo_has_activity") or r.get("reviewer_has_activity")]
+    total_earned = sum(r.get("badges_earned", 0) for r in candidate_rows)
+    total_rev_graded = sum(r.get("submissions_graded", 0) for r in candidate_rows) + sum(r.get("badge_reviews_completed", 0) for r in candidate_rows)
+    avg_composite = round(
+        sum(r.get("composite_score", 0.0) for r in active_candidates) / max(1, len(active_candidates)), 1
+    ) if active_candidates else 0.0
+    avg_hike = round(
+        sum(r.get("approved_hike_pct", 0.0) for r in active_candidates) / max(1, len(active_candidates)), 1
+    ) if active_candidates else 0.0
+
+    # Action bar based on cycle state
+    if is_closed:
+        action_controls = f"""
+        <span style="background:rgba(100,116,139,0.16); color:#334155; border:1px solid #94A3B8; padding:7px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:800;">
+            🔒 Cycle Finalized &amp; Closed ({escape(getattr(selected_cycle, 'closed_at', '')[:10])})
+        </span>
+        <button type="button" class="btn-metal" style="font-weight:800; padding:8px 16px;"
+                onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
+            + Start New 6-Month Cycle &rarr;
+        </button>
+        """
+    else:
+        action_controls = f"""
+        <button type="button" class="btn-secondary" style="font-weight:800; padding:8px 14px;"
+                onclick="window.StarAppBridge.dispatchAction('calculate_cycle_appraisals', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
+            ⚡ Calculate / Refresh Cycle Performance
+        </button>
+        <button type="button" class="btn-metal" style="font-weight:800; padding:8px 16px; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
+                onclick="window.StarAppBridge.dispatchAction('finalize_and_close_cycle', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
+            ✓ Finalize &amp; End Cycle
+        </button>
+        <button type="button" class="btn-secondary" style="font-weight:800; padding:8px 14px;"
+                onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
+            + New 6-Month Cycle
+        </button>
+        """
+
+    # Cycle archive cards
+    cycle_cards_html = []
+    for cyc in cycles:
+        sel_cls = "border:2px solid var(--deep-frozen-midnight); background:rgba(234,244,255,0.92);" if cyc.id == c_id else "border:1px solid var(--icy-steel-30); background:#fff;"
+        st_color = "#047857" if cyc.status == "active" else ("#B45309" if cyc.status == "evaluating" else "#475569")
+        cycle_cards_html.append(f"""
+        <div onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')"
+             style="{sel_cls} border-radius:var(--radius-md); padding:12px 14px; cursor:pointer; min-width:220px; flex:1;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(cyc.code)}</span>
+                <span style="font-size:10px; font-weight:800; color:{st_color}; text-transform:uppercase;">{escape(cyc.status)}</span>
+            </div>
+            <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(cyc.name)}</div>
+            <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:2px;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</div>
+        </div>
+        """)
+
+    # Candidate rows table
+    table_rows = []
+    for r in filtered:
+        uid = r["user_id"]
+        c_cell = (
+            f'<div style="font-weight:800; color:var(--deep-frozen-midnight); font-size:12.5px;">{r["badges_earned"]} / {r["badges_assigned"]} Badges &bull; {r["avg_marks"]}/50</div>'
+            f'<div style="font-size:11px; color:var(--frost-navy-50);">Score: <strong>{r["cosmo_score"]}%</strong> &bull; 1st-Pass: {r["first_attempt_passes"]}</div>'
+            if r["cosmo_has_activity"]
+            else '<span style="font-size:11.5px; color:var(--frost-navy-50);">No Cosmonaut tasks in cycle</span>'
+        )
+        r_cell = (
+            f'<div style="font-weight:800; color:#0E7490; font-size:12.5px;">{r["badge_reviews_completed"]}/{r["badge_reviews_assigned"]} Proposal Revs &bull; {r["submissions_graded"]}/{r["submissions_assigned_to_review"]} Graded</div>'
+            f'<div style="font-size:11px; color:var(--frost-navy-50);">Projects: {r["projects_released"]} &bull; Reviewer Score: <strong>{r["reviewer_score"]}%</strong></div>'
+            if r["reviewer_has_activity"]
+            else '<span style="font-size:11.5px; color:var(--frost-navy-50);">No Reviewer tasks in cycle</span>'
+        )
+        sal_info = (
+            f'<div style="font-size:11px; color:#047857;">{r["base_salary"]:,.0f} &rarr; <strong>{r["new_salary"]:,.0f}</strong></div>'
+            if r.get("base_salary", 0) > 0 else ""
+        )
+        promo_badge = (
+            f'<span style="font-size:10.5px; font-weight:800; background:rgba(79,70,229,0.12); color:#4F46E5; padding:2px 6px; border-radius:4px;">&rarr; Band {escape(r["recommended_promotion_band"])}</span>'
+            if r.get("recommended_promotion_band") else ""
+        )
+        table_rows.append(f"""
+        <tr>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist);">
+                <div style="display:flex; align-items:center; gap:9px;">
+                    <div class="user-avatar" style="width:32px; height:32px; font-size:11px; flex-shrink:0;">{escape(r["avatar"])}</div>
+                    <div>
+                        <div style="font-weight:800; color:var(--frost-navy); font-size:13px;">{escape(r["name"])}</div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">Band {escape(r["band_code"])} &bull; {escape(r["learning_track"])}</div>
+                    </div>
+                </div>
+            </td>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist);">{c_cell}</td>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist);">{r_cell}</td>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist); text-align:center;">
+                <div style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:var(--deep-frozen-midnight);">{r["composite_score"]:.1f}</div>
+                <div style="margin-top:4px;">{_tier_pill_html(r["performance_tier"])}</div>
+            </td>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist);">
+                <div style="font-weight:800; color:var(--frost-navy); font-size:12.5px;">+{r["approved_hike_pct"]:.1f}% Hike {promo_badge}</div>
+                {sal_info}
+                <div style="font-size:10.5px; color:var(--frost-navy-50); text-transform:uppercase;">{escape(r["status"])}</div>
+            </td>
+            <td style="padding:12px 14px; border-bottom:1px solid var(--frost-mist); text-align:right;">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700; padding:5px 10px;"
+                        onclick="window.StarAppBridge.dispatchAction('view_cycle_candidate_detail', JSON.stringify({{cycle_id:'{escape(c_id)}', user_id:'{escape(uid)}'}}))">
+                    Inspect / Appraise &rarr;
+                </button>
+            </td>
+        </tr>
+        """)
+
+    band_opts = "".join(
+        f'<option value="{b}"{" selected" if band_filter == b else ""}>Band {b}</option>'
+        for b in ["all", "B1", "B2", "B3", "B4", "B5", "B6"]
+    ).replace("Band all", "All Bands (B1–B6)")
+
+    role_opts = "".join([
+        f'<option value="all"{" selected" if role_filter == "all" else ""}>All Candidates ({len(candidate_rows)})</option>',
+        f'<option value="cosmonaut_active"{" selected" if role_filter == "cosmonaut_active" else ""}>Active as Cosmonaut</option>',
+        f'<option value="reviewer_active"{" selected" if role_filter == "reviewer_active" else ""}>Active as Reviewer</option>',
+        f'<option value="dual_active"{" selected" if role_filter == "dual_active" else ""}>Dual-Role (Both Cosmonaut &amp; Reviewer)</option>',
+    ])
+
+    return f"""
+    <div>
+        <!-- Cycle Header & Controls -->
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:3px 8px; border-radius:var(--radius-xs);">{escape(c_code)}</span>
+                        <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">6-Month Performance Cycle &bull; {escape(c_start)} &rarr; {escape(c_end)}</span>
+                    </div>
+                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(c_name)}</h2>
+                    <p style="font-size:12.5px; color:var(--frost-navy-50); margin:4px 0 0 0;">
+                        All badges, mappings, projects, deliverables, marksheets, and evaluations inside this window are isolated to this cycle.
+                    </p>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    {action_controls}
+                </div>
+            </div>
+
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
+                {"".join(cycle_cards_html)}
+            </div>
+        </div>
+
+        <!-- Cycle Summary KPI Row -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px; margin-bottom:20px;">
+            <div class="liquid-glass-card" style="padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Enrolled Cohort</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--frost-navy); margin-top:4px;">{len(candidate_rows)}</div>
+                <div style="font-size:11.5px; color:var(--deep-frozen-midnight); font-weight:700;">{len(active_candidates)} active in cycle</div>
+            </div>
+            <div class="liquid-glass-card" style="padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Cosmonaut Badges Earned</div>
+                <div style="font-size:1.6rem; font-weight:900; color:#047857; margin-top:4px;">{total_earned}</div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">Certified inside this cycle</div>
+            </div>
+            <div class="liquid-glass-card" style="padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Reviewer Actions Logged</div>
+                <div style="font-size:1.6rem; font-weight:900; color:#0E7490; margin-top:4px;">{total_rev_graded}</div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">Proposal reviews &amp; cadet grades</div>
+            </div>
+            <div class="liquid-glass-card" style="padding:14px 16px;">
+                <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Avg Cycle Score / Hike</div>
+                <div style="font-size:1.6rem; font-weight:900; color:var(--deep-frozen-midnight); margin-top:4px;">{avg_composite:.1f} <span style="font-size:0.95rem; font-weight:700; color:#047857;">(+{avg_hike:.1f}%)</span></div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">Combined Cosmonaut + Reviewer</div>
+            </div>
+        </div>
+
+        <!-- Candidate Dual-Role Performance Table -->
+        <div class="liquid-glass-card" style="padding:20px 22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                <div>
+                    <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Candidate Cycle Performance &mdash; As Cosmonaut &amp; As Reviewer</h3>
+                    <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Review dual-role contributions across the 6-month cycle, adjust recommended hike / band promotion, and finalize cycle records.</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <select class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:5px 10px;"
+                            onchange="window.StarAppBridge.dispatchAction('filter_cycle_performance', JSON.stringify({{band_filter:this.value, role_filter:'{escape(role_filter)}'}}))">
+                        {band_opts}
+                    </select>
+                    <select class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:5px 10px;"
+                            onchange="window.StarAppBridge.dispatchAction('filter_cycle_performance', JSON.stringify({{band_filter:'{escape(band_filter)}', role_filter:this.value}}))">
+                        {role_opts}
+                    </select>
+                </div>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:var(--frost-mist); text-align:left;">
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy);">Candidate</th>
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy);">As Cosmonaut (Learner)</th>
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy);">As Reviewer (Mentor)</th>
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); text-align:center;">Cycle Score &amp; Tier</th>
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy);">Appraisal &amp; Hike</th>
+                            <th style="padding:10px 14px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); text-align:right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(table_rows) if table_rows else '<tr><td colspan="6" style="padding:28px; text-align:center; color:var(--frost-navy-50);">No candidates matched the selected filter.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    """
+
+
+def render_create_cycle_modal(existing_cycles: List[Any], active_cycle: Optional[Any]) -> str:
+    """Modal wizard to launch a new 6-month cycle with the same users and fresh cycle workspace."""
+    from starapp.models import add_six_months_iso
+    import datetime
+
+    next_num = len(existing_cycles) + 1
+    default_start = datetime.date.today().isoformat()
+    if active_cycle and getattr(active_cycle, "end_date", ""):
+        try:
+            prev_end = datetime.date.fromisoformat(active_cycle.end_date[:10])
+            default_start = (prev_end + datetime.timedelta(days=1)).isoformat()
+        except Exception:
+            pass
+    default_end = add_six_months_iso(default_start, 6)
+    default_name = f"Cycle {next_num} (6-Month Cohort)"
+    default_code = f"C{next_num}-{default_start[:4]}"
+
+    active_warn = ""
+    auto_close_checkbox = ""
+    if active_cycle and getattr(active_cycle, "status", "") in ("active", "evaluating"):
+        active_warn = f"""
+        <div style="padding:10px 14px; border-radius:var(--radius-sm); background:rgba(245,158,11,0.12); border:1px solid #FBBF24; margin-bottom:14px; font-size:12.5px; color:#92400E;">
+            <strong>Active Cycle Open:</strong> <em>{escape(active_cycle.name)}</em> is currently <strong>{escape(active_cycle.status)}</strong>. Launching a new cycle will finalize &amp; close the previous cycle first (calculating all Cosmonaut &amp; Reviewer appraisals).
+        </div>
+        """
+        auto_close_checkbox = f"""
+        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; color:var(--frost-navy); cursor:pointer; margin-bottom:10px;">
+            <input type="checkbox" id="new-cycle-auto-close" checked>
+            <span>Finalize &amp; close '{escape(active_cycle.name)}' automatically before activating this cycle</span>
+        </label>
+        """
+
+    clone_opts = '<option value="">Start Fresh (No badges cloned &mdash; recommended)</option>'
+    for cyc in existing_cycles:
+        clone_opts += f'<option value="{escape(cyc.id)}">Clone badge templates as drafts from: {escape(cyc.name)}</option>'
+
+    return f"""
+    <div>
+        <p style="font-size:13px; color:var(--frost-navy-50); margin-bottom:14px;">
+            Creates a new <strong>6-month cycle</strong> keeping all team members enrolled with fresh badges, mappings, submissions, and appraisals. Historical cycle data remains permanently preserved in archive.
+        </p>
+        {active_warn}
+        <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('create_six_month_cycle', JSON.stringify({{name:document.getElementById('new-cycle-name').value, code:document.getElementById('new-cycle-code').value, start_date:document.getElementById('new-cycle-start').value, end_date:document.getElementById('new-cycle-end').value, clone_badges_from_cycle_id:document.getElementById('new-cycle-clone').value, auto_close_previous:(document.getElementById('new-cycle-auto-close') ? document.getElementById('new-cycle-auto-close').checked : true), notes:document.getElementById('new-cycle-notes').value}}));">
+            <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="font-size:12px; font-weight:800;">Cycle Name *</label>
+                    <input type="text" id="new-cycle-name" class="form-control" value="{escape(default_name)}" required>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="font-size:12px; font-weight:800;">Cycle Code</label>
+                    <input type="text" id="new-cycle-code" class="form-control" value="{escape(default_code)}">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="font-size:12px; font-weight:800;">Start Date *</label>
+                    <input type="date" id="new-cycle-start" class="form-control" value="{escape(default_start)}" required>
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label class="form-label" style="font-size:12px; font-weight:800;">End Date (6 Months Window) *</label>
+                    <input type="date" id="new-cycle-end" class="form-control" value="{escape(default_end)}" required>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label" style="font-size:12px; font-weight:800;">Badge Curriculum Setup</label>
+                <select id="new-cycle-clone" class="form-select">{clone_opts}</select>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label class="form-label" style="font-size:12px; font-weight:800;">Cycle Goals / Notes</label>
+                <input type="text" id="new-cycle-notes" class="form-control" placeholder="e.g. Focus on distributed AI architectures and peer mentorship">
+            </div>
+            {auto_close_checkbox}
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:12px; border-top:1px solid var(--icy-steel-30);">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
+                <button type="submit" class="btn-metal" style="font-weight:800; padding:9px 22px;">Launch 6-Month Cycle &rarr;</button>
+            </div>
+        </form>
+    </div>
+    """
+
+
+def render_cycle_candidate_detail_modal(
+    row: Dict[str, Any],
+    cycle: Any,
+    is_closed: bool = False
+) -> str:
+    """Detailed dual-role candidate scorecard & appraisal override modal (Cosmonaut + Reviewer + Hike)."""
+    c_id = getattr(cycle, "id", "cycle_1")
+    uid = row["user_id"]
+    rubric = row.get("rubric_avgs", {})
+    promo_opts = ['<option value="">Retain Current Band (' + escape(row["band_code"]) + ')</option>']
+    for b in ["B1", "B2", "B3", "B4", "B5", "B6"]:
+        sel = " selected" if row.get("recommended_promotion_band") == b else ""
+        promo_opts.append(f'<option value="{b}"{sel}>Promote to Band {b}</option>')
+
+    readonly_attr = " disabled" if is_closed else ""
+    save_btn = "" if is_closed else f"""
+        <button type="submit" class="btn-metal" style="font-weight:800; padding:8px 20px;">
+            Save Appraisal Adjustment &rarr;
+        </button>
+    """
+
+    return f"""
+    <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:14px; border-bottom:1px solid var(--icy-steel-30); margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="user-avatar" style="width:40px; height:40px; font-size:13px;">{escape(row["avatar"])}</div>
+                <div>
+                    <h3 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">{escape(row["name"])}</h3>
+                    <div style="font-size:12px; color:var(--frost-navy-50);">Band {escape(row["band_code"])} &bull; {escape(row["learning_track"])} &bull; Cycle: <strong>{escape(getattr(cycle, "name", c_id))}</strong></div>
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-family-mono); font-size:1.5rem; font-weight:900; color:var(--deep-frozen-midnight);">{row["composite_score"]:.1f} / 100</div>
+                {_tier_pill_html(row["performance_tier"])}
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+            <!-- Role 1: As Cosmonaut -->
+            <div style="padding:14px 16px; border-radius:var(--radius-md); background:rgba(234,244,255,0.55); border:1px solid var(--icy-steel-50);">
+                <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:8px;">🎓 Performance as Cosmonaut</div>
+                <div style="font-size:13px; color:var(--frost-navy); line-height:1.7;">
+                    <div>Badges Earned: <strong>{row["badges_earned"]} / {row["badges_assigned"]}</strong> ({row["cosmo_completion_pct"]}%)</div>
+                    <div>Average Assessment: <strong>{row["avg_marks"]} / 50</strong> ({row["avg_percentage"]}%)</div>
+                    <div>First-Attempt Passes: <strong>{row["first_attempt_passes"]}</strong> &bull; Attempts: {row["total_attempts"]}</div>
+                    <div>Extensions Requested: <strong>{row["extensions_count"]}</strong></div>
+                    <div style="margin-top:6px; font-size:11.5px; color:var(--frost-navy-50);">
+                        Rubric Avg &mdash; Bus: <strong>{rubric.get("business", 0)}</strong> | Arch: <strong>{rubric.get("architecture", 0)}</strong> | Tech: <strong>{rubric.get("technical", 0)}</strong> | Pres: <strong>{rubric.get("presentation", 0)}</strong> | Q&amp;A: <strong>{rubric.get("qa", 0)}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Role 2: As Reviewer -->
+            <div style="padding:14px 16px; border-radius:var(--radius-md); background:rgba(240,253,250,0.75); border:1px solid rgba(13,148,136,0.3);">
+                <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:8px;">⚖️ Performance as Reviewer</div>
+                <div style="font-size:13px; color:var(--frost-navy); line-height:1.7;">
+                    <div>Badge Proposals Reviewed: <strong>{row["badge_reviews_completed"]} / {row["badge_reviews_assigned"]}</strong></div>
+                    <div>Cohort Mapping Invites Accepted: <strong>{row["mapping_invitations_accepted"]} / {row["mapping_invitations_total"]}</strong></div>
+                    <div>Projects Authored / Released: <strong>{row["projects_released"]} / {row["projects_created"]}</strong></div>
+                    <div>Cadet Deliverables Graded: <strong>{row["submissions_graded"]} / {row["submissions_assigned_to_review"]}</strong></div>
+                    <div>Avg Marks Awarded by Reviewer: <strong>{row["reviewer_avg_marks_given"]} / 50</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('update_cycle_appraisal', JSON.stringify({{cycle_id:'{escape(c_id)}', user_id:'{escape(uid)}', base_salary:parseFloat(document.getElementById('app-base-sal').value||0), approved_hike_pct:parseFloat(document.getElementById('app-hike-pct').value||0), bonus_amount:parseFloat(document.getElementById('app-bonus').value||0), recommended_promotion_band:document.getElementById('app-promo-band').value, guardian_remarks:document.getElementById('app-remarks').value}}));"
+              style="padding:16px; border-radius:var(--radius-md); background:#fff; border:1.5px solid var(--icy-steel-30);">
+            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); margin-bottom:10px;">Cycle Appraisal, Optional Compensation &amp; Promotion Decision</div>
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Approved Hike % (Rec: {row["recommended_hike_pct"]:.1f}%)</label>
+                    <input type="number" step="0.5" min="0" max="100" id="app-hike-pct" class="form-control" value="{row["approved_hike_pct"]:.1f}"{readonly_attr}>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Base Salary (Optional)</label>
+                    <input type="number" step="100" min="0" id="app-base-sal" class="form-control" value="{row["base_salary"]:.0f}"{readonly_attr}>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Cycle Bonus (Optional)</label>
+                    <input type="number" step="100" min="0" id="app-bonus" class="form-control" value="{row["bonus_amount"]:.0f}"{readonly_attr}>
+                </div>
+                <div>
+                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Promotion Band</label>
+                    <select id="app-promo-band" class="form-select"{readonly_attr}>{"".join(promo_opts)}</select>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Guardian End-of-Cycle Appraisal Remarks</label>
+                <textarea id="app-remarks" rows="2" class="form-control" placeholder="Summarize performance as Cosmonaut and Reviewer..." {readonly_attr}>{escape(row.get("guardian_remarks", ""))}</textarea>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close</button>
+                {save_btn}
+            </div>
+        </form>
+    </div>
+    """
+
 
 
 

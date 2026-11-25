@@ -80,7 +80,8 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
         {"id": "c_materials", "label": "Study Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
         {"id": "c_profile", "label": "Cosmonaut Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
-        {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0}
+        {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0},
+        {"id": "c_cycles", "label": "Past Cycles & Appraisals", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>', "badge": 0}
     ]
 
     # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Review Requests & Cadet Assessments view
@@ -4036,21 +4037,23 @@ def render_reviewer_badge_schedule(
     if store is None:
         from starapp.storage import store as global_store
         store = global_store
-    badges_map = badges_map or store.badges
+    badges_map = badges_map or {b.id: b for b in store.get_all_badges()}
     cosmo_map = cosmo_map or store.users
+    target_cid = store.get_effective_read_cycle_id()
 
     user_band = getattr(current_user, "band", "B2")
 
     upcoming_entries = []
     completed_entries = []
 
-    # Step 1: Collect timelines from memory and SQLite
-    all_timelines = list(store.timelines.values()) if hasattr(store, "timelines") else []
+    # Step 1: Collect timelines from memory and SQLite strictly within active read cycle
+    scoped_tl_dict = store.get_timelines_dict(cycle_id=target_cid) if hasattr(store, "get_timelines_dict") else {}
+    all_timelines = list(scoped_tl_dict.values())
     if store.db and store.db.conn:
         try:
             t_rows = store.db.conn.execute(
-                "SELECT * FROM badge_timelines WHERE reviewer_id = ? ORDER BY review_date",
-                (current_user.id,)
+                "SELECT * FROM badge_timelines WHERE reviewer_id = ? AND cycle_id = ? ORDER BY review_date",
+                (current_user.id, target_cid)
             ).fetchall()
             for r in t_rows:
                 rd = dict(r)
@@ -4063,15 +4066,14 @@ def render_reviewer_badge_schedule(
     # Collect pairs assigned to other reviewers to avoid leaking across reviewers
     other_reviewer_pairs = set()
     try:
-        if hasattr(store, "timelines") and store.timelines:
-            for tl in store.timelines.values():
-                rev_id = getattr(tl, "reviewer_id", "")
-                if rev_id and rev_id != current_user.id:
-                    other_reviewer_pairs.add((tl.badge_id, tl.cosmonaut_id))
+        for tl in all_timelines:
+            rev_id = getattr(tl, "reviewer_id", "")
+            if rev_id and rev_id != current_user.id:
+                other_reviewer_pairs.add((tl.badge_id, tl.cosmonaut_id))
         if store.db and store.db.conn:
             rows = store.db.conn.execute(
-                "SELECT badge_id, cosmonaut_id, reviewer_id FROM badge_timelines WHERE reviewer_id != '' AND reviewer_id != ?",
-                (current_user.id,)
+                "SELECT badge_id, cosmonaut_id, reviewer_id FROM badge_timelines WHERE cycle_id = ? AND reviewer_id != '' AND reviewer_id != ?",
+                (target_cid, current_user.id)
             ).fetchall()
             for r in rows:
                 other_reviewer_pairs.add((r["badge_id"], r["cosmonaut_id"]))
@@ -5113,9 +5115,10 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                         u = store.get_user_by_id(cid)
                         if u and u not in mapped_cadets:
                             mapped_cadets.append(u)
-        # Also include directly assigned cadets from timelines
-        if hasattr(store, "timelines") and store.timelines:
-            for tl in store.timelines.values():
+        # Also include directly assigned cadets from timelines within current cycle
+        scoped_timelines = store.get_timelines_dict() if hasattr(store, "get_timelines_dict") else store.timelines
+        if scoped_timelines:
+            for tl in scoped_timelines.values():
                 if getattr(tl, "reviewer_id", "") == current_user.id and getattr(tl, "badge_id", "") == badge.id:
                     u = store.get_user_by_id(getattr(tl, "cosmonaut_id", ""))
                     if u and u not in mapped_cadets:
@@ -5271,5 +5274,99 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
         </form>
     </div>
     """
+
+
+def render_cosmonaut_cycles_view(
+    current_user: User,
+    cycles: List[Any],
+    selected_cycle: Any,
+    user_perf_per_cycle: List[Dict[str, Any]]
+) -> str:
+    """Renders Cosmonaut & Reviewer Performance Cycles History & Appraisals view."""
+    cards = []
+    for entry in user_perf_per_cycle:
+        cyc = entry["cycle"]
+        row = entry["row"]
+        is_sel = (selected_cycle and cyc.id == selected_cycle.id)
+        border_style = "border:2px solid var(--deep-frozen-midnight);" if is_sel else "border:1px solid var(--icy-steel-50);"
+        st_lbl = (cyc.status or "active").upper()
+        st_pill = (
+            '<span style="background:rgba(16,185,129,0.14); color:#047857; padding:3px 9px; border-radius:999px; font-size:10.5px; font-weight:800;">ACTIVE CYCLE</span>'
+            if cyc.status == "active" else
+            f'<span style="background:rgba(100,116,139,0.14); color:#334155; padding:3px 9px; border-radius:999px; font-size:10.5px; font-weight:800;">{escape(st_lbl)}</span>'
+        )
+        sal_html = ""
+        if row.get("base_salary", 0) > 0:
+            sal_html = f'<div style="font-size:12px; color:#047857; margin-top:4px;">Compensation Update: {row["base_salary"]:,.0f} &rarr; <strong>{row["new_salary"]:,.0f}</strong> (+{row["approved_hike_pct"]:.1f}%)</div>'
+        elif row.get("approved_hike_pct", 0) > 0:
+            sal_html = f'<div style="font-size:12px; color:#047857; margin-top:4px;">Recommended Hike: <strong>+{row["approved_hike_pct"]:.1f}%</strong></div>'
+
+        promo_html = f'<span style="background:rgba(79,70,229,0.12); color:#4F46E5; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:800;">Promotion Rec: Band {escape(row["recommended_promotion_band"])}</span>' if row.get("recommended_promotion_band") else ""
+
+        cards.append(f"""
+        <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:16px; {border_style}">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); margin-bottom:14px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(cyc.code)}</span>
+                        <span style="font-size:12px; color:var(--frost-navy-50); font-weight:700;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</span>
+                        {st_pill}
+                    </div>
+                    <h3 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">{escape(cyc.name)}</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="text-align:right;">
+                        <div style="font-family:var(--font-family-mono); font-size:1.35rem; font-weight:900; color:var(--deep-frozen-midnight);">{row["composite_score"]:.1f} / 100</div>
+                        <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy-50);">{escape(row["performance_tier"])}</div>
+                    </div>
+                    <button type="button" class="btn-secondary btn-sm" style="font-weight:800; padding:7px 14px;"
+                            onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')">
+                        {"Currently Viewing" if is_sel else "Inspect Cycle Workspace →"}
+                    </button>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
+                <div style="padding:12px 14px; border-radius:var(--radius-sm); background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30);">
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">🎓 My Cosmonaut Performance</div>
+                    <div style="font-size:12.5px; color:var(--frost-navy); line-height:1.6;">
+                        <div>Badges Earned: <strong>{row["badges_earned"]} / {row["badges_assigned"]}</strong> ({row["cosmo_completion_pct"]}%)</div>
+                        <div>Average Score: <strong>{row["avg_marks"]} / 50</strong> ({row["avg_percentage"]}%)</div>
+                        <div>First-Attempt Passes: <strong>{row["first_attempt_passes"]}</strong> &bull; Cosmonaut Index: <strong>{row["cosmo_score"]}%</strong></div>
+                    </div>
+                </div>
+                <div style="padding:12px 14px; border-radius:var(--radius-sm); background:rgba(240,253,250,0.75); border:1px solid rgba(13,148,136,0.28);">
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:6px;">⚖️ My Reviewer Performance</div>
+                    <div style="font-size:12.5px; color:var(--frost-navy); line-height:1.6;">
+                        <div>Badge Proposals Reviewed: <strong>{row["badge_reviews_completed"]} / {row["badge_reviews_assigned"]}</strong></div>
+                        <div>Projects Released: <strong>{row["projects_released"]}</strong> &bull; Cadet Grades Submitted: <strong>{row["submissions_graded"]} / {row["submissions_assigned_to_review"]}</strong></div>
+                        <div>Reviewer Index: <strong>{row["reviewer_score"]}%</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div>
+                    {promo_html}
+                    {sal_html}
+                    {f'<div style="font-size:12px; color:var(--frost-navy-75); margin-top:4px;"><strong>Guardian Remarks:</strong> {escape(row["guardian_remarks"])}</div>' if row.get("guardian_remarks") else ""}
+                </div>
+                <span style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Appraisal Status: {escape(row["status"])}</span>
+            </div>
+        </div>
+        """)
+
+    return f"""
+    <div>
+        <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
+            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">My 6-Month Performance Cycles &amp; Appraisals</h2>
+            <p style="font-size:12.5px; color:var(--frost-navy-50); margin:0;">
+                Review your historical and active 6-month cycles, including your dual-role performance as both Cosmonaut and Reviewer, finalized rating tiers, and hike recommendations.
+            </p>
+        </div>
+        {"".join(cards) if cards else '<div class="liquid-glass-card" style="padding:36px; text-align:center; color:var(--frost-navy-50);">No cycles recorded yet.</div>'}
+    </div>
+    """
+
 
 

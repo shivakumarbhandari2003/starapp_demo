@@ -5,12 +5,44 @@ All models serialize to/from clean JSON-compatible dictionaries.
 """
 
 from typing import List, Dict, Any, Optional
+import calendar
 import datetime
 import json
 import time
 
+DEFAULT_CYCLE_ID = "cycle_1"
+
+DEFAULT_HIKE_POLICY: Dict[str, Any] = {
+    "duration_months": 6,
+    "weights": {
+        "cosmonaut_marks_weight": 0.55,
+        "cosmonaut_completion_weight": 0.25,
+        "reviewer_execution_weight": 0.20,
+    },
+    "slabs": [
+        {"min_score": 90.0, "tier": "Outstanding", "recommended_hike_pct": 18.0},
+        {"min_score": 80.0, "tier": "Exceeds Expectations", "recommended_hike_pct": 12.0},
+        {"min_score": 70.0, "tier": "Meets Expectations", "recommended_hike_pct": 8.0},
+        {"min_score": 1.0, "tier": "Needs Development", "recommended_hike_pct": 3.0},
+        {"min_score": 0.0, "tier": "Not Assessed", "recommended_hike_pct": 0.0},
+    ],
+}
+
 def current_iso_timestamp() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def add_six_months_iso(start_date: str, months: int = 6) -> str:
+    """Computes an inclusive 6-month cycle end date (YYYY-MM-DD)."""
+    try:
+        d = datetime.date.fromisoformat(str(start_date or "")[:10])
+    except Exception:
+        d = datetime.date.today()
+    total_m = (d.month - 1) + int(months)
+    year = d.year + (total_m // 12)
+    month = (total_m % 12) + 1
+    max_day = calendar.monthrange(year, month)[1]
+    end_plus = datetime.date(year, month, min(d.day, max_day))
+    return (end_plus - datetime.timedelta(days=1)).isoformat()
 
 class User:
     def __init__(
@@ -158,7 +190,8 @@ class Badge:
         updated_at: str = "",
         passing_percentage: float = 70.0,
         published_at: str = "",
-        published_by: str = ""
+        published_by: str = "",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.code = code
@@ -187,6 +220,7 @@ class Badge:
         self.passing_percentage = float(passing_percentage) if passing_percentage is not None else 70.0
         self.published_at = published_at or ""
         self.published_by = published_by or ""
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -216,7 +250,8 @@ class Badge:
             "updated_at": getattr(self, "updated_at", ""),
             "passing_percentage": getattr(self, "passing_percentage", 70.0),
             "published_at": getattr(self, "published_at", ""),
-            "published_by": getattr(self, "published_by", "")
+            "published_by": getattr(self, "published_by", ""),
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -248,7 +283,8 @@ class Badge:
             updated_at=data.get("updated_at", ""),
             passing_percentage=data.get("passing_percentage", 70.0),
             published_at=data.get("published_at", ""),
-            published_by=data.get("published_by", "")
+            published_by=data.get("published_by", ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -270,7 +306,8 @@ class BadgeTimeline:
         actual_award_date: str = "",
         status: str = "active",  # upcoming, active, completed, overdue, awaiting_review
         reviewer_id: str = "",
-        review_window_json: str = "[]"
+        review_window_json: str = "[]",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.badge_id = badge_id
         self.cosmonaut_id = cosmonaut_id
@@ -287,6 +324,7 @@ class BadgeTimeline:
         self.status = status
         self.reviewer_id = reviewer_id
         self.review_window_json = review_window_json
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     @property
     def review_window(self) -> List[str]:
@@ -311,7 +349,8 @@ class BadgeTimeline:
             "actual_award_date": self.actual_award_date,
             "status": self.status,
             "reviewer_id": getattr(self, "reviewer_id", ""),
-            "review_window_json": getattr(self, "review_window_json", "[]")
+            "review_window_json": getattr(self, "review_window_json", "[]"),
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -331,7 +370,8 @@ class BadgeTimeline:
             actual_award_date=data.get("actual_award_date", ""),
             status=data.get("status", "active"),
             reviewer_id=data.get("reviewer_id", ""),
-            review_window_json=data.get("review_window_json", "[]")
+            review_window_json=data.get("review_window_json", "[]"),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -351,7 +391,8 @@ class ProjectSubmission:
         pdf_payload: str = "",
         code_name: str = "",
         code_payload: str = "",
-        github_url: str = ""
+        github_url: str = "",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.badge_id = badge_id
@@ -368,6 +409,7 @@ class ProjectSubmission:
         self.code_name = code_name or (file_name if submission_type == "code" else "")
         self.code_payload = code_payload or (payload if submission_type == "code" else "")
         self.github_url = github_url or (payload if submission_type == "github" else "")
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -384,7 +426,8 @@ class ProjectSubmission:
             "pdf_payload": getattr(self, "pdf_payload", ""),
             "code_name": getattr(self, "code_name", ""),
             "code_payload": getattr(self, "code_payload", ""),
-            "github_url": getattr(self, "github_url", "")
+            "github_url": getattr(self, "github_url", ""),
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -406,7 +449,8 @@ class ProjectSubmission:
             pdf_payload=data.get("pdf_payload", payload if sub_type == "pdf" else ""),
             code_name=data.get("code_name", fname if sub_type == "code" else ""),
             code_payload=data.get("code_payload", payload if sub_type == "code" else ""),
-            github_url=data.get("github_url", payload if sub_type == "github" else "")
+            github_url=data.get("github_url", payload if sub_type == "github" else ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -432,7 +476,8 @@ class AssessmentMarksheet:
         improvement_areas: str,
         overall_feedback: str,
         assessor_role: str = "guardian",
-        remarks: str = ""
+        remarks: str = "",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.submission_id = submission_id
@@ -467,6 +512,7 @@ class AssessmentMarksheet:
         self.overall_feedback = overall_feedback
         self.assessor_role = assessor_role
         self.remarks = remarks
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     @property
     def total_score(self) -> float:
@@ -494,7 +540,8 @@ class AssessmentMarksheet:
             "improvement_areas": self.improvement_areas,
             "overall_feedback": self.overall_feedback,
             "assessor_role": getattr(self, "assessor_role", "guardian"),
-            "remarks": getattr(self, "remarks", "")
+            "remarks": getattr(self, "remarks", ""),
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -518,7 +565,8 @@ class AssessmentMarksheet:
             improvement_areas=data.get("improvement_areas", ""),
             overall_feedback=data.get("overall_feedback", ""),
             assessor_role=data.get("assessor_role", "guardian"),
-            remarks=data.get("remarks", "")
+            remarks=data.get("remarks", ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -532,7 +580,8 @@ class LearningMaterial:
         description: str,
         material_type: str,  # "pdf", "doc", "youtube", "code"
         url_or_data: str,
-        upload_date: str
+        upload_date: str,
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.badge_id = badge_id
@@ -542,6 +591,7 @@ class LearningMaterial:
         self.material_type = material_type
         self.url_or_data = url_or_data
         self.upload_date = upload_date
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -552,7 +602,8 @@ class LearningMaterial:
             "description": self.description,
             "material_type": self.material_type,
             "url_or_data": self.url_or_data,
-            "upload_date": self.upload_date
+            "upload_date": self.upload_date,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -565,7 +616,8 @@ class LearningMaterial:
             description=data.get("description", ""),
             material_type=data.get("material_type", "doc"),
             url_or_data=data.get("url_or_data", ""),
-            upload_date=data.get("upload_date", current_iso_timestamp())
+            upload_date=data.get("upload_date", current_iso_timestamp()),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -581,7 +633,8 @@ class DeadlineExtension:
         status: str = "pending",  # "pending", "approved", "rejected"
         guardian_response: str = "",
         requested_at: str = "",
-        decided_at: str = ""
+        decided_at: str = "",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.badge_id = badge_id
@@ -593,6 +646,7 @@ class DeadlineExtension:
         self.guardian_response = guardian_response
         self.requested_at = requested_at or current_iso_timestamp()
         self.decided_at = decided_at
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -605,7 +659,8 @@ class DeadlineExtension:
             "status": self.status,
             "guardian_response": self.guardian_response,
             "requested_at": self.requested_at,
-            "decided_at": self.decided_at
+            "decided_at": self.decided_at,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -620,7 +675,8 @@ class DeadlineExtension:
             status=data.get("status", "pending"),
             guardian_response=data.get("guardian_response", ""),
             requested_at=data.get("requested_at", ""),
-            decided_at=data.get("decided_at", "")
+            decided_at=data.get("decided_at", ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -637,7 +693,8 @@ class Announcement:
         badge_id: str = "",
         published_at: str = "",
         expiry_date: str = "",
-        read_by_cosmonaut_ids: Optional[List[str]] = None
+        read_by_cosmonaut_ids: Optional[List[str]] = None,
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.title = title
@@ -650,6 +707,7 @@ class Announcement:
         self.published_at = published_at or current_iso_timestamp()
         self.expiry_date = expiry_date
         self.read_by_cosmonaut_ids = read_by_cosmonaut_ids or []
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -663,7 +721,8 @@ class Announcement:
             "badge_id": self.badge_id,
             "published_at": self.published_at,
             "expiry_date": self.expiry_date,
-            "read_by_cosmonaut_ids": self.read_by_cosmonaut_ids
+            "read_by_cosmonaut_ids": self.read_by_cosmonaut_ids,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -679,7 +738,8 @@ class Announcement:
             badge_id=data.get("badge_id", ""),
             published_at=data.get("published_at", ""),
             expiry_date=data.get("expiry_date", ""),
-            read_by_cosmonaut_ids=data.get("read_by_cosmonaut_ids", [])
+            read_by_cosmonaut_ids=data.get("read_by_cosmonaut_ids", []),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -694,7 +754,8 @@ class ActivityEvent:
         cosmonaut_id: str,
         badge_id: str,
         summary: str,
-        details: str = ""
+        details: str = "",
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.timestamp = timestamp or current_iso_timestamp()
@@ -705,6 +766,7 @@ class ActivityEvent:
         self.badge_id = badge_id
         self.summary = summary
         self.details = details
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -716,7 +778,8 @@ class ActivityEvent:
             "cosmonaut_id": self.cosmonaut_id,
             "badge_id": self.badge_id,
             "summary": self.summary,
-            "details": self.details
+            "details": self.details,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -730,7 +793,8 @@ class ActivityEvent:
             cosmonaut_id=data.get("cosmonaut_id", ""),
             badge_id=data.get("badge_id", ""),
             summary=data.get("summary", ""),
-            details=data.get("details", "")
+            details=data.get("details", ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -743,7 +807,8 @@ class Notification:
         message: str,
         link_section: str,
         created_at: str,
-        is_read: bool = False
+        is_read: bool = False,
+        cycle_id: str = DEFAULT_CYCLE_ID
     ):
         self.id = id
         self.recipient_id = recipient_id
@@ -752,6 +817,7 @@ class Notification:
         self.link_section = link_section
         self.created_at = created_at or current_iso_timestamp()
         self.is_read = is_read
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -761,7 +827,8 @@ class Notification:
             "message": self.message,
             "link_section": self.link_section,
             "created_at": self.created_at,
-            "is_read": self.is_read
+            "is_read": self.is_read,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -773,7 +840,8 @@ class Notification:
             message=data["message"],
             link_section=data.get("link_section", ""),
             created_at=data.get("created_at", ""),
-            is_read=data.get("is_read", False)
+            is_read=data.get("is_read", False),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
         )
 
 
@@ -797,6 +865,7 @@ class ReviewerProjectPrompt:
         evaluation_criteria: Optional[List[str]] = None,
         submission_deadline: str = "",
         outcomes: Optional[List[str]] = None,
+        cycle_id: str = DEFAULT_CYCLE_ID,
         **kwargs
     ):
         self.id = id or f"proj_{badge_id}_{reviewer_id}"
@@ -816,6 +885,7 @@ class ReviewerProjectPrompt:
         self.created_at = created_at or current_iso_timestamp()
         self.sent_at = sent_at or self.created_at
         self.status = status
+        self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -835,7 +905,8 @@ class ReviewerProjectPrompt:
             "outcomes": getattr(self, "outcomes", []),
             "created_at": self.created_at,
             "sent_at": self.sent_at,
-            "status": self.status
+            "status": self.status,
+            "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
 
     @classmethod
@@ -881,7 +952,296 @@ class ReviewerProjectPrompt:
             objective=data.get("objective", ""),
             technical_requirements=requirements or [],
             evaluation_criteria=data.get("evaluation_criteria", []),
-            submission_deadline=data.get("submission_deadline", "")
+            submission_deadline=data.get("submission_deadline", ""),
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
+        )
+
+
+class PerformanceCycle:
+    """Represents a 6-month Cohort Performance Cycle containing badges, mappings, projects, and appraisals."""
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        code: str = "",
+        start_date: str = "2026-07-01",
+        end_date: str = "",
+        status: str = "active",  # "draft", "active", "evaluating", "closed"
+        created_by: str = "guardian_1",
+        created_at: str = "",
+        closed_at: str = "",
+        cloned_from_cycle_id: str = "",
+        hike_policy: Optional[Dict[str, Any]] = None,
+        notes: str = ""
+    ):
+        self.id = id
+        self.name = name
+        self.code = code or id.upper()
+        self.start_date = start_date or "2026-07-01"
+        self.end_date = end_date or add_six_months_iso(self.start_date, 6)
+        self.status = status or "active"
+        self.created_by = created_by or "guardian_1"
+        self.created_at = created_at or current_iso_timestamp()
+        self.closed_at = closed_at or ""
+        self.cloned_from_cycle_id = cloned_from_cycle_id or ""
+        self.hike_policy = hike_policy if isinstance(hike_policy, dict) else dict(DEFAULT_HIKE_POLICY)
+        self.notes = notes or ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name": self.name,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "status": self.status,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
+            "closed_at": self.closed_at,
+            "cloned_from_cycle_id": self.cloned_from_cycle_id,
+            "hike_policy": self.hike_policy,
+            "notes": self.notes
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PerformanceCycle":
+        policy = data.get("hike_policy") or data.get("hike_policy_json")
+        if isinstance(policy, str):
+            try:
+                policy = json.loads(policy)
+            except Exception:
+                policy = dict(DEFAULT_HIKE_POLICY)
+        return cls(
+            id=data["id"],
+            name=data.get("name", data["id"]),
+            code=data.get("code", ""),
+            start_date=data.get("start_date", "2026-07-01"),
+            end_date=data.get("end_date", ""),
+            status=data.get("status", "active"),
+            created_by=data.get("created_by", "guardian_1"),
+            created_at=data.get("created_at", ""),
+            closed_at=data.get("closed_at", ""),
+            cloned_from_cycle_id=data.get("cloned_from_cycle_id", ""),
+            hike_policy=policy if isinstance(policy, dict) else dict(DEFAULT_HIKE_POLICY),
+            notes=data.get("notes", "")
+        )
+
+
+class CycleEnrollment:
+    """Snapshots a user's participation, role, band, and optional base salary within a specific 6-month cycle."""
+    def __init__(
+        self,
+        id: str,
+        cycle_id: str,
+        user_id: str,
+        cycle_role: str = "cosmonaut",
+        band_code: str = "B1",
+        track_code: str = "SD",
+        base_salary: float = 0.0,
+        reporting_manager_id: str = "",
+        status: str = "active",
+        enrolled_at: str = ""
+    ):
+        self.id = id
+        self.cycle_id = cycle_id
+        self.user_id = user_id
+        self.cycle_role = cycle_role or "cosmonaut"
+        self.band_code = band_code or "B1"
+        self.track_code = track_code or "SD"
+        self.base_salary = float(base_salary or 0.0)
+        self.reporting_manager_id = reporting_manager_id or ""
+        self.status = status or "active"
+        self.enrolled_at = enrolled_at or current_iso_timestamp()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "cycle_id": self.cycle_id,
+            "user_id": self.user_id,
+            "cycle_role": self.cycle_role,
+            "band_code": self.band_code,
+            "track_code": self.track_code,
+            "base_salary": self.base_salary,
+            "reporting_manager_id": self.reporting_manager_id,
+            "status": self.status,
+            "enrolled_at": self.enrolled_at
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CycleEnrollment":
+        return cls(
+            id=data["id"],
+            cycle_id=data["cycle_id"],
+            user_id=data["user_id"],
+            cycle_role=data.get("cycle_role", "cosmonaut"),
+            band_code=data.get("band_code", "B1"),
+            track_code=data.get("track_code", "SD"),
+            base_salary=float(data.get("base_salary") or 0.0),
+            reporting_manager_id=data.get("reporting_manager_id", ""),
+            status=data.get("status", "active"),
+            enrolled_at=data.get("enrolled_at", "")
+        )
+
+
+class CyclePerformanceAppraisal:
+    """Stores end-of-cycle dual-role (Cosmonaut + Reviewer) performance metrics and appraisal/hike outcomes."""
+    def __init__(
+        self,
+        id: str,
+        cycle_id: str,
+        cosmonaut_id: str,
+        band_code: str = "B1",
+        badges_assigned: int = 0,
+        badges_submitted: int = 0,
+        badges_earned: int = 0,
+        first_attempt_passes: int = 0,
+        total_attempts: int = 0,
+        avg_marks: float = 0.0,
+        avg_percentage: float = 0.0,
+        cosmo_score: float = 0.0,
+        badge_reviews_assigned: int = 0,
+        badge_reviews_completed: int = 0,
+        projects_created: int = 0,
+        projects_released: int = 0,
+        submissions_assigned_to_review: int = 0,
+        submissions_graded: int = 0,
+        reviewer_avg_marks_given: float = 0.0,
+        reviewer_score: float = 0.0,
+        composite_score: float = 0.0,
+        performance_tier: str = "Not Assessed",
+        base_salary: float = 0.0,
+        recommended_hike_pct: float = 0.0,
+        approved_hike_pct: float = 0.0,
+        hike_amount: float = 0.0,
+        new_salary: float = 0.0,
+        bonus_amount: float = 0.0,
+        recommended_promotion_band: str = "",
+        guardian_remarks: str = "",
+        status: str = "calculated",
+        calculated_at: str = "",
+        finalized_by: str = "",
+        finalized_at: str = "",
+        details: Optional[Dict[str, Any]] = None
+    ):
+        self.id = id
+        self.cycle_id = cycle_id
+        self.cosmonaut_id = cosmonaut_id
+        self.band_code = band_code or "B1"
+        self.badges_assigned = int(badges_assigned or 0)
+        self.badges_submitted = int(badges_submitted or 0)
+        self.badges_earned = int(badges_earned or 0)
+        self.first_attempt_passes = int(first_attempt_passes or 0)
+        self.total_attempts = int(total_attempts or 0)
+        self.avg_marks = float(avg_marks or 0.0)
+        self.avg_percentage = float(avg_percentage or 0.0)
+        self.cosmo_score = float(cosmo_score or 0.0)
+        self.badge_reviews_assigned = int(badge_reviews_assigned or 0)
+        self.badge_reviews_completed = int(badge_reviews_completed or 0)
+        self.projects_created = int(projects_created or 0)
+        self.projects_released = int(projects_released or 0)
+        self.submissions_assigned_to_review = int(submissions_assigned_to_review or 0)
+        self.submissions_graded = int(submissions_graded or 0)
+        self.reviewer_avg_marks_given = float(reviewer_avg_marks_given or 0.0)
+        self.reviewer_score = float(reviewer_score or 0.0)
+        self.composite_score = float(composite_score or 0.0)
+        self.performance_tier = performance_tier or "Not Assessed"
+        self.base_salary = float(base_salary or 0.0)
+        self.recommended_hike_pct = float(recommended_hike_pct or 0.0)
+        self.approved_hike_pct = float(approved_hike_pct or 0.0)
+        self.hike_amount = float(hike_amount or 0.0)
+        self.new_salary = float(new_salary or 0.0)
+        self.bonus_amount = float(bonus_amount or 0.0)
+        self.recommended_promotion_band = recommended_promotion_band or ""
+        self.guardian_remarks = guardian_remarks or ""
+        self.status = status or "calculated"
+        self.calculated_at = calculated_at or current_iso_timestamp()
+        self.finalized_by = finalized_by or ""
+        self.finalized_at = finalized_at or ""
+        self.details = details if isinstance(details, dict) else {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "cycle_id": self.cycle_id,
+            "cosmonaut_id": self.cosmonaut_id,
+            "band_code": self.band_code,
+            "badges_assigned": self.badges_assigned,
+            "badges_submitted": self.badges_submitted,
+            "badges_earned": self.badges_earned,
+            "first_attempt_passes": self.first_attempt_passes,
+            "total_attempts": self.total_attempts,
+            "avg_marks": self.avg_marks,
+            "avg_percentage": self.avg_percentage,
+            "cosmo_score": self.cosmo_score,
+            "badge_reviews_assigned": self.badge_reviews_assigned,
+            "badge_reviews_completed": self.badge_reviews_completed,
+            "projects_created": self.projects_created,
+            "projects_released": self.projects_released,
+            "submissions_assigned_to_review": self.submissions_assigned_to_review,
+            "submissions_graded": self.submissions_graded,
+            "reviewer_avg_marks_given": self.reviewer_avg_marks_given,
+            "reviewer_score": self.reviewer_score,
+            "composite_score": self.composite_score,
+            "performance_tier": self.performance_tier,
+            "base_salary": self.base_salary,
+            "recommended_hike_pct": self.recommended_hike_pct,
+            "approved_hike_pct": self.approved_hike_pct,
+            "hike_amount": self.hike_amount,
+            "new_salary": self.new_salary,
+            "bonus_amount": self.bonus_amount,
+            "recommended_promotion_band": self.recommended_promotion_band,
+            "guardian_remarks": self.guardian_remarks,
+            "status": self.status,
+            "calculated_at": self.calculated_at,
+            "finalized_by": self.finalized_by,
+            "finalized_at": self.finalized_at,
+            "details": self.details
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CyclePerformanceAppraisal":
+        details = data.get("details") or data.get("details_json")
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except Exception:
+                details = {}
+        return cls(
+            id=data["id"],
+            cycle_id=data["cycle_id"],
+            cosmonaut_id=data.get("cosmonaut_id") or data.get("user_id", ""),
+            band_code=data.get("band_code", "B1"),
+            badges_assigned=data.get("badges_assigned", 0),
+            badges_submitted=data.get("badges_submitted", 0),
+            badges_earned=data.get("badges_earned", 0),
+            first_attempt_passes=data.get("first_attempt_passes", 0),
+            total_attempts=data.get("total_attempts", 0),
+            avg_marks=data.get("avg_marks", 0.0),
+            avg_percentage=data.get("avg_percentage", 0.0),
+            cosmo_score=data.get("cosmo_score", 0.0),
+            badge_reviews_assigned=data.get("badge_reviews_assigned", 0),
+            badge_reviews_completed=data.get("badge_reviews_completed", 0),
+            projects_created=data.get("projects_created", 0),
+            projects_released=data.get("projects_released", 0),
+            submissions_assigned_to_review=data.get("submissions_assigned_to_review", 0),
+            submissions_graded=data.get("submissions_graded", 0),
+            reviewer_avg_marks_given=data.get("reviewer_avg_marks_given", 0.0),
+            reviewer_score=data.get("reviewer_score", 0.0),
+            composite_score=data.get("composite_score", 0.0),
+            performance_tier=data.get("performance_tier", "Not Assessed"),
+            base_salary=data.get("base_salary", 0.0),
+            recommended_hike_pct=data.get("recommended_hike_pct", 0.0),
+            approved_hike_pct=data.get("approved_hike_pct", 0.0),
+            hike_amount=data.get("hike_amount", 0.0),
+            new_salary=data.get("new_salary", 0.0),
+            bonus_amount=data.get("bonus_amount", 0.0),
+            recommended_promotion_band=data.get("recommended_promotion_band", ""),
+            guardian_remarks=data.get("guardian_remarks", ""),
+            status=data.get("status", "calculated"),
+            calculated_at=data.get("calculated_at", ""),
+            finalized_by=data.get("finalized_by", ""),
+            finalized_at=data.get("finalized_at", ""),
+            details=details if isinstance(details, dict) else {}
         )
 
 

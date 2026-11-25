@@ -17,7 +17,7 @@ import base64
 import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 def current_iso_timestamp() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -417,7 +417,77 @@ CREATE TABLE IF NOT EXISTS reviewer_project_prompts (
     outcomes_json TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'draft',
     created_at TEXT NOT NULL,
-    sent_at TEXT
+    sent_at TEXT,
+    cycle_id TEXT NOT NULL DEFAULT 'cycle_1'
+);
+
+-- 27. 6-Month Performance Cycles, Enrollments & Appraisals
+CREATE TABLE IF NOT EXISTS performance_cycles (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by TEXT DEFAULT 'guardian_1',
+    created_at TEXT NOT NULL,
+    closed_at TEXT DEFAULT '',
+    cloned_from_cycle_id TEXT DEFAULT '',
+    hike_policy_json TEXT NOT NULL DEFAULT '{}',
+    notes TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS cycle_enrollments (
+    id TEXT PRIMARY KEY,
+    cycle_id TEXT NOT NULL REFERENCES performance_cycles(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cycle_role TEXT NOT NULL DEFAULT 'cosmonaut',
+    band_code TEXT NOT NULL DEFAULT 'B1',
+    track_code TEXT NOT NULL DEFAULT 'SD',
+    base_salary REAL NOT NULL DEFAULT 0.0,
+    reporting_manager_id TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    enrolled_at TEXT NOT NULL,
+    UNIQUE(cycle_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS cycle_performance_appraisals (
+    id TEXT PRIMARY KEY,
+    cycle_id TEXT NOT NULL REFERENCES performance_cycles(id) ON DELETE CASCADE,
+    cosmonaut_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    band_code TEXT NOT NULL DEFAULT 'B1',
+    badges_assigned INTEGER NOT NULL DEFAULT 0,
+    badges_submitted INTEGER NOT NULL DEFAULT 0,
+    badges_earned INTEGER NOT NULL DEFAULT 0,
+    first_attempt_passes INTEGER NOT NULL DEFAULT 0,
+    total_attempts INTEGER NOT NULL DEFAULT 0,
+    avg_marks REAL NOT NULL DEFAULT 0.0,
+    avg_percentage REAL NOT NULL DEFAULT 0.0,
+    cosmo_score REAL NOT NULL DEFAULT 0.0,
+    badge_reviews_assigned INTEGER NOT NULL DEFAULT 0,
+    badge_reviews_completed INTEGER NOT NULL DEFAULT 0,
+    projects_created INTEGER NOT NULL DEFAULT 0,
+    projects_released INTEGER NOT NULL DEFAULT 0,
+    submissions_assigned_to_review INTEGER NOT NULL DEFAULT 0,
+    submissions_graded INTEGER NOT NULL DEFAULT 0,
+    reviewer_avg_marks_given REAL NOT NULL DEFAULT 0.0,
+    reviewer_score REAL NOT NULL DEFAULT 0.0,
+    composite_score REAL NOT NULL DEFAULT 0.0,
+    performance_tier TEXT NOT NULL DEFAULT 'Not Assessed',
+    base_salary REAL NOT NULL DEFAULT 0.0,
+    recommended_hike_pct REAL NOT NULL DEFAULT 0.0,
+    approved_hike_pct REAL NOT NULL DEFAULT 0.0,
+    hike_amount REAL NOT NULL DEFAULT 0.0,
+    new_salary REAL NOT NULL DEFAULT 0.0,
+    bonus_amount REAL NOT NULL DEFAULT 0.0,
+    recommended_promotion_band TEXT DEFAULT '',
+    guardian_remarks TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'calculated',
+    calculated_at TEXT NOT NULL,
+    finalized_by TEXT DEFAULT '',
+    finalized_at TEXT DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(cycle_id, cosmonaut_id)
 );
 
 -- Performance Indexes
@@ -430,6 +500,8 @@ CREATE INDEX IF NOT EXISTS idx_activity_events_timestamp ON activity_events(time
 CREATE INDEX IF NOT EXISTS idx_badge_reviewer_assignments_reviewer ON badge_reviewer_assignments(reviewer_id, status);
 CREATE INDEX IF NOT EXISTS idx_rev_proj_badge ON reviewer_project_prompts(badge_id);
 CREATE INDEX IF NOT EXISTS idx_rev_proj_reviewer ON reviewer_project_prompts(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_cycle_enrollments_cycle ON cycle_enrollments(cycle_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_cycle_appraisals_cycle ON cycle_performance_appraisals(cycle_id, cosmonaut_id);
 """
 
 # ==============================================================================
@@ -555,7 +627,102 @@ class DatabaseManager:
             except Exception:
                 pass
 
+        # Ensure schema_version table exists & record SCHEMA_VERSION
+        try:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    installed_at TEXT NOT NULL
+                );
+            """)
+            self.conn.execute(
+                "INSERT OR REPLACE INTO schema_version (version, installed_at) VALUES (?, ?)",
+                (SCHEMA_VERSION, current_iso_timestamp())
+            )
+        except Exception:
+            pass
+
+        # Cycle isolation columns + indexes across all cycle-scoped operational tables
+        cycle_tables = [
+            "badges", "badge_reviewer_assignments", "badge_review_events", "badge_timelines",
+            "project_submissions", "assessment_marksheets", "learning_materials",
+            "deadline_extensions", "announcements", "notifications", "activity_events",
+            "band_mappings", "mapping_requests", "reviewer_project_prompts"
+        ]
+        for tbl in cycle_tables:
+            try:
+                self.conn.execute(f"ALTER TABLE {tbl} ADD COLUMN cycle_id TEXT NOT NULL DEFAULT 'cycle_1';")
+            except Exception:
+                pass
+            try:
+                self.conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{tbl}_cycle ON {tbl}(cycle_id);")
+            except Exception:
+                pass
+
+        self.ensure_default_cycle()
         self.conn.commit()
+
+    def _get_active_cycle_id(self) -> str:
+        """Returns the current writable active/evaluating cycle id, falling back to 'cycle_1'."""
+        if not SQLITE_AVAILABLE or self._conn is None:
+            return "cycle_1"
+        try:
+            row = self._conn.execute(
+                "SELECT id FROM performance_cycles WHERE status IN ('active', 'evaluating') ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END, created_at DESC LIMIT 1"
+            ).fetchone()
+            if row and row[0]:
+                return row[0]
+            any_row = self._conn.execute("SELECT id FROM performance_cycles ORDER BY created_at ASC LIMIT 1").fetchone()
+            if any_row and any_row[0]:
+                return any_row[0]
+        except Exception:
+            pass
+        return "cycle_1"
+
+    def ensure_default_cycle(self):
+        """Ensures at least one 6-month cycle exists and backfills any unscoped legacy records into it."""
+        if not SQLITE_AVAILABLE or self._conn is None:
+            return
+        now_iso = current_iso_timestamp()
+        try:
+            row = self._conn.execute("SELECT COUNT(*) FROM performance_cycles").fetchone()
+            if not row or row[0] == 0:
+                from starapp.models import DEFAULT_HIKE_POLICY
+                self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO performance_cycles (
+                        id, code, name, start_date, end_date, status, created_by, created_at, hike_policy_json
+                    ) VALUES (?, ?, ?, ?, ?, 'active', 'guardian_1', ?, ?)
+                    """,
+                    ("cycle_1", "C1-2026", "Cycle 1 (Jul–Dec 2026)", "2026-07-01", "2026-12-31", now_iso, json.dumps(DEFAULT_HIKE_POLICY))
+                )
+            default_cid = self._get_active_cycle_id()
+            cycle_tables = [
+                "badges", "badge_reviewer_assignments", "badge_review_events", "badge_timelines",
+                "project_submissions", "assessment_marksheets", "learning_materials",
+                "deadline_extensions", "announcements", "notifications", "activity_events",
+                "band_mappings", "mapping_requests", "reviewer_project_prompts"
+            ]
+            for tbl in cycle_tables:
+                try:
+                    self._conn.execute(f"UPDATE {tbl} SET cycle_id = ? WHERE cycle_id IS NULL OR cycle_id = ''", (default_cid,))
+                except Exception:
+                    pass
+            # Ensure active users are enrolled in default_cid if cycle_enrollments has none for that cycle
+            enr_cnt = self._conn.execute("SELECT COUNT(*) FROM cycle_enrollments WHERE cycle_id = ?", (default_cid,)).fetchone()[0]
+            if enr_cnt == 0:
+                users_rows = self._conn.execute("SELECT id, primary_role, band, track_code, reporting_manager_id FROM users WHERE status = 'active'").fetchall()
+                for u in users_rows:
+                    self._conn.execute(
+                        """
+                        INSERT OR IGNORE INTO cycle_enrollments (
+                            id, cycle_id, user_id, cycle_role, band_code, track_code, base_salary, reporting_manager_id, status, enrolled_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, 'active', ?)
+                        """,
+                        (f"enr_{default_cid}_{u[0]}", default_cid, u[0], u[1] or "cosmonaut", u[2] or "B1", u[3] or "SD", u[4] or "", now_iso)
+                    )
+        except Exception:
+            pass
 
     def clear_all_tables(self):
         """Clears all domain tables for a clean baseline reset."""
@@ -564,6 +731,7 @@ class DatabaseManager:
         with self.conn:
             self.conn.execute("PRAGMA foreign_keys = OFF;")
             tables = [
+                "cycle_performance_appraisals", "cycle_enrollments", "performance_cycles",
                 "badge_review_events", "badge_reviewer_assignments", "badge_powers",
                 "badge_capabilities", "badge_skills", "badge_prerequisites", "badge_timelines",
                 "assessment_marksheets", "project_submissions", "deadline_extensions",
@@ -867,6 +1035,7 @@ class DatabaseManager:
             c.execute("INSERT OR REPLACE INTO badge_capabilities (badge_id, capability_name, is_custom) VALUES (?, ?, 0)", (b_id, b_item[12]))
             c.execute("INSERT OR REPLACE INTO badge_skills (badge_id, skill_name, is_custom) VALUES (?, ?, 0)", (b_id, b_item[13]))
 
+        self.ensure_default_cycle()
         self.conn.commit()
 
     # ==========================================================================
@@ -960,6 +1129,33 @@ class DatabaseManager:
 
         c = self.conn
         with c:
+            # 0. Performance Cycles & Enrollments
+            for cyc in data.get("cycles", []):
+                c.execute(
+                    """
+                    INSERT OR REPLACE INTO performance_cycles (
+                        id, code, name, start_date, end_date, status, created_by,
+                        created_at, closed_at, cloned_from_cycle_id, hike_policy_json, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        cyc["id"],
+                        cyc.get("code", cyc["id"].upper()),
+                        cyc.get("name", cyc["id"]),
+                        cyc.get("start_date", "2026-07-01"),
+                        cyc.get("end_date", "2026-12-31"),
+                        cyc.get("status", "active"),
+                        cyc.get("created_by", "guardian_1"),
+                        cyc.get("created_at", current_iso_timestamp()),
+                        cyc.get("closed_at", ""),
+                        cyc.get("cloned_from_cycle_id", ""),
+                        json.dumps(cyc.get("hike_policy", {})) if isinstance(cyc.get("hike_policy"), dict) else (cyc.get("hike_policy_json") or "{}"),
+                        cyc.get("notes", "")
+                    )
+                )
+
+            default_cid = data.get("active_cycle_id") or self._get_active_cycle_id()
+
             # 1. Users
             for u in data.get("users", []):
                 u_id = u["id"]
@@ -1061,8 +1257,8 @@ class DatabaseManager:
                         is_published, is_allocated, target_band, power, capability, skill,
                         prompt_json, workflow_status, creator_id, assigned_reviewer_id,
                         assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at,
-                        passing_percentage, published_at, published_by
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        passing_percentage, published_at, published_by, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         b_id,
@@ -1089,7 +1285,8 @@ class DatabaseManager:
                         b.get("updated_at", current_iso_timestamp()),
                         float(b.get("passing_percentage", 70.0)),
                         b.get("published_at", ""),
-                        b.get("published_by", "")
+                        b.get("published_by", ""),
+                        b.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1116,8 +1313,8 @@ class DatabaseManager:
                         badge_id, cosmonaut_id, assignment_date, publication_date,
                         learning_start_date, learning_end_date, project_start_date, project_end_date,
                         submission_deadline, review_date, expected_award_date, actual_award_date, status,
-                        reviewer_id, review_window_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        reviewer_id, review_window_json, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         t["badge_id"],
@@ -1134,7 +1331,8 @@ class DatabaseManager:
                         t.get("actual_award_date", ""),
                         t.get("status", "active"),
                         t.get("reviewer_id", ""),
-                        t.get("review_window_json", "[]")
+                        t.get("review_window_json", "[]"),
+                        t.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1145,8 +1343,8 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO project_submissions (
                         id, badge_id, cosmonaut_id, attempt_number, submission_type,
                         payload, file_name, submitted_at, status, pdf_name, pdf_payload,
-                        code_name, code_payload, github_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        code_name, code_payload, github_url, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         s["id"],
@@ -1162,7 +1360,8 @@ class DatabaseManager:
                         s.get("pdf_payload", ""),
                         s.get("code_name", ""),
                         s.get("code_payload", ""),
-                        s.get("github_url", "")
+                        s.get("github_url", ""),
+                        s.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1176,8 +1375,8 @@ class DatabaseManager:
                         business_understanding, architecture_report, technical_knowledge,
                         presentation, qa, total_marks, percentage,
                         strength_areas, improvement_areas, overall_feedback,
-                        assessor_role, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        assessor_role, remarks, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         a["id"],
@@ -1200,7 +1399,8 @@ class DatabaseManager:
                         a.get("improvement_areas", ""),
                         a.get("overall_feedback", ""),
                         a.get("assessor_role", "guardian"),
-                        a.get("remarks", "")
+                        a.get("remarks", ""),
+                        a.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1209,8 +1409,8 @@ class DatabaseManager:
                 c.execute(
                     """
                     INSERT OR REPLACE INTO learning_materials (
-                        id, badge_id, topic, title, description, material_type, url_or_data, upload_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        id, badge_id, topic, title, description, material_type, url_or_data, upload_date, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         m["id"],
@@ -1220,7 +1420,8 @@ class DatabaseManager:
                         m.get("description", ""),
                         m.get("material_type", "doc"),
                         m.get("url_or_data", ""),
-                        m.get("upload_date", current_iso_timestamp())
+                        m.get("upload_date", current_iso_timestamp()),
+                        m.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1230,8 +1431,8 @@ class DatabaseManager:
                     """
                     INSERT OR REPLACE INTO deadline_extensions (
                         id, badge_id, cosmonaut_id, current_deadline, proposed_deadline,
-                        reason, status, guardian_response, requested_at, decided_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        reason, status, guardian_response, requested_at, decided_at, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         e["id"],
@@ -1243,7 +1444,8 @@ class DatabaseManager:
                         e.get("status", "pending"),
                         e.get("guardian_response", ""),
                         e.get("requested_at", current_iso_timestamp()),
-                        e.get("decided_at", "")
+                        e.get("decided_at", ""),
+                        e.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1253,8 +1455,8 @@ class DatabaseManager:
                 c.execute(
                     """
                     INSERT OR REPLACE INTO announcements (
-                        id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ann_id,
@@ -1265,7 +1467,8 @@ class DatabaseManager:
                         ann.get("target_type", "all"),
                         ann.get("badge_id", ""),
                         ann.get("published_at", current_iso_timestamp()),
-                        ann.get("expiry_date", "")
+                        ann.get("expiry_date", ""),
+                        ann.get("cycle_id") or default_cid
                     )
                 )
                 for recipient_id in ann.get("target_cosmonaut_ids", []):
@@ -1284,8 +1487,8 @@ class DatabaseManager:
                 c.execute(
                     """
                     INSERT OR REPLACE INTO notifications (
-                        id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         n["id"],
@@ -1296,7 +1499,8 @@ class DatabaseManager:
                         n.get("created_at", current_iso_timestamp()),
                         1 if n.get("is_read", False) else 0,
                         n.get("event_type", ""),
-                        n.get("related_badge_id", "")
+                        n.get("related_badge_id", ""),
+                        n.get("cycle_id") or default_cid
                     )
                 )
 
@@ -1305,8 +1509,8 @@ class DatabaseManager:
                 c.execute(
                     """
                     INSERT OR REPLACE INTO activity_events (
-                        id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         act["id"],
@@ -1317,25 +1521,32 @@ class DatabaseManager:
                         act.get("cosmonaut_id", ""),
                         act.get("badge_id", ""),
                         act.get("summary", ""),
-                        act.get("details", "")
+                        act.get("details", ""),
+                        act.get("cycle_id") or default_cid
                     )
                 )
 
             # 12. Band Mappings
             for bm in data.get("band_mappings", []):
                 bm_id = bm.get("id") or f"map_{bm.get('band','B1')}_{bm.get('badge_id','')}"
+                bm_cid = bm.get("cycle_id") or default_cid
+                bm_copy = dict(bm)
+                bm_copy["cycle_id"] = bm_cid
                 c.execute(
-                    "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json) VALUES (?, ?, ?, ?)",
-                    (bm_id, bm.get("band", "B1"), bm.get("badge_id", ""), json.dumps(bm))
+                    "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json, cycle_id) VALUES (?, ?, ?, ?, ?)",
+                    (bm_id, bm.get("band", "B1"), bm.get("badge_id", ""), json.dumps(bm_copy), bm_cid)
                 )
 
             # 13. Mapping Requests
             for mr in data.get("mapping_requests", []):
                 mr_id = mr.get("id")
                 if mr_id:
+                    mr_cid = mr.get("cycle_id") or default_cid
+                    mr_copy = dict(mr)
+                    mr_copy["cycle_id"] = mr_cid
                     c.execute(
-                        "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json) VALUES (?, ?, ?, ?, ?)",
-                        (mr_id, mr.get("band", ""), mr.get("reviewer_id", ""), mr.get("status", "pending"), json.dumps(mr))
+                        "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json, cycle_id) VALUES (?, ?, ?, ?, ?, ?)",
+                        (mr_id, mr.get("band", ""), mr.get("reviewer_id", ""), mr.get("status", "pending"), json.dumps(mr_copy), mr_cid)
                     )
 
             # 14. Reviewer Project Prompts
@@ -1349,8 +1560,8 @@ class DatabaseManager:
                 c.execute(
                     """INSERT OR REPLACE INTO reviewer_project_prompts (
                         id, badge_id, reviewer_id, cosmonaut_ids_json, title, description,
-                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        deliverables_json, requirements_text, outcomes_json, status, created_at, sent_at, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         rp_id,
                         rp.get("badge_id"),
@@ -1363,9 +1574,84 @@ class DatabaseManager:
                         outcomes_json,
                         rp.get("status", "sent"),
                         rp.get("created_at") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                        rp.get("sent_at")
+                        rp.get("sent_at"),
+                        rp.get("cycle_id") or default_cid
                     )
                 )
+
+            # 15. Cycle Enrollments & Performance Appraisals
+            for enr in data.get("cycle_enrollments", []):
+                c.execute(
+                    """INSERT OR REPLACE INTO cycle_enrollments (
+                        id, cycle_id, user_id, cycle_role, band_code, track_code,
+                        base_salary, reporting_manager_id, status, enrolled_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        enr["id"],
+                        enr.get("cycle_id") or default_cid,
+                        enr["user_id"],
+                        enr.get("cycle_role", "cosmonaut"),
+                        enr.get("band_code", "B1"),
+                        enr.get("track_code", "SD"),
+                        float(enr.get("base_salary") or 0.0),
+                        enr.get("reporting_manager_id", ""),
+                        enr.get("status", "active"),
+                        enr.get("enrolled_at") or current_iso_timestamp()
+                    )
+                )
+
+            for app_row in data.get("cycle_appraisals", []):
+                c.execute(
+                    """INSERT OR REPLACE INTO cycle_performance_appraisals (
+                        id, cycle_id, cosmonaut_id, band_code,
+                        badges_assigned, badges_submitted, badges_earned, first_attempt_passes, total_attempts,
+                        avg_marks, avg_percentage, cosmo_score,
+                        badge_reviews_assigned, badge_reviews_completed, projects_created, projects_released,
+                        submissions_assigned_to_review, submissions_graded, reviewer_avg_marks_given, reviewer_score,
+                        composite_score, performance_tier, base_salary, recommended_hike_pct, approved_hike_pct,
+                        hike_amount, new_salary, bonus_amount, recommended_promotion_band, guardian_remarks,
+                        status, calculated_at, finalized_by, finalized_at, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        app_row["id"],
+                        app_row.get("cycle_id") or default_cid,
+                        app_row["cosmonaut_id"],
+                        app_row.get("band_code", "B1"),
+                        int(app_row.get("badges_assigned", 0)),
+                        int(app_row.get("badges_submitted", 0)),
+                        int(app_row.get("badges_earned", 0)),
+                        int(app_row.get("first_attempt_passes", 0)),
+                        int(app_row.get("total_attempts", 0)),
+                        float(app_row.get("avg_marks", 0.0)),
+                        float(app_row.get("avg_percentage", 0.0)),
+                        float(app_row.get("cosmo_score", 0.0)),
+                        int(app_row.get("badge_reviews_assigned", 0)),
+                        int(app_row.get("badge_reviews_completed", 0)),
+                        int(app_row.get("projects_created", 0)),
+                        int(app_row.get("projects_released", 0)),
+                        int(app_row.get("submissions_assigned_to_review", 0)),
+                        int(app_row.get("submissions_graded", 0)),
+                        float(app_row.get("reviewer_avg_marks_given", 0.0)),
+                        float(app_row.get("reviewer_score", 0.0)),
+                        float(app_row.get("composite_score", 0.0)),
+                        app_row.get("performance_tier", "Not Assessed"),
+                        float(app_row.get("base_salary", 0.0)),
+                        float(app_row.get("recommended_hike_pct", 0.0)),
+                        float(app_row.get("approved_hike_pct", 0.0)),
+                        float(app_row.get("hike_amount", 0.0)),
+                        float(app_row.get("new_salary", 0.0)),
+                        float(app_row.get("bonus_amount", 0.0)),
+                        app_row.get("recommended_promotion_band", ""),
+                        app_row.get("guardian_remarks", ""),
+                        app_row.get("status", "calculated"),
+                        app_row.get("calculated_at") or current_iso_timestamp(),
+                        app_row.get("finalized_by", ""),
+                        app_row.get("finalized_at", ""),
+                        json.dumps(app_row.get("details", {})) if isinstance(app_row.get("details"), dict) else (app_row.get("details_json") or "{}")
+                    )
+                )
+
+            self.ensure_default_cycle()
 
     migrate_from_dict = migrate_from_dict
 
@@ -1439,7 +1725,8 @@ class DatabaseManager:
                 "default_timeline": json.loads(r["default_timeline_json"]),
                 "passing_percentage": float(r["passing_percentage"]) if "passing_percentage" in r.keys() and r["passing_percentage"] is not None else 70.0,
                 "published_at": r["published_at"] if "published_at" in r.keys() and r["published_at"] else "",
-                "published_by": r["published_by"] if "published_by" in r.keys() and r["published_by"] else ""
+                "published_by": r["published_by"] if "published_by" in r.keys() and r["published_by"] else "",
+                "cycle_id": r["cycle_id"] if "cycle_id" in r.keys() and r["cycle_id"] else "cycle_1"
             })
 
         # Timelines
@@ -1479,7 +1766,8 @@ class DatabaseManager:
                 "badge_id": r["badge_id"],
                 "published_at": r["published_at"],
                 "expiry_date": r["expiry_date"],
-                "read_by_cosmonaut_ids": reads
+                "read_by_cosmonaut_ids": reads,
+                "cycle_id": r["cycle_id"] if "cycle_id" in r.keys() and r["cycle_id"] else "cycle_1"
             })
 
         # Activities
@@ -1495,12 +1783,22 @@ class DatabaseManager:
             notifications.append(d)
 
         # Band Mappings
-        bm_rows = c.execute("SELECT data_json FROM band_mappings").fetchall()
-        band_mappings = [json.loads(r[0]) for r in bm_rows]
+        bm_rows = c.execute("SELECT data_json, cycle_id FROM band_mappings").fetchall()
+        band_mappings = []
+        for r in bm_rows:
+            bm_d = json.loads(r[0])
+            if not bm_d.get("cycle_id"):
+                bm_d["cycle_id"] = r[1] if len(r) > 1 and r[1] else "cycle_1"
+            band_mappings.append(bm_d)
 
         # Mapping Requests
-        mr_rows = c.execute("SELECT data_json FROM mapping_requests").fetchall()
-        mapping_requests = [json.loads(r[0]) for r in mr_rows]
+        mr_rows = c.execute("SELECT data_json, cycle_id FROM mapping_requests").fetchall()
+        mapping_requests = []
+        for r in mr_rows:
+            mr_d = json.loads(r[0])
+            if not mr_d.get("cycle_id"):
+                mr_d["cycle_id"] = r[1] if len(r) > 1 and r[1] else "cycle_1"
+            mapping_requests.append(mr_d)
 
         # Reviewer Project Prompts
         reviewer_projects = []
@@ -1523,13 +1821,42 @@ class DatabaseManager:
                     "outcomes": outcomes_list,
                     "status": r["status"],
                     "created_at": r["created_at"],
-                    "sent_at": r["sent_at"]
+                    "sent_at": r["sent_at"],
+                    "cycle_id": r["cycle_id"] if "cycle_id" in r.keys() and r["cycle_id"] else "cycle_1"
                 })
+        except Exception:
+            pass
+
+        # Performance Cycles, Enrollments & Appraisals
+        cycles = []
+        cycle_enrollments = []
+        cycle_appraisals = []
+        try:
+            for r in c.execute("SELECT * FROM performance_cycles ORDER BY start_date DESC, created_at DESC").fetchall():
+                d = dict(r)
+                try:
+                    d["hike_policy"] = json.loads(d.pop("hike_policy_json", "{}") or "{}")
+                except Exception:
+                    d["hike_policy"] = {}
+                cycles.append(d)
+            for r in c.execute("SELECT * FROM cycle_enrollments ORDER BY enrolled_at DESC").fetchall():
+                cycle_enrollments.append(dict(r))
+            for r in c.execute("SELECT * FROM cycle_performance_appraisals ORDER BY composite_score DESC").fetchall():
+                d = dict(r)
+                try:
+                    d["details"] = json.loads(d.pop("details_json", "{}") or "{}")
+                except Exception:
+                    d["details"] = {}
+                cycle_appraisals.append(d)
         except Exception:
             pass
 
         return {
             "schema_version": SCHEMA_VERSION,
+            "active_cycle_id": self._get_active_cycle_id(),
+            "cycles": cycles,
+            "cycle_enrollments": cycle_enrollments,
+            "cycle_appraisals": cycle_appraisals,
             "users": users,
             "profiles": profiles,
             "badges": badges,
@@ -1827,6 +2154,7 @@ class DatabaseManager:
         b_id = badge_data.get("id") or f"badge_{badge_data.get('code','').lower().replace('-','_')}_{int(datetime.datetime.now().timestamp())}"
         now_iso = current_iso_timestamp()
         due_iso = review_deadline_iso_timestamp(24)
+        cycle_id = badge_data.get("cycle_id") or self._get_active_cycle_id()
 
         if not SQLITE_AVAILABLE or self.conn is None:
             return True, "Badge Created Successfully!", b_id
@@ -1834,8 +2162,8 @@ class DatabaseManager:
         try:
             with self.conn:
                 # 1. Insert or Update Badge Record (workflow_status = 'pending_review', is_published = 0, is_allocated = 0)
-                existing_b = self.conn.execute("SELECT id FROM badges WHERE id = ?", (b_id,)).fetchone()
-                if existing_b:
+                existing_b = self.conn.execute("SELECT id, cycle_id FROM badges WHERE id = ?", (b_id,)).fetchone()
+                if existing_b and existing_b["cycle_id"] == cycle_id:
                     self.conn.execute(
                         """
                         UPDATE badges SET
@@ -1843,7 +2171,7 @@ class DatabaseManager:
                             learning_outcomes_json = ?, learning_topics_json = ?, project_requirements = ?,
                             target_band = ?, power = ?, capability = ?, skill = ?,
                             prompt_json = ?, workflow_status = 'pending_review', creator_id = ?, assigned_reviewer_id = ?,
-                            updated_at = ?
+                            updated_at = ?, cycle_id = ?
                         WHERE id = ?
                         """,
                         (
@@ -1862,10 +2190,13 @@ class DatabaseManager:
                             creator_id,
                             reviewer_id,
                             now_iso,
+                            cycle_id,
                             b_id
                         )
                     )
                 else:
+                    if existing_b:
+                        b_id = f"{cycle_id}__{b_id}"
                     self.conn.execute(
                         """
                         INSERT INTO badges (
@@ -1873,8 +2204,8 @@ class DatabaseManager:
                             learning_outcomes_json, learning_topics_json, project_requirements,
                             is_published, is_allocated, target_band, power, capability, skill,
                             prompt_json, workflow_status, creator_id, assigned_reviewer_id,
-                            assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'pending_review', ?, ?, '[]', '{}', ?, ?)
+                            assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at, cycle_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'pending_review', ?, ?, '[]', '{}', ?, ?, ?)
                         """,
                         (
                             b_id,
@@ -1893,7 +2224,8 @@ class DatabaseManager:
                             creator_id,
                             reviewer_id,
                             now_iso,
-                            now_iso
+                            now_iso,
+                            cycle_id
                         )
                     )
 
@@ -1913,28 +2245,28 @@ class DatabaseManager:
                 assign_id = f"assign_{b_id}_{int(datetime.datetime.now().timestamp())}"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_reviewer_assignments (id, badge_id, reviewer_id, assigned_at, review_due_at, status)
-                    VALUES (?, ?, ?, ?, ?, 'pending')
+                    INSERT INTO badge_reviewer_assignments (id, badge_id, reviewer_id, assigned_at, review_due_at, status, cycle_id)
+                    VALUES (?, ?, ?, ?, ?, 'pending', ?)
                     """,
-                    (assign_id, b_id, reviewer_id, now_iso, due_iso)
+                    (assign_id, b_id, reviewer_id, now_iso, due_iso, cycle_id)
                 )
 
                 # 5. Review Event Log
                 event_id = f"bre_{b_id}_created"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
-                    VALUES (?, ?, ?, 'created_and_submitted', NULL, 'pending_review', 'Badge created and submitted for authorization.', ?)
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'created_and_submitted', NULL, 'pending_review', 'Badge created and submitted for authorization.', ?, ?)
                     """,
-                    (event_id, b_id, creator_id, now_iso)
+                    (event_id, b_id, creator_id, now_iso, cycle_id)
                 )
 
                 # 6. Notification to Assigned Reviewer
                 notif_id = f"notif_badge_rev_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
-                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_review_assigned', ?)
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_review_assigned', ?, ?)
                     """,
                     (
                         notif_id,
@@ -1942,7 +2274,8 @@ class DatabaseManager:
                         f"Badge Authorization Request: {badge_data['code']}",
                         f"Guardian {creator_name} has submitted a new badge '{badge_data['title']}' ({badge_data['code']}) for Band {target_band} requiring your review.",
                         now_iso,
-                        b_id
+                        b_id,
+                        cycle_id
                     )
                 )
 
@@ -1950,8 +2283,8 @@ class DatabaseManager:
                 act_id = f"act_badge_created_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
-                    VALUES (?, ?, 'badge_created', ?, ?, '', ?, ?, ?)
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                    VALUES (?, ?, 'badge_created', ?, ?, '', ?, ?, ?, ?)
                     """,
                     (
                         act_id,
@@ -1960,7 +2293,8 @@ class DatabaseManager:
                         creator_name,
                         b_id,
                         f"Created badge {badge_data['code']} ({badge_data['title']}) and submitted for reviewer authorization.",
-                        f"Assigned reviewer: {reviewer_id}. Target band: {target_band}."
+                        f"Assigned reviewer: {reviewer_id}. Target band: {target_band}.",
+                        cycle_id
                     )
                 )
 
@@ -2053,23 +2387,24 @@ class DatabaseManager:
                     self.conn.execute("INSERT OR REPLACE INTO badge_skills (badge_id, skill_name, is_custom) VALUES (?, ?, 0)", (badge_id, new_skill))
 
                 # Audit event
+                b_cycle_id = (curr_row["cycle_id"] if "cycle_id" in curr_row.keys() and curr_row["cycle_id"] else None) or self._get_active_cycle_id()
                 event_id = f"bre_{badge_id}_edit_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
-                    VALUES (?, ?, ?, 'edited', 'pending_review', 'pending_review', 'Badge details and structured prompt edited by reviewer.', ?)
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'edited', 'pending_review', 'pending_review', 'Badge details and structured prompt edited by reviewer.', ?, ?)
                     """,
-                    (event_id, badge_id, reviewer_id, now_iso)
+                    (event_id, badge_id, reviewer_id, now_iso, b_cycle_id)
                 )
 
                 # Activity event
                 act_id = f"act_badge_edit_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
-                    VALUES (?, ?, 'badge_edited', ?, ?, '', ?, ?, ?)
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                    VALUES (?, ?, 'badge_edited', ?, ?, '', ?, ?, ?, ?)
                     """,
-                    (act_id, now_iso, reviewer_id, reviewer_name, badge_id, f"Reviewer {reviewer_name} edited badge {badge_id} specification.", "")
+                    (act_id, now_iso, reviewer_id, reviewer_name, badge_id, f"Reviewer {reviewer_name} edited badge {badge_id} specification.", "", b_cycle_id)
                 )
             return True, "Badge updated successfully. Status remains Pending Review."
         except Exception as e:
@@ -2112,6 +2447,7 @@ class DatabaseManager:
         creator_id = badge_row["creator_id"] or "guardian_1"
         badge_code = badge_row["code"]
         badge_title = badge_row["title"]
+        b_cycle_id = (badge_row["cycle_id"] if "cycle_id" in badge_row.keys() and badge_row["cycle_id"] else None) or self._get_active_cycle_id()
 
         try:
             with self.conn:
@@ -2142,18 +2478,18 @@ class DatabaseManager:
                 event_id = f"bre_{badge_id}_approved"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
-                    VALUES (?, ?, ?, 'approved', 'pending_review', 'approved', ?, ?)
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'approved', 'pending_review', 'approved', ?, ?, ?)
                     """,
-                    (event_id, badge_id, reviewer_id, notes or "Badge authorized by reviewer.", now_iso)
+                    (event_id, badge_id, reviewer_id, notes or "Badge authorized by reviewer.", now_iso, b_cycle_id)
                 )
 
                 # 4. Notify Originating Guardian
                 notif_id = f"notif_approved_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
-                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_approved', ?)
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_approved', ?, ?)
                     """,
                     (
                         notif_id,
@@ -2161,7 +2497,8 @@ class DatabaseManager:
                         f"Badge Approved: {badge_code}",
                         f"Reviewer {reviewer_name} has officially approved badge '{badge_title}' ({badge_code}). It is now available in your Allotment catalog.",
                         now_iso,
-                        badge_id
+                        badge_id,
+                        b_cycle_id
                     )
                 )
 
@@ -2169,8 +2506,8 @@ class DatabaseManager:
                 act_id = f"act_approved_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
-                    VALUES (?, ?, 'badge_approved', ?, ?, '', ?, ?, ?)
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                    VALUES (?, ?, 'badge_approved', ?, ?, '', ?, ?, ?, ?)
                     """,
                     (
                         act_id,
@@ -2179,7 +2516,8 @@ class DatabaseManager:
                         reviewer_name,
                         badge_id,
                         f"Approved badge {badge_code} ({badge_title}).",
-                        notes
+                        notes,
+                        b_cycle_id
                     )
                 )
 
@@ -2210,6 +2548,7 @@ class DatabaseManager:
             creator_id = badge_row["creator_id"] or "guardian_1"
             badge_code = badge_row["code"]
             badge_title = badge_row["title"]
+            b_cycle_id = (badge_row["cycle_id"] if "cycle_id" in badge_row.keys() and badge_row["cycle_id"] else None) or self._get_active_cycle_id()
 
             with self.conn:
                 # 1. Update Badge status
@@ -2239,18 +2578,18 @@ class DatabaseManager:
                 event_id = f"bre_{badge_id}_returned_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
-                    VALUES (?, ?, ?, 'returned', 'pending_review', 'returned', ?, ?)
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'returned', 'pending_review', 'returned', ?, ?, ?)
                     """,
-                    (event_id, badge_id, reviewer_id, notes or "Returned with feedback.", now_iso)
+                    (event_id, badge_id, reviewer_id, notes or "Returned with feedback.", now_iso, b_cycle_id)
                 )
 
                 # 4. Notify Creator Guardian
                 notif_id = f"notif_ret_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
-                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_returned', ?)
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                    VALUES (?, ?, ?, ?, 'g_badge_approval', ?, 0, 'badge_returned', ?, ?)
                     """,
                     (
                         notif_id,
@@ -2258,7 +2597,8 @@ class DatabaseManager:
                         f"Badge Returned: {badge_code}",
                         f"Reviewer {reviewer_name} returned badge '{badge_title}' with feedback: {notes}",
                         now_iso,
-                        badge_id
+                        badge_id,
+                        b_cycle_id
                     )
                 )
 
@@ -2266,8 +2606,8 @@ class DatabaseManager:
                 act_id = f"act_ret_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
-                    VALUES (?, ?, 'badge_returned', ?, ?, '', ?, ?, ?)
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                    VALUES (?, ?, 'badge_returned', ?, ?, '', ?, ?, ?, ?)
                     """,
                     (
                         act_id,
@@ -2276,7 +2616,8 @@ class DatabaseManager:
                         reviewer_name,
                         badge_id,
                         f"Reviewer {reviewer_name} returned badge {badge_code} ({badge_title}) for revisions.",
-                        notes
+                        notes,
+                        b_cycle_id
                     )
                 )
 
@@ -2337,6 +2678,7 @@ class DatabaseManager:
             rev_name = rev_row["name"]
             badge_code = badge_row["code"]
             badge_title = badge_row["title"]
+            b_cycle_id = (badge_row["cycle_id"] if "cycle_id" in badge_row.keys() and badge_row["cycle_id"] else None) or self._get_active_cycle_id()
 
             due_date = (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
             assign_id = f"bra_{badge_id}_{reviewer_id}_{int(datetime.datetime.now().timestamp())}"
@@ -2358,28 +2700,28 @@ class DatabaseManager:
                 self.conn.execute(
                     """
                     INSERT OR REPLACE INTO badge_reviewer_assignments (
-                        id, badge_id, reviewer_id, assigned_at, review_due_at, status, decision_notes, decided_at
-                    ) VALUES (?, ?, ?, ?, ?, 'pending', '', NULL)
+                        id, badge_id, reviewer_id, assigned_at, review_due_at, status, decision_notes, decided_at, cycle_id
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', '', NULL, ?)
                     """,
-                    (assign_id, badge_id, reviewer_id, now_iso, due_date)
+                    (assign_id, badge_id, reviewer_id, now_iso, due_date, b_cycle_id)
                 )
 
                 # 3. Audit Review Event
                 event_id = f"bre_{badge_id}_req_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp)
-                    VALUES (?, ?, ?, 'created_and_submitted', ?, 'pending_review', ?, ?)
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'created_and_submitted', ?, 'pending_review', ?, ?, ?)
                     """,
-                    (event_id, badge_id, creator_id, badge_row["workflow_status"], f"Review requested from {rev_name} ({rev_band}).", now_iso)
+                    (event_id, badge_id, creator_id, badge_row["workflow_status"], f"Review requested from {rev_name} ({rev_band}).", now_iso, b_cycle_id)
                 )
 
                 # 4. Dispatch Notification to Reviewer
                 notif_id = f"notif_req_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id)
-                    VALUES (?, ?, ?, ?, 'c_requests', ?, 0, 'badge_review_requested', ?)
+                    INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                    VALUES (?, ?, ?, ?, 'c_requests', ?, 0, 'badge_review_requested', ?, ?)
                     """,
                     (
                         notif_id,
@@ -2387,7 +2729,8 @@ class DatabaseManager:
                         f"Review Request: {badge_code}",
                         f"Guardian submitted badge '{badge_title}' ({badge_code}) for Band {target_band} for your review and authorization.",
                         now_iso,
-                        badge_id
+                        badge_id,
+                        b_cycle_id
                     )
                 )
 
@@ -2395,8 +2738,8 @@ class DatabaseManager:
                 act_id = f"act_req_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
-                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details)
-                    VALUES (?, ?, 'badge_review_requested', ?, 'Guardian', '', ?, ?, ?)
+                    INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                    VALUES (?, ?, 'badge_review_requested', ?, 'Guardian', '', ?, ?, ?, ?)
                     """,
                     (
                         act_id,
@@ -2404,7 +2747,8 @@ class DatabaseManager:
                         creator_id,
                         badge_id,
                         f"Dispatched review request for {badge_code} ({badge_title}) to {rev_name} ({rev_band}).",
-                        f"Review due by {due_date}."
+                        f"Review due by {due_date}.",
+                        b_cycle_id
                     )
                 )
 
@@ -2416,7 +2760,7 @@ class DatabaseManager:
     # WORKFLOW QUERY ACCESSORS
     # ==========================================================================
 
-    def get_submitted_badges_for_approval(self, status_filter: str = "all") -> List[Dict[str, Any]]:
+    def get_submitted_badges_for_approval(self, status_filter: str = "all", cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieves badges in the authorization pipeline with creator and reviewer details."""
         if not SQLITE_AVAILABLE or self.conn is None:
             return []
@@ -2424,7 +2768,7 @@ class DatabaseManager:
         SELECT
             b.id, b.code, b.title, b.category, b.description, b.target_band,
             b.power, b.capability, b.skill, b.prompt_json, b.workflow_status,
-            b.created_at, b.updated_at,
+            b.created_at, b.updated_at, b.cycle_id,
             b.creator_id, u_c.name AS creator_name,
             b.assigned_reviewer_id, u_r.name AS reviewer_name,
             u_r.username AS reviewer_username,
@@ -2436,6 +2780,9 @@ class DatabaseManager:
         WHERE b.workflow_status IN ('ready_for_review', 'pending_review', 'approved', 'returned')
         """
         params = []
+        if cycle_id:
+            query += " AND b.cycle_id = ?"
+            params.append(cycle_id)
         if status_filter != "all":
             query += " AND b.workflow_status = ?"
             params.append(status_filter)
@@ -2479,19 +2826,21 @@ class DatabaseManager:
             res["prompt"] = {}
         return res
 
-    def get_badge_review_requests_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+    def get_badge_review_requests_for_user(self, user_id: str, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Retrieves all badge review requests where user_id is the assigned reviewer.
         Includes badge details, assignment metadata, decision notes, outcomes, and topics.
         """
         if not SQLITE_AVAILABLE or self.conn is None:
             return []
-        query = """
+        cycle_filter_sql = " AND b.cycle_id = ?" if cycle_id else ""
+        params = [user_id, user_id] + ([cycle_id] if cycle_id else [])
+        query = f"""
         SELECT
             b.id, b.code, b.title, b.category, b.description, b.target_band,
             b.power, b.capability, b.skill, b.prompt_json, b.workflow_status,
             b.learning_outcomes_json, b.learning_topics_json, b.project_requirements,
-            b.created_at, b.updated_at,
+            b.created_at, b.updated_at, b.cycle_id,
             b.creator_id, u_c.name AS creator_name, u_c.email AS creator_email,
             b.assigned_reviewer_id, u_r.name AS reviewer_name,
             ra.id AS assignment_id, ra.assigned_at, ra.review_due_at,
@@ -2500,10 +2849,10 @@ class DatabaseManager:
         LEFT JOIN users u_c ON b.creator_id = u_c.id
         LEFT JOIN users u_r ON b.assigned_reviewer_id = u_r.id
         LEFT JOIN badge_reviewer_assignments ra ON b.id = ra.badge_id
-        WHERE b.assigned_reviewer_id = ? OR ra.reviewer_id = ?
+        WHERE (b.assigned_reviewer_id = ? OR ra.reviewer_id = ?){cycle_filter_sql}
         ORDER BY b.created_at DESC
         """
-        rows = self.conn.execute(query, (user_id, user_id)).fetchall()
+        rows = self.conn.execute(query, tuple(params)).fetchall()
         results = []
         seen_ids = set()
         for r in rows:
@@ -2533,7 +2882,8 @@ class DatabaseManager:
     def get_badge_review_history(
         self,
         badge_id: Optional[str] = None,
-        reviewer_id: Optional[str] = None
+        reviewer_id: Optional[str] = None,
+        cycle_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Retrieves complete audit trail of badge review events.
@@ -2550,12 +2900,15 @@ class DatabaseManager:
         if reviewer_id:
             conditions.append("(e.actor_id = ? OR b.assigned_reviewer_id = ?)")
             params.extend([reviewer_id, reviewer_id])
+        if cycle_id:
+            conditions.append("e.cycle_id = ?")
+            params.append(cycle_id)
             
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         
         query = f"""
         SELECT
-            e.id, e.badge_id, e.actor_id, e.event_type, e.previous_status, e.new_status, e.notes, e.timestamp,
+            e.id, e.badge_id, e.actor_id, e.event_type, e.previous_status, e.new_status, e.notes, e.timestamp, e.cycle_id,
             b.code AS badge_code, b.title AS badge_title, b.target_band, b.power, b.capability, b.skill,
             u.name AS actor_name, m.band_code AS actor_band
         FROM badge_review_events e

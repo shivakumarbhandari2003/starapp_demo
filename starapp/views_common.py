@@ -406,6 +406,85 @@ def render_9point_timeline(timeline: BadgeTimeline, badge: Optional[Badge] = Non
     </div>
     """
 
+def render_cycle_context_bar(
+    cycles: List[Any],
+    selected_cycle: Optional[Any],
+    is_guardian: bool = False,
+    current_view: str = ""
+) -> str:
+    """Renders a compact Topbar Cycle Switcher showing the 6-month cycle window, status, and switcher."""
+    if not selected_cycle:
+        return ""
+
+    c_id = getattr(selected_cycle, "id", "")
+    c_name = getattr(selected_cycle, "name", c_id)
+    c_start = getattr(selected_cycle, "start_date", "")
+    c_end = getattr(selected_cycle, "end_date", "")
+    c_status = (getattr(selected_cycle, "status", "active") or "active").lower()
+
+    if c_status == "closed":
+        status_badge = '<span style="background:rgba(100,116,139,0.16); color:#334155; border:1px solid #94A3B8; font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">CLOSED &bull; READ-ONLY ARCHIVE</span>'
+    elif c_status == "evaluating":
+        status_badge = '<span style="background:rgba(245,158,11,0.14); color:#B45309; border:1px solid #FBBF24; font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">EVALUATING CYCLE</span>'
+    else:
+        status_badge = '<span style="background:rgba(16,185,129,0.14); color:#047857; border:1px solid rgba(16,185,129,0.35); font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">ACTIVE 6-MONTH CYCLE</span>'
+
+    opts = []
+    for cyc in cycles:
+        sel = " selected" if getattr(cyc, "id", "") == c_id else ""
+        st_lbl = (getattr(cyc, "status", "active") or "active").upper()
+        opts.append(
+            f'<option value="{escape(cyc.id)}"{sel}>{escape(cyc.name)} ({escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}) [{st_lbl}]</option>'
+        )
+
+    nav_action = "nav_guardian" if is_guardian else "nav_cosmonaut"
+    cycles_view = "g_cycles" if is_guardian else "c_cycles"
+    cycles_btn_label = "Cycles & Performance" if is_guardian else "Past Cycles & Appraisals"
+
+    guardian_create_btn = ""
+    if is_guardian:
+        guardian_create_btn = """
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{}')"
+                style="font-size:11.5px; font-weight:800; padding:5px 11px; white-space:nowrap;">
+            + New 6-Month Cycle
+        </button>
+        """
+
+    cycles_nav_btn = ""
+    if current_view != cycles_view:
+        cycles_nav_btn = f"""
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('{nav_action}', '{cycles_view}')"
+                style="font-size:11.5px; font-weight:700; padding:5px 11px; white-space:nowrap; color:var(--deep-frozen-midnight);">
+            {escape(cycles_btn_label)} &rarr;
+        </button>
+        """
+
+    return f"""
+    <div id="starapp-cycle-topbar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:10px 16px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.82) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 3px 12px rgba(7,22,41,0.04);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">
+                {get_icon("calendar", 14)}
+                <span>{escape(c_name)}</span>
+            </span>
+            <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">
+                {escape(c_start)} &rarr; {escape(c_end)}
+            </span>
+            {status_badge}
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <label for="topbar-cycle-select" style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.4px;">Cycle:</label>
+            <select id="topbar-cycle-select" class="liquid-glass-control liquid-glass-select"
+                    style="font-size:12px; font-weight:700; padding:4px 10px; min-width:250px; height:32px;"
+                    onchange="window.StarAppBridge.dispatchAction('select_cycle', this.value)">
+                {"".join(opts)}
+            </select>
+            {cycles_nav_btn}
+            {guardian_create_btn}
+        </div>
+    </div>
+    """
+
+
 def render_topbar(
     current_user: User,
     page_title: str,

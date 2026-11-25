@@ -6,8 +6,6 @@ __pycache__/
 .idea/
 Thumbs.db
 Desktop.ini
-*.db
-*.sqlite
 *.bak
 *-shm
 *-wal
