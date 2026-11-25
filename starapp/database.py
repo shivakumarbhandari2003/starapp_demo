@@ -708,19 +708,23 @@ class DatabaseManager:
                     self._conn.execute(f"UPDATE {tbl} SET cycle_id = ? WHERE cycle_id IS NULL OR cycle_id = ''", (default_cid,))
                 except Exception:
                     pass
-            # Ensure active users are enrolled in default_cid if cycle_enrollments has none for that cycle
-            enr_cnt = self._conn.execute("SELECT COUNT(*) FROM cycle_enrollments WHERE cycle_id = ?", (default_cid,)).fetchone()[0]
-            if enr_cnt == 0:
-                users_rows = self._conn.execute("SELECT id, primary_role, band, track_code, reporting_manager_id FROM users WHERE status = 'active'").fetchall()
-                for u in users_rows:
-                    self._conn.execute(
-                        """
-                        INSERT OR IGNORE INTO cycle_enrollments (
-                            id, cycle_id, user_id, cycle_role, band_code, track_code, base_salary, reporting_manager_id, status, enrolled_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, 'active', ?)
-                        """,
-                        (f"enr_{default_cid}_{u[0]}", default_cid, u[0], u[1] or "cosmonaut", u[2] or "B1", u[3] or "SD", u[4] or "", now_iso)
-                    )
+            # Ensure active users are enrolled in every defined cycle whose cycle_enrollments is empty
+            cyc_rows = self._conn.execute("SELECT id, status FROM performance_cycles").fetchall()
+            users_rows = self._conn.execute("SELECT id, primary_role, band, track_code, reporting_manager_id FROM users WHERE status = 'active'").fetchall()
+            for cyc_r in cyc_rows:
+                cid_item = cyc_r[0]
+                enr_st = "closed" if cyc_r[1] == "closed" else "active"
+                enr_cnt = self._conn.execute("SELECT COUNT(*) FROM cycle_enrollments WHERE cycle_id = ?", (cid_item,)).fetchone()[0]
+                if enr_cnt == 0:
+                    for u in users_rows:
+                        self._conn.execute(
+                            """
+                            INSERT OR IGNORE INTO cycle_enrollments (
+                                id, cycle_id, user_id, cycle_role, band_code, track_code, base_salary, reporting_manager_id, status, enrolled_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, 0.0, ?, ?, ?)
+                            """,
+                            (f"enr_{cid_item}_{u[0]}", cid_item, u[0], u[1] or "cosmonaut", u[2] or "B1", u[3] or "SD", u[4] or "", enr_st, now_iso)
+                        )
         except Exception:
             pass
 
@@ -1651,6 +1655,44 @@ class DatabaseManager:
                     )
                 )
 
+            # 16. Badge Reviewer Assignments & Review Audit Events
+            for bra in data.get("badge_reviewer_assignments", []):
+                if bra.get("id") and bra.get("badge_id") and bra.get("reviewer_id"):
+                    c.execute(
+                        """INSERT OR REPLACE INTO badge_reviewer_assignments (
+                            id, badge_id, reviewer_id, assigned_at, review_due_at, status, decision_notes, decided_at, cycle_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            bra["id"],
+                            bra["badge_id"],
+                            bra["reviewer_id"],
+                            bra.get("assigned_at", current_iso_timestamp()),
+                            bra.get("review_due_at") or "",
+                            bra.get("status", "pending"),
+                            bra.get("decision_notes", ""),
+                            bra.get("decided_at"),
+                            bra.get("cycle_id") or default_cid
+                        )
+                    )
+            for bre in data.get("badge_review_events", []):
+                if bre.get("id") and bre.get("badge_id") and bre.get("actor_id"):
+                    c.execute(
+                        """INSERT OR REPLACE INTO badge_review_events (
+                            id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            bre["id"],
+                            bre["badge_id"],
+                            bre["actor_id"],
+                            bre.get("event_type", "created"),
+                            bre.get("previous_status"),
+                            bre.get("new_status", "pending_review"),
+                            bre.get("notes", ""),
+                            bre.get("timestamp", current_iso_timestamp()),
+                            bre.get("cycle_id") or default_cid
+                        )
+                    )
+
             self.ensure_default_cycle()
 
     migrate_from_dict = migrate_from_dict
@@ -1851,12 +1893,22 @@ class DatabaseManager:
         except Exception:
             pass
 
+        badge_reviewer_assignments = []
+        badge_review_events = []
+        try:
+            badge_reviewer_assignments = [dict(r) for r in c.execute("SELECT * FROM badge_reviewer_assignments ORDER BY assigned_at DESC").fetchall()]
+            badge_review_events = [dict(r) for r in c.execute("SELECT * FROM badge_review_events ORDER BY timestamp DESC").fetchall()]
+        except Exception:
+            pass
+
         return {
             "schema_version": SCHEMA_VERSION,
             "active_cycle_id": self._get_active_cycle_id(),
             "cycles": cycles,
             "cycle_enrollments": cycle_enrollments,
             "cycle_appraisals": cycle_appraisals,
+            "badge_reviewer_assignments": badge_reviewer_assignments,
+            "badge_review_events": badge_review_events,
             "users": users,
             "profiles": profiles,
             "badges": badges,

@@ -54,7 +54,9 @@ ICON_SVGS = {
     "alert_triangle": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
     "github": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>',
     "download": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
-    "copy": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+    "copy": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+    "dollar": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
+    "compass": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>'
 }
 
 def get_icon(name: str, size: int = 15, style: str = "") -> str:
@@ -480,6 +482,55 @@ def render_cycle_context_bar(
             </select>
             {cycles_nav_btn}
             {guardian_create_btn}
+        </div>
+    </div>
+    """
+
+
+def render_sidebar_cycle_pill(
+    selected_cycle: Optional[Any],
+    nav_action: str,
+    choose_cycle_view: str
+) -> str:
+    """Renders a compact Global Cycle Filter badge inside the portal sidebar (no repeated per-page topbar)."""
+    if not selected_cycle:
+        return ""
+
+    c_code = getattr(selected_cycle, "code", None) or getattr(selected_cycle, "id", "CYCLE")
+    c_name = getattr(selected_cycle, "name", "Cycle")
+    c_start = getattr(selected_cycle, "start_date", "")
+    c_end = getattr(selected_cycle, "end_date", "")
+    c_status = (getattr(selected_cycle, "status", "active") or "active").lower()
+
+    if c_status == "closed":
+        dot_color = "#94A3B8"
+        st_lbl = "CLOSED"
+    elif c_status == "evaluating":
+        dot_color = "#F59E0B"
+        st_lbl = "EVAL"
+    else:
+        dot_color = "#10B981"
+        st_lbl = "ACTIVE"
+
+    short_code = escape(c_code[:10])
+    return f"""
+    <div id="starapp-sidebar-cycle-pill" class="sidebar-band-switcher" style="margin-top:4px; margin-bottom:4px;">
+        <div class="band-switcher-mini" title="Global Cycle Filter: {escape(c_name)} ({escape(c_start)} -> {escape(c_end)})">
+            <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(16,185,129,0.18); border:1px solid {dot_color}; color:#fff; padding:2px 6px; border-radius:8px; cursor:pointer;"
+                  onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')">{short_code}</span>
+        </div>
+        <div class="band-switcher-content" style="border-color:rgba(16,185,129,0.4);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--pure-ice);">Global Cycle</span>
+                <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 6px; border-radius:999px;">{st_lbl}</span>
+            </div>
+            <div style="font-size:11.5px; font-weight:800; color:#fff; margin-top:3px; overflow:hidden; text-overflow:ellipsis;">{escape(c_name)}</div>
+            <button type="button" class="btn-ghost btn-sm"
+                    onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
+                    style="color:var(--pure-ice); font-size:10.5px; padding:3px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:700;"
+                    title="Change Global Cycle Filter">
+                <span>Switch Cycle Filter &rarr;</span>
+            </button>
         </div>
     </div>
     """

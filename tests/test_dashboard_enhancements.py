@@ -33,6 +33,8 @@ class TestDashboardEnhancements(unittest.TestCase):
         """Verify Aarav Sharma sees his actual data and zero fake demo data."""
         self.app.handle_event("select_demo_account", "cosmo_1")
         self.assertEqual(self.app.current_user.id, "cosmo_1")
+        self.assertEqual(self.app.current_view, "c_choose_cycle")
+        self.app.handle_event("nav_cosmonaut", "c_dashboard")
         self.assertEqual(self.app.current_view, "c_dashboard")
 
         html = self.app.render()
@@ -71,6 +73,8 @@ class TestDashboardEnhancements(unittest.TestCase):
         """Verify Guardian dashboard renders required sections and cohort aggregate from SQLite."""
         self.app.handle_event("select_demo_account", "guardian_1")
         self.assertEqual(self.app.current_user.id, "guardian_1")
+        self.assertEqual(self.app.current_view, "g_cycles")
+        self.app.handle_event("nav_guardian", "g_dashboard")
         self.assertEqual(self.app.current_view, "g_dashboard")
 
         html = self.app.render()
@@ -101,6 +105,7 @@ class TestDashboardEnhancements(unittest.TestCase):
     def test_guardian_individual_scope_switching(self):
         """Verify Guardian can switch scope to inspect Aarav Sharma."""
         self.app.handle_event("select_demo_account", "guardian_1")
+        self.app.handle_event("nav_guardian", "g_dashboard")
 
         # 1. Inspect Aarav Sharma
         self.app.handle_event("select_guardian_cosmo_filter", "cosmo_1")
@@ -125,6 +130,7 @@ class TestDashboardEnhancements(unittest.TestCase):
     def test_guardian_risk_filtering(self):
         """Verify Guardian can filter monitoring table by risk status."""
         self.app.handle_event("select_demo_account", "guardian_1")
+        self.app.handle_event("nav_guardian", "g_dashboard")
 
         # Filter for Attention
         self.app.handle_event("filter_guardian_risk", "attention")

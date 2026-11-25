@@ -375,7 +375,7 @@ class TestMandatoryScenariosAToH(unittest.TestCase):
         html = controller.render()
         
         # Verify dashboard renders successfully
-        self.assertIn("Batch Dashboard", html)
+        self.assertIn("Academy Command Center", html)
 
     def test_scenario_h_privacy_and_permissions(self):
         """Scenario H — Cosmonaut cannot access another cadet's private records or guardian actions."""

@@ -168,11 +168,11 @@
           const requestedUser = urlParams.get("user");
 
           if (requestedRole === "guardian" || requestedUser === "guardian_1") {
-            const sess = JSON.stringify({ user_id: "guardian_1", current_view: "g_create_badge" });
+            const sess = JSON.stringify({ user_id: "guardian_1", current_view: "g_cycles" });
             sessionStorage.setItem("starapp_session", sess);
             return sess;
           } else if (requestedRole === "cosmonaut" || requestedUser === "cosmo_1") {
-            const sess = JSON.stringify({ user_id: "cosmo_1", current_view: "c_dashboard" });
+            const sess = JSON.stringify({ user_id: "cosmo_1", current_view: "c_choose_cycle" });
             sessionStorage.setItem("starapp_session", sess);
             return sess;
           }

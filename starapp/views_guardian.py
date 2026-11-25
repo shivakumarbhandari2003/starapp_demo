@@ -68,24 +68,46 @@ def render_guardian_sidebar(
     pending_extensions_count: int,
     pending_badge_approvals_count: int = 0,
     active_band: Optional[str] = None,
-    hidden: bool = False
+    hidden: bool = False,
+    selected_cycle: Optional[Any] = None
 ) -> str:
-    nav_items = [
-        {"id": "g_create_badge", "label": "Create Badge", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>', "badge": 0},
-        {"id": "g_badge_approval", "label": "Reviewer Badge Approval", "icon": '<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', "badge": pending_badge_approvals_count},
-        {"id": "g_dashboard", "label": "Batch Dashboard", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>', "badge": 0},
-        {"id": "g_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
-        {"id": "g_allotment", "label": "Badge Allotment", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
-        {"id": "g_mapping", "label": "Mapping", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>', "badge": 0},
-        {"id": "g_reviews", "label": "Assessment", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
-        {"id": "g_materials", "label": "Learning Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
-        {"id": "g_extensions", "label": "Extension Requests", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count},
-        {"id": "g_cycles", "label": "Cycles & Performance", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>', "badge": 0}
-    ]
+    from starapp.storage import store
+    from starapp.views_common import render_sidebar_cycle_pill
+
+    if selected_cycle is None and hasattr(store, "get_cycle"):
+        try:
+            selected_cycle = store.get_cycle(store.get_active_cycle_id())
+        except Exception:
+            selected_cycle = None
+
+    is_pillar_home = active_view in ("g_cycles", "g_earning", "g_contribution")
+
+    if is_pillar_home:
+        nav_items = [
+            {"id": "g_cycles", "label": "Choose Cycle", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', "badge": 0},
+            {"id": "g_learning", "label": "Learning", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
+            {"id": "g_earning", "label": "Earning", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', "badge": 0},
+            {"id": "g_contribution", "label": "Contribution", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>', "badge": 0}
+        ]
+    else:
+        # Learning workspace sidebar in exact requested order
+        # (Learning Materials & Learning Roadmap omitted from sidebar while code/routes remain intact)
+        nav_items = [
+            {"id": "g_create_badge", "label": "Create Badge", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>', "badge": 0},
+            {"id": "g_badge_approval", "label": "Reviewer Badge Approval", "icon": '<svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', "badge": pending_badge_approvals_count},
+            {"id": "g_mapping", "label": "Mapping", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>', "badge": 0},
+            {"id": "g_allotment", "label": "Badge Allotment", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
+            {"id": "g_reviews", "label": "Assessment", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', "badge": pending_reviews_count},
+            {"id": "g_extensions", "label": "Deadline Extension", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": pending_extensions_count}
+        ]
 
     links_html = []
     for item in nav_items:
-        is_active = (item["id"] == active_view) or (item["id"] == "g_reviews" and active_view == "g_review_detail")
+        is_active = (
+            (item["id"] == active_view)
+            or (item["id"] == "g_reviews" and active_view == "g_review_detail")
+            or (item["id"] == "g_create_badge" and active_view == "g_learning")
+        )
         cls = "nav-link active" if is_active else "nav-link"
         badge_val = item["badge"]
         badge_style = "" if badge_val > 0 else ' style="display:none;"'
@@ -105,6 +127,16 @@ def render_guardian_sidebar(
     user_sub_desc = f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Academy Guardian"
 
     sidebar_hidden_attr = ' class="app-sidebar band-selection-hidden" style="display:none !important;" aria-hidden="true"' if hidden else ' class="app-sidebar"'
+    cycle_pill_html = render_sidebar_cycle_pill(selected_cycle, "nav_guardian", "g_cycles") if not hidden else ""
+
+    back_to_pillars_html = "" if (is_pillar_home or hidden) else """
+        <li class="nav-item" style="margin-bottom:6px; padding-bottom:8px; border-bottom:1px solid var(--icy-steel-30);">
+            <a class="nav-link" data-nav-id="g_cycles" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_cycles')" style="color:var(--pure-ice); font-weight:800;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+                <span>&larr; Portal Pillars (Cycle)</span>
+            </a>
+        </li>
+    """
 
     band_switcher_html = f"""
     <div class="sidebar-band-switcher">
@@ -116,15 +148,15 @@ def render_guardian_sidebar(
                 <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--pure-ice);">Workspace</span>
                 <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:10px;">BAND {escape(active_band)}</span>
             </div>
-            <button type="button" class="btn-ghost btn-sm" onclick="window.StarAppBridge.dispatchAction('select_create_badge_band', '')" style="color:var(--pure-ice); font-size:11px; padding:4px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:600;" title="Switch to another band">
-                <span>&larr; Switch Band</span>
+            <button type="button" class="btn-ghost btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')" style="color:var(--pure-ice); font-size:11px; padding:4px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:600;" title="Switch to another band">
+                <span>&larr; All Band Cards</span>
             </button>
         </div>
     </div>
-    """ if (active_band and not hidden) else ""
+    """ if (active_band and not is_pillar_home and not hidden) else ""
 
     return f"""
-    <aside id="starapp-shell-sidebar"{sidebar_hidden_attr} data-portal-role="guardian" data-user-id="{escape(current_user.id)}">
+    <aside id="starapp-shell-sidebar"{sidebar_hidden_attr} data-portal-role="guardian" data-user-id="{escape(current_user.id)}" data-pillar-mode="{'pillars' if is_pillar_home else 'learning'}">
         <div class="sidebar-header">
             <div class="brand-text-wrap">
                 <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
@@ -138,9 +170,11 @@ def render_guardian_sidebar(
             <span class="role-badge-val">{escape(role_title)}</span>
         </div>
 
+        {cycle_pill_html}
         {band_switcher_html}
 
         <ul class="sidebar-nav">
+            {back_to_pillars_html}
             {"".join(links_html)}
             <li class="nav-item" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30);">
                 <a class="nav-link" onclick="window.open('index.html?role=cosmonaut', '_blank');" style="color:var(--deep-frozen-midnight); font-weight:700;">
@@ -2956,21 +2990,37 @@ def render_guardian_mapping(
         users_map = dict(MEMBERS_MAP)
 
     # --------------------------------------------------------------------------
-    # REAL SQLITE DATA: FILTER COSMONAUTS OF THE CURRENT BAND
+    # REAL SQLITE DATA: FILTER COSMONAUTS & REVIEWERS FOR EFFECTIVE CYCLE & BAND
     # --------------------------------------------------------------------------
+    target_cid = store.get_effective_read_cycle_id() if store else "cycle_1"
+    cycle_enr_band: Dict[str, str] = {}
+    if store and store.db and store.db.conn:
+        try:
+            enr_rows = store.db.conn.execute(
+                "SELECT user_id, band_code FROM cycle_enrollments WHERE cycle_id = ?",
+                (target_cid,)
+            ).fetchall()
+            cycle_enr_band = {r["user_id"]: r["band_code"] for r in enr_rows if r["band_code"]}
+        except Exception:
+            cycle_enr_band = {}
+
     raw_cosmonauts: List[Dict[str, Any]] = []
     if store and store.db and store.db.conn:
         try:
             rows = store.db.conn.execute(
                 """
-                SELECT id, username, email, name, role, band, avatar, status 
-                FROM users 
-                WHERE band = ? AND status = 'active'
+                SELECT id, username, email, name, role, band, avatar, status
+                FROM users
+                WHERE status = 'active'
                 ORDER BY name
-                """,
-                (selected_band,)
+                """
             ).fetchall()
-            raw_cosmonauts = [dict(r) for r in rows]
+            for r in rows:
+                d = dict(r)
+                eff_band = cycle_enr_band.get(d["id"]) or d.get("band", "")
+                if eff_band == selected_band:
+                    d["band"] = eff_band
+                    raw_cosmonauts.append(d)
         except Exception:
             raw_cosmonauts = []
     if not raw_cosmonauts and store:
@@ -3001,17 +3051,20 @@ def render_guardian_mapping(
     raw_reviewers: List[Dict[str, Any]] = []
     if active_reviewer_bands and store and store.db and store.db.conn:
         try:
-            placeholders = ",".join("?" for _ in active_reviewer_bands)
             rows = store.db.conn.execute(
-                f"""
+                """
                 SELECT id, username, email, name, role, band, avatar, status
                 FROM users
-                WHERE band IN ({placeholders}) AND status = 'active'
+                WHERE status = 'active'
                 ORDER BY band, name
-                """,
-                active_reviewer_bands
+                """
             ).fetchall()
-            raw_reviewers = [dict(r) for r in rows]
+            for r in rows:
+                d = dict(r)
+                eff_band = cycle_enr_band.get(d["id"]) or d.get("band", "")
+                if eff_band in active_reviewer_bands:
+                    d["band"] = eff_band
+                    raw_reviewers.append(d)
         except Exception:
             raw_reviewers = []
 
@@ -4041,21 +4094,50 @@ def render_guardian_create_badge(
     outcome_sentence: str = "",
     created_badge_data: Optional[Dict[str, Any]] = None,
     is_editing_badge: bool = False,
-    saved_badges: Optional[List[Dict[str, Any]]] = None
+    saved_badges: Optional[List[Dict[str, Any]]] = None,
+    selected_cycle: Optional[Any] = None
 ) -> str:
     from starapp.storage import store
 
+    if selected_cycle is None and hasattr(store, "get_cycle"):
+        try:
+            selected_cycle = store.get_cycle(store.get_active_cycle_id())
+        except Exception:
+            selected_cycle = None
+
+    cycle_badge_text = (
+        f"{escape(getattr(selected_cycle, 'name', 'Active Cycle'))} ({escape(getattr(selected_cycle, 'start_date', ''))} -> {escape(getattr(selected_cycle, 'end_date', ''))})"
+        if selected_cycle else "Active Cycle"
+    )
+
     # 1. BAND SELECTION VIEW
     if not selected_band:
+        eff_cid = getattr(selected_cycle, "id", None) or (store.get_effective_read_cycle_id() if hasattr(store, "get_effective_read_cycle_id") else "cycle_1")
+        cyc_badges = store.get_all_badges(cycle_id=eff_cid) if hasattr(store, "get_all_badges") else []
+        cyc_subs = store.get_all_submissions(cycle_id=eff_cid) if hasattr(store, "get_all_submissions") else []
+        cyc_asms = store.get_all_assessments(cycle_id=eff_cid) if hasattr(store, "get_all_assessments") else []
+        cyc_enrs = store.get_cycle_enrollments(eff_cid) if hasattr(store, "get_cycle_enrollments") else []
+        band_by_badge_id = {b.id: getattr(b, "target_band", "B1") for b in cyc_badges}
+
         cards_html = []
         band_order = ["B1", "B2", "B3", "B4", "B5", "B6"]
         for b_id in band_order:
             desc = BAND_DESCRIPTIONS.get(b_id, "")
-            members = store.get_members_by_band(b_id)
+            enr_in_band = [e for e in cyc_enrs if getattr(e, "band_code", "") == b_id]
+            members = enr_in_band if enr_in_band else store.get_members_by_band(b_id)
             member_count = len(members)
             revs = store.get_eligible_badge_reviewers(b_id)
             rev_count = len(revs)
             rev_text = f"{rev_count} Eligible Reviewers" if rev_count > 0 else "Executive Council Only"
+
+            b_cnt = sum(1 for b in cyc_badges if getattr(b, "target_band", "") == b_id)
+            earned_cnt = sum(
+                1 for a in cyc_asms
+                if getattr(a, "decision", "") == "approve"
+                and getattr(a, "assessor_role", "guardian") == "guardian"
+                and band_by_badge_id.get(a.badge_id) == b_id
+            )
+            sub_cnt = sum(1 for s in cyc_subs if band_by_badge_id.get(s.badge_id) == b_id)
 
             cards_html.append(f"""
             <div class="liquid-glass-card interactive" style="padding:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel-50); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); cursor:pointer; transition:transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1); display:flex; flex-direction:column; justify-content:space-between;"
@@ -4063,16 +4145,14 @@ def render_guardian_create_badge(
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                         <span style="font-family:var(--font-family-mono); font-size:16px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:5px 12px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_id}</span>
-                        <div style="width:36px; height:36px; border-radius:50%; background:var(--frost-mist); border:1px solid var(--icy-steel-30); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight);">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                        </div>
+                        <span style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:4px 10px; border-radius:999px;">{b_cnt} Badges &bull; {earned_cnt} Earned</span>
                     </div>
                     <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin-bottom:8px;">Band {b_id} Qualification Badge</h3>
                     <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5; margin-bottom:18px;">{escape(desc)}</p>
                 </div>
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-25); border-radius:var(--radius-sm); margin-bottom:14px; font-size:12px;">
-                        <span style="color:var(--frost-navy-75); font-weight:600;">{member_count} Active Profiles</span>
+                        <span style="color:var(--frost-navy-75); font-weight:600;">{member_count} Profiles &bull; {sub_cnt} Submissions</span>
                         <span style="color:var(--deep-frozen-midnight); font-weight:700;">{rev_text}</span>
                     </div>
                     <button type="button" class="btn-metal" style="width:100%; justify-content:center; padding:9px 16px; font-size:12.5px; font-weight:700;">
@@ -4084,36 +4164,35 @@ def render_guardian_create_badge(
 
         return f"""
         <div style="max-width:1280px; margin:0 auto; padding:6px 4px 32px 4px;">
-            <!-- Guardian Academy Top Bar (Displayed on Band Selection where sidebar is hidden) -->
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; background:linear-gradient(135deg, rgba(23,52,92,0.96) 0%, rgba(7,22,41,0.98) 100%); border-radius:var(--radius-lg); margin-bottom:28px; box-shadow:0 8px 32px rgba(7,22,41,0.22); border:1px solid rgba(157,183,213,0.25); flex-wrap:wrap; gap:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 22px; background:linear-gradient(135deg, rgba(23,52,92,0.96) 0%, rgba(7,22,41,0.98) 100%); border-radius:var(--radius-lg); margin-bottom:24px; box-shadow:0 8px 32px rgba(7,22,41,0.18); border:1px solid rgba(157,183,213,0.25); flex-wrap:wrap; gap:14px;">
                 <div style="display:flex; align-items:center; gap:14px;">
-                    <div style="width:42px; height:42px; border-radius:10px; background:rgba(255,255,255,0.12); border:1.5px solid rgba(255,255,255,0.3); display:flex; align-items:center; justify-content:center; color:var(--snow-white); font-weight:800; font-size:19px;">S</div>
+                    <div style="width:40px; height:40px; border-radius:10px; background:rgba(255,255,255,0.12); border:1.5px solid rgba(255,255,255,0.3); display:flex; align-items:center; justify-content:center; color:var(--snow-white); font-weight:800; font-size:18px;">L</div>
                     <div>
-                        <div style="font-size:16.5px; font-weight:800; color:var(--snow-white); letter-spacing:0.5px;">STARAPP GUARDIAN ACADEMY</div>
-                        <div style="font-size:12px; color:var(--pure-ice);">Curriculum Engineering &amp; Autonomous Milestones Management</div>
+                        <div style="font-size:16px; font-weight:800; color:var(--snow-white); letter-spacing:0.4px;">LEARNING WORKSPACE &bull; BANDS</div>
+                        <div style="font-size:12px; color:var(--pure-ice);">Global Filter: <strong>{cycle_badge_text}</strong></div>
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:14px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:var(--snow-white);" title="Navigate Back">
                         &larr; Back
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.open('index.html?role=cosmonaut', '_blank');" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2); color:var(--snow-white);">
-                        Cosmonaut Window ↗
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_dashboard')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.25); color:var(--snow-white);">
+                        Cycle Batch Overview &rarr;
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.35); color:#FCA5A5;">
-                        Sign Out
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_cycles')" style="font-size:11.5px; font-weight:700; padding:6px 14px; background:rgba(16,185,129,0.18); border-color:rgba(16,185,129,0.4); color:#A7F3D0;">
+                        Switch Cycle
                     </button>
                 </div>
             </div>
 
             <div style="margin-bottom:24px;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
-                    <span>Curriculum Workspaces</span>
+                    <span>Learning Pillar</span>
                     <span>&rsaquo;</span>
                     <span style="color:var(--frost-navy-50);">Select Operational Band</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 6px 0;">Select Band Workspace</h1>
-                <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Select a band to configure a new badge and define its structured evaluation prompt. Inside, only that band's profiles, badges, reviews, and materials will be displayed.</p>
+                <p style="font-size:14px; color:var(--frost-navy-75); margin:0;">Select a band to configure a new badge and define its structured evaluation prompt, or use the Learning sidebar to review approvals, mappings, allotments, and assessments in the active cycle.</p>
             </div>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(310px, 1fr)); gap:22px;">
@@ -5920,11 +5999,19 @@ def render_guardian_cycles_view(
     if is_closed:
         action_controls = f"""
         <span style="background:rgba(100,116,139,0.16); color:#334155; border:1px solid #94A3B8; padding:7px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:800;">
-            🔒 Cycle Finalized &amp; Closed ({escape(getattr(selected_cycle, 'closed_at', '')[:10])})
+            🔒 Viewing Previous / Closed Cycle Archive ({escape(getattr(selected_cycle, 'closed_at', '')[:10])})
         </span>
+        <button type="button" class="btn-secondary" style="font-weight:800; padding:8px 14px; border-color:#059669; color:#047857;"
+                onclick="window.StarAppBridge.dispatchAction('activate_cycle', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
+            ✓ Activate for All Cosmonauts
+        </button>
         <button type="button" class="btn-metal" style="font-weight:800; padding:8px 16px;"
+                onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')">
+            View Learning Data &rarr;
+        </button>
+        <button type="button" class="btn-secondary" style="font-weight:800; padding:8px 14px;"
                 onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
-            + Start New 6-Month Cycle &rarr;
+            + New Cycle (Calendar)
         </button>
         """
     else:
@@ -5939,7 +6026,11 @@ def render_guardian_cycles_view(
         </button>
         <button type="button" class="btn-secondary" style="font-weight:800; padding:8px 14px;"
                 onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
-            + New 6-Month Cycle
+            + New Cycle (Calendar)
+        </button>
+        <button type="button" class="btn-metal" style="font-weight:800; padding:8px 16px;"
+                onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')">
+            Go to Learning &rarr;
         </button>
         """
 
@@ -5948,17 +6039,39 @@ def render_guardian_cycles_view(
     for cyc in cycles:
         sel_cls = "border:2px solid var(--deep-frozen-midnight); background:rgba(234,244,255,0.92);" if cyc.id == c_id else "border:1px solid var(--icy-steel-30); background:#fff;"
         st_color = "#047857" if cyc.status == "active" else ("#B45309" if cyc.status == "evaluating" else "#475569")
+        st_label = "ACTIVE CYCLE (COSMONAUTS & REVIEWERS)" if cyc.status == "active" else ("EVALUATING" if cyc.status == "evaluating" else "PREVIOUS ARCHIVE")
+        filter_chip = '<span style="font-size:10px; font-weight:800; background:#059669; color:#fff; padding:2px 7px; border-radius:999px;">&#10003; Filtered Here</span>' if cyc.id == c_id else '<span style="font-size:10px; font-weight:700; color:var(--deep-frozen-midnight);">Click to View Data &rarr;</span>'
+        act_btn = "" if cyc.status == "active" else f"""
+            <button type="button" class="btn-secondary btn-sm"
+                    style="font-size:10px; font-weight:800; padding:2px 8px; border-color:rgba(16,185,129,0.4); color:#047857;"
+                    onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('activate_cycle', JSON.stringify({{cycle_id:'{escape(cyc.id)}'}}));"
+                    title="Make this the active cycle for all Cosmonauts and Reviewers">
+                Set Active
+            </button>
+        """
         cycle_cards_html.append(f"""
         <div onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')"
-             style="{sel_cls} border-radius:var(--radius-md); padding:12px 14px; cursor:pointer; min-width:220px; flex:1;">
+             style="{sel_cls} border-radius:var(--radius-md); padding:12px 14px; cursor:pointer; min-width:240px; flex:1;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
                 <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(cyc.code)}</span>
-                <span style="font-size:10px; font-weight:800; color:{st_color}; text-transform:uppercase;">{escape(cyc.status)}</span>
+                <span style="font-size:9.5px; font-weight:800; color:{st_color}; text-transform:uppercase;">{escape(st_label)}</span>
             </div>
             <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(cyc.name)}</div>
-            <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:2px;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                <span style="font-size:11.5px; color:var(--frost-navy-50);">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</span>
+                <div style="display:flex; align-items:center; gap:6px;">{act_btn}{filter_chip}</div>
+            </div>
         </div>
         """)
+
+    # Inline calendar cycle creator defaults
+    import datetime as _dt
+    from starapp.models import add_six_months_iso as _add_6m
+    inl_default_start = _dt.date.today().isoformat()
+    inl_default_end = _add_6m(inl_default_start, 6)
+    inl_next_num = len(cycles) + 1
+    inl_default_name = f"Cycle {inl_next_num} (6-Month Cohort)"
+    inl_default_code = f"C{inl_next_num}-{inl_default_start[:4]}"
 
     # Candidate rows table
     table_rows = []
@@ -6050,6 +6163,48 @@ def render_guardian_cycles_view(
             <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
                 {"".join(cycle_cards_html)}
             </div>
+
+            <!-- Inline Calendar Cycle Creator inside Choose Cycle -->
+            <details id="inline-calendar-cycle-creator" style="margin-top:16px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); background:rgba(255,255,255,0.88); padding:10px 14px;">
+                <summary style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+                    <span>📅 Create &amp; Activate New Cycle from Calendar</span>
+                    <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Pick Start &amp; End Dates &bull; Becomes Active Cycle for All Cosmonauts &amp; Reviewers</span>
+                </summary>
+                <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('create_six_month_cycle', JSON.stringify({{name:document.getElementById('inl-cycle-name').value, code:document.getElementById('inl-cycle-code').value, start_date:document.getElementById('inl-cycle-start').value, end_date:document.getElementById('inl-cycle-end').value, auto_close_previous:document.getElementById('inl-cycle-active').checked, set_as_active:document.getElementById('inl-cycle-active').checked, notes:document.getElementById('inl-cycle-notes').value}}));"
+                      style="margin-top:12px; padding-top:12px; border-top:1px solid var(--frost-mist);">
+                    <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                        <div>
+                            <label style="font-size:11px; font-weight:800; display:block; margin-bottom:3px;">Cycle Name *</label>
+                            <input type="text" id="inl-cycle-name" class="form-control" value="{escape(inl_default_name)}" required>
+                        </div>
+                        <div>
+                            <label style="font-size:11px; font-weight:800; display:block; margin-bottom:3px;">Code</label>
+                            <input type="text" id="inl-cycle-code" class="form-control" value="{escape(inl_default_code)}">
+                        </div>
+                        <div>
+                            <label style="font-size:11px; font-weight:800; display:block; margin-bottom:3px;">Calendar Start Date *</label>
+                            <input type="date" id="inl-cycle-start" class="form-control" value="{escape(inl_default_start)}" required
+                                   onchange="if(this.value){{const d=new Date(this.value+'T00:00:00'); d.setMonth(d.getMonth()+6); d.setDate(d.getDate()-1); const endEl=document.getElementById('inl-cycle-end'); if(endEl) endEl.value=d.toISOString().slice(0,10);}}">
+                        </div>
+                        <div>
+                            <label style="font-size:11px; font-weight:800; display:block; margin-bottom:3px;">Calendar End Date *</label>
+                            <input type="date" id="inl-cycle-end" class="form-control" value="{escape(inl_default_end)}" required>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; flex:1;">
+                            <input type="text" id="inl-cycle-notes" class="form-control" style="max-width:300px;" placeholder="Cycle focus or goals (optional)">
+                            <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--frost-navy); cursor:pointer;">
+                                <input type="checkbox" id="inl-cycle-active" checked>
+                                <span>Activate immediately for all Cosmonauts &amp; Reviewers</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="btn-metal" style="font-weight:800; padding:8px 18px;">
+                            Create &amp; Activate Cycle &rarr;
+                        </button>
+                    </div>
+                </form>
+            </details>
         </div>
 
         <!-- Cycle Summary KPI Row -->
@@ -6159,7 +6314,7 @@ def render_create_cycle_modal(existing_cycles: List[Any], active_cycle: Optional
             Creates a new <strong>6-month cycle</strong> keeping all team members enrolled with fresh badges, mappings, submissions, and appraisals. Historical cycle data remains permanently preserved in archive.
         </p>
         {active_warn}
-        <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('create_six_month_cycle', JSON.stringify({{name:document.getElementById('new-cycle-name').value, code:document.getElementById('new-cycle-code').value, start_date:document.getElementById('new-cycle-start').value, end_date:document.getElementById('new-cycle-end').value, clone_badges_from_cycle_id:document.getElementById('new-cycle-clone').value, auto_close_previous:(document.getElementById('new-cycle-auto-close') ? document.getElementById('new-cycle-auto-close').checked : true), notes:document.getElementById('new-cycle-notes').value}}));">
+        <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('create_six_month_cycle', JSON.stringify({{name:document.getElementById('new-cycle-name').value, code:document.getElementById('new-cycle-code').value, start_date:document.getElementById('new-cycle-start').value, end_date:document.getElementById('new-cycle-end').value, clone_badges_from_cycle_id:document.getElementById('new-cycle-clone').value, auto_close_previous:(document.getElementById('new-cycle-auto-close') ? document.getElementById('new-cycle-auto-close').checked : true), set_as_active:(document.getElementById('new-cycle-auto-close') ? document.getElementById('new-cycle-auto-close').checked : true), notes:document.getElementById('new-cycle-notes').value}}));">
             <div style="display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:12px;">
                 <div class="form-group" style="margin:0;">
                     <label class="form-label" style="font-size:12px; font-weight:800;">Cycle Name *</label>
@@ -6172,11 +6327,12 @@ def render_create_cycle_modal(existing_cycles: List[Any], active_cycle: Optional
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
                 <div class="form-group" style="margin:0;">
-                    <label class="form-label" style="font-size:12px; font-weight:800;">Start Date *</label>
-                    <input type="date" id="new-cycle-start" class="form-control" value="{escape(default_start)}" required>
+                    <label class="form-label" style="font-size:12px; font-weight:800;">Calendar Start Date *</label>
+                    <input type="date" id="new-cycle-start" class="form-control" value="{escape(default_start)}" required
+                           onchange="if(this.value){{const d=new Date(this.value+'T00:00:00'); d.setMonth(d.getMonth()+6); d.setDate(d.getDate()-1); const endEl=document.getElementById('new-cycle-end'); if(endEl) endEl.value=d.toISOString().slice(0,10);}}">
                 </div>
                 <div class="form-group" style="margin:0;">
-                    <label class="form-label" style="font-size:12px; font-weight:800;">End Date (6 Months Window) *</label>
+                    <label class="form-label" style="font-size:12px; font-weight:800;">Calendar End Date (6 Months Window) *</label>
                     <input type="date" id="new-cycle-end" class="form-control" value="{escape(default_end)}" required>
                 </div>
             </div>
@@ -6293,6 +6449,55 @@ def render_cycle_candidate_detail_modal(
                 {save_btn}
             </div>
         </form>
+    </div>
+    """
+
+
+def render_guardian_pillar_placeholder(
+    pillar_name: str,
+    selected_cycle: Optional[Any]
+) -> str:
+    """Renders a clean blank/future-ready Guardian pillar view (Earning / Contribution) inheriting the Global Cycle Filter."""
+    c_name = getattr(selected_cycle, "name", "Active Cycle") if selected_cycle else "Active Cycle"
+    c_code = getattr(selected_cycle, "code", "CYCLE") if selected_cycle else "CYCLE"
+    c_start = getattr(selected_cycle, "start_date", "") if selected_cycle else ""
+    c_end = getattr(selected_cycle, "end_date", "") if selected_cycle else ""
+    c_status = (getattr(selected_cycle, "status", "active") or "active").upper() if selected_cycle else "ACTIVE"
+
+    p_lower = pillar_name.lower()
+    desc = (
+        f"Future Earning workflows (compensation tiers, stipends, salary hike approvals, and rewards) for {c_name} will appear here."
+        if p_lower == "earning"
+        else f"Future Contribution workflows (mentorship credits, peer reviews, knowledge sharing, and community impact) for {c_name} will appear here."
+    )
+
+    return f"""
+    <div id="guardian-pillar-{escape(p_lower)}" style="max-width:1100px; margin:0 auto; padding:8px 4px 32px 4px;">
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(c_code)}</span>
+                    <span style="font-size:11px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:999px;">Global Filter &bull; {escape(c_status)}</span>
+                </div>
+                <h2 style="font-size:1.5rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(pillar_name)}</h2>
+                <p style="font-size:12.5px; color:var(--frost-navy-50); margin:4px 0 0 0;">Scoped globally to <strong>{escape(c_name)}</strong> ({escape(c_start)} &rarr; {escape(c_end)}).</p>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" class="btn-secondary" style="font-weight:700;"
+                        onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_cycles')">
+                    Switch Cycle
+                </button>
+                <button type="button" class="btn-metal" style="font-weight:800;"
+                        onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')">
+                    Go to Learning &rarr;
+                </button>
+            </div>
+        </div>
+
+        <div class="liquid-glass-card" style="padding:56px 28px; text-align:center; border:1.5px dashed var(--icy-steel-50); background:rgba(255,255,255,0.72);">
+            <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:8px;">{escape(pillar_name)} Module &mdash; Ready for Cycle-Scoped Implementation</div>
+            <p style="font-size:13px; color:var(--frost-navy-50); max-width:560px; margin:0 auto;">{escape(desc)}</p>
+        </div>
     </div>
     """
 

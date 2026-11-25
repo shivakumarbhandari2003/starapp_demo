@@ -232,7 +232,7 @@ def get_initial_seed_data() -> Dict[str, Any]:
         }
     ]
 
-    return {
+    seed = {
         "users": users,
         "profiles": profiles,
         "badges": badges,
@@ -246,6 +246,8 @@ def get_initial_seed_data() -> Dict[str, Any]:
         "notifications": notifications,
         "band_mappings": band_mappings
     }
+    from starapp.previous_cycle_seed import merge_previous_cycle_into_seed_dict
+    return merge_previous_cycle_into_seed_dict(seed)
 
 if __name__ == "__main__":
     seed = get_initial_seed_data()

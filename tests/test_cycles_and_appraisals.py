@@ -143,7 +143,8 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.handle_event("calculate_cycle_appraisals", json.dumps({"cycle_id": "cycle_1"}))
         g_cycles_html = self.ctrl.render()
         self.assertIn("Candidate Cycle Performance", g_cycles_html)
-        self.assertIn("starapp-cycle-topbar", g_cycles_html)
+        self.assertIn("starapp-sidebar-cycle-pill", g_cycles_html)
+        self.assertNotIn("starapp-cycle-topbar", g_cycles_html)
 
         rows = {r["user_id"]: r for r in compute_cycle_candidate_performance("cycle_1", store)}
         r_cosmo = rows["m_b1_1"]
@@ -257,6 +258,292 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
             res_calc = client.post("/api/v1/cycles/cycle_1/calculate")
             self.assertEqual(res_calc.status_code, 200)
             self.assertTrue(res_calc.json()["success"])
+
+    def test_04_global_cycle_filter_and_restructured_sidebars(self):
+        """Verify Global Cycle Filter across Guardian 4-pillar shell and ordered Cosmonaut/Reviewer sidebars."""
+        import json as _json
+        self.ctrl.handle_event("login", _json.dumps({"username": "guardian"}))
+        self.assertEqual(self.ctrl.current_view, "g_cycles")
+        p_html = self.ctrl.render()
+        self.assertNotIn("starapp-cycle-topbar", p_html)
+        self.assertIn("starapp-sidebar-cycle-pill", p_html)
+        self.assertLess(p_html.find('data-nav-id="g_cycles"'), p_html.find('data-nav-id="g_learning"'))
+        self.assertLess(p_html.find('data-nav-id="g_learning"'), p_html.find('data-nav-id="g_earning"'))
+        self.assertLess(p_html.find('data-nav-id="g_earning"'), p_html.find('data-nav-id="g_contribution"'))
+
+        # Create Cycle 2 and apply globally across Learning, Earning, Contribution
+        self.ctrl.handle_event("create_six_month_cycle", _json.dumps({
+            "name": "Cycle 2 Global Filter",
+            "code": "C2-GF",
+            "start_date": "2027-01-01",
+            "auto_close_previous": True,
+            "notes": "Test cycle"
+        }))
+        self.assertEqual(self.ctrl.flash_type, "success")
+        self.ctrl.handle_event("nav_guardian", "g_earning")
+        self.assertIn("Cycle 2 Global Filter", self.ctrl.render())
+        self.ctrl.handle_event("nav_guardian", "g_contribution")
+        self.assertIn("Cycle 2 Global Filter", self.ctrl.render())
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        lrn_html = self.ctrl.render()
+        self.assertIn("Cycle 2 Global Filter", lrn_html)
+        self.assertIn("BAND B1", lrn_html)
+
+        # Reviewer-eligible Cosmonaut sidebar order
+        self.ctrl.handle_event("select_demo_account", "m_b2_1")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        c_html = self.ctrl.render()
+        self.assertNotIn("starapp-cycle-topbar", c_html)
+        ids = [
+            "c_choose_cycle", "c_badge_reviews", "c_requests", "c_assessments",
+            "c_submission", "c_results", "c_profile", "c_extensions", "c_cycles"
+        ]
+        positions = [c_html.find(f'data-nav-id="{nid}"') for nid in ids]
+        self.assertTrue(all(p > 0 for p in positions), f"Missing cosmonaut nav ids: {positions}")
+        self.assertEqual(positions, sorted(positions), "Cosmonaut/Reviewer sidebar order mismatch")
+        self.assertNotIn('data-nav-id="c_roadmap"', c_html)
+        self.assertNotIn('data-nav-id="c_materials"', c_html)
+
+        # Band B1 learner (non-reviewer) omits reviewer tabs while keeping exact remaining order
+        self.ctrl.handle_event("select_demo_account", "cosmo_1")
+        b1_html = self.ctrl.render()
+        self.assertNotIn('data-nav-id="c_badge_reviews"', b1_html)
+        self.assertNotIn('data-nav-id="c_requests"', b1_html)
+        self.assertNotIn('data-nav-id="c_assessments"', b1_html)
+        b1_ids = ["c_choose_cycle", "c_submission", "c_results", "c_profile", "c_extensions", "c_cycles"]
+        b1_pos = [b1_html.find(f'data-nav-id="{nid}"') for nid in b1_ids]
+        self.assertEqual(b1_pos, sorted(b1_pos))
+
+    def test_05_previous_cycle_synthetic_data_and_calendar_activation(self):
+        """Verify seeded cycle_0 previous cycle filtering across all Learning views and calendar cycle activation for Cosmonauts & Reviewers."""
+        import json as _json
+        self.ctrl.handle_event("login", _json.dumps({"username": "guardian"}))
+        self.assertEqual(store.get_active_cycle_id(), "cycle_1")
+
+        # 1. Choose Cycle displays both cycle_1 (Active) and cycle_0 (Previous Cycle archive) + calendar creator
+        cyc_html = self.ctrl.render()
+        self.assertIn("Previous Cycle (Jan–Jun 2026)", cyc_html)
+        self.assertIn("inline-calendar-cycle-creator", cyc_html)
+        self.assertIn("Set Active", cyc_html)
+
+        # 2. Guardian clicks on cycle_0 -> entire Learning workspace filters to Previous Cycle data
+        self.ctrl.handle_event("select_cycle", "cycle_0")
+        self.assertEqual(self.ctrl.selected_cycle_id, "cycle_0")
+        self.assertEqual(store.get_active_cycle_id(), "cycle_1")
+
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        lrn_c0 = self.ctrl.render()
+        self.assertIn("Previous Cycle (Jan–Jun 2026)", lrn_c0)
+        self.assertIn("2 Badges", lrn_c0)  # Band B1 has 2 cycle_0 badges
+
+        self.ctrl.handle_event("select_create_badge_band", "B1")
+        cb_c0 = self.ctrl.render()
+        self.assertIn("Python &amp; Backend API Foundations", cb_c0)
+        self.assertIn("Relational SQL &amp; Schema Design", cb_c0)
+
+        self.ctrl.handle_event("nav_guardian", "g_badge_approval")
+        self.assertIn("Python &amp; Backend API Foundations", self.ctrl.render())
+        self.ctrl.handle_event("select_create_badge_band", "")
+        self.ctrl.handle_event("filter_badge_approval_band", "all")
+        self.ctrl.handle_event("nav_guardian", "g_badge_approval")
+        ba_c0 = self.ctrl.render()
+        self.assertIn("Zero-Trust Service Mesh Proposal", ba_c0)
+
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        mp_c0 = self.ctrl.render()
+        self.assertIn("Python &amp; Backend API Foundations", mp_c0)
+
+        self.ctrl.handle_event("nav_guardian", "g_allotment")
+        al_c0 = self.ctrl.render()
+        self.assertIn("C0-B1-PY-01", al_c0)
+        self.assertIn("C0-B2-SEC-02", al_c0)
+
+        self.ctrl.handle_event("nav_guardian", "g_reviews")
+        rv_c0 = self.ctrl.render()
+        self.assertIn("C0-B1-PY-01", rv_c0)
+
+        self.ctrl.handle_event("nav_guardian", "g_extensions")
+        ex_c0 = self.ctrl.render()
+        self.assertIn("2026-02-23", ex_c0)
+
+        # Switching back to cycle_1 cleanly removes cycle_0 items
+        self.ctrl.handle_event("select_cycle", "cycle_1")
+        self.ctrl.handle_event("nav_guardian", "g_badge_approval")
+        ba_c1 = self.ctrl.render()
+        self.assertNotIn("Zero-Trust Service Mesh Proposal", ba_c1)
+
+        # 3. Guardian creates & activates a cycle using calendar dates -> becomes Active for all Cosmonauts & Reviewers
+        self.ctrl.handle_event("create_six_month_cycle", _json.dumps({
+            "name": "H1 2027 Calendar Cycle",
+            "code": "C2-2027",
+            "start_date": "2027-01-01",
+            "end_date": "2027-06-30",
+            "auto_close_previous": True,
+            "set_as_active": True,
+            "notes": "Calendar selected cycle"
+        }))
+        self.assertEqual(self.ctrl.flash_type, "success")
+        new_active = store.get_active_cycle_id()
+        self.assertEqual(self.ctrl.selected_cycle_id, new_active)
+        self.assertEqual(store.get_cycle(new_active).name, "H1 2027 Calendar Cycle")
+
+        # All Cosmonauts and Reviewers logging in automatically land in the Guardian-activated cycle
+        cosmo_ctrl = StarAppController()
+        cosmo_ctrl.handle_event("login", _json.dumps({"username": "aarav.sharma"}))
+        self.assertEqual(cosmo_ctrl.selected_cycle_id, new_active)
+        rev_ctrl = StarAppController()
+        rev_ctrl.handle_event("select_demo_account", "m_b2_1")
+        self.assertEqual(rev_ctrl.selected_cycle_id, new_active)
+
+        # Guardian can also explicitly activate an existing cycle cleanly
+        self.ctrl.handle_event("activate_cycle", _json.dumps({"cycle_id": "cycle_1"}))
+        self.assertEqual(store.get_active_cycle_id(), "cycle_1")
+        rev_ctrl.handle_event("login", _json.dumps({"username": "rohan.deshmukh"}))
+        self.assertEqual(rev_ctrl.selected_cycle_id, "cycle_1")
+
+    def test_06_all_bands_b1_to_b6_and_all_stages_persisted_in_db(self):
+        """Verify SQLite persistence across all Bands B1–B6 and every workflow stage at band & person level."""
+        import json as _json
+
+        # A. Verify seeded Previous Cycle (cycle_0) spans all 6 bands B1–B6 and all stage tables
+        conn = store.db.conn
+        c0_bands = {r[0] for r in conn.execute("SELECT DISTINCT target_band FROM badges WHERE cycle_id='cycle_0'").fetchall()}
+        self.assertEqual(c0_bands, {"B1", "B2", "B3", "B4", "B5", "B6"})
+
+        c0_event_types = {r[0] for r in conn.execute("SELECT DISTINCT event_type FROM activity_events WHERE cycle_id='cycle_0'").fetchall()}
+        for expected_evt in (
+            "badge_created", "badge_approved", "badge_mapped", "cadet_mapped_to_badge",
+            "badge_published", "reviewer_project_assigned", "project_submitted",
+            "reviewer_assessment_completed", "badge_awarded", "retake_required",
+            "extension_requested", "extension_approved", "extension_rejected", "cycle_closed"
+        ):
+            self.assertIn(expected_evt, c0_event_types, f"Missing cycle_0 audit log type: {expected_evt}")
+
+        # B. Execute live E2E workflow in cycle_1 for Bands B1..B5 (with peer higher-band reviewers) + B6 (Executive Council)
+        band_matrix = [
+            # (band, cosmo_id, reviewer_id)
+            ("B1", "m_b1_1", "m_b2_2"),
+            ("B2", "m_b2_1", "m_b3_1"),
+            ("B3", "m_b3_1", "m_b4_1"),
+            ("B4", "m_b4_1", "m_b5_1"),
+            ("B5", "m_b5_1", "m_b6_1"),
+        ]
+        for band, cosmo_id, rev_id in band_matrix:
+            self.ctrl.handle_event("login", _json.dumps({"username": "guardian"}))
+            code = f"{band}-AUDIT-99"
+            title = f"Band {band} Audit Capstone"
+            self.ctrl.handle_event("create_badge", _json.dumps({
+                "code": code,
+                "title": title,
+                "target_band": band,
+                "power": "Tech",
+                "capability": "Systems & Cloud",
+                "skill": f"AuditSkill{band}",
+                "reviewer_id": rev_id,
+                "learning_outcomes": "Design system,Validate rubric",
+                "learning_topics": "Design,Testing",
+                "project_requirements": "Submit code + PDF + GitHub",
+            }))
+            b_obj = next(b for b in store.get_all_badges(cycle_id="cycle_1") if b.code == code)
+
+            # Higher-band reviewer approves badge
+            rev_ctrl = StarAppController()
+            rev_ctrl.handle_event("select_demo_account", rev_id)
+            rev_ctrl.handle_event("approve_submitted_badge", b_obj.id)
+            self.assertEqual(store.get_badge(b_obj.id).workflow_status, "approved")
+
+            # Guardian sends mapping request -> reviewer accepts (verifying log + notification saved!) -> execute mapping
+            self.ctrl.handle_event("nav_guardian", "g_mapping")
+            self.ctrl.handle_event("select_mapping_band", band)
+            self.ctrl.handle_event("select_mapping_badge", _json.dumps({"badge_id": b_obj.id, "badge": title}))
+            self.ctrl.mapping_selected_cosmonauts = [cosmo_id]
+            self.ctrl.mapping_selected_reviewers = [rev_id]
+            self.ctrl.handle_event("send_mapping_requests", "{}")
+            req_id = f"req_{band}_{b_obj.id}_{rev_id}"
+            rev_ctrl.handle_event("accept_mapping_request", req_id)
+            self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")
+
+            # Publish & configure timeline
+            self.ctrl.handle_event("publish_badge", b_obj.id)
+            self.ctrl.handle_event("save_allotment_timeline", _json.dumps({
+                "badge_id": b_obj.id, "submission_deadline": "2026-12-18", "review_date": "2026-12-20"
+            }))
+
+            # Reviewer creates draft then releases project prompt to mapped cadet
+            rev_ctrl.handle_event("send_reviewer_project", _json.dumps({
+                "badge_id": b_obj.id, "title": f"{band} Spec", "description": "Deliver system", "status": "draft"
+            }))
+            rev_ctrl.handle_event("send_reviewer_project", _json.dumps({
+                "badge_id": b_obj.id, "title": f"{band} Spec", "description": "Deliver system", "status": "released"
+            }))
+
+            # Cosmonaut submits deliverables + requests extension -> Guardian approves extension
+            c_ctrl = StarAppController()
+            c_ctrl.handle_event("select_demo_account", cosmo_id)
+            c_ctrl.handle_event("submit_project_deliverables", _json.dumps({
+                "badge_id": b_obj.id,
+                "code_name": f"{band.lower()}.py", "code_payload": "def main(): return 1",
+                "pdf_name": f"{band.lower()}.pdf", "pdf_payload": "Architecture report",
+                "github_url": f"https://github.com/starapp/{band.lower()}-audit"
+            }))
+            c_ctrl.handle_event("submit_deadline_extension_request", _json.dumps({
+                "badge_id": b_obj.id, "proposed_deadline": "2026-12-22", "reason": "Benchmark suite expansion"
+            }))
+            ext_id = store.get_extensions_for_cosmonaut(cosmo_id)[0].id
+            self.ctrl.handle_event("submit_extension_decision", _json.dumps({
+                "extension_id": ext_id, "decision": "approved", "response_note": "Approved for Band benchmark"
+            }))
+
+            # Reviewer & Guardian 50-mark evaluations -> Gold completion
+            sub = store.get_submissions_for_cosmonaut(cosmo_id, b_obj.id, cycle_id="cycle_1")[-1]
+            rev_ctrl.handle_event("submit_reviewer_assessment", _json.dumps({
+                "submission_id": sub.id, "bu": 9, "ar": 9, "tk": 9, "pr": 9, "qa": 9, "overall_feedback": f"{band} reviewer pass"
+            }))
+            self.ctrl.handle_event("submit_evaluation_rubric", _json.dumps({
+                "submission_id": sub.id, "bu": 9, "ar": 9, "tk": 9, "pr": 9, "qa": 9,
+                "decision": "approve", "overall_feedback": f"{band} guardian pass"
+            }))
+
+            # Direct SQLite assertions per Band and per Person
+            self.assertEqual(conn.execute("SELECT target_band FROM badges WHERE id=?", (b_obj.id,)).fetchone()[0], band)
+            self.assertEqual(conn.execute("SELECT status, reviewer_id FROM badge_timelines WHERE badge_id=? AND cosmonaut_id=?", (b_obj.id, cosmo_id)).fetchone()[:], ("completed", rev_id))
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM assessment_marksheets WHERE badge_id=? AND cosmonaut_id=?", (b_obj.id, cosmo_id)).fetchone()[0], 2)
+            self.assertGreaterEqual(conn.execute("SELECT COUNT(*) FROM activity_events WHERE badge_id=? AND cosmonaut_id=?", (b_obj.id, cosmo_id)).fetchone()[0], 5)
+            self.assertGreaterEqual(conn.execute("SELECT COUNT(*) FROM notifications WHERE recipient_id=?", (cosmo_id,)).fetchone()[0], 4)
+
+        # C. Band B6 (Executive Council): peer review forbidden, direct Executive Council workflow persists cleanly
+        bad_ok, _ = store.verify_reviewer_eligibility("m_b6_2", "B6")
+        self.assertFalse(bad_ok, "Rule 1 must forbid B6 peer reviewers")
+        self.ctrl.handle_event("login", _json.dumps({"username": "guardian"}))
+        self.ctrl.handle_event("save_generated_badge", _json.dumps({
+            "band": "B6", "power": "Business", "capability": "Strategy & Scale", "skill": "ExecutiveAuditB6",
+            "title": "Band B6 Executive Milestone"
+        }))
+        b6 = next(b for b in store.get_all_badges(cycle_id="cycle_1") if getattr(b, "target_band", "") == "B6")
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("select_mapping_band", "B6")
+        self.ctrl.handle_event("select_mapping_badge", _json.dumps({"badge_id": b6.id, "badge": b6.title}))
+        self.ctrl.mapping_selected_cosmonauts = ["m_b6_1"]
+        self.ctrl.mapping_selected_reviewers = []
+        self.ctrl.handle_event("save_band_mapping", "{}")
+        self.ctrl.handle_event("publish_badge", b6.id)
+        b6_c = StarAppController()
+        b6_c.handle_event("select_demo_account", "m_b6_1")
+        b6_c.handle_event("submit_project_deliverables", _json.dumps({
+            "badge_id": b6.id, "code_name": "b6.py", "code_payload": "pass",
+            "pdf_name": "b6.pdf", "pdf_payload": "Strategy", "github_url": "https://github.com/starapp/b6"
+        }))
+        b6_sub = store.get_submissions_for_cosmonaut("m_b6_1", b6.id, cycle_id="cycle_1")[-1]
+        self.ctrl.handle_event("submit_evaluation_rubric", _json.dumps({
+            "submission_id": b6_sub.id, "bu": 9.5, "ar": 9.5, "tk": 9.5, "pr": 9.5, "qa": 9.5,
+            "decision": "approve", "overall_feedback": "Executive Council approved"
+        }))
+        self.assertEqual(conn.execute("SELECT status FROM badge_timelines WHERE badge_id=? AND cosmonaut_id='m_b6_1'", (b6.id,)).fetchone()[0], "completed")
+
+        # Verify mapping_request_accepted & timeline_configured & draft activity logs were persisted in SQLite
+        c1_evts = {r[0] for r in conn.execute("SELECT DISTINCT event_type FROM activity_events WHERE cycle_id='cycle_1'").fetchall()}
+        for required_log in ("mapping_request_accepted", "timeline_configured", "reviewer_project_draft_saved", "cadet_mapped_to_badge", "milestone_published_for_cadet", "badge_awarded"):
+            self.assertIn(required_log, c1_evts, f"Missing live DB audit log: {required_log}")
 
 
 if __name__ == "__main__":

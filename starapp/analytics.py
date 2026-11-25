@@ -217,8 +217,11 @@ def calculate_guardian_cohort_analytics(
     Computes comprehensive cohort-wide metrics across all 6 profiles.
     Optimized with memoization cache to eliminate redundant computation on non-mutating renders.
     """
+    from starapp.storage import store
+    curr_cid = store.get_effective_read_cycle_id()
     asms_sum = sum(getattr(a, "total_marks", 0) for a in actual_asms)
-    cache_key = f"{len(cohort_profiles)}_{len(actual_subs)}_{len(actual_asms)}_{asms_sum}"
+    total_completed_badges = sum(p.get("completed_count", 0) for p in cohort_profiles)
+    cache_key = f"{curr_cid}_{len(cohort_profiles)}_{len(actual_subs)}_{len(actual_asms)}_{asms_sum}_{total_completed_badges}"
     if _COHORT_ANALYTICS_CACHE.get("key") == cache_key:
         return dict(_COHORT_ANALYTICS_CACHE["data"])
 

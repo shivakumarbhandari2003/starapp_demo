@@ -489,6 +489,59 @@ def finalize_and_close_cycle(cycle_id: str, store: Any, actor_id: str = "guardia
     return True, f"Cycle '{cyc.name}' finalized & closed. You can now launch a new 6-month cycle."
 
 
+def activate_cycle(cycle_id: str, store: Any, actor_id: str = "guardian_1") -> Tuple[bool, str, Optional[PerformanceCycle]]:
+    """
+    Sets `cycle_id` as the single Active 6-month cycle globally for all Cosmonauts & Reviewers.
+    Any other currently active/evaluating cycle is cleanly closed/finalized first.
+    """
+    target = store.get_cycle(cycle_id)
+    if not target:
+        return False, f"Cycle '{cycle_id}' not found.", None
+
+    existing = store.get_all_cycles()
+    for oc in existing:
+        if oc.id != target.id and getattr(oc, "status", "") in ("active", "evaluating"):
+            ok_close, err_close = finalize_and_close_cycle(oc.id, store, actor_id=actor_id)
+            if not ok_close:
+                oc.status = "closed"
+                oc.closed_at = current_iso_timestamp()
+                store.save_cycle(oc)
+
+    target.status = "active"
+    target.closed_at = ""
+    store.save_cycle(target)
+
+    # Ensure all active users are enrolled in the activated cycle
+    existing_enr_uids = {e.user_id for e in store.get_cycle_enrollments(target.id)}
+    now_iso = current_iso_timestamp()
+    for u in store.get_all_users():
+        if u.id not in existing_enr_uids:
+            enr = CycleEnrollment(
+                id=f"enr_{target.id}_{u.id}",
+                cycle_id=target.id,
+                user_id=u.id,
+                cycle_role=getattr(u, "role", "cosmonaut") or "cosmonaut",
+                band_code=getattr(u, "band", "B1") or "B1",
+                track_code=getattr(u, "track_code", "") or "SD",
+                base_salary=0.0,
+                reporting_manager_id=getattr(u, "reporting_manager_id", "") or "",
+                status="active",
+                enrolled_at=now_iso,
+            )
+            store.save_cycle_enrollment(enr)
+
+    store.add_activity(
+        event_type="cycle_activated",
+        actor_id=actor_id,
+        actor_name="Guardian",
+        cosmonaut_id="",
+        badge_id="",
+        summary=f"Activated 6-month cycle '{target.name}' ({target.start_date} → {target.end_date}) for all Cosmonauts & Reviewers.",
+        cycle_id=target.id,
+    )
+    return True, f"'{target.name}' is now the Active cycle for all Cosmonauts & Reviewers.", target
+
+
 def create_new_six_month_cycle(
     store: Any,
     name: str,
@@ -499,11 +552,13 @@ def create_new_six_month_cycle(
     clone_badges_from_cycle_id: str = "",
     auto_close_previous: bool = False,
     notes: str = "",
-    hike_policy: Optional[Dict[str, Any]] = None
+    hike_policy: Optional[Dict[str, Any]] = None,
+    set_as_active: bool = True
 ) -> Tuple[bool, str, Optional[PerformanceCycle]]:
     """
     Creates a new 6-month cycle, enrolls the same cohort users (carrying over finalized
     new salaries & promoted bands if available), and keeps cycle data completely isolated.
+    When `set_as_active=True`, it becomes the single active cycle for all Cosmonauts & Reviewers.
     """
     name = (name or "").strip()
     if not name:
@@ -520,7 +575,7 @@ def create_new_six_month_cycle(
     open_cycles = [c for c in existing_cycles if c.status in ("active", "evaluating")]
     prev_cycle = open_cycles[0] if open_cycles else (existing_cycles[0] if existing_cycles else None)
 
-    if open_cycles:
+    if set_as_active and open_cycles:
         if auto_close_previous:
             for oc in open_cycles:
                 ok_close, err_close = finalize_and_close_cycle(oc.id, store, actor_id=created_by)
@@ -533,16 +588,17 @@ def create_new_six_month_cycle(
     slug_base = f"cycle_{idx_num}_{int(datetime.datetime.now().timestamp())}"
     cycle_code = (code or "").strip() or f"C{idx_num}-{start_clean[:4]}"
 
+    new_status = "active" if set_as_active else "closed"
     new_cycle = PerformanceCycle(
         id=slug_base,
         code=cycle_code,
         name=name,
         start_date=start_clean,
         end_date=end_clean,
-        status="active",
+        status=new_status,
         created_by=created_by,
         created_at=current_iso_timestamp(),
-        closed_at="",
+        closed_at="" if set_as_active else current_iso_timestamp(),
         cloned_from_cycle_id=clone_badges_from_cycle_id or "",
         hike_policy=hike_policy or (prev_cycle.hike_policy if prev_cycle else dict(DEFAULT_HIKE_POLICY)),
         notes=notes or ""

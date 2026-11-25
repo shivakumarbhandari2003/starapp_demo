@@ -13,6 +13,7 @@ from starapp.cycles import (
     calculate_and_save_cycle_appraisals,
     finalize_and_close_cycle,
     create_new_six_month_cycle,
+    activate_cycle,
 )
 
 router = APIRouter(prefix="/cycles", tags=["Performance Cycles"])
@@ -26,6 +27,7 @@ class CreateCycleRequest(BaseModel):
     created_by: Optional[str] = "guardian_1"
     clone_badges_from_cycle_id: Optional[str] = ""
     auto_close_previous: bool = False
+    set_as_active: bool = True
     notes: Optional[str] = ""
 
 
@@ -58,10 +60,19 @@ async def create_cycle(req: CreateCycleRequest):
         clone_badges_from_cycle_id=req.clone_badges_from_cycle_id or "",
         auto_close_previous=req.auto_close_previous,
         notes=req.notes or "",
+        set_as_active=req.set_as_active,
     )
     if not ok or not new_cyc:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "cycle": new_cyc.to_dict()}
+
+
+@router.post("/{cycle_id}/activate")
+async def activate_target_cycle(cycle_id: str, actor_id: str = "guardian_1"):
+    ok, msg, cyc = activate_cycle(cycle_id, store, actor_id=actor_id)
+    if not ok or not cyc:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg, "cycle": cyc.to_dict()}
 
 
 @router.get("/{cycle_id}/performance")

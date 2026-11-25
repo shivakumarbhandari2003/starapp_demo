@@ -15,7 +15,7 @@ from starapp.models import (
 from starapp.storage import store
 from starapp.cycles import (
     compute_cycle_candidate_performance, calculate_and_save_cycle_appraisals,
-    finalize_and_close_cycle, create_new_six_month_cycle
+    finalize_and_close_cycle, create_new_six_month_cycle, activate_cycle
 )
 from starapp.assessment import (
     validate_rubric_scores, calculate_assessment_totals,
@@ -47,7 +47,8 @@ from starapp.views_guardian import (
     render_badge_creation_preview_modal, render_badge_review_inspect_modal,
     render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal,
     render_badge_return_confirm_modal,
-    render_guardian_cycles_view, render_create_cycle_modal, render_cycle_candidate_detail_modal
+    render_guardian_cycles_view, render_create_cycle_modal, render_cycle_candidate_detail_modal,
+    render_guardian_pillar_placeholder
 )
 from starapp.mapping_data import (
     get_higher_bands, filter_members_by_band_and_roles, filter_reviewers_by_band_and_roles,
@@ -67,7 +68,8 @@ from starapp.views_cosmonaut import (
     render_reviewer_badge_schedule,
     render_reviewer_badge_timeline_modal,
     render_reviewer_project_creator_modal,
-    render_cosmonaut_cycles_view
+    render_cosmonaut_cycles_view,
+    render_cosmonaut_choose_cycle_view
 )
 
 # Pyodide browser bridge detection
@@ -177,14 +179,15 @@ class StarAppController:
 
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
+        "g_learning", "g_earning", "g_contribution",
         "g_create_badge", "g_badge_approval",
         "g_dashboard", "g_roadmap", "g_cosmonauts", "g_allotment", "g_badge_allotment", "g_mapping", "g_reviews", "g_review_detail",
         "g_materials", "g_extensions", "g_announcements", "g_activity", "g_cycles"
     }
     _COSMONAUT_VIEWS = {
-        "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_results",
+        "c_choose_cycle", "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_results",
         "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity",
-        "c_requests", "c_badge_reviews", "c_cycles"
+        "c_requests", "c_badge_reviews", "c_assessments", "c_assessment_detail", "c_cycles"
     }
 
     def _get_effective_cycle_id(self) -> str:
@@ -221,7 +224,7 @@ class StarAppController:
                         elif saved_view in self._COSMONAUT_VIEWS:
                             self.current_view = saved_view
                         else:
-                            self.current_view = "g_dashboard" if is_guardian_user else "c_dashboard"
+                            self.current_view = "g_cycles" if is_guardian_user else "c_choose_cycle"
             except Exception as e:
                 print(f"[Controller] Session restore error: {e}")
 
@@ -263,11 +266,17 @@ class StarAppController:
         if expected_generation is not None and int(expected_generation) < self.render_generation:
             return
         if (stored_json and stored_json.strip()) or (sqlite_b64 and sqlite_b64.strip()):
+            prev_active_cid = store.get_active_cycle_id()
             store.load_from_json(stored_json, sqlite_b64)
+            new_active_cid = store.get_active_cycle_id()
             if self.current_user:
                 updated_user = store.get_user_by_id(self.current_user.id)
                 if updated_user:
                     self.current_user = updated_user
+                u_roles = getattr(self.current_user, "roles", [self.current_user.role])
+                is_guard = (self.current_user.id in ("guardian_1", "admin") or self.current_user.role in ("guardian", "admin") or "guardian" in u_roles)
+                if not is_guard and new_active_cid and new_active_cid != prev_active_cid and self.current_view != "c_cycles":
+                    self.selected_cycle_id = new_active_cid
             self._last_render_source = "cross_tab_reload"
             self.render()
 
@@ -357,7 +366,7 @@ class StarAppController:
     _CYCLE_READONLY_SAFE_ACTIONS = {
         "login", "select_demo_account", "logout", "reset_demo_data", "go_back",
         "nav_guardian", "nav_cosmonaut", "nav_to_submit_badge",
-        "select_cycle", "open_create_cycle_modal", "create_six_month_cycle",
+        "select_cycle", "activate_cycle", "open_create_cycle_modal", "create_six_month_cycle",
         "calculate_cycle_appraisals", "update_cycle_appraisal", "finalize_and_close_cycle",
         "view_cycle_candidate_detail", "filter_cycle_performance",
         "select_create_badge_band", "close_modal", "toggle_notifications_modal",
@@ -414,11 +423,12 @@ class StarAppController:
             user = store.get_user_by_username(username)
             if user:
                 self.current_user = user
+                self.selected_cycle_id = store.get_active_cycle_id()
                 if user.role == "guardian" or user.has_role("guardian"):
-                    self.current_view = "g_create_badge"
+                    self.current_view = "g_cycles"
                     self.create_badge_band = None
                 else:
-                    self.current_view = "c_dashboard"
+                    self.current_view = "c_choose_cycle"
                 self.set_flash(f"Welcome back, {user.name}!", "success")
             else:
                 self.set_flash("Invalid demo username. Please choose from the demo credentials below.", "error")
@@ -430,12 +440,14 @@ class StarAppController:
             user = store.get_user_by_id(user_id)
             if user:
                 self.current_user = user
+                self.selected_cycle_id = store.get_active_cycle_id()
                 user_roles = getattr(user, "roles", [user.role])
                 is_guardian_user = (user.id in ("guardian_1", "admin") or user.role in ("guardian", "admin") or "guardian" in user_roles or "admin" in user_roles)
                 if is_guardian_user:
-                    self.current_view = "g_dashboard"
+                    self.current_view = "g_cycles"
+                    self.create_badge_band = None
                 else:
-                    self.current_view = "c_dashboard"
+                    self.current_view = "c_choose_cycle"
                 self.set_flash(f"Logged in as {user.name} ({', '.join(user_roles).replace('_', ' ').title()})", "success")
 
         # --- Create Badge & Reviewer Approval Workflow ---
@@ -932,7 +944,11 @@ class StarAppController:
             if not self.current_user or ("guardian" not in user_roles and self.current_user.role != "guardian"):
                 self.set_flash("Only Guardian / Training Mentors can author new badges.", "error")
             else:
-                draft = self.modal_payload if self.modal_payload else self.create_badge_metadata
+                draft = (
+                    payload
+                    if (isinstance(payload, dict) and (payload.get("code") or payload.get("title")))
+                    else (self.modal_payload if self.modal_payload else self.create_badge_metadata)
+                )
                 code = draft.get("code", "").strip()
                 title = draft.get("title", "").strip()
                 band = draft.get("target_band", self.create_badge_band)
@@ -958,9 +974,15 @@ class StarAppController:
 
                 badge_id = existing_badge_id
                 raw_outcomes = draft.get("learning_outcomes", "")
-                outcomes = [o.strip() for o in raw_outcomes.replace("\n", ",").split(",") if o.strip()]
+                if isinstance(raw_outcomes, list):
+                    outcomes = [str(o).strip() for o in raw_outcomes if str(o).strip()]
+                else:
+                    outcomes = [o.strip() for o in str(raw_outcomes).replace("\n", ",").split(",") if o.strip()]
                 raw_topics = draft.get("learning_topics", "")
-                topics = [t.strip() for t in raw_topics.replace("\n", ",").split(",") if t.strip()]
+                if isinstance(raw_topics, list):
+                    topics = [str(t).strip() for t in raw_topics if str(t).strip()]
+                else:
+                    topics = [t.strip() for t in str(raw_topics).replace("\n", ",").split(",") if t.strip()]
 
                 success, msg, *_ = store.create_badge_for_review(
                     badge_id=badge_id,
@@ -1200,11 +1222,18 @@ class StarAppController:
             if cyc:
                 self.selected_cycle_id = cyc.id
                 self.cosmonaut_expanded_badge_id = None
+                self.cosmonaut_submission_badge_id = None
+                self.cosmonaut_results_badge_id = None
+                self.reviewer_expanded_badge_id = None
                 self.selected_review_sub_id = None
+                self.selected_guardian_cosmo_id = "all"
+                self.created_badge_data = None
+                self.mapping_selected_badge = ""
+                self.mapping_selected_badge_id = ""
                 self.editing_mapping_id = None
                 self.active_modal = None
-                st_note = "Read-Only Archive" if cyc.status == "closed" else "Active Cycle"
-                self.set_flash(f"Switched workspace to {cyc.name} ({cyc.start_date} → {cyc.end_date}) — {st_note}.", "info")
+                st_note = "Previous Cycle Archive (Filtered View)" if cyc.status == "closed" else "Active Cycle"
+                self.set_flash(f"Global Filter set to {cyc.name} ({cyc.start_date} → {cyc.end_date}) — {st_note}.", "info")
                 self.sync_storage()
                 self._last_render_source = f"action:{action}"
                 with store.cycle_scope(cyc.id):
@@ -1212,6 +1241,27 @@ class StarAppController:
                 return
             else:
                 self.set_flash("Selected performance cycle not found.", "error")
+
+        elif action == "activate_cycle":
+            c_id = payload if isinstance(payload, str) else payload.get("cycle_id", "")
+            c_id = str(c_id).strip().replace('"', '')
+            creator_id = self.current_user.id if self.current_user else "guardian_1"
+            ok, msg, act_cyc = activate_cycle(c_id, store, actor_id=creator_id)
+            if ok and act_cyc:
+                self.selected_cycle_id = act_cyc.id
+                self.created_badge_data = None
+                self.mapping_selected_badge = ""
+                self.mapping_selected_badge_id = ""
+                self.editing_mapping_id = None
+                self.active_modal = None
+                self.set_flash(msg, "success")
+                self.sync_storage(force_data=True)
+                self._last_render_source = f"action:{action}"
+                with store.cycle_scope(act_cyc.id):
+                    self.render()
+                return
+            else:
+                self.set_flash(msg, "error")
 
         elif action == "open_create_cycle_modal":
             self.active_modal = "create_cycle_modal"
@@ -1229,7 +1279,8 @@ class StarAppController:
                 created_by=creator_id,
                 clone_badges_from_cycle_id=p_dict.get("clone_badges_from_cycle_id", ""),
                 auto_close_previous=bool(p_dict.get("auto_close_previous", False)),
-                notes=p_dict.get("notes", "")
+                notes=p_dict.get("notes", ""),
+                set_as_active=bool(p_dict.get("set_as_active", True))
             )
             if ok and new_cyc:
                 self.selected_cycle_id = new_cyc.id
@@ -1336,26 +1387,26 @@ class StarAppController:
                     self.create_badge_band = None
                 else:
                     is_guard = (self.current_user and (self.current_user.id == "guardian_1" or self.current_user.role == "guardian" or self.current_user.has_role("guardian")))
-                    self.current_view = "g_dashboard" if is_guard else "c_dashboard"
+                    self.current_view = "g_cycles" if is_guard else "c_choose_cycle"
             else:
                 if self.current_view == "g_create_badge" and self.create_badge_band:
                     self.create_badge_band = None
                 else:
                     is_guard = (self.current_user and (self.current_user.id == "guardian_1" or self.current_user.role == "guardian" or self.current_user.has_role("guardian")))
-                    if is_guard and self.current_view != "g_dashboard":
-                        self.current_view = "g_dashboard"
-                    elif is_guard:
-                        self.current_view = "g_create_badge"
+                    if is_guard and self.current_view != "g_cycles":
+                        self.current_view = "g_cycles"
                         self.create_badge_band = None
-                    elif not is_guard and self.current_view != "c_dashboard":
-                        self.current_view = "c_dashboard"
+                    elif not is_guard and self.current_view != "c_choose_cycle":
+                        self.current_view = "c_choose_cycle"
 
         elif action == "nav_guardian":
             self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
             self.current_view = view_id
             self.active_modal = None
-            if view_id == "g_badge_approval" and getattr(self, "create_badge_band", None):
+            if view_id == "g_learning":
+                self.create_badge_band = None
+            elif view_id == "g_badge_approval" and getattr(self, "create_badge_band", None):
                 self.badge_approval_band_filter = self.create_badge_band
             elif view_id == "g_mapping" and getattr(self, "create_badge_band", None):
                 self.mapping_selected_band = self.create_badge_band
@@ -1700,6 +1751,15 @@ class StarAppController:
                         review_window_json=json.dumps(r_dates)
                     )
                     store.save_timeline(tl_obj)
+                    store.add_activity(
+                        event_type="cadet_mapped_to_badge",
+                        actor_id=self.current_user.id if self.current_user else "guardian_1",
+                        actor_name=self.current_user.name if self.current_user else "Guardian",
+                        cosmonaut_id=c_id,
+                        badge_id=matched_badge_id,
+                        summary=f"Mapped {c_id} to '{matched_badge_title}' (Band {self.mapping_selected_band})",
+                        details=f"Assigned Reviewer: {assigned_rev or 'Executive Council'} &bull; Window: {', '.join(r_dates)}"
+                    )
 
                 b_obj = store.get_badge(matched_badge_id)
                 if b_obj:
@@ -1831,14 +1891,25 @@ class StarAppController:
                 except Exception:
                     data = {}
             badge_id = data.get("badge_id", "")
+            # Normalize legacy short field names & canonical field names uniformly
+            normalized = {
+                "learning_start_date": data.get("learning_start_date") or data.get("learning_start") or None,
+                "learning_end_date": data.get("learning_end_date") or data.get("learning_end") or None,
+                "project_start_date": data.get("project_start_date") or data.get("project_start") or None,
+                "project_end_date": data.get("project_end_date") or data.get("project_end") or None,
+                "submission_deadline": data.get("submission_deadline") or data.get("deadline") or None,
+                "review_date": data.get("review_date") or None,
+                "expected_award_date": data.get("expected_award_date") or data.get("award_date") or None,
+            }
             if badge_id:
+                curr_cid = store.get_effective_read_cycle_id()
                 b_obj = store.get_badge(badge_id)
                 if b_obj:
                     if not b_obj.default_timeline:
                         b_obj.default_timeline = {}
-                    for k in ["learning_start_date", "learning_end_date", "project_start_date", "project_end_date", "submission_deadline", "review_date", "expected_award_date"]:
-                        if k in data and data[k]:
-                            b_obj.default_timeline[k] = data[k]
+                    for k, val in normalized.items():
+                        if val:
+                            b_obj.default_timeline[k] = val
                     store.save_badge(b_obj)
 
                 if store.db and store.db.conn:
@@ -1852,48 +1923,113 @@ class StarAppController:
                                 submission_deadline = COALESCE(?, submission_deadline),
                                 review_date = COALESCE(?, review_date),
                                 expected_award_date = COALESCE(?, expected_award_date)
-                            WHERE badge_id = ?
+                            WHERE badge_id = ? AND cycle_id = ?
                         """, (
-                            data.get("learning_start_date") or None,
-                            data.get("learning_end_date") or None,
-                            data.get("project_start_date") or None,
-                            data.get("project_end_date") or None,
-                            data.get("submission_deadline") or None,
-                            data.get("review_date") or None,
-                            data.get("expected_award_date") or None,
-                            badge_id
+                            normalized["learning_start_date"],
+                            normalized["learning_end_date"],
+                            normalized["project_start_date"],
+                            normalized["project_end_date"],
+                            normalized["submission_deadline"],
+                            normalized["review_date"],
+                            normalized["expected_award_date"],
+                            badge_id,
+                            curr_cid
                         ))
                         store.db.conn.commit()
                     except Exception:
                         pass
                 for tl in store.get_timelines_dict().values():
                     if tl.badge_id == badge_id:
-                        for k in ["learning_start_date", "learning_end_date", "project_start_date", "project_end_date", "submission_deadline", "review_date", "expected_award_date"]:
-                            if k in data and data[k]:
-                                setattr(tl, k, data[k])
+                        for k, val in normalized.items():
+                            if val:
+                                setattr(tl, k, val)
                         store.save_timeline(tl)
+                store.add_activity(
+                    event_type="timeline_configured",
+                    actor_id=self.current_user.id if self.current_user else "guardian_1",
+                    actor_name=self.current_user.name if self.current_user else "Guardian",
+                    cosmonaut_id="",
+                    badge_id=badge_id,
+                    summary=f"Configured Milestone Timeline Schedule for {b_obj.code if b_obj else badge_id}",
+                    details=f"Deadline: {normalized['submission_deadline'] or 'unchanged'} | Review: {normalized['review_date'] or 'unchanged'}"
+                )
                 store.mark_dirty()
                 self.set_flash("Timeline schedule configured and saved successfully!", "success")
             else:
                 self.set_flash("Badge ID missing for timeline save.", "warning")
 
-        elif action == "accept_mapping_request":
+        elif action in ("accept_mapping_request", "reject_mapping_request", "delete_mapping_request"):
             req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
             if req_id:
-                store.update_mapping_request_status(req_id, "accepted")
-                self.set_flash("Review request accepted. Reviewer confirmed for milestone mapping.", "success")
+                curr_cid = store.get_effective_read_cycle_id()
+                reqs = store.get_mapping_requests(cycle_id=curr_cid)
+                matched_req = next(
+                    (
+                        r for r in reqs
+                        if r.get("id") == req_id
+                        or f"req_{r.get('band')}_{r.get('reviewer_id')}" == req_id
+                        or r.get("id", "").startswith(req_id)
+                    ),
+                    None
+                )
+                actor_id = (self.current_user.id if self.current_user else None) or (matched_req.get("reviewer_id") if matched_req else "reviewer")
+                actor_name = (self.current_user.name if self.current_user else None) or (matched_req.get("reviewer_name") if matched_req else "Reviewer")
+                b_ref = matched_req.get("badge_id", "") if matched_req else ""
+                b_label = matched_req.get("badge", req_id) if matched_req else req_id
+                band_lbl = matched_req.get("band", "") if matched_req else ""
 
-        elif action == "reject_mapping_request":
-            req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
-            if req_id:
-                store.update_mapping_request_status(req_id, "rejected")
-                self.set_flash("Review request declined / rejected.", "info")
-
-        elif action == "delete_mapping_request":
-            req_id = payload.strip().replace('"', '') if isinstance(payload, str) else (payload.get("request_id") if isinstance(payload, dict) else "")
-            if req_id:
-                store.delete_mapping_request(req_id)
-                self.set_flash("Review request removed.", "info")
+                if action == "accept_mapping_request":
+                    store.update_mapping_request_status(req_id, "accepted")
+                    store.add_activity(
+                        event_type="mapping_request_accepted",
+                        actor_id=actor_id,
+                        actor_name=actor_name,
+                        cosmonaut_id="",
+                        badge_id=b_ref,
+                        summary=f"Accepted Mapping Request for '{b_label}' (Band {band_lbl})",
+                        details=f"{actor_name} accepted reviewer allocation invitation ({req_id})."
+                    )
+                    store.add_notification(
+                        recipient_id="guardian_1",
+                        title=f"Mapping Accepted: {b_label}",
+                        message=f"{actor_name} accepted reviewer mapping request for '{b_label}' (Band {band_lbl}).",
+                        link_section="g_mapping",
+                        event_type="mapping_accepted",
+                        related_badge_id=b_ref
+                    )
+                    self.set_flash("Review request accepted. Reviewer confirmed for milestone mapping.", "success")
+                elif action == "reject_mapping_request":
+                    store.update_mapping_request_status(req_id, "rejected")
+                    store.add_activity(
+                        event_type="mapping_request_rejected",
+                        actor_id=actor_id,
+                        actor_name=actor_name,
+                        cosmonaut_id="",
+                        badge_id=b_ref,
+                        summary=f"Rejected Mapping Request for '{b_label}' (Band {band_lbl})",
+                        details=f"{actor_name} declined reviewer allocation invitation ({req_id})."
+                    )
+                    store.add_notification(
+                        recipient_id="guardian_1",
+                        title=f"Mapping Declined: {b_label}",
+                        message=f"{actor_name} declined reviewer mapping request for '{b_label}' (Band {band_lbl}).",
+                        link_section="g_mapping",
+                        event_type="mapping_rejected",
+                        related_badge_id=b_ref
+                    )
+                    self.set_flash("Review request declined / rejected.", "info")
+                else:
+                    store.delete_mapping_request(req_id)
+                    store.add_activity(
+                        event_type="mapping_request_deleted",
+                        actor_id=actor_id,
+                        actor_name=actor_name,
+                        cosmonaut_id="",
+                        badge_id=b_ref,
+                        summary=f"Deleted Mapping Request ({req_id})",
+                        details=f"Removed mapping invitation for '{b_label}'."
+                    )
+                    self.set_flash("Review request removed.", "info")
 
         elif action == "execute_cosmonaut_mapping":
             import time
@@ -2000,6 +2136,15 @@ class StarAppController:
                             review_window_json=json.dumps(r_dates)
                         )
                         store.save_timeline(tl_obj)
+                        store.add_activity(
+                            event_type="cadet_mapped_to_badge",
+                            actor_id=self.current_user.id if self.current_user else "guardian_1",
+                            actor_name=self.current_user.name if self.current_user else "Guardian",
+                            cosmonaut_id=c_id,
+                            badge_id=matched_badge_id,
+                            summary=f"Mapped {c_id} to '{matched_badge_title}' (Band {effective_band})",
+                            details=f"Assigned Reviewer: {assigned_rev} &bull; Window: {', '.join(r_dates)}"
+                        )
 
                     b_obj = store.get_badge(matched_badge_id)
                     if b_obj:
@@ -2383,6 +2528,16 @@ class StarAppController:
                             )
 
                 store.save_badge(badge)
+                for cid in all_mapped_cids:
+                    store.add_activity(
+                        event_type="milestone_published_for_cadet",
+                        actor_id=self.current_user.id if self.current_user else "guardian_1",
+                        actor_name=self.current_user.name if self.current_user else "Guardian",
+                        cosmonaut_id=cid,
+                        badge_id=badge.id,
+                        summary=f"Published Milestone {badge.code} ({badge.title}) to {cid}",
+                        details=f"Band {b_band} milestone unlocked for mapped cadet."
+                    )
                 store.add_activity("badge_published", self.current_user.id if self.current_user else "guardian_1", self.current_user.name if self.current_user else "Guardian", "", badge.id, f"Published {badge.code}: {badge.title} — ready for mapping & curriculum")
                 self.set_flash(f"Published {badge.code}: {badge.title}! It is now active on Reviewer and Cosmonaut roadmaps.", "success")
 
@@ -2394,42 +2549,6 @@ class StarAppController:
                 store.save_badge(badge)
                 store.add_activity("badge_unpublished", self.current_user.id, self.current_user.name, "", badge.id, f"Unpublished {badge.code}: {badge.title}")
                 self.set_flash(f"Unpublished {badge.code} from active roadmaps.", "info")
-
-        elif action == "save_allotment_timeline":
-            import json as _json
-            data = payload if isinstance(payload, dict) else {}
-            if isinstance(payload, str):
-                try:
-                    data = _json.loads(payload)
-                except Exception:
-                    data = {}
-            badge_id = data.get("badge_id", "")
-            if badge_id and store.db and store.db.conn:
-                try:
-                    store.db.conn.execute("""
-                        UPDATE badge_timelines SET
-                            learning_start_date = COALESCE(?, learning_start_date),
-                            learning_end_date = COALESCE(?, learning_end_date),
-                            project_start_date = COALESCE(?, project_start_date),
-                            project_end_date = COALESCE(?, project_end_date),
-                            submission_deadline = COALESCE(?, submission_deadline),
-                            expected_award_date = COALESCE(?, expected_award_date)
-                        WHERE badge_id = ?
-                    """, (
-                        data.get("learning_start") or None,
-                        data.get("learning_end") or None,
-                        data.get("project_start") or None,
-                        data.get("project_end") or None,
-                        data.get("deadline") or None,
-                        data.get("award_date") or None,
-                        badge_id
-                    ))
-                    store.db.conn.commit()
-                    self.set_flash("Timeline saved successfully!", "success")
-                except Exception as e:
-                    self.set_flash(f"Error saving timeline: {e}", "error")
-            else:
-                self.set_flash("Badge ID missing or DB not available.", "warning")
 
         elif action == "open_create_badge_modal":
             self.active_modal = "create_badge"
@@ -2714,6 +2833,15 @@ class StarAppController:
             b_title = badge.title if badge else "Assigned Milestone"
 
             if status == "draft":
+                store.add_activity(
+                    event_type="reviewer_project_draft_saved",
+                    actor_id=rev_id,
+                    actor_name=rev_name,
+                    cosmonaut_id=cosmonaut_ids[0] if cosmonaut_ids else "",
+                    badge_id=badge_id,
+                    summary=f"Saved Project Draft: '{title}' by {rev_name}",
+                    details=f"Draft saved for {b_title} ({len(cosmonaut_ids)} mapped cadets)."
+                )
                 self.set_flash(f"Project draft for '{title}' saved successfully.", "success")
             else:
                 for cid in cosmonaut_ids:
@@ -2724,15 +2852,25 @@ class StarAppController:
                         event_type="milestone",
                         link_section="c_submission"
                     )
-                store.add_activity(
-                    event_type="reviewer_project_assigned",
-                    actor_id=rev_id,
-                    actor_name=rev_name,
-                    cosmonaut_id=cosmonaut_ids[0] if cosmonaut_ids else "",
-                    badge_id=badge_id,
-                    summary=f"Project Assigned: '{title}' by {rev_name}",
-                    details=f"{rev_name} released project '{title}' to {len(cosmonaut_ids)} mapped cadets for {b_title}."
-                )
+                    store.add_activity(
+                        event_type="reviewer_project_assigned",
+                        actor_id=rev_id,
+                        actor_name=rev_name,
+                        cosmonaut_id=cid,
+                        badge_id=badge_id,
+                        summary=f"Project Assigned: '{title}' by {rev_name}",
+                        details=f"{rev_name} released project '{title}' to mapped cadet {cid} for {b_title}."
+                    )
+                if not cosmonaut_ids:
+                    store.add_activity(
+                        event_type="reviewer_project_assigned",
+                        actor_id=rev_id,
+                        actor_name=rev_name,
+                        cosmonaut_id="",
+                        badge_id=badge_id,
+                        summary=f"Project Released: '{title}' by {rev_name}",
+                        details=f"{rev_name} released project '{title}' for {b_title}."
+                    )
                 self.set_flash(f"Project '{title}' successfully submitted and assigned to {len(cosmonaut_ids)} mapped cadets!", "success")
 
             self.active_modal = None
@@ -4529,9 +4667,10 @@ if __name__ == "__main__":
 
         user_roles = getattr(self.current_user, "roles", [self.current_user.role])
         is_guardian_view = self.current_view.startswith("g_")
+        selected_cycle_obj = store.get_cycle(effective_cid)
 
         if is_guardian_view:
-            hide_sidebar = (self.current_view == "g_create_badge" and not self.create_badge_band)
+            hide_sidebar = False
             pending_reviews = len([s for s in all_subs if s.status == "pending"])
             pending_exts = len([e for e in store.get_all_extensions() if e.status == "pending"])
             pending_badge_approvals = len(store.get_pending_badge_approvals(
@@ -4539,7 +4678,12 @@ if __name__ == "__main__":
                 target_band=self.create_badge_band
             ))
             sidebar_badges = {"g_reviews": pending_reviews, "g_extensions": pending_exts, "g_badge_approval": pending_badge_approvals}
-            active_nav_id = "g_reviews" if self.current_view == "g_review_detail" else self.current_view
+            if self.current_view == "g_review_detail":
+                active_nav_id = "g_reviews"
+            elif self.current_view == "g_learning":
+                active_nav_id = "g_create_badge"
+            else:
+                active_nav_id = self.current_view
             sidebar_html = render_guardian_sidebar(
                 self.current_view,
                 self.current_user,
@@ -4547,17 +4691,19 @@ if __name__ == "__main__":
                 pending_exts,
                 pending_badge_approvals,
                 active_band=self.create_badge_band,
-                hidden=hide_sidebar
+                hidden=hide_sidebar,
+                selected_cycle=selected_cycle_obj
             )
 
-            if self.current_view == "g_create_badge":
-                page_title = "Create Badge — StarApp"
+            if self.current_view in ("g_create_badge", "g_learning"):
+                page_title = "Learning Bands & Badge Studio — StarApp" if self.current_view == "g_learning" else "Create Badge — StarApp"
+                band_for_view = None if self.current_view == "g_learning" else self.create_badge_band
                 custom_caps = store.get_custom_capabilities()
                 custom_skills = store.get_custom_skills()
-                elig_revs = store.get_eligible_badge_reviewers(self.create_badge_band) if self.create_badge_band else []
-                saved_b = store.get_saved_badges(self.create_badge_band)
+                elig_revs = store.get_eligible_badge_reviewers(band_for_view) if band_for_view else []
+                saved_b = store.get_saved_badges(band_for_view)
                 main_content_html = render_guardian_create_badge(
-                    selected_band=self.create_badge_band,
+                    selected_band=band_for_view,
                     power=self.create_badge_power,
                     capability=self.create_badge_capability,
                     skill=self.create_badge_skill,
@@ -4572,8 +4718,17 @@ if __name__ == "__main__":
                     outcome_sentence=self.create_badge_outcome_sentence,
                     created_badge_data=self.created_badge_data,
                     is_editing_badge=self.is_editing_badge,
-                    saved_badges=saved_b
+                    saved_badges=saved_b,
+                    selected_cycle=selected_cycle_obj
                 )
+
+            elif self.current_view == "g_earning":
+                page_title = "Earning — Global Cycle View — StarApp"
+                main_content_html = render_guardian_pillar_placeholder("Earning", selected_cycle_obj)
+
+            elif self.current_view == "g_contribution":
+                page_title = "Contribution — Global Cycle View — StarApp"
+                main_content_html = render_guardian_pillar_placeholder("Contribution", selected_cycle_obj)
 
             elif self.current_view == "g_badge_approval":
                 page_title = "Reviewer Badge Approval — StarApp"
@@ -4772,7 +4927,13 @@ if __name__ == "__main__":
                 active_nav_id = "c_assessments"
             else:
                 active_nav_id = self.current_view
-            sidebar_html = render_cosmonaut_sidebar(self.current_view, self.current_user, unread_anns, pending_cosmo_reqs_cnt)
+            sidebar_html = render_cosmonaut_sidebar(
+                self.current_view,
+                self.current_user,
+                unread_anns,
+                pending_cosmo_reqs_cnt,
+                selected_cycle=selected_cycle_obj
+            )
 
             assigned_badges = store.get_badges_for_cosmonaut(self.current_user.id)
             user_asms = store.get_assessments_for_cosmonaut(self.current_user.id)
@@ -4781,7 +4942,15 @@ if __name__ == "__main__":
             summary = calculate_cosmonaut_score_summary(user_asms)
             leaderboard = calculate_batch_leaderboard(cosmonauts, all_asms)
 
-            if self.current_view == "c_dashboard":
+            if self.current_view == "c_choose_cycle":
+                page_title = "Choose Cycle — Global Filter — StarApp"
+                main_content_html = render_cosmonaut_choose_cycle_view(
+                    current_user=self.current_user,
+                    cycles=store.get_all_cycles(),
+                    selected_cycle=selected_cycle_obj
+                )
+
+            elif self.current_view == "c_dashboard":
                 page_title = f"Cosmonaut Dossier — {self.current_user.name}"
                 recent_anns = store.get_announcements_for_cosmonaut(self.current_user.id)[:3]
                 u_exts = store.get_extensions_for_cosmonaut(self.current_user.id)
@@ -4962,14 +5131,6 @@ if __name__ == "__main__":
                     selected_cycle=sel_cyc,
                     user_perf_per_cycle=perf_list
                 )
-
-        cycle_bar_html = render_cycle_context_bar(
-            cycles=store.get_all_cycles(),
-            selected_cycle=store.get_cycle(effective_cid),
-            is_guardian=is_guardian_view,
-            current_view=self.current_view
-        )
-        main_content_html = cycle_bar_html + main_content_html
 
         modal_html = self.render_active_modal()
 

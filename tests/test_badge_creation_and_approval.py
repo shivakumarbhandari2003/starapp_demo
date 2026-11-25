@@ -25,18 +25,46 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.ctrl.handle_event("select_demo_account", "guardian_1")
 
     def test_sidebar_navigation_order(self):
-        """Verify Guardian sidebar has Create Badge and Reviewer Badge Approval at the top."""
-        html = self.ctrl.render()
-        self.assertIn("g_create_badge", html)
-        self.assertIn("Create Badge", html)
-        self.assertIn("g_badge_approval", html)
-        self.assertIn("Reviewer Badge Approval", html)
+        """Verify Guardian opens on 4-pillar sidebar (Choose Cycle, Learning, Earning, Contribution) and Learning shows exact ordered sidebar."""
+        # 1. Initial landing view is Choose Cycle (g_cycles) with 4 pillars
+        self.assertEqual(self.ctrl.current_view, "g_cycles")
+        pillar_html = self.ctrl.render()
+        p_cyc = pillar_html.find('data-nav-id="g_cycles"')
+        p_lrn = pillar_html.find('data-nav-id="g_learning"')
+        p_ern = pillar_html.find('data-nav-id="g_earning"')
+        p_cnt = pillar_html.find('data-nav-id="g_contribution"')
+        self.assertTrue(0 < p_cyc < p_lrn < p_ern < p_cnt, "Portal pillars must be: Choose Cycle, Learning, Earning, Contribution")
+        self.assertNotIn('data-nav-id="g_create_badge"', pillar_html)
 
-        # Verify ordering: g_create_badge before g_badge_approval, and g_badge_approval before g_dashboard
+        # 2. Entering Learning shows all Band cards + exact ordered Learning sidebar
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        html = self.ctrl.render()
+        for b in ["B1", "B2", "B3", "B4", "B5", "B6"]:
+            self.assertIn(f"BAND {b}", html)
+
         cb_idx = html.find('data-nav-id="g_create_badge"')
         ba_idx = html.find('data-nav-id="g_badge_approval"')
-        db_idx = html.find('data-nav-id="g_dashboard"')
-        self.assertTrue(0 < cb_idx < ba_idx < db_idx, "Sidebar items must be strictly ordered: Create Badge, Approval, Dashboard")
+        mp_idx = html.find('data-nav-id="g_mapping"')
+        al_idx = html.find('data-nav-id="g_allotment"')
+        rv_idx = html.find('data-nav-id="g_reviews"')
+        ex_idx = html.find('data-nav-id="g_extensions"')
+        self.assertTrue(
+            0 < cb_idx < ba_idx < mp_idx < al_idx < rv_idx < ex_idx,
+            "Learning sidebar items must follow exact order: Create Badge, Approval, Mapping, Allotment, Assessment, Deadline Extension"
+        )
+        # Learning Materials and Learning Roadmap removed from sidebar
+        self.assertNotIn('data-nav-id="g_materials"', html)
+        self.assertNotIn('data-nav-id="g_roadmap"', html)
+
+        # 3. Earning & Contribution pillars stay blank/future-ready and cycle-filtered
+        self.ctrl.handle_event("nav_guardian", "g_earning")
+        earn_html = self.ctrl.render()
+        self.assertIn("Earning Module", earn_html)
+        self.assertIn("Cycle 1", earn_html)
+        self.ctrl.handle_event("nav_guardian", "g_contribution")
+        contrib_html = self.ctrl.render()
+        self.assertIn("Contribution Module", contrib_html)
+        self.assertIn("Cycle 1", contrib_html)
 
     def test_band_selection_view(self):
         """Verify navigating to g_create_badge without a selected band renders 6 band cards."""

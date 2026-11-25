@@ -46,7 +46,7 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
     def test_guardian_send_badge_review_request(self):
         """Verify Guardian can select a higher-band reviewer and send a review request."""
         self.ctrl.handle_event("select_demo_account", "guardian_1")
-        self.assertEqual(self.ctrl.current_view, "g_dashboard")
+        self.assertEqual(self.ctrl.current_view, "g_cycles")
 
         # Guardian dispatches review request for b1_dat_01 to Tanvi Shah (B3, m_b3_6)
         self.ctrl.handle_event("send_badge_review_request", {
@@ -69,19 +69,26 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         # Guardian assigns b1_int_01 to Nisha Menon (B2, m_b2_4)
         store.assign_and_request_badge_review("b1_int_01", "m_b2_4", "guardian_1")
 
-        # Log in as Nisha Menon
+        # Log in as Nisha Menon -> opens Choose Cycle global filter with ordered sidebar
         self.ctrl.handle_event("select_demo_account", "m_b2_4")
         self.assertEqual(self.ctrl.current_user.id, "m_b2_4")
-        self.assertEqual(self.ctrl.current_view, "c_dashboard")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
 
-        # 1. Dashboard displays institutional review assignment alert
+        # Sidebar contains exact ordered items (Learning Roadmap & Study Materials omitted from sidebar)
+        choose_html = self.ctrl.render()
+        self.assertIn("Choose Cycle", choose_html)
+        self.assertIn('data-nav-id="c_choose_cycle"', choose_html)
+        self.assertIn('data-nav-id="c_badge_reviews"', choose_html)
+        self.assertIn('data-nav-id="c_requests"', choose_html)
+        self.assertIn('data-nav-id="c_assessments"', choose_html)
+        self.assertNotIn('data-nav-id="c_roadmap"', choose_html)
+        self.assertNotIn('data-nav-id="c_materials"', choose_html)
+
+        # 1. Dashboard displays institutional review assignment alert when opened
+        self.ctrl.handle_event("nav_cosmonaut", "c_dashboard")
         dash_html = self.ctrl.render()
         self.assertIn("Institutional Peer Review Assignment", dash_html)
         self.assertIn("Review Requests (1)", dash_html)
-
-        # 2. Sidebar contains Review Requests link
-        self.assertIn("Review Requests", dash_html)
-        self.assertIn('data-nav-id="c_requests"', dash_html)
 
         # 3. Navigate to c_requests
         self.ctrl.handle_event("nav_cosmonaut", "c_requests")
@@ -209,13 +216,13 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.ctrl.handle_event("go_back")
         self.assertEqual(self.ctrl.current_view, "g_create_badge")
 
-        # 5. Cosmonaut navigation: c_dashboard -> c_submission -> go_back -> c_dashboard
+        # 5. Cosmonaut navigation: c_choose_cycle -> c_submission -> go_back -> c_choose_cycle
         self.ctrl.handle_event("select_demo_account", "m_b1_2")
-        self.assertEqual(self.ctrl.current_view, "c_dashboard")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
         self.assertEqual(self.ctrl.current_view, "c_submission")
         self.ctrl.handle_event("go_back")
-        self.assertEqual(self.ctrl.current_view, "c_dashboard")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
 
 if __name__ == "__main__":
     unittest.main()

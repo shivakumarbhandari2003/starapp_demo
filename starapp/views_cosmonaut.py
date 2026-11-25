@@ -60,8 +60,15 @@ def render_cosmo_metric_info_popover(key: str, data: Dict[str, Any], scope: str 
 # COSMONAUT SIDEBAR
 # ==============================================================================
 
-def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announcements_count: int, pending_requests_count: int = 0) -> str:
+def render_cosmonaut_sidebar(
+    active_view: str,
+    current_user: User,
+    unread_announcements_count: int,
+    pending_requests_count: int = 0,
+    selected_cycle: Optional[Any] = None
+) -> str:
     from starapp.storage import store
+    from starapp.views_common import render_sidebar_cycle_pill
 
     # If pending_requests_count was not passed, compute it dynamically
     if pending_requests_count == 0 and hasattr(store, "get_badge_review_requests_for_user"):
@@ -73,18 +80,22 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         except Exception:
             pending_requests_count = 0
 
+    if selected_cycle is None and hasattr(store, "get_cycle"):
+        try:
+            selected_cycle = store.get_cycle(store.get_active_cycle_id())
+        except Exception:
+            selected_cycle = None
+
     nav_items = [
-        {"id": "c_dashboard", "label": "My Dashboard", "icon": '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>', "badge": 0},
-        {"id": "c_roadmap", "label": "Learning Roadmap", "icon": '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', "badge": 0},
-        {"id": "c_submission", "label": "Badges", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>', "badge": 0},
-        {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
-        {"id": "c_materials", "label": "Study Materials", "icon": '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "badge": 0},
-        {"id": "c_profile", "label": "Cosmonaut Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
-        {"id": "c_extensions", "label": "Deadline Extensions", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0},
-        {"id": "c_cycles", "label": "Past Cycles & Appraisals", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>', "badge": 0}
+        {
+            "id": "c_choose_cycle",
+            "label": "Choose Cycle",
+            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01"/></svg>',
+            "badge": 0
+        }
     ]
 
-    # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Review Requests & Cadet Assessments view
+    # Eligible reviewers (bands B2 through B6 or badge_reviewer role) receive Badge Reviews, Review Requests & Cadet Assessments
     u_band = getattr(current_user, "band", "")
     is_eligible = (u_band in ("B2", "B3", "B4", "B5", "B6")) or current_user.has_role("badge_reviewer") or (pending_requests_count > 0)
     if is_eligible:
@@ -99,24 +110,35 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         except Exception:
             pending_asms_count = 0
 
-        nav_items.insert(2, {
-            "id": "c_requests",
-            "label": "Review Requests",
-            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
-            "badge": pending_requests_count
-        })
-        nav_items.insert(3, {
-            "id": "c_badge_reviews",
-            "label": "Badge Reviews",
-            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-            "badge": 0
-        })
-        nav_items.insert(4, {
-            "id": "c_assessments",
-            "label": "Cadet Assessments",
-            "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-            "badge": pending_asms_count
-        })
+        nav_items.extend([
+            {
+                "id": "c_badge_reviews",
+                "label": "Badge Reviews",
+                "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+                "badge": 0
+            },
+            {
+                "id": "c_requests",
+                "label": "Review Requests",
+                "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+                "badge": pending_requests_count
+            },
+            {
+                "id": "c_assessments",
+                "label": "Cadet Assessments",
+                "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+                "badge": pending_asms_count
+            }
+        ])
+
+    # Exact requested Cosmonaut sidebar items (Learning Roadmap & Study Materials omitted from sidebar; views/routes kept in code)
+    nav_items.extend([
+        {"id": "c_submission", "label": "Badges", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>', "badge": 0},
+        {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
+        {"id": "c_profile", "label": "Profile", "icon": '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
+        {"id": "c_extensions", "label": "Deadline Extension", "icon": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0},
+        {"id": "c_cycles", "label": "Past Cycle & Performance", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>', "badge": 0}
+    ])
 
     links_html = []
     for item in nav_items:
@@ -137,6 +159,8 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
         </li>
         """)
 
+    cycle_pill_html = render_sidebar_cycle_pill(selected_cycle, "nav_cosmonaut", "c_choose_cycle")
+
     return f"""
     <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="cosmonaut" data-user-id="{escape(current_user.id)}">
         <div class="sidebar-header">
@@ -151,6 +175,8 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
             <span class="role-badge-label">Learner</span>
             <span class="role-badge-val">Band {escape(getattr(current_user, 'band', 'B1'))}</span>
         </div>
+
+        {cycle_pill_html}
 
         <ul class="sidebar-nav">
             {"".join(links_html)}
@@ -5365,6 +5391,104 @@ def render_cosmonaut_cycles_view(
             </p>
         </div>
         {"".join(cards) if cards else '<div class="liquid-glass-card" style="padding:36px; text-align:center; color:var(--frost-navy-50);">No cycles recorded yet.</div>'}
+    </div>
+    """
+
+
+def render_cosmonaut_choose_cycle_view(
+    current_user: User,
+    cycles: List[Any],
+    selected_cycle: Any
+) -> str:
+    """Renders Global Cycle Filter selector for Cosmonauts and Reviewers."""
+    sel_id = getattr(selected_cycle, "id", "cycle_1") if selected_cycle else "cycle_1"
+    sel_name = getattr(selected_cycle, "name", "Cycle 1") if selected_cycle else "Cycle 1"
+    sel_dates = f"{getattr(selected_cycle, 'start_date', '')} → {getattr(selected_cycle, 'end_date', '')}" if selected_cycle else ""
+    sel_status = (getattr(selected_cycle, "status", "active") or "active").upper() if selected_cycle else "ACTIVE"
+
+    u_band = getattr(current_user, "band", "")
+    is_reviewer = (u_band in ("B2", "B3", "B4", "B5", "B6")) or current_user.has_role("badge_reviewer")
+
+    cycle_cards = []
+    for cyc in cycles:
+        is_sel = (cyc.id == sel_id)
+        border_css = "border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(234,244,255,0.95) 0%, rgba(255,255,255,0.98) 100%);" if is_sel else "border:1px solid var(--icy-steel-30); background:#fff;"
+        st_raw = (cyc.status or "active").lower()
+        st_color = "#047857" if st_raw == "active" else ("#B45309" if st_raw == "evaluating" else "#475569")
+        st_badge = f'<span style="font-size:10px; font-weight:800; color:{st_color}; background:rgba(15,23,42,0.05); padding:2px 8px; border-radius:999px; text-transform:uppercase;">{escape(st_raw)}</span>'
+        active_chip = '<span style="font-size:10.5px; font-weight:800; background:#059669; color:#fff; padding:3px 10px; border-radius:999px;">&#10003; Active Global Filter</span>' if is_sel else '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">Apply Cycle Filter &rarr;</span>'
+
+        cycle_cards.append(f"""
+        <div class="liquid-glass-card interactive" style="padding:20px; cursor:pointer; {border_css}"
+             onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:3px 9px; border-radius:var(--radius-xs);">{escape(cyc.code)}</span>
+                {st_badge}
+            </div>
+            <h3 style="margin:0 0 6px 0; font-size:1.15rem; font-weight:800; color:var(--frost-navy);">{escape(cyc.name)}</h3>
+            <div style="font-size:12px; color:var(--frost-navy-50); font-family:var(--font-family-mono); margin-bottom:14px;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-25);">
+                {active_chip}
+            </div>
+        </div>
+        """)
+
+    rev_quick_btn = (
+        """
+        <button type="button" class="btn-secondary" style="font-weight:700; padding:8px 16px;"
+                onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_badge_reviews')">
+            Open Badge Reviews &rarr;
+        </button>
+        <button type="button" class="btn-secondary" style="font-weight:700; padding:8px 16px;"
+                onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_requests')">
+            Open Review Requests &rarr;
+        </button>
+        """
+        if is_reviewer else ""
+    )
+
+    return f"""
+    <div>
+        <div class="liquid-glass-card" style="padding:22px 26px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;">
+                <div>
+                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--deep-frozen-midnight); margin-bottom:6px;">
+                        Global Portal Filter &bull; {escape(sel_status)}
+                    </div>
+                    <h2 style="font-size:1.5rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">Choose 6-Month Performance Cycle</h2>
+                    <p style="font-size:13px; color:var(--frost-navy-75); margin:0; max-width:720px;">
+                        Selecting a cycle applies it globally across your entire portal &mdash; filtering your Badges, Assessment Marksheets, Deadline Extensions, Reviewer Queue, and Performance History.
+                    </p>
+                </div>
+                <div style="padding:10px 16px; border-radius:var(--radius-md); background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.35); text-align:right;">
+                    <div style="font-size:10px; font-weight:800; color:#047857; text-transform:uppercase;">Currently Applied Global Filter</div>
+                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(sel_name)}</div>
+                    <div style="font-size:11px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(sel_dates)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:22px;">
+            {"".join(cycle_cards) if cycle_cards else '<div class="liquid-glass-card" style="padding:32px; text-align:center;">No performance cycles available yet.</div>'}
+        </div>
+
+        <div class="liquid-glass-card" style="padding:16px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div>
+                <div style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">Proceed inside {escape(sel_name)}</div>
+                <div style="font-size:11.5px; color:var(--frost-navy-50);">All views below are automatically scoped to this cycle.</div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                {rev_quick_btn}
+                <button type="button" class="btn-metal" style="font-weight:800; padding:8px 18px;"
+                        onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">
+                    Open Badges &rarr;
+                </button>
+                <button type="button" class="btn-secondary" style="font-weight:700; padding:8px 16px;"
+                        onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_cycles')">
+                    Past Cycle &amp; Performance &rarr;
+                </button>
+            </div>
+        </div>
     </div>
     """
 

@@ -128,10 +128,10 @@ class TestBadgeMappingAndViewReflection(unittest.TestCase):
         cosmo_ctrl = StarAppController()
         cosmo_ctrl.handle_event("select_demo_account", "m_b4_1")
         
-        # 1. Check Cosmonaut Roadmap
+        # 1. Check Cosmonaut Roadmap (route still intact even though hidden from sidebar)
         cosmo_ctrl.handle_event("nav_cosmonaut", "c_roadmap")
         roadmap_html = cosmo_ctrl.render()
-        self.assertIn("Learning Roadmap", roadmap_html)
+        self.assertIn("Cosmonaut Learning Pathway", roadmap_html)
         self.assertIn("Governance Architecture", roadmap_html)
 
         # 2. Check Cosmonaut Badges / Submission view

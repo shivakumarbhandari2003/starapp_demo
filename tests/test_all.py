@@ -161,12 +161,12 @@ class TestRoadmapPrerequisites(unittest.TestCase):
 
         controller.handle_event("nav_guardian", "g_roadmap")
         g_html = controller.render()
-        self.assertIn("Learning Roadmap", g_html)
+        self.assertIn("Curriculum Milestone Roadmap", g_html)
 
         controller.handle_event("select_demo_account", "cosmo_1")
         controller.handle_event("nav_cosmonaut", "c_roadmap")
         c_html = controller.render()
-        self.assertIn("Learning Roadmap", c_html)
+        self.assertIn("Cosmonaut Learning Pathway", c_html)
 
     def test_badge_lifecycle_timeline_window_and_guardian_decision(self):
         """Verify Guardian decision of all 6 timeline milestones and rendering in Cosmonaut timeline window."""

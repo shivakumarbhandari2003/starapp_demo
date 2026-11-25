@@ -225,6 +225,16 @@ class DataStore:
         self.db.migrate_from_dict(seed_data)
         exported = self.db.export_to_dict()
         self.load_from_dict(exported)
+        if self.get_cycle("cycle_0") and not self.get_cycle_appraisals("cycle_0"):
+            from starapp.cycles import calculate_and_save_cycle_appraisals
+            with self.cycle_scope("cycle_0"):
+                apps = calculate_and_save_cycle_appraisals("cycle_0", self, actor_id="guardian_1", preserve_manual_overrides=True)
+                for app_obj in apps:
+                    app_obj.status = "finalized"
+                    app_obj.finalized_by = "guardian_1"
+                    app_obj.finalized_at = "2026-06-30T18:00:00Z"
+                    self.save_cycle_appraisal(app_obj)
+            self.load_from_dict(self.db.export_to_dict())
         self.mark_dirty()
 
     # --- Users & Profiles ---
@@ -1379,43 +1389,53 @@ class DataStore:
             print(f"Error adding mapping request: {e}")
         self.mark_dirty()
 
-    def update_mapping_request_status(self, req_id: str, status: str):
+    def update_mapping_request_status(self, req_id: str, status: str, cycle_id: Optional[str] = None):
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
         if not hasattr(self, "mapping_requests") or not self.mapping_requests:
-            self.get_mapping_requests()
-        for r in self.mapping_requests:
-            legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
-            if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
-                r["status"] = status
-                actual_id = r.get("id")
-                try:
-                    with self.db.conn:
-                        self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(r), actual_id))
-                    if self.db and self.db.conn:
-                        self.db.conn.commit()
-                except Exception as e:
-                    print(f"Error updating mapping request status: {e}")
-                self.mark_dirty()
-                break
-
-    def delete_mapping_request(self, req_id: str):
-        if not hasattr(self, "mapping_requests") or not self.mapping_requests:
-            self.get_mapping_requests()
-        if hasattr(self, "mapping_requests") and self.mapping_requests:
-            to_delete = []
-            for r in self.mapping_requests:
-                legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
-                if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
-                    to_delete.append(r.get("id"))
-            self.mapping_requests = [r for r in self.mapping_requests if r.get("id") not in to_delete]
+            self.get_mapping_requests(cycle_id=target_cid)
+        scoped_reqs = [r for r in self.mapping_requests if (r.get("cycle_id") or DEFAULT_CYCLE_ID) == target_cid]
+        # Prefer exact ID match before legacy band+reviewer fallback within target_cid
+        target_r = next((r for r in scoped_reqs if r.get("id") == req_id), None)
+        if not target_r:
+            target_r = next(
+                (r for r in scoped_reqs if f"req_{r.get('band')}_{r.get('reviewer_id')}" == req_id or r.get("id", "").startswith(req_id)),
+                None
+            )
+        if target_r:
+            target_r["status"] = status
+            actual_id = target_r.get("id")
             try:
                 with self.db.conn:
-                    for del_id in to_delete:
-                        self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (del_id,))
+                    self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(target_r), actual_id))
                 if self.db and self.db.conn:
                     self.db.conn.commit()
             except Exception as e:
-                print(f"Error deleting mapping request: {e}")
+                print(f"Error updating mapping request status: {e}")
             self.mark_dirty()
+
+    def delete_mapping_request(self, req_id: str, cycle_id: Optional[str] = None):
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        if not hasattr(self, "mapping_requests") or not self.mapping_requests:
+            self.get_mapping_requests(cycle_id=target_cid)
+        if hasattr(self, "mapping_requests") and self.mapping_requests:
+            to_delete = []
+            for r in self.mapping_requests:
+                if (r.get("cycle_id") or DEFAULT_CYCLE_ID) != target_cid:
+                    continue
+                legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
+                if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
+                    to_delete.append(r.get("id"))
+            if to_delete:
+                self.mapping_requests = [r for r in self.mapping_requests if r.get("id") not in to_delete]
+                try:
+                    with self.db.conn:
+                        for del_id in to_delete:
+                            self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (del_id,))
+                    if self.db and self.db.conn:
+                        self.db.conn.commit()
+                except Exception as e:
+                    print(f"Error deleting mapping request: {e}")
+                self.mark_dirty()
 
     def clear_mapping_requests(self, band: Optional[str] = None, cycle_id: Optional[str] = None):
         if not hasattr(self, "mapping_requests"):
@@ -1906,7 +1926,10 @@ class DataStore:
                 dec_notes = ""
                 try:
                     if self.db and self.db.conn:
-                        ra_row = self.db.conn.execute("SELECT decision_notes FROM badge_reviewer_assignments WHERE badge_id = ? ORDER BY assigned_at DESC LIMIT 1", (b.id,)).fetchone()
+                        ra_row = self.db.conn.execute(
+                            "SELECT decision_notes FROM badge_reviewer_assignments WHERE badge_id = ? AND cycle_id = ? ORDER BY assigned_at DESC LIMIT 1",
+                            (b.id, target_cid)
+                        ).fetchone()
                         if ra_row and ra_row["decision_notes"]:
                             dec_notes = ra_row["decision_notes"]
                 except Exception:
