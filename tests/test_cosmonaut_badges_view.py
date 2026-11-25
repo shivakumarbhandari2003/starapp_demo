@@ -1,36 +1,79 @@
 """
-Tests for Cosmonaut Badges View and In-Card Expansion:
-1. Sidebar option renamed to 'Badges'.
+Tests for Cosmonaut Badges View and Dedicated Badge Detail Page:
+1. Sidebar option renamed to 'Badges' (and stays highlighted on c_badge_detail).
 2. Initial allocated badge card in 3x3 grid showing strictly:
    - BAND B1
    - B1-SIG-01
-   - Allocated Project
+   - Allocated Project (or Project Allocated once reviewer creates project)
    - Tech › Data & Machine › Signals
    - Signals Foundations
-   - And NOT 'Target Learning Outcomes'.
-3. In-card expansion (NOT a popup modal) displaying all 6 sections:
-   - Outcomes (with checkmarks)
-   - Earn the badge (Allocated Milestone)
-   - Practice project (with prompt and copy)
-   - Learning topics (with 6 modules and progress bar)
-   - Learning resources (with prompt and copy)
-   - Related skills, capabilities, powers
-   - Below it: Project Deliverable Submission Portal.
-4. Toggling collapses back to the clean initial card view.
+   - And NOT 'Target Learning Outcomes', 'ASSIGNED PROJECT SPECIFICATION', or embedded Submission Portal.
+3. Clicking a badge card opens a separate dedicated page ('c_badge_detail'), NOT inline in-card expansion
+   and NOT a popup modal, displaying all badge curriculum sections cleanly with Back to Badges navigation.
+4. When the mapped reviewer creates & releases a project for the badge:
+   - The badge's 'Earn the Badge' section renders a 'Project allocated' button.
+   - Clicking 'Project allocated' opens the allocated project viewer modal showing the reviewer's project details.
+   - Clicking 'Submit Deliverables' opens the submission popup modal window, and submitting triggers the next review workflow.
+5. Navigating back ('Back to Badges' / 'nav_cosmonaut' c_submission) returns cleanly to the compact cards grid.
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import json
 import unittest
 from starapp.app import StarAppController
 from starapp.storage import store
+from starapp.models import ReviewerProjectPrompt, current_iso_timestamp
+
 
 class TestCosmonautBadgesView(unittest.TestCase):
     def setUp(self):
         self.ctrl = StarAppController()
         self.ctrl.initialize()
+        if not store.get_badge("badge_b1_signals"):
+            store.load_from_json(None)
+            self.ctrl = StarAppController()
+            self.ctrl.initialize()
+
+        # Ensure clean baseline for badge_b1_signals prompts/submissions for m_b1_1 during UI tests
+        if store.db and store.db.conn:
+            store.db.conn.execute("DELETE FROM reviewer_project_prompts WHERE badge_id = 'badge_b1_signals'")
+            store.db.conn.execute("DELETE FROM assessment_marksheets WHERE cosmonaut_id = 'm_b1_1' AND badge_id = 'badge_b1_signals'")
+            store.db.conn.execute("DELETE FROM project_submissions WHERE cosmonaut_id = 'm_b1_1' AND badge_id = 'badge_b1_signals'")
+            store.db.conn.commit()
+        store.reviewer_projects = {
+            k: v for k, v in getattr(store, "reviewer_projects", {}).items()
+            if getattr(v, "badge_id", "") != "badge_b1_signals"
+        }
+        store.submissions = {
+            k: v for k, v in store.submissions.items()
+            if not (v.cosmonaut_id == "m_b1_1" and v.badge_id == "badge_b1_signals")
+        }
+        store.assessments = {
+            k: v for k, v in store.assessments.items()
+            if not (v.cosmonaut_id == "m_b1_1" and v.badge_id == "badge_b1_signals")
+        }
+
+    def tearDown(self):
+        if store.db and store.db.conn:
+            store.db.conn.execute("DELETE FROM reviewer_project_prompts WHERE badge_id = 'badge_b1_signals'")
+            store.db.conn.execute("DELETE FROM assessment_marksheets WHERE cosmonaut_id = 'm_b1_1' AND badge_id = 'badge_b1_signals'")
+            store.db.conn.execute("DELETE FROM project_submissions WHERE cosmonaut_id = 'm_b1_1' AND badge_id = 'badge_b1_signals'")
+            store.db.conn.commit()
+        store.reviewer_projects = {
+            k: v for k, v in getattr(store, "reviewer_projects", {}).items()
+            if getattr(v, "badge_id", "") != "badge_b1_signals"
+        }
+        store.submissions = {
+            k: v for k, v in store.submissions.items()
+            if not (v.cosmonaut_id == "m_b1_1" and v.badge_id == "badge_b1_signals")
+        }
+        store.assessments = {
+            k: v for k, v in store.assessments.items()
+            if not (v.cosmonaut_id == "m_b1_1" and v.badge_id == "badge_b1_signals")
+        }
 
     def test_sidebar_option_renamed_to_badges(self):
         """Verify sidebar option is renamed from 'Project Submission' to 'Badges'."""
@@ -40,7 +83,7 @@ class TestCosmonautBadgesView(unittest.TestCase):
         self.assertNotIn(">Project Submission<", sidebar_html)
 
     def test_allocated_badges_initial_collapsed_card_view(self):
-        """Verify mapped cosmonaut (m_b1_1 / Aarav) sees clean collapsed card in 3x3 grid without Target Learning Outcomes."""
+        """Verify mapped cosmonaut (m_b1_1 / Aarav) sees clean collapsed card in 3x3 grid without Target Learning Outcomes or banner clutter."""
         self.ctrl.handle_event("select_demo_account", "m_b1_1")
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
         html = self.ctrl.render()
@@ -57,9 +100,11 @@ class TestCosmonautBadgesView(unittest.TestCase):
         self.assertIn("Signals", html)
         self.assertIn("Data &amp; Machine", html)
         self.assertIn("Tech", html)
+        self.assertIn("open_cosmonaut_badge_page", html)
 
-        # Strictly verify 'Target Learning Outcomes' is NOT present in the collapsed card view
+        # Strictly verify 'Target Learning Outcomes' and inline banners are NOT present in the collapsed grid view
         self.assertNotIn("Target Learning Outcomes", html)
+        self.assertNotIn("ASSIGNED PROJECT SPECIFICATION", html)
 
         # Verify Submission Portal is NOT statically embedded below (pops up as dedicated modal)
         self.assertNotIn("Project Deliverable Submission Portal", html)
@@ -75,25 +120,26 @@ class TestCosmonautBadgesView(unittest.TestCase):
             self.assertIn("Allocated Project", html)
             self.assertNotIn("Target Learning Outcomes", html)
 
-    def test_cosmonaut_badge_card_expands_inside_card_not_modal(self):
-        """Verify clicking on badge expands all 6 sections inside the card, NOT as a popup modal."""
+    def test_clicking_badge_opens_dedicated_badge_page_with_project_and_deliverables_modal(self):
+        """Verify clicking a badge navigates to c_badge_detail page (not inline grid expansion), shows all sections, Project allocated modal, and Submit Deliverables popup."""
         self.ctrl.handle_event("select_demo_account", "m_b1_1")
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
 
-        # Dispatch card toggle
-        self.ctrl.handle_event("toggle_cosmonaut_badge_card", "badge_b1_signals")
-
-        # Crucial check: MUST NOT open a popup modal!
+        # Click badge card -> navigates to dedicated badge detail page
+        self.ctrl.handle_event("open_cosmonaut_badge_page", "badge_b1_signals")
+        self.assertEqual(self.ctrl.current_view, "c_badge_detail")
+        self.assertEqual(self.ctrl.cosmonaut_submission_badge_id, "badge_b1_signals")
         self.assertIsNone(self.ctrl.active_modal)
-        self.assertEqual(self.ctrl.cosmonaut_expanded_badge_id, "badge_b1_signals")
 
         html = self.ctrl.render()
 
-        # In-card expanded wrapper checks
-        self.assertIn("expanded-badge-card", html)
-        self.assertIn("grid-column: 1 / -1", html)
+        # Standalone badge page wrapper (NOT inline grid expansion inside badges-grid-3x3)
+        self.assertIn("badge-detail-page-card", html)
+        self.assertNotIn("badges-grid-3x3", html)
+        self.assertNotIn("expanded-badge-card", html)
+        self.assertIn("Back to Badges", html)
 
-        # Location Breadcrumb Chips inside the card
+        # Location Breadcrumb Chips inside the dedicated page
         self.assertIn("Badge Location", html)
         self.assertIn("Signals Foundations", html)
         self.assertIn("Signals", html)
@@ -101,66 +147,130 @@ class TestCosmonautBadgesView(unittest.TestCase):
         self.assertIn("Tech", html)
         self.assertIn("Band B1", html)
 
-        # Section 1: Outcomes (inside card)
+        # Section 1: Outcomes
         self.assertIn("badge-section-outcomes", html)
         self.assertIn("Outcomes (4)", html)
         self.assertIn("✓", html)
 
-        # Section 2: Earn the Badge (inside card)
+        # Section 2: Earn the Badge (before project allocation)
         self.assertIn("badge-section-earn", html)
         self.assertIn("Earn the Badge", html)
         self.assertIn("Allocated Milestone", html)
+        self.assertNotIn("btn-project-allocated-badge_b1_signals", html)
 
-        # Section 3: Practice Project (inside card)
+        # Section 3-6: Curriculum sections
         self.assertIn("badge-section-practice", html)
         self.assertIn("Practice Project", html)
         self.assertIn("practice-prompt-text", html)
-        self.assertIn("Want some hands-on practice?", html)
-
-        # Section 4: Learning Topics (inside card)
         self.assertIn("badge-section-topics", html)
         self.assertIn("Learning Topics", html)
-        self.assertIn("Curriculum Module", html)
         self.assertIn("topic-toggle-btn-0", html)
         self.assertIn("topics-progress-bar", html)
-
-        # Section 5: Learning Resources (inside card)
         self.assertIn("badge-section-resources", html)
         self.assertIn("Learning Resources", html)
-        self.assertIn("resources-prompt-text", html)
-
-        # Section 6: Related Skills, Capabilities & Powers (inside card)
         self.assertIn("badge-section-related", html)
         self.assertIn("Related Skills, Capabilities &amp; Powers", html)
 
-        # Card action to collapse and portal submission link
-        self.assertIn("Collapse Badge Details", html)
+        # Page footer navigation & deliverable popup trigger
+        self.assertIn("Back to All Badges", html)
         self.assertIn("Submit Deliverables for this Badge", html)
-
-        # Below the grid: Deliverable Submission Portal is NOT statically embedded
         self.assertNotIn("Project Deliverable Submission Portal", html)
 
-        # Clicking 'Submit Deliverables for this Badge' opens the dedicated modal popup
+        # Now mapped reviewer creates & releases a project for this badge
+        rev = store.get_user_by_id("m_b2_1")
+        prompt = ReviewerProjectPrompt(
+            badge_id="badge_b1_signals",
+            reviewer_id="m_b2_1",
+            reviewer_name=rev.name if rev else "Vikram Nair",
+            cosmonaut_ids=["m_b1_1"],
+            title="Real-Time Telemetry FFT Analyzer",
+            description="Implement an enterprise FFT pipeline over noisy telemetry streams.",
+            outcomes=["Compute normalized FFT power spectra", "Emit telemetry latency alerts"],
+            requirements=["Python DSP module with numpy/stdlib", "PDF architecture report"],
+            deliverables={
+                "code": {"name": "fft_analyzer.py", "description": "Core DSP script"},
+                "pdf": {"name": "FFT_Architecture.pdf", "description": "Design spec PDF"},
+                "github": {"name": "GitHub Repo", "description": "Repository URL"}
+            },
+            status="released",
+            created_at=current_iso_timestamp(),
+            sent_at=current_iso_timestamp()
+        )
+        store.save_reviewer_project_prompt(prompt)
+
+        # On c_submission grid: badge card shows 'Project Allocated', but full project view stays inside that badge only
+        self.ctrl.handle_event("nav_cosmonaut", "c_submission")
+        grid_html = self.ctrl.render()
+        self.assertIn("Project Allocated", grid_html)
+        self.assertNotIn("Real-Time Telemetry FFT Analyzer", grid_html)
+
+        # Inside dedicated badge page (c_badge_detail): 'Project allocated' button is shown in Earn the Badge section + project view renders
+        self.ctrl.handle_event("open_cosmonaut_badge_page", "badge_b1_signals")
+        detail_with_proj_html = self.ctrl.render()
+        self.assertIn("btn-project-allocated-badge_b1_signals", detail_with_proj_html)
+        self.assertIn("Project allocated", detail_with_proj_html)
+        self.assertIn("Allocated Milestone", detail_with_proj_html)
+        self.assertIn("Real-Time Telemetry FFT Analyzer", detail_with_proj_html)
+        self.assertIn("fft_analyzer.py", detail_with_proj_html)
+
+        # Clicking 'Project allocated' opens the allocated project popup showing reviewer's allocated project
+        self.ctrl.handle_event("open_allocated_project_modal", "badge_b1_signals")
+        self.assertEqual(self.ctrl.active_modal, "allocated_project_modal")
+        proj_modal_html = self.ctrl.render()
+        self.assertIn("Allocated Milestone Project", proj_modal_html)
+        self.assertIn("Real-Time Telemetry FFT Analyzer", proj_modal_html)
+        self.assertIn("Compute normalized FFT power spectra", proj_modal_html)
+        self.assertIn("Allocated by Reviewer:", proj_modal_html)
+        self.assertIn("Submit Deliverables", proj_modal_html)
+
+        # Clicking 'Submit Deliverables' opens the deliverable submission popup window
         self.ctrl.handle_event("open_submission_modal", "badge_b1_signals")
         self.assertEqual(self.ctrl.active_modal, "submission_portal_modal")
         modal_html = self.ctrl.render()
         self.assertIn("Project Deliverable Submission Portal", modal_html)
 
-    def test_cosmonaut_badge_card_collapses_back_on_toggle(self):
-        """Verify clicking toggle again collapses the expanded badge card back to compact view."""
+        # Submitting deliverables closes modal, stays on badge page, routes to reviewer, and transitions status
+        self.ctrl.handle_event("submit_project_deliverable", json.dumps({
+            "badge_id": "badge_b1_signals",
+            "pdf_name": "FFT_Architecture.pdf",
+            "pdf_payload": "data/sample.pdf",
+            "code_name": "fft_analyzer.py",
+            "code_payload": "def analyze(): return 'ok'",
+            "github_url": "https://github.com/starapp/fft-analyzer"
+        }))
+        self.assertIsNone(self.ctrl.active_modal)
+        self.assertEqual(self.ctrl.current_view, "c_badge_detail")
+        after_sub_html = self.ctrl.render()
+        self.assertIn("Pending Reviewer Evaluation", after_sub_html)
+        self.assertIn("Project allocated", after_sub_html)
+
+    def test_back_to_badges_returns_from_detail_page_to_grid(self):
+        """Verify Back to Badges / nav_cosmonaut c_submission returns cleanly from c_badge_detail to compact card grid."""
         self.ctrl.handle_event("select_demo_account", "m_b1_1")
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
 
-        # First click: expand
-        self.ctrl.handle_event("toggle_cosmonaut_badge_card", "badge_b1_signals")
-        self.assertEqual(self.ctrl.cosmonaut_expanded_badge_id, "badge_b1_signals")
+        # Open dedicated badge page
+        self.ctrl.handle_event("open_cosmonaut_badge_page", "badge_b1_signals")
+        self.assertEqual(self.ctrl.current_view, "c_badge_detail")
 
-        # Second click: collapse
-        self.ctrl.handle_event("toggle_cosmonaut_badge_card", "badge_b1_signals")
-        self.assertIsNone(self.ctrl.cosmonaut_expanded_badge_id)
+        # Check region markers preserve portalKey & activeNavId='c_submission'
+        regions = getattr(self.ctrl, "last_rendered_regions", None)
+        if not regions:
+            self.ctrl.render()
+            regions = self.ctrl.last_rendered_regions
+        self.assertEqual(regions["routeKey"], "c_badge_detail:badge_b1_signals")
+        self.assertEqual(regions["activeNavId"], "c_submission")
+
+        # Navigate back to Badges overview
+        self.ctrl.handle_event("nav_cosmonaut", "c_submission")
+        self.assertEqual(self.ctrl.current_view, "c_submission")
 
         html = self.ctrl.render()
         self.assertIn("collapsed-badge-card", html)
-        self.assertNotIn("expanded-badge-card", html)
+        self.assertNotIn("badge-detail-page-card", html)
         self.assertNotIn("badge-section-outcomes", html)
         self.assertNotIn("Target Learning Outcomes", html)
+
+
+if __name__ == "__main__":
+    unittest.main()

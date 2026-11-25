@@ -119,7 +119,11 @@ def render_cosmonaut_sidebar(active_view: str, current_user: User, unread_announ
 
     links_html = []
     for item in nav_items:
-        is_active = (item["id"] == active_view) or (item["id"] == "c_assessments" and active_view == "c_assessment_detail")
+        is_active = (
+            (item["id"] == active_view)
+            or (item["id"] == "c_assessments" and active_view == "c_assessment_detail")
+            or (item["id"] == "c_submission" and active_view == "c_badge_detail")
+        )
         cls = "nav-link active" if is_active else "nav-link"
         badge_html = f'<span class="nav-badge" data-badge-for="{item["id"]}">{item["badge"]}</span>' if item["badge"] > 0 else ""
         links_html.append(f"""
@@ -1435,7 +1439,150 @@ def render_badge_detail_modal_content(
 # 6.5 BADGES & PROJECT SUBMISSION WORKSPACE
 # ==============================================================================
 
-def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Optional[User] = None, existing_sub: Optional[ProjectSubmission] = None) -> str:
+def _extract_deliverable_info(deliv_val: Any, default_name: str, default_desc: str) -> tuple:
+    """Safely extracts (name, description) from deliverable dict or string entries."""
+    if isinstance(deliv_val, dict):
+        return (deliv_val.get("name") or default_name, deliv_val.get("description") or default_desc)
+    if isinstance(deliv_val, str) and deliv_val.strip():
+        return (deliv_val.strip(), default_desc)
+    return (default_name, default_desc)
+
+
+def _render_assigned_project_spec_inner(
+    assigned_proj: Any,
+    rev_name_str: str,
+    rev_band_str: str = "",
+    window_str: str = "",
+    sub_deadline_str: str = "",
+    is_earned: bool = False,
+    existing_sub: Optional[ProjectSubmission] = None,
+    compact: bool = False
+) -> str:
+    """Renders the shared structured specification body for a Reviewer-allocated milestone project."""
+    deliv = getattr(assigned_proj, "deliverables", {}) or {}
+    code_name, code_info = _extract_deliverable_info(deliv.get("code"), "script.py", "Modular Python script")
+    pdf_name, pdf_info = _extract_deliverable_info(deliv.get("pdf"), "report.pdf", "Architecture document")
+    gh_name, gh_info = _extract_deliverable_info(deliv.get("github"), "GitHub Repo", "GitHub repository")
+
+    req_items = getattr(assigned_proj, "requirements", []) or []
+    req_list = req_items if compact else req_items
+    req_items_html = "".join([f'<li style="margin-bottom:4px;">{escape(str(r))}</li>' for r in req_list]) if req_list else '<li>Follow standard 50-mark rubric requirements.</li>'
+
+    outcomes_items = getattr(assigned_proj, "outcomes", []) or []
+    outcomes_html = ""
+    if outcomes_items:
+        outcomes_pills = "".join([
+            f'<li style="margin-bottom:4px; display:flex; align-items:flex-start; gap:6px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>'
+            for o in outcomes_items
+        ])
+        outcomes_html = f"""
+        <div style="margin-bottom:12px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:10px 14px;">
+            <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:5px;">Expected Project Outcomes:</div>
+            <ul style="margin:0; padding:0; list-style:none; font-size:12px; color:var(--frost-navy); line-height:1.45;">
+                {outcomes_pills}
+            </ul>
+        </div>
+        """
+
+    if is_earned:
+        status_pill = '<span class="status-pill status-approved" style="font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border-color:#D97706;">🏆 Completed</span>'
+    elif existing_sub:
+        status_pill = '<span class="status-pill status-approved" style="font-size:10.5px; font-weight:800;">✓ Submitted</span>'
+    else:
+        status_pill = '<span class="status-pill status-approved" style="font-size:10.5px; font-weight:800;">✓ Ready for Submission</span>'
+
+    rev_display = f"{rev_name_str} (Band {rev_band_str})" if rev_band_str else rev_name_str
+    schedule_chips = ""
+    if window_str or sub_deadline_str:
+        schedule_chips = f"""
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px; padding:8px 12px; background:rgba(23,52,92,0.04); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-size:11.5px; color:var(--frost-navy-75);">
+            {f'<span>📅 <strong>Review Window:</strong> <span style="font-family:var(--font-family-mono); font-weight:700; color:var(--deep-frozen-midnight);">{escape(window_str)}</span></span>' if window_str else ''}
+            {f'<span>⏰ <strong>Submission Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700; color:#DC2626;">{escape(sub_deadline_str)}</span></span>' if sub_deadline_str else ''}
+        </div>
+        """
+
+    return f"""
+    <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
+                <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Allocated by Reviewer: {escape(rev_display)}</span>
+            </div>
+            {status_pill}
+        </div>
+        <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
+        <p style="font-size:12.8px; color:var(--frost-navy-75); line-height:1.5; margin:0 0 12px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+        {schedule_chips}
+        {outcomes_html}
+        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:5px;">Detailed Project Requirements:</div>
+        <ul style="margin:0 0 14px 18px; padding:0; font-size:12px; color:var(--frost-navy-75); line-height:1.45;">
+            {req_items_html}
+        </ul>
+        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Mandatory Deliverable Files (Mapped to 50-Mark Rubric):</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
+                <div style="font-size:11.5px; font-weight:800; color:#059669;">💻 {escape(code_name)}</div>
+                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(code_info)}</div>
+            </div>
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
+                <div style="font-size:11.5px; font-weight:800; color:#DC2626;">📄 {escape(pdf_name)}</div>
+                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(pdf_info)}</div>
+            </div>
+            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
+                <div style="font-size:11.5px; font-weight:800; color:var(--deep-frozen-midnight);">🔗 {escape(gh_name)}</div>
+                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(gh_info)}</div>
+            </div>
+        </div>
+    </div>
+    """
+
+
+def _render_allocated_project_detail_section(
+    badge: Badge,
+    assigned_proj: Any,
+    rev_name_str: str,
+    rev_band_str: str = "",
+    window_str: str = "",
+    sub_deadline_str: str = "",
+    is_earned: bool = False,
+    existing_sub: Optional[ProjectSubmission] = None
+) -> str:
+    """Renders the inline Allocated Project card inside the dedicated Badge Detail Page."""
+    spec_html = _render_assigned_project_spec_inner(
+        assigned_proj=assigned_proj,
+        rev_name_str=rev_name_str,
+        rev_band_str=rev_band_str,
+        window_str=window_str,
+        sub_deadline_str=sub_deadline_str,
+        is_earned=is_earned,
+        existing_sub=existing_sub,
+        compact=False
+    )
+    return f"""
+    <!-- SECTION: ALLOCATED PROJECT SPECIFICATION (FROM MAPPED REVIEWER) -->
+    <div id="badge-section-allocated-project" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #0284C7; overflow:hidden; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%);">
+        <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('allocated-project')">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="width:28px; height:28px; border-radius:6px; background:rgba(2,132,199,0.14); color:#0284C7; display:flex; align-items:center; justify-content:center;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6"/><path d="M9 16h6"/><path d="M9 8h6"/></svg>
+                </span>
+                <span style="font-size:15px; font-weight:800; color:#0369A1;">Project Allocated ({escape(getattr(assigned_proj, 'title', 'Milestone Project'))})</span>
+            </div>
+            <span id="chevron-allocated-project" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+        </div>
+        <div id="content-allocated-project" style="padding:0 20px 20px 20px; display:block;">
+            {spec_html}
+        </div>
+    </div>
+    """
+
+
+def render_cosmonaut_badge_card_expanded_content(
+    badge: Badge,
+    current_user: Optional[User] = None,
+    existing_sub: Optional[ProjectSubmission] = None,
+    is_standalone_page: bool = False
+) -> str:
     import json
     from starapp.badge_generator import (
         generate_badge_data, build_practice_project_prompt, build_learning_resources_prompt
@@ -1562,15 +1709,46 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
     from starapp.storage import store
     is_earned = False
     earned_asm = None
+    rev_id_str = ""
     rev_name_str = "Assigned Reviewer"
+    rev_band_str = ""
+    window_str = ""
+    sub_deadline_str = ""
+    assigned_proj = None
+    is_retake = bool(existing_sub and getattr(existing_sub, "status", "") in ("retake_required", "resubmission_requested"))
+    next_attempt = (getattr(existing_sub, "attempt_number", 1) + 1) if existing_sub else 1
+
     if current_user and store:
         tl = store.get_timeline(badge.id, current_user.id)
         if tl and getattr(tl, "status", "") == "completed":
             is_earned = True
         if tl and getattr(tl, "reviewer_id", ""):
-            r_u = store.get_user_by_id(tl.reviewer_id)
+            rev_id_str = tl.reviewer_id
+        if not rev_id_str:
+            for m in store.get_band_mappings():
+                m_b = m.get("badge_id") or m.get("badge")
+                if current_user.id in m.get("cosmonauts", []) and m.get("reviewers") and m_b in (badge.id, badge.code, badge.title):
+                    rev_id_str = m["reviewers"][0]
+                    break
+        if not rev_id_str:
+            rev_id_str = getattr(badge, "assigned_reviewer_id", "") or ""
+        if rev_id_str:
+            r_u = store.get_user_by_id(rev_id_str)
             if r_u:
                 rev_name_str = r_u.name
+                rev_band_str = getattr(r_u, "band", "") or ""
+        if tl and getattr(tl, "review_window_json", None):
+            try:
+                rw_list = json.loads(tl.review_window_json)
+                if isinstance(rw_list, list) and rw_list:
+                    window_str = " → ".join(rw_list)
+            except Exception:
+                window_str = ""
+        if tl and getattr(tl, "submission_deadline", ""):
+            sub_deadline_str = tl.submission_deadline
+        elif getattr(badge, "default_timeline", None) and badge.default_timeline.get("submission_deadline"):
+            sub_deadline_str = badge.default_timeline.get("submission_deadline", "")
+
         asms = store.get_assessments_for_cosmonaut(current_user.id, badge.id)
         for a in reversed(asms):
             if a.decision == "approve" or getattr(a, "assessor_role", "") == "guardian":
@@ -1582,6 +1760,22 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             if existing_sub.status == "approved" or (sub_asm and sub_asm.decision == "approve"):
                 is_earned = True
                 earned_asm = sub_asm
+
+        cand_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id)
+        if cand_proj and getattr(cand_proj, "status", "") in ("released", "sent"):
+            assigned_proj = cand_proj
+
+    has_allocated_project = assigned_proj is not None
+    project_allocated_btn_html = ""
+    if has_allocated_project:
+        project_allocated_btn_html = f"""
+        <button type="button" id="btn-project-allocated-{escape(badge.id)}" class="btn-secondary btn-sm"
+            onclick="window.StarAppBridge.dispatchAction('open_allocated_project_modal', '{escape(badge.id)}')"
+            style="font-weight:800; font-size:12px; padding:6px 14px; background:rgba(2,132,199,0.1); color:#0369A1; border:1.5px solid #0284C7; border-radius:var(--radius-sm); display:inline-flex; align-items:center; gap:5px;">
+            <span>📋</span>
+            <span>Project allocated</span>
+        </button>
+        """
 
     if is_earned:
         top_card_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%); box-shadow:0 12px 36px rgba(245,158,11,0.25);"
@@ -1613,7 +1807,8 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
                         <div style="font-size:12.5px; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    {project_allocated_btn_html}
                     <span style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
                         Allocated Marks: {tot_m:.1f} / 50.0 ({pct_m:.1f}%)
                     </span>
@@ -1659,7 +1854,10 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
         top_card_style = "border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12);"
         top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
-        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+        if has_allocated_project:
+            meta_chip = '<span style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project Allocated</span>'
+        else:
+            meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
             earn_section_html = f"""
@@ -1674,7 +1872,8 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
                     </div>
                 </div>
-                <div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    {project_allocated_btn_html}
                     <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
                         Awaiting Guardian Award
                     </span>
@@ -1694,7 +1893,8 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    {project_allocated_btn_html}
                     <span style="background:rgba(245,158,11,0.15); color:#D97706; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
                         Pending Reviewer Evaluation
                     </span>
@@ -1708,7 +1908,7 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             earn_section_html = f"""
             <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
             <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
+                <div style="display:flex; align-items:flex-start; gap:12px; flex:1; min-width:260px;">
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
@@ -1717,10 +1917,11 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
                         Allocated Milestone
                     </span>
+                    {project_allocated_btn_html}
                     <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
                         Submit Deliverables &rarr;
                     </button>
@@ -1728,190 +1929,421 @@ def render_cosmonaut_badge_card_expanded_content(badge: Badge, current_user: Opt
             </div>
             """
 
+    allocated_project_section_html = ""
+    if has_allocated_project:
+        allocated_project_section_html = _render_allocated_project_detail_section(
+            badge=badge,
+            assigned_proj=assigned_proj,
+            rev_name_str=rev_name_str,
+            rev_band_str=rev_band_str,
+            window_str=window_str,
+            sub_deadline_str=sub_deadline_str,
+            is_earned=is_earned,
+            existing_sub=existing_sub
+        )
+
+    retake_banner = ""
+    if is_retake and existing_sub:
+        latest_asm = store.get_assessment_for_submission(existing_sub.id) if store else None
+        feedback_txt = latest_asm.overall_feedback if latest_asm else "Revisions required."
+        score_txt = f"{latest_asm.total_marks:.1f}/50 ({latest_asm.percentage:.1f}%)" if latest_asm else "Score below threshold"
+        retake_banner = f"""
+        <div style="background:linear-gradient(135deg, rgba(254,242,242,0.95) 0%, rgba(254,226,226,0.9) 100%); border:1.5px solid #EF4444; border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:20px; box-shadow:0 4px 14px rgba(239,68,68,0.12);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="background:#EF4444; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">RETAKE REQUIRED</span>
+                    <span style="font-weight:800; font-size:13.5px; color:#991B1B;">Attempt #{existing_sub.attempt_number} Did Not Meet Passing Threshold</span>
+                </div>
+                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626;">Previous Score: {score_txt}</span>
+            </div>
+            <p style="font-size:12.5px; color:#7F1D1D; margin:0 0 8px 0; line-height:1.4;">
+                <strong>Guardian Feedback:</strong> {escape(feedback_txt)}
+            </p>
+            <div style="font-size:11.5px; color:#B91C1C;">
+                Please review the feedback above, improve your technical deliverable, and submit revised materials for <strong>Attempt #{next_attempt}</strong>. Your Attempt #{existing_sub.attempt_number} history is preserved in your permanent record.
+            </div>
+        </div>
+        """
+
+    mapping_info_banner = ""
+    if rev_id_str or window_str or sub_deadline_str:
+        rev_full = f"{rev_name_str} (Band {rev_band_str})" if rev_band_str else rev_name_str
+        mapping_info_banner = f"""
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 14px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); margin-bottom:18px;">
+            {f'<div style="font-size:12px; color:var(--frost-navy);"><strong>Assigned Peer Reviewer:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_full)}</span></div>' if rev_id_str else ''}
+            {f'<div style="font-size:12px; color:var(--frost-navy-75);"><strong>Review Window:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(window_str)}</span></div>' if window_str else ''}
+            {f'<div style="font-size:12px; color:#DC2626;"><strong>Submission Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(sub_deadline_str)}</span></div>' if sub_deadline_str else ''}
+        </div>
+        """
+
+    top_back_header_html = ""
+    if is_standalone_page:
+        top_back_header_html = f"""
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
+                <span>&larr;</span>
+                <span>Back to Badges</span>
+            </button>
+            <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">
+                Badge Workspace &bull; Band {escape(selected_band)} &bull; {escape(badge_code)}
+            </span>
+        </div>
+        """
+        location_right_btn = f"""
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
+            <span>&larr;</span>
+            <span>All Badges</span>
+        </button>
+        """
+        footer_left_btn = f"""
+        <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+            <span>&larr;</span>
+            <span>Back to All Badges</span>
+        </button>
+        """
+        wrapper_style = f"padding:28px 32px; border-radius:var(--radius-lg); {top_card_style} transition:all 0.25s ease;"
+        wrapper_classes = "liquid-glass-card badge-detail-page-card"
+    else:
+        location_right_btn = f"""
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
+            <span>Collapse Badge</span>
+            <span>▲</span>
+        </button>
+        """
+        footer_left_btn = f"""
+        <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+            <span>Collapse Badge Details</span>
+            <span>▲</span>
+        </button>
+        """
+        wrapper_style = f"grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); {top_card_style} transition:all 0.25s ease;"
+        wrapper_classes = "liquid-glass-card badge-card-item expanded-badge-card"
+
+    if is_earned:
+        footer_right_btn = f"""
+        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px; background:linear-gradient(135deg, #F59E0B, #D97706); border-color:#D97706;">
+            <span>🏆 View Official Marksheet &rarr;</span>
+        </button>
+        """
+    else:
+        footer_right_btn = f"""
+        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
+            {btn_icon}
+            {btn_label} &rarr;
+        </button>
+        """
+
     return f"""
-    <div class="liquid-glass-card badge-card-item expanded-badge-card" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="grid-column: 1 / -1; padding:28px 32px; border-radius:var(--radius-lg); {top_card_style} transition:all 0.25s ease;">
-        <!-- LOCATION BAR & ACTIONS -->
-        <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
-            <div>
-                <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
-                    Badge Location
-                </span>
-                <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-                    <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
-                </div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
-                    Toggle All
-                </button>
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
-                    <span>Collapse Badge</span>
-                    <span>▲</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
-        <div style="margin-bottom:22px; display:flex; align-items:flex-start; gap:16px;">
-            <div style="width:48px; height:48px; border-radius:50%; {top_icon_style} display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                {top_icon_svg}
-            </div>
-            <div style="flex:1;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                    <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
-                    {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
-                    {meta_chip}
-                    <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 0 4px;">{escape(badge_title)}</h2>
-                </div>
-                <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
-            </div>
-        </div>
-
-        <!-- SECTION 1: OUTCOMES -->
-        <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
-            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+    <div>
+        {top_back_header_html}
+        <div class="{wrapper_classes}" id="badge-card-{badge.id}" data-badge-id="{badge.id}" style="{wrapper_style}">
+            <!-- LOCATION BAR & ACTIONS -->
+            <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                <div>
+                    <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                        Badge Location
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
-                </div>
-                <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
-            </div>
-            <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
-                {outcomes_html}
-            </div>
-        </div>
-
-        {earn_section_html}
-
-        <!-- SECTION 3: PRACTICE PROJECT -->
-        <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
-            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('practice')">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
-                    </span>
-                    <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
-                </div>
-                <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
-            </div>
-            <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
-                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
-                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                    <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy
-                        </button>
+                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
+                        <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
                     </div>
                 </div>
+                <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
+                        Toggle All
+                    </button>
+                    {location_right_btn}
+                </div>
             </div>
-        </div>
 
-        <!-- SECTION 4: LEARNING TOPICS -->
-        <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
-            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
-                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-                    </span>
-                    <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
-                    <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
-                        {completed_topics_count}/{total_topics} Completed
-                    </span>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
-                            <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
+            <!-- BADGE HEADER (ICON + TITLE + DESCRIPTION) -->
+            <div style="margin-bottom:18px; display:flex; align-items:flex-start; gap:16px;">
+                <div style="width:48px; height:48px; border-radius:50%; {top_icon_style} display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    {top_icon_svg}
+                </div>
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
+                        {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                        {meta_chip}
+                        <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 0 4px;">{escape(badge_title)}</h2>
+                    </div>
+                    <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
+                </div>
+            </div>
+
+            {mapping_info_banner}
+            {retake_banner}
+
+            <!-- SECTION 1: OUTCOMES -->
+            <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        </span>
+                        <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
+                    </div>
+                    <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                </div>
+                <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
+                    {outcomes_html}
+                </div>
+            </div>
+
+            {earn_section_html}
+            {allocated_project_section_html}
+
+            <!-- SECTION 3: PRACTICE PROJECT -->
+            <div id="badge-section-practice" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #F97316; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('practice')">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
+                        </span>
+                        <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
+                    </div>
+                    <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                </div>
+                <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
+                    <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
+                    <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                        <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                            <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
+                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                Copy
+                            </button>
                         </div>
-                        <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
                     </div>
                 </div>
-                <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
             </div>
-            <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
-                {topics_html}
-            </div>
-        </div>
 
-        <!-- SECTION 5: LEARNING RESOURCES -->
-        <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
-            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                    </span>
-                    <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
-                </div>
-                <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
-            </div>
-            <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
-                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
-                <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                    <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy
-                        </button>
+            <!-- SECTION 4: LEARNING TOPICS -->
+            <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+                        </span>
+                        <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
+                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
+                            {completed_topics_count}/{total_topics} Completed
+                        </span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
+                                <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
+                            </div>
+                            <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
+                        </div>
                     </div>
+                    <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                </div>
+                <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
+                    {topics_html}
                 </div>
             </div>
-        </div>
 
-        <!-- SECTION 6: RELATED SKILLS, CAPABILITIES & POWERS -->
-        <div id="badge-section-related" class="liquid-glass-card" style="margin-bottom:20px; border-radius:var(--radius-lg); border:1.5px solid #8B5CF6; overflow:hidden; background:rgba(255,255,255,0.98);">
-            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('related')">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-                    </span>
-                    <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+            <!-- SECTION 5: LEARNING RESOURCES -->
+            <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </span>
+                        <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
+                    </div>
+                    <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
                 </div>
-                <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
-            </div>
-            <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
-                    <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
-                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
-                    </div>
-                    <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
-                    </div>
-                    <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
-                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
+                    <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
+                    <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
+                        <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
+                            <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
+                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                Copy
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- EXPANDED CARD FOOTER ACTIONS -->
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:20px; flex-wrap:wrap;">
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                <span>Collapse Badge Details</span>
-                <span>▲</span>
-            </button>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
-                {btn_icon}
-                {btn_label} &rarr;
-            </button>
+            <!-- SECTION 6: RELATED SKILLS, CAPABILITIES & POWERS -->
+            <div id="badge-section-related" class="liquid-glass-card" style="margin-bottom:20px; border-radius:var(--radius-lg); border:1.5px solid #8B5CF6; overflow:hidden; background:rgba(255,255,255,0.98);">
+                <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('related')">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+                        </span>
+                        <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+                    </div>
+                    <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                </div>
+                <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
+                        <div>
+                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
+                            <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
+                            <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
+                            <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BADGE DETAIL FOOTER ACTIONS -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding-top:16px; border-top:1.5px solid var(--icy-steel-30); margin-top:20px; flex-wrap:wrap;">
+                {footer_left_btn}
+                {footer_right_btn}
+            </div>
         </div>
     </div>
     """
+
+
+def render_cosmonaut_badge_detail_page(
+    badge: Optional[Badge],
+    current_user: Optional[User] = None,
+    store: Any = None,
+    submissions: Optional[List[ProjectSubmission]] = None
+) -> str:
+    """Renders the dedicated single-badge workspace page with complete curriculum details, allocated project view, and deliverable submission modal trigger."""
+    if not badge:
+        return """
+        <div class="liquid-glass-card" style="padding:40px; text-align:center;">
+            <h3 style="color:var(--frost-navy); margin:0 0 8px 0;">Badge Not Found</h3>
+            <p style="font-size:13px; color:var(--frost-navy-50); margin:0 0 16px 0;">The selected milestone badge could not be loaded.</p>
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">&larr; Back to Badges</button>
+        </div>
+        """
+
+    user_subs = submissions if submissions is not None else (
+        store.get_submissions_for_cosmonaut(current_user.id, badge.id) if (store and current_user) else []
+    )
+    badge_subs = sorted([s for s in user_subs if s.badge_id == badge.id], key=lambda s: getattr(s, "attempt_number", 1))
+    latest_sub = badge_subs[-1] if badge_subs else None
+    return render_cosmonaut_badge_card_expanded_content(
+        badge=badge,
+        current_user=current_user,
+        existing_sub=latest_sub,
+        is_standalone_page=True
+    )
+
+
+def render_cosmonaut_allocated_project_modal(badge: Badge, current_user: User, store: Any) -> str:
+    """Renders the dedicated popup modal showing the project allocated to this cosmonaut by their mapped reviewer."""
+    badge_title = getattr(badge, "title", "Milestone Badge")
+    badge_code = getattr(badge, "code", "")
+    badge_band = getattr(badge, "target_band", "B1")
+
+    selected_tl = store.get_timeline(badge.id, current_user.id) if (store and current_user) else None
+    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else ""
+    if not rev_id and store and current_user:
+        for m in store.get_band_mappings():
+            m_b = m.get("badge_id") or m.get("badge")
+            if current_user.id in m.get("cosmonauts", []) and m.get("reviewers") and m_b in (badge.id, badge.code, badge.title):
+                rev_id = m["reviewers"][0]
+                break
+    if not rev_id:
+        rev_id = getattr(badge, "assigned_reviewer_id", "") or ""
+    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
+    rev_name = rev_user.name if rev_user else (rev_id or "Assigned Reviewer")
+    rev_band = getattr(rev_user, "band", "") if rev_user else ""
+
+    window_str = ""
+    sub_deadline_str = ""
+    if selected_tl and getattr(selected_tl, "review_window_json", None):
+        try:
+            rw_list = json.loads(selected_tl.review_window_json)
+            if isinstance(rw_list, list) and rw_list:
+                window_str = " → ".join(rw_list)
+        except Exception:
+            window_str = ""
+    if selected_tl and getattr(selected_tl, "submission_deadline", ""):
+        sub_deadline_str = selected_tl.submission_deadline
+    elif getattr(badge, "default_timeline", None) and badge.default_timeline.get("submission_deadline"):
+        sub_deadline_str = badge.default_timeline.get("submission_deadline", "")
+
+    assigned_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
+    if not assigned_proj or getattr(assigned_proj, "status", "") not in ("released", "sent"):
+        return f"""
+        <div style="padding:24px; text-align:center;">
+            <div style="font-size:28px; margin-bottom:10px;">⏳</div>
+            <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">Project Not Allocated Yet</h4>
+            <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 18px 0;">
+                Your mapped reviewer <strong>{escape(rev_name)}</strong> has not released the milestone project specification yet.
+            </p>
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close</button>
+        </div>
+        """
+
+    user_subs = store.get_submissions_for_cosmonaut(current_user.id, badge.id) if (store and current_user) else []
+    latest_sub = user_subs[-1] if user_subs else None
+    is_earned = bool(
+        (selected_tl and getattr(selected_tl, "status", "") == "completed")
+        or (latest_sub and getattr(latest_sub, "status", "") == "approved")
+        or (store and current_user and any(a.decision == "approve" for a in store.get_assessments_for_cosmonaut(current_user.id, badge.id)))
+    )
+
+    spec_html = _render_assigned_project_spec_inner(
+        assigned_proj=assigned_proj,
+        rev_name_str=rev_name,
+        rev_band_str=rev_band,
+        window_str=window_str,
+        sub_deadline_str=sub_deadline_str,
+        is_earned=is_earned,
+        existing_sub=latest_sub,
+        compact=False
+    )
+
+    if is_earned:
+        cta_btn = """<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')" style="font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); border-color:#D97706;">🏆 View Official Marksheet &rarr;</button>"""
+    else:
+        cta_txt = "💾 Edit Deliverables &rarr;" if latest_sub else "🚀 Submit Deliverables &rarr;"
+        cta_btn = f"""<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{escape(badge.id)}')" style="font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); border-color:#059669;">{cta_txt}</button>"""
+
+    return f"""
+    <div style="padding:6px 4px;">
+        <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#0284C7; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
+                <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
+            </div>
+            <span style="font-size:11.5px; color:var(--frost-navy-50);">
+                Mapped Reviewer: <strong style="color:#059669;">{escape(rev_name)}</strong>
+            </span>
+        </div>
+
+        <div style="background:rgba(234,244,255,0.55); border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:18px;">
+            {spec_html}
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+                Close
+            </button>
+            {cta_btn}
+        </div>
+    </div>
+    """
+
 
 def render_cosmonaut_submission_workspace(
     badges: List[Badge],
@@ -1921,235 +2353,112 @@ def render_cosmonaut_submission_workspace(
     store: Any = None,
     expanded_badge_id: Optional[str] = None
 ) -> str:
-    import json
-    from starapp.badge_generator import generate_badge_data
+    # Support direct callers passing expanded_badge_id by delegating cleanly to the dedicated badge detail page
+    if expanded_badge_id:
+        target_b = next((b for b in badges if b.id == expanded_badge_id), None)
+        if target_b:
+            return render_cosmonaut_badge_detail_page(
+                badge=target_b,
+                current_user=current_user,
+                store=store,
+                submissions=submissions
+            )
 
-    if expanded_badge_id and any(b.id == expanded_badge_id for b in badges):
-        selected_badge_id = expanded_badge_id
-    elif not any(b.id == selected_badge_id for b in badges) and badges:
-        selected_badge_id = badges[0].id
-
-    badge_options = []
-    for b in badges:
-        sel = " selected" if b.id == selected_badge_id else ""
-        badge_options.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
-
-    # Determine retake state and attempt number
-    target_subs = [s for s in submissions if s.badge_id == selected_badge_id]
-    latest_sub = target_subs[-1] if target_subs else None
-    is_retake = bool(latest_sub and latest_sub.status in ("retake_required", "resubmission_requested"))
-    next_attempt = (latest_sub.attempt_number + 1) if latest_sub else 1
-
-    retake_banner = ""
-    if is_retake:
-        latest_asm = store.get_assessment_for_submission(latest_sub.id) if store else None
-        feedback_txt = latest_asm.overall_feedback if latest_asm else "Revisions required."
-        score_txt = f"{latest_asm.total_marks:.1f}/50 ({latest_asm.percentage:.1f}%)" if latest_asm else "Score below threshold"
-        retake_banner = f"""
-        <div style="background:linear-gradient(135deg, rgba(254,242,242,0.95) 0%, rgba(254,226,226,0.9) 100%); border:1.5px solid #EF4444; border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:20px; box-shadow:0 4px 14px rgba(239,68,68,0.12);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:#EF4444; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">RETAKE REQUIRED</span>
-                    <span style="font-weight:800; font-size:13.5px; color:#991B1B;">Attempt #{latest_sub.attempt_number} Did Not Meet Passing Threshold</span>
-                </div>
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626;">Previous Score: {score_txt}</span>
-            </div>
-            <p style="font-size:12.5px; color:#7F1D1D; margin:0 0 8px 0; line-height:1.4;">
-                <strong>Guardian Feedback:</strong> {escape(feedback_txt)}
-            </p>
-            <div style="font-size:11.5px; color:#B91C1C;">
-                Please review the feedback above, improve your technical deliverable, and upload revised materials below for <strong>Attempt #{next_attempt}</strong>. Your Attempt #{latest_sub.attempt_number} history is preserved in your permanent record.
-            </div>
-        </div>
-        """
-
-    # Look up timeline for selected badge
-    selected_tl = store.get_timeline(selected_badge_id, current_user.id) if (store and current_user) else None
-    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else ""
-    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
-    rev_name = rev_user.name if rev_user else ""
-    rev_band = getattr(rev_user, "band", "") if rev_user else ""
-    r_window = []
-    if selected_tl and getattr(selected_tl, "review_window_json", None):
-        try:
-            r_window = json.loads(selected_tl.review_window_json)
-        except Exception:
-            r_window = []
-    window_str = " &rarr; ".join(r_window) if r_window else ""
-
-    mapping_info_banner = ""
-    if rev_name or window_str:
-        mapping_info_banner = f"""
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 14px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); margin-bottom:20px;">
-            <div style="font-size:12px; color:var(--frost-navy);">
-                <strong>Assigned Peer Reviewer:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_name)} {f'(Band {escape(rev_band)})' if rev_band else ''}</span>
-            </div>
-            {f'<div style=\"font-size:12px; color:var(--frost-navy-75);\"><strong>Review Window:</strong> <span style=\"font-family:var(--font-family-mono); font-weight:700;\">{escape(window_str)}</span></div>' if window_str else ''}
-        </div>
-        """
-
-    assigned_proj = store.get_project_prompt_for_cadet(selected_badge_id, current_user.id) if (store and current_user) else None
-    assigned_project_banner = ""
-    if assigned_proj:
-        deliv = getattr(assigned_proj, "deliverables", {}) or {}
-        code_name = deliv.get("code", {}).get("name", "script.py") if isinstance(deliv.get("code"), dict) else "script.py"
-        pdf_name = deliv.get("pdf", {}).get("name", "report.pdf") if isinstance(deliv.get("pdf"), dict) else "report.pdf"
-        gh_name = deliv.get("github", {}).get("name", "GitHub Repo") if isinstance(deliv.get("github"), dict) else "GitHub Repo"
-        code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
-        pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
-        gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
-        req_items = getattr(assigned_proj, "requirements", []) or []
-        req_items_html = "".join([f'<li style="margin-bottom:3px;">{escape(str(r))}</li>' for r in req_items[:4]]) if req_items else '<li>Follow standard rubric requirements.</li>'
-        outcomes_items = getattr(assigned_proj, "outcomes", []) or []
-        outcomes_html = ""
-        if outcomes_items:
-            outcomes_pills = "".join([f'<li style="margin-bottom:3px; display:flex; align-items:flex-start; gap:6px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>' for o in outcomes_items])
-            outcomes_html = f"""
-            <div style="margin-bottom:10px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:8px 12px;">
-                <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:4px;">Expected Project Outcomes:</div>
-                <ul style="margin:0; padding:0; list-style:none; font-size:11.5px; color:var(--frost-navy); line-height:1.4;">
-                    {outcomes_pills}
-                </ul>
-            </div>
-            """
-        rev_author = getattr(assigned_proj, "reviewer_id", "")
-        author_u = store.get_user_by_id(rev_author) if (store and rev_author) else None
-        author_name = author_u.name if author_u else "Assigned Reviewer"
-
-        assigned_project_banner = f"""
-        <div class="liquid-glass-card" style="padding:16px 20px; border:2px solid var(--deep-frozen-midnight); border-radius:var(--radius-sm); margin-bottom:20px; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%); box-shadow:0 4px 16px rgba(23,52,92,0.08);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:6px; flex-wrap:wrap; gap:8px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
-                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Reviewer: {escape(author_name)}</span>
-                </div>
-                <span class="status-pill status-approved" style="font-size:10.5px; font-weight:800;">✓ Ready for Submission</span>
-            </div>
-            <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
-            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 10px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
-            {outcomes_html}
-            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
-            <ul style="margin:0 0 12px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
-                {req_items_html}
-            </ul>
-            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Required Deliverable Files:</div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px;">
-                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:#059669;">💻 {escape(code_name)}</div>
-                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(code_info)}</div>
-                </div>
-                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:#DC2626;">📄 {escape(pdf_name)}</div>
-                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(pdf_info)}</div>
-                </div>
-                <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:6px 8px;">
-                    <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight);">🔗 {escape(gh_name)}</div>
-                    <div style="font-size:10px; color:var(--frost-navy-50); margin-top:2px;">{escape(gh_info)}</div>
-                </div>
-            </div>
-        </div>
-        """
-
-    submit_btn_label = f"Submit Deliverables for Attempt #{next_attempt} &rarr;" if is_retake else "Submit Deliverables for Assessment &rarr;"
-
-    # 1. Build Allocated Badges Cards Grid (3x3 layout)
+    # 1. Build Allocated Badges Cards Grid (3x3 layout — strictly compact cards, opening separate dedicated badge pages)
     if badges:
         badge_cards = []
         for b in badges:
-            cadet_sub = next((s for s in submissions if s.badge_id == b.id), None)
+            b_subs = sorted([s for s in submissions if s.badge_id == b.id], key=lambda s: getattr(s, "attempt_number", 1))
+            cadet_sub = b_subs[-1] if b_subs else None
             b_code = escape(getattr(b, "code", ""))
             b_title = escape(getattr(b, "title", "Milestone Badge"))
             b_band = escape(getattr(b, "target_band", "B1"))
             b_power = escape(getattr(b, "power", "Tech") or "Tech")
             b_cap = escape(getattr(b, "capability", "Data & Machine") or "Data & Machine")
             b_skill = escape(getattr(b, "skill", "Curation") or "Curation")
-            b_desc = escape(getattr(b, "description", "") or "")
 
-            is_expanded = (b.id == expanded_badge_id)
+            tl = store.get_timeline(b.id, current_user.id) if (store and current_user) else None
+            is_earned = (tl and getattr(tl, "status", "") == "completed") or (cadet_sub and getattr(cadet_sub, "status", "") == "approved")
+            if not is_earned and store and current_user:
+                asms = store.get_assessments_for_cosmonaut(current_user.id, b.id)
+                if any(a.decision == "approve" for a in asms):
+                    is_earned = True
 
-            if is_expanded:
-                # Render full 6-accordion content inside the card (spanning the grid, NOT as a popup)
-                badge_cards.append(render_cosmonaut_badge_card_expanded_content(b, current_user, existing_sub=cadet_sub))
+            assigned_proj = store.get_project_prompt_for_cadet(b.id, current_user.id) if (store and current_user) else None
+            has_proj = bool(assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"))
+
+            if is_earned:
+                sub_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+                action_btn_txt = "View Feedback & Marks"
+                btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#fff; border-color:#D97706;"
+                card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
+            elif cadet_sub and getattr(cadet_sub, "status", "") == "reviewer_assessed":
+                sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
+                action_btn_txt = "View Assessment Status"
+                btn_color_style = "background:linear-gradient(135deg, #0891B2 0%, #0e7490 100%); color:#fff; border-color:#0891B2;"
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+            elif cadet_sub and getattr(cadet_sub, "status", "") in ("retake_required", "resubmission_requested"):
+                sub_chip = '<span style="background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3); font-size:11px; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">⚠️ Retake Required</span>'
+                action_btn_txt = "Open Badge & Resubmit"
+                btn_color_style = "background:linear-gradient(135deg, #DC2626 0%, #B91C1C 100%); color:#fff; border-color:#DC2626;"
+                card_border_style = "border:1.5px solid rgba(239,68,68,0.45); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(254,242,242,0.85) 100%); box-shadow:0 6px 24px rgba(239,68,68,0.08);"
+            elif cadet_sub:
+                sub_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ✓ Submitted</span>'
+                action_btn_txt = "View Badge & Submission"
+                btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+            elif has_proj:
+                sub_chip = '<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project Allocated</span>'
+                action_btn_txt = "View Badge & Project"
+                btn_color_style = "background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#fff; border-color:#0284C7;"
+                card_border_style = "border:1.5px solid rgba(2,132,199,0.4); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 6px 24px rgba(2,132,199,0.08);"
             else:
-                tl = store.get_timeline(b.id, current_user.id) if (store and current_user) else None
-                is_earned = (tl and getattr(tl, "status", "") == "completed") or (cadet_sub and getattr(cadet_sub, "status", "") == "approved")
-                if not is_earned and store and current_user:
-                    asms = store.get_assessments_for_cosmonaut(current_user.id, b.id)
-                    if any(a.decision == "approve" for a in asms):
-                        is_earned = True
+                sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
+                action_btn_txt = "Open Badge Details"
+                btn_color_style = ""
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
 
-                if is_earned:
-                    sub_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
-                    action_btn_txt = "View Feedback & Marks"
-                    btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#fff; border-color:#D97706;"
-                    card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
-                    action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')"
-                elif cadet_sub:
-                    if getattr(cadet_sub, "status", "") == "reviewer_assessed":
-                        sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
-                        action_btn_txt = "View Assessment Status"
-                        btn_color_style = "background:linear-gradient(135deg, #0891B2 0%, #0e7490 100%); color:#fff; border-color:#0891B2;"
-                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
-                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')"
-                    else:
-                        sub_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ✓ Submitted</span>'
-                        action_btn_txt = "Edit Deliverables"
-                        btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
-                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
-                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
-                else:
-                    assigned_proj = store.get_project_prompt_for_cadet(b.id, current_user.id) if (store and current_user) else None
-                    if assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
-                        sub_chip = '<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project given</span>'
-                        action_btn_txt = "Submit Deliverables"
-                        btn_color_style = "background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#fff; border-color:#0284C7;"
-                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
-                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
-                    else:
-                        sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
-                        action_btn_txt = "Submit Deliverables"
-                        btn_color_style = ""
-                        card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
-                        action_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_submission_modal', '{b.id}')"
+            open_page_onclick = f"window.StarAppBridge.dispatchAction('open_cosmonaut_badge_page', '{b.id}')"
+            open_btn_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_cosmonaut_badge_page', '{b.id}')"
 
-                # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
-                badge_cards.append(f"""
-                <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{b.id}')" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
-                    <div>
-                        <!-- Meta Row -->
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                            <div style="display:flex; align-items:center; gap:6px;">
-                                <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
-                                {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
-                            </div>
-                            {sub_chip}
+            # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
+            badge_cards.append(f"""
+            <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="{open_page_onclick}" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                <div>
+                    <!-- Meta Row -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
+                            {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
                         </div>
-
-                        <!-- Hierarchy Breadcrumb -->
-                        <div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-bottom:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                            <span style="color:#7C3AED;">{b_power}</span>
-                            <span>&rsaquo;</span>
-                            <span style="color:#2563EB;">{b_cap}</span>
-                            <span>&rsaquo;</span>
-                            <span style="color:#0891B2;">{b_skill}</span>
-                        </div>
-
-                        <!-- Headline Title -->
-                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
-                            {b_title}
-                        </h3>
+                        {sub_chip}
                     </div>
 
-                    <!-- Expansion & Modal Action Footer -->
-                    <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                        <button type="button" class="btn-metal btn-sm" onclick="{action_onclick}" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
-                            <span>{action_btn_txt}</span>
-                            <span>&rarr;</span>
-                        </button>
-                        <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:4px 8px; border-radius:10px;">Details &darr;</span>
+                    <!-- Hierarchy Breadcrumb -->
+                    <div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-bottom:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="color:#7C3AED;">{b_power}</span>
+                        <span>&rsaquo;</span>
+                        <span style="color:#2563EB;">{b_cap}</span>
+                        <span>&rsaquo;</span>
+                        <span style="color:#0891B2;">{b_skill}</span>
                     </div>
+
+                    <!-- Headline Title -->
+                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
+                        {b_title}
+                    </h3>
                 </div>
-                """)
+
+                <!-- Navigation to Dedicated Badge Detail Page -->
+                <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <button type="button" class="btn-metal btn-sm" onclick="{open_btn_onclick}" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
+                        <span>{action_btn_txt}</span>
+                        <span>&rarr;</span>
+                    </button>
+                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:4px 8px; border-radius:10px;">Open Page &rarr;</span>
+                </div>
+            </div>
+            """)
 
         badges_grid_html = f"""
         <div class="badges-grid-3x3" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:20px; margin-bottom:32px;">
@@ -2183,7 +2492,7 @@ def render_cosmonaut_submission_workspace(
                 <div>
                     <h2 style="font-size:1.6rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0; letter-spacing:-0.3px;">Allocated Badges &amp; Milestone Projects</h2>
                     <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
-                        Review your allocated curriculum badges, learning outcomes, and technical milestones. Click any badge to preview the complete syllabus and practice project.
+                        Select any allocated badge card to open its full milestone page with outcomes, assigned project specifications, and deliverables submission.
                     </p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -2192,10 +2501,6 @@ def render_cosmonaut_submission_workspace(
                 </div>
             </div>
         </div>
-
-        {retake_banner}
-        {mapping_info_banner}
-        {assigned_project_banner}
 
         <!-- 1. BADGES CARDS GRID -->
         {badges_grid_html}
@@ -2235,41 +2540,18 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
     # Assigned Project Specification from Reviewer
     assigned_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
     assigned_project_banner = ""
-    if assigned_proj:
-        deliv = getattr(assigned_proj, "deliverables", {}) or {}
-        code_name = deliv.get("code", {}).get("name", "script.py") if isinstance(deliv.get("code"), dict) else "script.py"
-        pdf_name = deliv.get("pdf", {}).get("name", "report.pdf") if isinstance(deliv.get("pdf"), dict) else "report.pdf"
-        gh_name = deliv.get("github", {}).get("name", "GitHub Repo") if isinstance(deliv.get("github"), dict) else "GitHub Repo"
-        code_info = deliv.get("code", {}).get("description", "Modular Python script") if isinstance(deliv.get("code"), dict) else "Modular script"
-        pdf_info = deliv.get("pdf", {}).get("description", "Architecture document") if isinstance(deliv.get("pdf"), dict) else "Architecture document"
-        gh_info = deliv.get("github", {}).get("description", "GitHub repository") if isinstance(deliv.get("github"), dict) else "GitHub repository"
-        req_items = getattr(assigned_proj, "requirements", []) or []
-        req_items_html = "".join([f"<li>{escape(r)}</li>" for r in req_items]) if req_items else "<li>Implement scalable enterprise pipeline according to badge outcomes.</li>"
-        outcomes_items = getattr(assigned_proj, "outcomes", []) or []
-        outcomes_html = ""
-        if outcomes_items:
-            outcomes_pills = "".join([f'<li style="margin-bottom:2px; display:flex; align-items:flex-start; gap:5px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>' for o in outcomes_items])
-            outcomes_html = f"""
-            <div style="margin-bottom:8px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:6px 10px;">
-                <div style="font-size:10px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:3px;">Expected Project Outcomes:</div>
-                <ul style="margin:0; padding:0; list-style:none; font-size:11px; color:var(--frost-navy); line-height:1.35;">
-                    {outcomes_pills}
-                </ul>
-            </div>
-            """
+    if assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
+        spec_inner = _render_assigned_project_spec_inner(
+            assigned_proj=assigned_proj,
+            rev_name_str=rev_name,
+            rev_band_str=rev_band,
+            window_str=window_str,
+            existing_sub=existing_sub,
+            compact=True
+        )
         assigned_project_banner = f"""
         <div style="background:rgba(234,244,255,0.7); border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:14px 18px; margin-bottom:18px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
-                <span style="font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
-                <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Reviewer: {escape(rev_name)}</span>
-            </div>
-            <h4 style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
-            <p style="font-size:12px; color:var(--frost-navy-75); line-height:1.45; margin:0 0 8px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
-            {outcomes_html}
-            <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:4px;">Core Requirements:</div>
-            <ul style="margin:0 0 10px 18px; padding:0; font-size:11.5px; color:var(--frost-navy-75); line-height:1.4;">
-                {req_items_html}
-            </ul>
+            {spec_inner}
         </div>
         """
 
@@ -4966,6 +5248,9 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                         <input type="text" id="rev_proj_gh_desc" class="form-input" value="{escape(gh_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
                     </div>
                 </div>
+                <input type="hidden" id="rev_proj_cadet_ids" value="{escape(json.dumps(cadet_ids))}">
+                <input type="hidden" id="rev_proj_code_name" value="{escape(deliv.get('code', {}).get('name', 'script.py') if isinstance(deliv.get('code'), dict) else 'script.py')}">
+                <input type="hidden" id="rev_proj_pdf_name" value="{escape(deliv.get('pdf', {}).get('name', 'report.pdf') if isinstance(deliv.get('pdf'), dict) else 'report.pdf')}">
             </div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--icy-steel-30); padding-top:14px; flex-wrap:wrap; gap:10px;">
@@ -4974,39 +5259,11 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                 </button>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <button type="button" class="btn-secondary" style="padding:9px 18px; font-weight:700; font-size:12.5px;"
-                        onclick="const p = {{
-                            badge_id: '{escape(badge.id)}',
-                            reviewer_id: '{escape(current_user.id)}',
-                            title: document.getElementById('rev_proj_title').value,
-                            description: document.getElementById('rev_proj_scenario').value,
-                            outcomes: document.getElementById('rev_proj_outcomes').value.split('\\n').filter(Boolean),
-                            requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
-                            deliverables: {{
-                                code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py') if isinstance(deliv.get('code'), dict) else 'script.py')}', description: document.getElementById('rev_proj_code_desc').value }},
-                                pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf') if isinstance(deliv.get('pdf'), dict) else 'report.pdf')}', description: document.getElementById('rev_proj_pdf_desc').value }},
-                                github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
-                            }},
-                            cosmonaut_ids: {json.dumps(cadet_ids)},
-                            status: 'draft'
-                        }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
+                        onclick="(function(s){{var g=function(i){{var e=document.getElementById(i);return e?e.value:'';}};var o=g('rev_proj_outcomes').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var r=g('rev_proj_reqs').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var c=[];try{{c=JSON.parse(g('rev_proj_cadet_ids')||'[]');}}catch(e){{}}var p={{badge_id:'{escape(badge.id)}',reviewer_id:'{escape(current_user.id)}',title:g('rev_proj_title').trim()||'Milestone Implementation Project',objective:g('rev_proj_scenario').trim(),description:g('rev_proj_scenario').trim(),outcomes:o,requirements:r,technical_requirements:r,deliverables:{{code:{{name:g('rev_proj_code_name')||'script.py',description:g('rev_proj_code_desc').trim()}},pdf:{{name:g('rev_proj_pdf_name')||'report.pdf',description:g('rev_proj_pdf_desc').trim()}},github:{{name:'GitHub Repository',description:g('rev_proj_gh_desc').trim()}}}},cosmonaut_ids:c,status:s}};if(window.StarAppBridge&&typeof window.StarAppBridge.dispatchAction==='function'){{window.StarAppBridge.dispatchAction('send_reviewer_project',JSON.stringify(p));}}else if(window.starAppController&&typeof window.starAppController.handle_event==='function'){{window.starAppController.handle_event('send_reviewer_project',JSON.stringify(p));}}else{{var sid=(window.StarAppBridge&&typeof window.StarAppBridge.getWindowSessionId==='function')?window.StarAppBridge.getWindowSessionId():(sessionStorage.getItem('starapp_window_session_id')||'default');fetch('/api/v1/dispatch',{{method:'POST',headers:{{'Content-Type':'application/json','X-Session-Id':sid}},body:JSON.stringify({{action:'send_reviewer_project',payload:JSON.stringify(p),session_id:sid}})}}).then(function(res){{return res.json();}}).then(function(data){{if(data&&data.regions&&window.StarAppBridge){{window.StarAppBridge.updateRegions(JSON.stringify(data.regions));}}else if(data&&data.full_html&&window.StarAppBridge){{window.StarAppBridge.updateAppRoot(data.full_html);}}else{{window.location.reload();}}}});}}}})('draft');">
                         💾 Save Draft
                     </button>
                     <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;"
-                        onclick="const p = {{
-                            badge_id: '{escape(badge.id)}',
-                            reviewer_id: '{escape(current_user.id)}',
-                            title: document.getElementById('rev_proj_title').value,
-                            description: document.getElementById('rev_proj_scenario').value,
-                            outcomes: document.getElementById('rev_proj_outcomes').value.split('\\n').filter(Boolean),
-                            requirements: document.getElementById('rev_proj_reqs').value.split('\\n').filter(Boolean),
-                            deliverables: {{
-                                code: {{ name: '{escape(deliv.get('code', {}).get('name', 'script.py') if isinstance(deliv.get('code'), dict) else 'script.py')}', description: document.getElementById('rev_proj_code_desc').value }},
-                                pdf: {{ name: '{escape(deliv.get('pdf', {}).get('name', 'report.pdf') if isinstance(deliv.get('pdf'), dict) else 'report.pdf')}', description: document.getElementById('rev_proj_pdf_desc').value }},
-                                github: {{ name: 'GitHub Repository', description: document.getElementById('rev_proj_gh_desc').value }}
-                            }},
-                            cosmonaut_ids: {json.dumps(cadet_ids)},
-                            status: 'released'
-                        }}; window.StarAppBridge.dispatchAction('send_reviewer_project', JSON.stringify(p));">
+                        onclick="(function(s){{var g=function(i){{var e=document.getElementById(i);return e?e.value:'';}};var o=g('rev_proj_outcomes').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var r=g('rev_proj_reqs').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var c=[];try{{c=JSON.parse(g('rev_proj_cadet_ids')||'[]');}}catch(e){{}}var p={{badge_id:'{escape(badge.id)}',reviewer_id:'{escape(current_user.id)}',title:g('rev_proj_title').trim()||'Milestone Implementation Project',objective:g('rev_proj_scenario').trim(),description:g('rev_proj_scenario').trim(),outcomes:o,requirements:r,technical_requirements:r,deliverables:{{code:{{name:g('rev_proj_code_name')||'script.py',description:g('rev_proj_code_desc').trim()}},pdf:{{name:g('rev_proj_pdf_name')||'report.pdf',description:g('rev_proj_pdf_desc').trim()}},github:{{name:'GitHub Repository',description:g('rev_proj_gh_desc').trim()}}}},cosmonaut_ids:c,status:s}};if(window.StarAppBridge&&typeof window.StarAppBridge.dispatchAction==='function'){{window.StarAppBridge.dispatchAction('send_reviewer_project',JSON.stringify(p));}}else if(window.starAppController&&typeof window.starAppController.handle_event==='function'){{window.starAppController.handle_event('send_reviewer_project',JSON.stringify(p));}}else{{var sid=(window.StarAppBridge&&typeof window.StarAppBridge.getWindowSessionId==='function')?window.StarAppBridge.getWindowSessionId():(sessionStorage.getItem('starapp_window_session_id')||'default');fetch('/api/v1/dispatch',{{method:'POST',headers:{{'Content-Type':'application/json','X-Session-Id':sid}},body:JSON.stringify({{action:'send_reviewer_project',payload:JSON.stringify(p),session_id:sid}})}}).then(function(res){{return res.json();}}).then(function(data){{if(data&&data.regions&&window.StarAppBridge){{window.StarAppBridge.updateRegions(JSON.stringify(data.regions));}}else if(data&&data.full_html&&window.StarAppBridge){{window.StarAppBridge.updateAppRoot(data.full_html);}}else{{window.location.reload();}}}});}}}})('released');">
                         🚀 Submit & Send Project to Mapped Cadets &rarr;
                     </button>
                 </div>

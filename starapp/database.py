@@ -468,7 +468,7 @@ class DatabaseManager:
                 os.makedirs(parent_dir, exist_ok=True)
             except Exception:
                 pass
-        self._conn = sqlite3.connect(self.db_path)
+        self._conn = sqlite3.connect(self.db_path, timeout=10.0, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON;")
         self._conn.execute("PRAGMA busy_timeout = 5000;")

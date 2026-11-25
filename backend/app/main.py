@@ -188,6 +188,22 @@ if js_dir.exists():
     app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
 
 
+@app.get("/sw.js")
+async def service_worker():
+    sw_file = BASE_DIR / "sw.js"
+    if sw_file.exists():
+        return FileResponse(str(sw_file), media_type="application/javascript")
+    return JSONResponse(status_code=404, content={"message": "Service worker not found"})
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    fav_file = BASE_DIR / "favicon.ico"
+    if fav_file.exists():
+        return FileResponse(str(fav_file))
+    return JSONResponse(status_code=204, content={})
+
+
 @app.get("/")
 async def root():
     index_file = BASE_DIR / "index.html"

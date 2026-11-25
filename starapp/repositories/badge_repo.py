@@ -73,13 +73,34 @@ class BadgeRepository(BaseRepository):
         with self.conn:
             self.execute(
                 """
-                INSERT OR REPLACE INTO badges (
+                INSERT INTO badges (
                     id, code, title, category, description,
                     learning_outcomes_json, learning_topics_json, project_requirements,
                     is_published, is_allocated, target_band, power, capability, skill,
                     prompt_json, workflow_status, creator_id, assigned_reviewer_id,
                     assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    code = excluded.code,
+                    title = excluded.title,
+                    category = excluded.category,
+                    description = excluded.description,
+                    learning_outcomes_json = excluded.learning_outcomes_json,
+                    learning_topics_json = excluded.learning_topics_json,
+                    project_requirements = excluded.project_requirements,
+                    is_published = excluded.is_published,
+                    is_allocated = excluded.is_allocated,
+                    target_band = excluded.target_band,
+                    power = excluded.power,
+                    capability = excluded.capability,
+                    skill = excluded.skill,
+                    prompt_json = excluded.prompt_json,
+                    workflow_status = excluded.workflow_status,
+                    creator_id = excluded.creator_id,
+                    assigned_reviewer_id = excluded.assigned_reviewer_id,
+                    assigned_cosmonaut_ids_json = excluded.assigned_cosmonaut_ids_json,
+                    default_timeline_json = excluded.default_timeline_json,
+                    updated_at = excluded.updated_at
                 """,
                 (
                     badge.id,

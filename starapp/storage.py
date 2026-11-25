@@ -163,6 +163,8 @@ class DataStore:
                         return
         except Exception as e:
             print(f"[DataStore] Failed to load existing SQLite database: {e}")
+            if self.is_loaded and self.users:
+                return
 
         # 4. Fallback to clean seed only if SQLite database is completely empty
         self.reset_to_seed()
@@ -426,7 +428,7 @@ class DataStore:
         with self.db.conn:
             self.db.conn.execute(
                 """
-                INSERT OR REPLACE INTO badges (
+                INSERT INTO badges (
                     id, code, title, category, description,
                     learning_outcomes_json, learning_topics_json, project_requirements,
                     is_published, is_allocated, target_band, power, capability, skill,
@@ -434,6 +436,30 @@ class DataStore:
                     assigned_cosmonaut_ids_json, default_timeline_json, created_at, updated_at,
                     passing_percentage, published_at, published_by
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    code = excluded.code,
+                    title = excluded.title,
+                    category = excluded.category,
+                    description = excluded.description,
+                    learning_outcomes_json = excluded.learning_outcomes_json,
+                    learning_topics_json = excluded.learning_topics_json,
+                    project_requirements = excluded.project_requirements,
+                    is_published = excluded.is_published,
+                    is_allocated = excluded.is_allocated,
+                    target_band = excluded.target_band,
+                    power = excluded.power,
+                    capability = excluded.capability,
+                    skill = excluded.skill,
+                    prompt_json = excluded.prompt_json,
+                    workflow_status = excluded.workflow_status,
+                    creator_id = excluded.creator_id,
+                    assigned_reviewer_id = excluded.assigned_reviewer_id,
+                    assigned_cosmonaut_ids_json = excluded.assigned_cosmonaut_ids_json,
+                    default_timeline_json = excluded.default_timeline_json,
+                    updated_at = excluded.updated_at,
+                    passing_percentage = excluded.passing_percentage,
+                    published_at = excluded.published_at,
+                    published_by = excluded.published_by
                 """,
                 (
                     badge.id,
@@ -475,6 +501,8 @@ class DataStore:
                 self.db.conn.execute("INSERT OR REPLACE INTO badge_capabilities (badge_id, capability_name, is_custom) VALUES (?, ?, 0)", (badge.id, badge.capability))
             if getattr(badge, "skill", None):
                 self.db.conn.execute("INSERT OR REPLACE INTO badge_skills (badge_id, skill_name, is_custom) VALUES (?, ?, 0)", (badge.id, badge.skill))
+            if self.db and self.db.conn:
+                self.db.conn.commit()
         self.mark_dirty()
 
     def get_badges_for_cosmonaut(self, cosmo_id: str) -> List[Badge]:
@@ -525,7 +553,18 @@ class DataStore:
     # --- Timelines ---
     def get_timeline(self, badge_id: str, cosmo_id: str) -> Optional[BadgeTimeline]:
         key = f"{badge_id}_{cosmo_id}"
-        return self.timelines.get(key)
+        if key in self.timelines:
+            return self.timelines[key]
+        if self.db and self.db.conn:
+            try:
+                row = self.db.conn.execute("SELECT * FROM badge_timelines WHERE badge_id = ? AND cosmonaut_id = ?", (badge_id, cosmo_id)).fetchone()
+                if row:
+                    tl = BadgeTimeline.from_dict(dict(row))
+                    self.timelines[key] = tl
+                    return tl
+            except Exception:
+                pass
+        return None
 
     def save_timeline(self, timeline: BadgeTimeline):
         key = f"{timeline.badge_id}_{timeline.cosmonaut_id}"
@@ -559,8 +598,10 @@ class DataStore:
                         getattr(timeline, "review_window_json", "[]")
                     )
                 )
-        except Exception:
-            pass
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error saving timeline: {e}")
         self.mark_dirty()
 
     # --- Submissions ---
@@ -589,32 +630,51 @@ class DataStore:
 
     def save_submission(self, sub: ProjectSubmission):
         self.submissions[sub.id] = sub
-        with self.db.conn:
-            self.db.conn.execute(
-                """
-                INSERT OR REPLACE INTO project_submissions (
-                    id, badge_id, cosmonaut_id, attempt_number, submission_type,
-                    payload, file_name, submitted_at, status, pdf_name, pdf_payload,
-                    code_name, code_payload, github_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    sub.id,
-                    sub.badge_id,
-                    sub.cosmonaut_id,
-                    sub.attempt_number,
-                    sub.submission_type,
-                    sub.payload,
-                    sub.file_name,
-                    sub.submitted_at,
-                    sub.status,
-                    getattr(sub, "pdf_name", ""),
-                    getattr(sub, "pdf_payload", ""),
-                    getattr(sub, "code_name", ""),
-                    getattr(sub, "code_payload", ""),
-                    getattr(sub, "github_url", "")
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    """
+                    INSERT INTO project_submissions (
+                        id, badge_id, cosmonaut_id, attempt_number, submission_type,
+                        payload, file_name, submitted_at, status, pdf_name, pdf_payload,
+                        code_name, code_payload, github_url
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        badge_id = excluded.badge_id,
+                        cosmonaut_id = excluded.cosmonaut_id,
+                        attempt_number = excluded.attempt_number,
+                        submission_type = excluded.submission_type,
+                        payload = excluded.payload,
+                        file_name = excluded.file_name,
+                        submitted_at = excluded.submitted_at,
+                        status = excluded.status,
+                        pdf_name = excluded.pdf_name,
+                        pdf_payload = excluded.pdf_payload,
+                        code_name = excluded.code_name,
+                        code_payload = excluded.code_payload,
+                        github_url = excluded.github_url
+                    """,
+                    (
+                        sub.id,
+                        sub.badge_id,
+                        sub.cosmonaut_id,
+                        sub.attempt_number,
+                        sub.submission_type,
+                        sub.payload,
+                        sub.file_name,
+                        sub.submitted_at,
+                        sub.status,
+                        getattr(sub, "pdf_name", ""),
+                        getattr(sub, "pdf_payload", ""),
+                        getattr(sub, "code_name", ""),
+                        getattr(sub, "code_payload", ""),
+                        getattr(sub, "github_url", "")
+                    )
                 )
-            )
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error saving submission: {e}")
         self.mark_dirty()
 
     # --- Assessments ---
@@ -655,42 +715,47 @@ class DataStore:
 
     def save_assessment(self, asm: AssessmentMarksheet):
         self.assessments[asm.id] = asm
-        with self.db.conn:
-            self.db.conn.execute(
-                """
-                INSERT OR REPLACE INTO assessment_marksheets (
-                    id, submission_id, attempt_number, badge_id, cosmonaut_id,
-                    reviewer_id, reviewer_name, reviewed_at, decision,
-                    business_understanding, architecture_report, technical_knowledge,
-                    presentation, qa, total_marks, percentage,
-                    strength_areas, improvement_areas, overall_feedback,
-                    assessor_role, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    asm.id,
-                    asm.submission_id,
-                    asm.attempt_number,
-                    asm.badge_id,
-                    asm.cosmonaut_id,
-                    asm.reviewer_id,
-                    asm.reviewer_name,
-                    asm.reviewed_at,
-                    asm.decision,
-                    asm.business_understanding,
-                    asm.architecture_report,
-                    asm.technical_knowledge,
-                    asm.presentation,
-                    asm.qa,
-                    asm.total_marks,
-                    asm.percentage,
-                    asm.strength_areas,
-                    asm.improvement_areas,
-                    asm.overall_feedback,
-                    getattr(asm, "assessor_role", "guardian"),
-                    getattr(asm, "remarks", "")
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    """
+                    INSERT OR REPLACE INTO assessment_marksheets (
+                        id, submission_id, attempt_number, badge_id, cosmonaut_id,
+                        reviewer_id, reviewer_name, reviewed_at, decision,
+                        business_understanding, architecture_report, technical_knowledge,
+                        presentation, qa, total_marks, percentage,
+                        strength_areas, improvement_areas, overall_feedback,
+                        assessor_role, remarks
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        asm.id,
+                        asm.submission_id,
+                        asm.attempt_number,
+                        asm.badge_id,
+                        asm.cosmonaut_id,
+                        asm.reviewer_id,
+                        asm.reviewer_name,
+                        asm.reviewed_at,
+                        asm.decision,
+                        asm.business_understanding,
+                        asm.architecture_report,
+                        asm.technical_knowledge,
+                        asm.presentation,
+                        asm.qa,
+                        asm.total_marks,
+                        asm.percentage,
+                        asm.strength_areas,
+                        asm.improvement_areas,
+                        asm.overall_feedback,
+                        getattr(asm, "assessor_role", "guardian"),
+                        getattr(asm, "remarks", "")
+                    )
                 )
-            )
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error saving assessment: {e}")
         self.mark_dirty()
 
     # --- Materials ---
@@ -904,6 +969,19 @@ class DataStore:
     def get_band_mappings(self) -> List[Dict[str, Any]]:
         if not hasattr(self, "band_mappings") or self.band_mappings is None:
             self.band_mappings = []
+        if not self.band_mappings and self.db and self.db.conn:
+            try:
+                rows = self.db.conn.execute("SELECT data_json FROM band_mappings").fetchall()
+                loaded = []
+                for r in rows:
+                    try:
+                        loaded.append(json.loads(r[0]))
+                    except Exception:
+                        pass
+                if loaded:
+                    self.band_mappings = loaded
+            except Exception:
+                pass
         return self.band_mappings
 
     def save_band_mapping(self, mapping: Dict[str, Any]):
@@ -926,23 +1004,46 @@ class DataStore:
                     b_id = b.id
                     mapping["badge_id"] = b.id
                     break
-        with self.db.conn:
-            self.db.conn.execute(
-                "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json) VALUES (?, ?, ?, ?)",
-                (m_id, mapping.get("band", "B1"), b_id, json.dumps(mapping))
-            )
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    "INSERT OR REPLACE INTO band_mappings (id, band, badge_id, data_json) VALUES (?, ?, ?, ?)",
+                    (m_id, mapping.get("band", "B1"), b_id, json.dumps(mapping))
+                )
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error saving band_mapping: {e}")
         self.mark_dirty()
 
     def delete_band_mapping(self, mapping_id: str):
         if hasattr(self, "band_mappings") and self.band_mappings:
             self.band_mappings = [m for m in self.band_mappings if m.get("id") != mapping_id]
-        with self.db.conn:
-            self.db.conn.execute("DELETE FROM band_mappings WHERE id = ?", (mapping_id,))
+        try:
+            with self.db.conn:
+                self.db.conn.execute("DELETE FROM band_mappings WHERE id = ?", (mapping_id,))
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error deleting band_mapping: {e}")
         self.mark_dirty()
 
     def get_mapping_requests(self) -> List[Dict[str, Any]]:
         if not hasattr(self, "mapping_requests") or self.mapping_requests is None:
             self.mapping_requests = []
+        if not self.mapping_requests and self.db and self.db.conn:
+            try:
+                rows = self.db.conn.execute("SELECT data_json FROM mapping_requests").fetchall()
+                loaded = []
+                for r in rows:
+                    try:
+                        loaded.append(json.loads(r[0]))
+                    except Exception:
+                        pass
+                if loaded:
+                    self.mapping_requests = loaded
+            except Exception:
+                pass
         return self.mapping_requests
 
     def add_mapping_request(self, req: Dict[str, Any]):
@@ -957,27 +1058,39 @@ class DataStore:
                 break
         if not replaced:
             self.mapping_requests.append(req)
-        with self.db.conn:
-            self.db.conn.execute(
-                "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json) VALUES (?, ?, ?, ?, ?)",
-                (req_id, req.get("band", ""), req.get("reviewer_id", ""), req.get("status", "pending"), json.dumps(req))
-            )
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    "INSERT OR REPLACE INTO mapping_requests (id, band, reviewer_id, status, data_json) VALUES (?, ?, ?, ?, ?)",
+                    (req_id, req.get("band", ""), req.get("reviewer_id", ""), req.get("status", "pending"), json.dumps(req))
+                )
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error adding mapping request: {e}")
         self.mark_dirty()
 
     def update_mapping_request_status(self, req_id: str, status: str):
         if not hasattr(self, "mapping_requests") or not self.mapping_requests:
-            return
+            self.get_mapping_requests()
         for r in self.mapping_requests:
             legacy_id = f"req_{r.get('band')}_{r.get('reviewer_id')}"
             if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
                 r["status"] = status
                 actual_id = r.get("id")
-                with self.db.conn:
-                    self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(r), actual_id))
+                try:
+                    with self.db.conn:
+                        self.db.conn.execute("UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?", (status, json.dumps(r), actual_id))
+                    if self.db and self.db.conn:
+                        self.db.conn.commit()
+                except Exception as e:
+                    print(f"Error updating mapping request status: {e}")
                 self.mark_dirty()
                 break
 
     def delete_mapping_request(self, req_id: str):
+        if not hasattr(self, "mapping_requests") or not self.mapping_requests:
+            self.get_mapping_requests()
         if hasattr(self, "mapping_requests") and self.mapping_requests:
             to_delete = []
             for r in self.mapping_requests:
@@ -985,9 +1098,14 @@ class DataStore:
                 if r.get("id") == req_id or legacy_id == req_id or r.get("id", "").startswith(req_id):
                     to_delete.append(r.get("id"))
             self.mapping_requests = [r for r in self.mapping_requests if r.get("id") not in to_delete]
-            with self.db.conn:
-                for del_id in to_delete:
-                    self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (del_id,))
+            try:
+                with self.db.conn:
+                    for del_id in to_delete:
+                        self.db.conn.execute("DELETE FROM mapping_requests WHERE id = ?", (del_id,))
+                if self.db and self.db.conn:
+                    self.db.conn.commit()
+            except Exception as e:
+                print(f"Error deleting mapping request: {e}")
             self.mark_dirty()
 
     def clear_mapping_requests(self, band: Optional[str] = None):
@@ -996,12 +1114,22 @@ class DataStore:
             return
         if band:
             self.mapping_requests = [r for r in self.mapping_requests if r.get("band") != band]
-            with self.db.conn:
-                self.db.conn.execute("DELETE FROM mapping_requests WHERE band = ?", (band,))
+            try:
+                with self.db.conn:
+                    self.db.conn.execute("DELETE FROM mapping_requests WHERE band = ?", (band,))
+                if self.db and self.db.conn:
+                    self.db.conn.commit()
+            except Exception:
+                pass
         else:
             self.mapping_requests = []
-            with self.db.conn:
-                self.db.conn.execute("DELETE FROM mapping_requests")
+            try:
+                with self.db.conn:
+                    self.db.conn.execute("DELETE FROM mapping_requests")
+                if self.db and self.db.conn:
+                    self.db.conn.commit()
+            except Exception:
+                pass
         self.mark_dirty()
 
     # --- Reviewer Project Prompts & Mapping Uncoupling ---
@@ -1042,8 +1170,10 @@ class DataStore:
                     p_dict.get("created_at") or current_iso_timestamp(),
                     p_dict.get("sent_at")
                 ))
-        except Exception:
-            pass
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            print(f"Error saving reviewer_project_prompt: {e}")
         self.mark_dirty()
 
     def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None) -> List[Any]:
@@ -1139,6 +1269,13 @@ class DataStore:
                     m["status"] = "completed"
                 self.save_band_mapping(m)
                 break
+
+        tl = self.get_timeline(badge_id, cosmonaut_id)
+        if tl:
+            tl.status = "completed"
+            if not tl.actual_award_date:
+                tl.actual_award_date = current_iso_timestamp()[:10]
+            self.save_timeline(tl)
 
     # ==========================================================================
     # CUSTOM CAPABILITIES & SKILLS

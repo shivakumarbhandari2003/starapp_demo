@@ -51,6 +51,7 @@ from starapp.views_cosmonaut import (
     render_cosmonaut_sidebar, render_cosmonaut_dashboard,
     render_cosmonaut_profile, render_gamified_roadmap,
     render_badge_detail_modal_content, render_cosmonaut_submission_workspace,
+    render_cosmonaut_badge_detail_page, render_cosmonaut_allocated_project_modal,
     render_cosmonaut_submission_modal,
     render_cosmonaut_badge_preview_modal,
     render_cosmonaut_results, render_cosmonaut_materials,
@@ -169,7 +170,7 @@ class StarAppController:
         "g_materials", "g_extensions", "g_announcements", "g_activity"
     }
     _COSMONAUT_VIEWS = {
-        "c_dashboard", "c_roadmap", "c_submission", "c_results",
+        "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_results",
         "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity",
         "c_requests", "c_badge_reviews"
     }
@@ -941,13 +942,18 @@ class StarAppController:
             else:
                 self.set_flash("Badge not found.", "warning")
 
-        elif action in ("toggle_cosmonaut_badge_card", "open_cosmonaut_badge_preview"):
+        elif action in ("open_cosmonaut_badge_page", "toggle_cosmonaut_badge_card", "open_cosmonaut_badge_preview"):
             b_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
-            if self.cosmonaut_expanded_badge_id == b_id:
+            b_id = str(b_id).strip().replace('"', '')
+            if action == "toggle_cosmonaut_badge_card" and self.current_view == "c_badge_detail" and self.cosmonaut_submission_badge_id == b_id:
+                self._push_history()
                 self.cosmonaut_expanded_badge_id = None
+                self.current_view = "c_submission"
             else:
+                self._push_history()
                 self.cosmonaut_expanded_badge_id = b_id
                 self.cosmonaut_submission_badge_id = b_id
+                self.current_view = "c_badge_detail"
             self.active_modal = None
 
         elif action == "toggle_reviewer_badge_expand":
@@ -1166,13 +1172,17 @@ class StarAppController:
             self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
             self.current_view = view_id
+            if view_id == "c_submission":
+                self.cosmonaut_expanded_badge_id = None
             self.active_modal = None
 
         elif action == "nav_to_submit_badge":
             self._push_history()
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
+            badge_id = str(badge_id).strip().replace('"', '') if badge_id else self.cosmonaut_submission_badge_id
             self.cosmonaut_submission_badge_id = badge_id
-            self.current_view = "c_submission"
+            self.cosmonaut_expanded_badge_id = badge_id
+            self.current_view = "c_badge_detail"
             self.active_modal = None
 
         # --- Modal Controls ---
@@ -1871,15 +1881,34 @@ class StarAppController:
             badge_ref = payload.get("badge") if isinstance(payload, dict) else None
             if badge_ref:
                 store.band_mappings = [m for m in store.band_mappings if not (m.get("band") == band and m.get("badge") == badge_ref)]
+                if store.db and store.db.conn:
+                    try:
+                        store.db.conn.execute("DELETE FROM band_mappings WHERE band = ? AND (badge_id = ? OR json_extract(data_json, '$.badge') = ?)", (band, badge_ref, badge_ref))
+                        store.db.conn.commit()
+                    except Exception:
+                        pass
                 self.set_flash(f"Active mappings for '{badge_ref}' (Band {band}) cleared.", "info")
             else:
                 store.band_mappings = [m for m in store.band_mappings if m.get("band") != band]
+                if store.db and store.db.conn:
+                    try:
+                        store.db.conn.execute("DELETE FROM band_mappings WHERE band = ?", (band,))
+                        store.db.conn.commit()
+                    except Exception:
+                        pass
                 self.set_flash(f"Active mappings for Band {band} cleared.", "info")
             store.mark_dirty()
 
         elif action in ("reset_all_mapping_state", "reset_mapping_demo"):
             store.band_mappings = []
             store.mapping_requests = []
+            if store.db and store.db.conn:
+                try:
+                    store.db.conn.execute("DELETE FROM band_mappings")
+                    store.db.conn.execute("DELETE FROM mapping_requests")
+                    store.db.conn.commit()
+                except Exception:
+                    pass
             store.mark_dirty()
             self.mapping_selected_band = "B1"
             from starapp.mapping_data import ROLES
@@ -2370,7 +2399,16 @@ class StarAppController:
 
         elif action == "open_submission_modal":
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '') or getattr(self, "cosmonaut_submission_badge_id", "")
+            self.cosmonaut_submission_badge_id = b_id
             self.active_modal = "submission_portal_modal"
+            self.modal_payload = {"badge_id": b_id}
+
+        elif action in ("open_allocated_project_modal", "view_allocated_project"):
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '') or getattr(self, "cosmonaut_submission_badge_id", "")
+            self.cosmonaut_submission_badge_id = b_id
+            self.active_modal = "allocated_project_modal"
             self.modal_payload = {"badge_id": b_id}
 
         elif action == "filter_reviewer_assessments":
@@ -2412,15 +2450,38 @@ class StarAppController:
             else:
                 outcomes = []
 
-            rev_id = self.current_user.id if self.current_user else "reviewer_1"
-            rev_name = self.current_user.name if self.current_user else "Authorized Reviewer"
+            rev_id = (self.current_user.id if self.current_user else None) or payload.get("reviewer_id") or "reviewer_1"
+            rev_user = store.get_user_by_id(rev_id) if store else None
+            rev_name = (self.current_user.name if self.current_user else None) or (rev_user.name if rev_user else None) or "Authorized Reviewer"
 
             # Auto-resolve mapped cadets if not explicitly passed
             if not cosmonaut_ids and badge_id:
+                b_obj = store.get_badge(badge_id)
                 for m in store.get_band_mappings():
-                    if rev_id in m.get("reviewers", []):
+                    rev_list = m.get("reviewers", [])
+                    if rev_id in rev_list:
                         m_b = m.get("badge_id") or m.get("badge")
-                        b_obj = store.get_badge(badge_id)
+                        if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
+                            cosmo_list = m.get("cosmonauts", [])
+                            for idx, cid in enumerate(cosmo_list):
+                                if len(rev_list) > 1:
+                                    if rev_list[idx % len(rev_list)] != rev_id:
+                                        continue
+                                if cid not in cosmonaut_ids:
+                                    cosmonaut_ids.append(cid)
+                if hasattr(store, "timelines") and store.timelines:
+                    for tl in store.timelines.values():
+                        if getattr(tl, "reviewer_id", "") == rev_id and getattr(tl, "badge_id", "") == badge_id:
+                            cid = getattr(tl, "cosmonaut_id", "")
+                            if cid and cid not in cosmonaut_ids:
+                                cosmonaut_ids.append(cid)
+                if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == rev_id:
+                    for cid in getattr(b_obj, "assigned_cosmonaut_ids", []):
+                        if cid not in cosmonaut_ids:
+                            cosmonaut_ids.append(cid)
+                if not cosmonaut_ids:
+                    for m in store.get_band_mappings():
+                        m_b = m.get("badge_id") or m.get("badge")
                         if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
                             for cid in m.get("cosmonauts", []):
                                 if cid not in cosmonaut_ids:
@@ -4030,19 +4091,28 @@ if __name__ == "__main__":
             title = f"AI Project Creation Engine — {badge.code if badge else ''}"
             body = render_reviewer_project_creator_modal(badge, self.current_user, store) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
+        elif self.active_modal == "allocated_project_modal":
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            title = f"Allocated Milestone Project — {badge.code if badge else ''}"
+            if badge and self.current_user:
+                body = render_cosmonaut_allocated_project_modal(badge, self.current_user, store)
+            else:
+                body = "<div style='padding:24px; text-align:center; color:var(--frost-navy-50);'>Milestone badge not found.</div>"
+
         elif self.active_modal == "submission_portal_modal":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
             title = f"Project Deliverable Submission Portal — {badge.code if badge else ''}"
             if badge and self.current_user:
                 existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, b_id)
-                latest_sub = existing_subs[0] if existing_subs else None
+                latest_sub = existing_subs[-1] if existing_subs else None
                 body = render_cosmonaut_submission_modal(badge, self.current_user, store, existing_sub=latest_sub)
             else:
                 body = "<div style='padding:24px; text-align:center; color:var(--frost-navy-50);'>Milestone badge not found.</div>"
 
         modal_dialog_class = "liquid-glass-modal modal-dialog"
-        if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "reviewer_project_creator", "submission_portal_modal"]:
+        if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "reviewer_project_creator", "submission_portal_modal", "allocated_project_modal"]:
             modal_dialog_class += " modal-xl modal-lg"
         elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_reviewer_return"]:
             modal_dialog_class += " modal-lg"
@@ -4448,6 +4518,12 @@ if __name__ == "__main__":
             unread_anns = len([a for a in store.get_announcements_for_cosmonaut(self.current_user.id) if self.current_user.id not in a.read_by_cosmonaut_ids])
             cosmo_reqs = store.get_badge_review_requests_for_user(self.current_user.id)
             pending_cosmo_reqs_cnt = len([r for r in cosmo_reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
+            if self.current_view == "c_badge_detail":
+                active_nav_id = "c_submission"
+            elif self.current_view == "c_assessment_detail":
+                active_nav_id = "c_assessments"
+            else:
+                active_nav_id = self.current_view
             sidebar_html = render_cosmonaut_sidebar(self.current_view, self.current_user, unread_anns, pending_cosmo_reqs_cnt)
 
             assigned_badges = store.get_badges_for_cosmonaut(self.current_user.id)
@@ -4480,7 +4556,25 @@ if __name__ == "__main__":
 
             elif self.current_view == "c_submission":
                 page_title = "Badges & Technical Milestones"
-                main_content_html = render_cosmonaut_submission_workspace(assigned_badges, self.cosmonaut_submission_badge_id, user_subs, current_user=self.current_user, store=store, expanded_badge_id=self.cosmonaut_expanded_badge_id)
+                main_content_html = render_cosmonaut_submission_workspace(assigned_badges, self.cosmonaut_submission_badge_id, user_subs, current_user=self.current_user, store=store, expanded_badge_id=None)
+
+            elif self.current_view == "c_badge_detail":
+                target_badge = (
+                    badges_map.get(self.cosmonaut_submission_badge_id)
+                    or store.get_badge(self.cosmonaut_submission_badge_id)
+                    or (assigned_badges[0] if assigned_badges else None)
+                )
+                if target_badge:
+                    page_title = f"{target_badge.code}: {target_badge.title} — Milestone Details"
+                    route_key = f"c_badge_detail:{target_badge.id}"
+                else:
+                    page_title = "Badge Details"
+                main_content_html = render_cosmonaut_badge_detail_page(
+                    badge=target_badge,
+                    current_user=self.current_user,
+                    store=store,
+                    submissions=user_subs
+                )
 
             elif self.current_view == "c_results":
                 page_title = "Official Evaluation Marksheets (50-Mark Rubric)"
