@@ -121,5 +121,9 @@ class TestAllotmentPublishRevokeFlow(unittest.TestCase):
         rev_html = rev_ctrl.render()
         self.assertNotIn("Signals Foundations", rev_html)
 
+    @classmethod
+    def tearDownClass(cls):
+        store.reset_to_seed()
+
 if __name__ == "__main__":
     unittest.main()

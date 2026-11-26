@@ -952,12 +952,19 @@ class DataStore:
         except Exception:
             pass
 
-        # 4. Filter badges: direct assignment or mapped within target cycle
+        # 4. Filter badges: direct assignment or mapped within target cycle (must be published, or already certified)
+        approved_hist_ids = {
+            a.badge_id
+            for a in self.get_assessments_for_cosmonaut(cosmo_id, cycle_id=target_cid)
+            if getattr(a, "decision", "") == "approve"
+        }
         result = []
         for b in cycle_badges:
+            if not getattr(b, "is_published", False) and b.id not in approved_hist_ids:
+                continue
             is_assigned = any(cid in getattr(b, "assigned_cosmonaut_ids", []) for cid in target_ids)
             is_mapped = b.id in mapped_badge_ids
-            if (is_assigned and (b.is_published or getattr(b, "is_allocated", False))) or is_mapped or (b.is_published and is_assigned):
+            if is_assigned or is_mapped:
                 if b not in result:
                     result.append(b)
         return result

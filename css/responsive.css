@@ -198,69 +198,90 @@ table {
   }
 }
 
-/* 6. Review Detail Workspace: 66% Deliverables / 33% Rubric Exact 100vh Zero-Scroll Fit */
-.app-main:has(.page-review-detail) {
-  height: 100vh !important;
-  max-height: 100vh !important;
-  overflow: hidden !important;
+/* Universal Zoom / Narrow Viewport Min-Width Safety */
+div[style*="min-width:320px"],
+div[style*="min-width:300px"] {
+  min-width: 0 !important;
+  max-width: 100%;
 }
 
-.app-main:has(.page-review-detail) .app-back-strip {
-  padding: 6px 14px 2px 14px !important;
+/* 6. Review Detail Workspace: 66% Deliverables / 33% Rubric Exact 100vh Fit on Desktop */
+@media (min-width: 1080px) and (min-height: 700px) {
+  .app-main:has(.page-review-detail) {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .app-main:has(.page-review-detail) .app-back-strip {
+    padding: 6px 14px 2px 14px !important;
+  }
+
+  .app-main:has(.page-review-detail) #starapp-topbar-slot + .page-container {
+    padding-top: 4px !important;
+  }
+
+  .page-review-detail {
+    padding: 4px 14px 10px 14px !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .page-review-detail #starapp-page-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .review-detail-workspace {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .review-workspace-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 2fr) minmax(350px, 1fr) !important;
+    gap: 12px !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .review-left-column,
+  .review-right-column {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
 }
 
-.app-main:has(.page-review-detail) #starapp-topbar-slot + .page-container {
-  padding-top: 4px !important;
-}
+/* Unlocked scrollable Review Detail when zoomed in or height < 700px */
+@media (max-width: 1079px), (max-height: 699px) {
+  .review-workspace-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.35fr) minmax(min(330px, 100%), 1fr) !important;
+    gap: 12px !important;
+    align-items: start;
+  }
 
-.page-review-detail {
-  padding: 4px 14px 10px 14px !important;
-  max-width: 100% !important;
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: auto !important;
-  box-sizing: border-box !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
+  .review-left-column {
+    min-height: 460px;
+  }
 
-.page-review-detail #starapp-page-body {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.review-detail-workspace {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.review-workspace-grid {
-  display: grid !important;
-  grid-template-columns: minmax(0, 2fr) minmax(350px, 1fr) !important;
-  gap: 12px !important;
-  flex: 1 !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  overflow: hidden !important;
-}
-
-.review-left-column,
-.review-right-column {
-  height: 100% !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-@media (max-height: 690px) {
   .review-rubric-body-fit {
     overflow-y: auto !important;
   }
@@ -270,7 +291,7 @@ table {
   .page-review-detail {
     height: auto !important;
     overflow: visible !important;
-    padding: var(--space-4) !important;
+    padding: clamp(12px, 2vw, 20px) !important;
   }
 
   .review-detail-workspace {
@@ -286,12 +307,12 @@ table {
   }
 
   .review-left-column {
-    height: 520px !important;
+    height: 500px !important;
   }
 
   .review-right-column {
     height: auto !important;
-    min-height: 480px;
+    min-height: 440px;
   }
 }
 

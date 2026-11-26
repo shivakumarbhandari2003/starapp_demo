@@ -530,7 +530,7 @@ def render_guardian_dashboard(
     avg_completion_pct = round((total_completed_all / max(1, len(cohort_profiles) * TOTAL_BADGES)) * 100.0, 1)
 
     top_command_deck = f"""
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(380px, 1fr)); gap:20px; margin-bottom:24px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:20px; margin-bottom:24px;">
         <!-- Left: Weekly Velocity & Pacing Telemetry -->
         <div class="liquid-glass-card velocity-glass-card" style="padding:22px 24px; display:flex; flex-direction:column; justify-content:space-between; overflow:visible !important; position:relative; z-index:50;">
             <div style="margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
@@ -1090,7 +1090,7 @@ def render_individual_cosmo_dossier(
         </div>
         """)
     skills_html = f"""
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap:14px;">
         {"".join(skill_cards)}
     </div>
     """ if skill_cards else "<div style='color:var(--frost-navy-50); font-style:italic;'>No skill competencies mapped yet.</div>"
@@ -1122,7 +1122,7 @@ def render_individual_cosmo_dossier(
         </div>
         """)
     certs_html = f"""
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:14px;">
         {"".join(cert_cards)}
     </div>
     """ if cert_cards else "<div style='color:var(--frost-navy-50); font-style:italic;'>No milestone certifications issued yet.</div>"
@@ -1147,7 +1147,7 @@ def render_individual_cosmo_dossier(
     """ for im in improvements_data])
 
     diagnostics_html = f"""
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:18px; margin-bottom:18px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap:18px; margin-bottom:18px;">
         <!-- Column 1: Strengths -->
         <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.22); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px 18px;">
             <div style="font-size:13px; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
@@ -1225,7 +1225,7 @@ def render_individual_cosmo_dossier(
         </div>
 
         <!-- 1. Executive Performance KPIs Grid -->
-        <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
+        <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:16px; margin-bottom:24px;">
             <div class="liquid-glass-card kpi-card" style="padding:18px 20px;">
                 <div class="kpi-header">
                     <span class="kpi-title" style="display:flex; align-items:center;">
@@ -1818,7 +1818,7 @@ def render_guardian_badge_allotment(
     return f"""
     <div>
         <!-- Metric Counters Top Row -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:22px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:14px; margin-bottom:22px;">
             <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
                 <div style="font-size:12px; font-weight:800; color:var(--frost-navy);">Total Catalog Badges</div>
                 <div style="font-size:1.75rem; font-weight:900; color:var(--frost-navy); margin-top:2px;">{len(badges)} Badges</div>
@@ -3120,7 +3120,7 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
                 {status_pill}
             </div>
 
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; background:rgba(234,244,255,0.6); padding:10px 14px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:12px; font-size:13px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; background:rgba(234,244,255,0.6); padding:10px 14px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:12px; font-size:13px;">
                 <div><strong>Original Deadline:</strong> <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline)}</span></div>
                 <div><strong>Proposed New Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</span></div>
             </div>
@@ -4463,7 +4463,7 @@ def render_guardian_mapping_badge_detail(
                 </h3>
                 <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{len(grp_cosmo_ids)} Cosmonauts &bull; {len(grp_acc)} Accepted</span>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-bottom:16px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:16px; margin-bottom:16px;">
                 <div class="liquid-glass-panel" style="padding:16px;">
                     <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin-bottom:10px;">
                         Selected Cosmonauts ({len(grp_cosmo_ids)})
@@ -5597,7 +5597,7 @@ def render_badge_creation_preview_modal(badge_data: Dict[str, Any], reviewer: Op
             <h2 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">{title}</h2>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; margin-bottom:20px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
             <div><span style="color:var(--frost-navy-50);">Target Band:</span> <strong style="color:var(--frost-navy);">Band {band}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Power:</span> <strong style="color:var(--frost-navy);">{power}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Capability:</span> <strong style="color:var(--frost-navy);">{cap}</strong></div>
@@ -6096,7 +6096,7 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
             </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:18px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap:12px; margin-bottom:18px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
             <div><span style="color:var(--frost-navy-50);">Power:</span> <strong style="color:var(--frost-navy);">{power}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Capability:</span> <strong style="color:var(--frost-navy);">{cap}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Skill:</span> <strong style="color:var(--frost-navy);">{skill}</strong></div>

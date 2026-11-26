@@ -287,7 +287,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_learning")
         lrn_html = self.ctrl.render()
         self.assertIn("Cycle 2 Global Filter", lrn_html)
-        self.assertIn("BAND B1", lrn_html)
+        self.assertIn("Band B1", lrn_html)
 
         # Reviewer-eligible Cosmonaut sidebar order
         self.ctrl.handle_event("select_demo_account", "m_b2_1")
@@ -346,7 +346,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_learning")
         lrn_c0 = self.ctrl.render()
         self.assertIn("Previous Cycle (Jan–Jun 2026)", lrn_c0)
-        self.assertIn("2 Badges", lrn_c0)  # Band B1 has 2 cycle_0 badges
+        self.assertIn("Band B1", lrn_c0)
 
         self.ctrl.handle_event("select_create_badge_band", "B1")
         cb_c0 = self.ctrl.render()

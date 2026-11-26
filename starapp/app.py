@@ -4706,7 +4706,7 @@ if __name__ == "__main__":
                             <button type="button" class="btn-secondary btn-sm" onclick="document.querySelectorAll('input[name=badge-assignee]').forEach(x => x.checked = false);" style="font-size:11px; padding:3px 9px;">Clear All</button>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; max-height:220px; overflow-y:auto; padding:10px; background:rgba(234,244,255,0.4); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap:10px; max-height:min(220px, 45vh); overflow-y:auto; padding:10px; background:rgba(234,244,255,0.4); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
                         {"".join(cosmo_cards)}
                     </div>
                 </div>
@@ -5481,11 +5481,19 @@ if __name__ == "__main__":
             leaderboard = calculate_batch_leaderboard(cosmonauts, all_asms)
 
             if self.current_view == "c_choose_cycle":
-                page_title = "Choose Cycle — Global Filter — StarApp"
+                page_title = "Choose Cycle — StarApp"
+                all_cycles = store.get_all_cycles()
+                choose_cycle_stats = {}
+                for cyc in all_cycles:
+                    with store.cycle_scope(cyc.id):
+                        u_rows = compute_cycle_candidate_performance(cyc.id, store, users_override=[self.current_user])
+                        if u_rows:
+                            choose_cycle_stats[cyc.id] = u_rows[0]
                 main_content_html = render_cosmonaut_choose_cycle_view(
                     current_user=self.current_user,
-                    cycles=store.get_all_cycles(),
-                    selected_cycle=selected_cycle_obj
+                    cycles=all_cycles,
+                    selected_cycle=selected_cycle_obj,
+                    cycle_stats=choose_cycle_stats
                 )
 
             elif self.current_view == "c_dashboard":

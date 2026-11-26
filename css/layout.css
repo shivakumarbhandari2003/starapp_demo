@@ -514,22 +514,27 @@ body::before {
   min-width: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: clip;
   scrollbar-gutter: stable;
 }
 
 .app-topbar {
-  height: 72px;
-  padding: 0 var(--space-8);
+  min-height: 64px;
+  height: auto;
+  padding: 10px clamp(14px, 2.2vw, 32px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(255, 255, 255, 0.88);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  flex-wrap: wrap;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--icy-steel-30);
   position: sticky;
   top: 0;
   z-index: 90;
+  contain: layout style;
   box-shadow: 0 2px 10px rgba(7, 22, 41, 0.03);
 }
 
@@ -591,10 +596,12 @@ body::before {
 
 /* Page content wrapper */
 .page-container {
-  padding: var(--space-8);
+  padding: clamp(14px, 2.2vw, 32px);
   max-width: 1440px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* ==========================================================================
@@ -611,8 +618,9 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-6);
-  animation: modalFadeIn 200ms ease-out;
+  padding: clamp(8px, 2vw, 24px);
+  overflow-y: auto;
+  animation: modalFadeIn 180ms ease-out;
 }
 
 @keyframes modalFadeIn {
@@ -621,9 +629,10 @@ body::before {
 }
 
 .modal-dialog {
-  max-width: 780px;
+  max-width: min(780px, 95vw);
   width: 100%;
-  max-height: 90vh;
+  max-height: calc(100vh - 16px);
+  margin: auto;
   display: flex;
   flex-direction: column;
   background: #EAF4FF;
@@ -633,14 +642,14 @@ body::before {
 }
 
 .modal-dialog.modal-lg {
-  max-width: 940px;
+  max-width: min(940px, 96vw);
   width: 95vw;
 }
 
 .modal-dialog.modal-xl {
-  max-width: 1280px;
+  max-width: min(1280px, 96vw);
   width: 96vw;
-  max-height: 94vh;
+  max-height: calc(100vh - 16px);
 }
 
 .modal-header {
@@ -676,10 +685,10 @@ body::before {
 }
 
 .modal-body {
-  padding: 20px 24px;
+  padding: clamp(14px, 2vw, 24px);
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  max-height: calc(90vh - 65px) !important;
+  max-height: calc(100vh - 82px) !important;
   flex: 1 1 auto !important;
   min-height: 0 !important;
   background: #EAF4FF !important;

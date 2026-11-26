@@ -244,7 +244,7 @@ def render_standard_marksheet(
     badge_title = badge.title if badge else "Project Assessment"
     badge_code = badge.code if badge else "STAR-RUBRIC"
 
-    # Multi-attempt tab navigation if multiple attempts exist
+    # Multi-attempt / evaluator tab navigation if multiple assessments exist
     attempts_tabs_html = ""
     if all_attempts and len(all_attempts) > 1:
         tab_buttons = []
@@ -255,15 +255,16 @@ def render_standard_marksheet(
                 if is_active else
                 "background:rgba(234,244,255,0.85); color:var(--frost-navy); border:1px solid var(--icy-steel-50);"
             )
+            att_role = "Peer Reviewer" if getattr(att, "assessor_role", "") == "reviewer" else "Guardian Official"
             payload = f'{{"marksheet_id": "{att.id}"}}'
             tab_buttons.append(
                 f'<button type="button" class="btn-secondary btn-sm" style="{active_style} padding:6px 14px; border-radius:var(--radius-xs);" '
                 f'onclick="window.StarAppBridge.dispatchAction(\'view_marksheet\', \'{escape(payload)}\')">'
-                f'Attempt #{att.attempt_number} &bull; {att.total_marks}/50.0 ({att.decision.replace("_", " ").title()})</button>'
+                f'Attempt #{att.attempt_number} &bull; {att_role} &bull; {att.total_marks}/50.0 ({att.decision.replace("_", " ").title()})</button>'
             )
         attempts_tabs_html = f'''
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px; padding:12px 16px; background:rgba(234,244,255,0.45); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
-            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Attempt History:</span>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; padding:12px 16px; background:rgba(234,244,255,0.45); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
+            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Evaluation History:</span>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">{"".join(tab_buttons)}</div>
         </div>
         '''
@@ -416,10 +417,10 @@ def render_standard_marksheet(
                 </div>
             </div>
 
-            <!-- Guardian Synthesis & Recommendation -->
+            <!-- Assessor Synthesis & Recommendation -->
             <div style="background:linear-gradient(135deg, rgba(234,244,255,0.7) 0%, rgba(255,255,255,0.95) 100%); border-left:4.5px solid var(--deep-frozen-midnight); padding:18px 22px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); border-left-width:4.5px; box-shadow:0 2px 8px rgba(7,22,41,0.03);">
                 <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:6px;">
-                    Guardian Synthesis & Recommendation
+                    {escape(assessor_title)} Synthesis &amp; Recommendation
                 </div>
                 <p style="font-size:14px; color:var(--frost-navy); line-height:1.6; margin:0;">
                     {escape(marksheet.overall_feedback or "No feedback recorded.")}
@@ -839,7 +840,7 @@ def render_learning_materials_view(
             """)
 
         mats_grid = f"""
-        <div class="materials-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:18px; align-items:stretch;">
+        <div class="materials-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap:18px; align-items:stretch;">
             {"".join(mat_cards)}
         </div>
         """ if mat_cards else """

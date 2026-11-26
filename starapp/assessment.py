@@ -187,8 +187,18 @@ def calculate_batch_aggregate_analytics(
     total_cosmonauts = len(cosmonauts)
     total_assigned_badges = sum(len(b.assigned_cosmonaut_ids) for b in all_badges if b.is_published)
     
-    # Approved assessments
-    approved_asms = [a for a in all_assessments if a.decision == "approve"]
+    # Approved assessments (deduplicated per cosmonaut + badge, Guardian final preferred)
+    approved_by_pair = {}
+    for a in sorted(
+        [x for x in all_assessments if x.decision == "approve"],
+        key=lambda x: (
+            getattr(x, "attempt_number", 1),
+            1 if getattr(x, "assessor_role", "") == "guardian" else 0,
+            getattr(x, "reviewed_at", ""),
+        ),
+    ):
+        approved_by_pair[(a.cosmonaut_id, a.badge_id)] = a
+    approved_asms = list(approved_by_pair.values())
     completed_badge_count = len(approved_asms)
 
     # Submissions awaiting review

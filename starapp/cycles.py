@@ -98,18 +98,20 @@ def compute_cycle_candidate_performance(
         # ------------------------------------------------------------------
         # 1. AS COSMONAUT METRICS (within cycle_id)
         # ------------------------------------------------------------------
+        # Only count published badges (or badges with actual submissions/approvals) as active assigned milestones
+        published_badge_ids = {b.id for b in cycle_badges if getattr(b, "is_published", False)}
         assigned_badge_ids = set()
         for t in cycle_timelines.values():
-            if t.cosmonaut_id == uid:
+            if t.cosmonaut_id == uid and t.badge_id in published_badge_ids:
                 assigned_badge_ids.add(t.badge_id)
         for m in cycle_mappings:
             if uid in m.get("cosmonauts", []):
                 m_b = m.get("badge_id") or m.get("badge")
                 matched_b = next((b for b in cycle_badges if b.id == m_b or b.code == m_b or b.title == m_b), None)
-                if matched_b:
+                if matched_b and matched_b.id in published_badge_ids:
                     assigned_badge_ids.add(matched_b.id)
         for b in cycle_badges:
-            if uid in getattr(b, "assigned_cosmonaut_ids", []) and (b.is_published or b.is_allocated):
+            if uid in getattr(b, "assigned_cosmonaut_ids", []) and getattr(b, "is_published", False):
                 assigned_badge_ids.add(b.id)
 
         u_subs = [s for s in cycle_subs if s.cosmonaut_id == uid]
@@ -190,17 +192,17 @@ def compute_cycle_candidate_performance(
         mapping_invitations_total = len(u_map_reqs)
         mapping_invitations_accepted = sum(1 for r in u_map_reqs if r.get("status") == "accepted")
 
-        # Cadets & badges mapped to this reviewer for cohort mentorship / project creation / grading
+        # Cadets & badges mapped to this reviewer for cohort mentorship / project creation / grading (published badges)
         reviewer_mapped_pairs = set()
         for t in cycle_timelines.values():
-            if getattr(t, "reviewer_id", "") == uid:
+            if getattr(t, "reviewer_id", "") == uid and t.badge_id in published_badge_ids:
                 reviewer_mapped_pairs.add((t.badge_id, t.cosmonaut_id))
         for m in cycle_mappings:
             if uid in m.get("reviewers", []):
                 m_b = m.get("badge_id") or m.get("badge")
                 matched_b = next((b for b in cycle_badges if b.id == m_b or b.code == m_b or b.title == m_b), None)
                 resolved_bid = matched_b.id if matched_b else m_b
-                if resolved_bid:
+                if resolved_bid and (resolved_bid in published_badge_ids or not matched_b):
                     for cid in m.get("cosmonauts", []):
                         reviewer_mapped_pairs.add((resolved_bid, cid))
 

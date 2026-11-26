@@ -20,7 +20,19 @@ def build_cosmonaut_analytics_record(
     Constructs a standardized analytics profile for a Cosmonaut
     strictly from their actual SQLite application records.
     """
-    approved_asms = [a for a in assessments if a.decision == "approve"]
+    raw_approved = [a for a in assessments if a.decision == "approve"]
+    # Deduplicate approved assessments per badge (Guardian final overrides Reviewer preliminary on same badge)
+    approved_by_badge = {}
+    for a in sorted(
+        raw_approved,
+        key=lambda x: (
+            getattr(x, "attempt_number", 1),
+            1 if getattr(x, "assessor_role", "") == "guardian" else 0,
+            getattr(x, "reviewed_at", ""),
+        ),
+    ):
+        approved_by_badge[a.badge_id] = a
+    approved_asms = list(approved_by_badge.values())
     total_assigned = len(assigned_badges)
     completed_count = len(approved_asms)
     
@@ -62,7 +74,7 @@ def build_cosmonaut_analytics_record(
         risk_reason = "Resubmission requested on initial milestone deliverable requiring revision."
     else:
         risk_status = "On Track"
-        risk_reason = "Three enterprise milestones certified with honors (96.0% Average Assessment Score). Pacing on schedule."
+        risk_reason = f"{len(approved_asms)} milestone{'s' if len(approved_asms) != 1 else ''} certified ({avg_pct:.1f}% Average Assessment Score). Pacing on schedule."
 
     # Format assessment details strictly from actual approved assessments
     badge_map = {b.id: b for b in assigned_badges}

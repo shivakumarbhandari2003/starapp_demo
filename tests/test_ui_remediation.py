@@ -301,6 +301,29 @@ class TestUIRemediation(unittest.TestCase):
         self.assertIn("lg-hier-branch is-skill-node", hier_html)
         self.assertNotIn("<details open", hier_html)
 
+    def test_cosmonaut_choose_cycle_compact_and_glass_zoom_hygiene(self):
+        """Cosmonaut Choose Cycle omits global filter bloat and shows concise cycle data; Glass CSS prevents zoom clipping."""
+        self._login("astraea")
+        self.ctrl.handle_event("nav_cosmonaut", "c_choose_cycle")
+        cyc_html = self.captured_regions[-1]["mainContentHtml"]
+        self.assertIn("cosmo-cycle-hero", cyc_html)
+        self.assertIn("cosmo-cycle-grid", cyc_html)
+        self.assertIn("cosmo-cycle-card", cyc_html)
+        self.assertIn("cosmo-cycle-metrics", cyc_html)
+        self.assertIn("Badges", cyc_html)
+        self.assertIn("Standing", cyc_html)
+        self.assertNotIn("Global Portal Filter", cyc_html)
+        self.assertNotIn("Currently Applied Global Filter", cyc_html)
+        self.assertNotIn("Selecting a cycle applies it globally", cyc_html)
+
+        lg_css = (ROOT_DIR / "css" / "liquid_glass.css").read_text(encoding="utf-8")
+        comp_css = (ROOT_DIR / "css" / "components.css").read_text(encoding="utf-8")
+        self.assertIn("contain: layout style;", lg_css)
+        self.assertIn("overflow: visible;", lg_css)
+        self.assertNotIn("backdrop-filter: blur(22px)", comp_css)
+        self.assertNotIn("backdrop-filter: blur(18px)", comp_css)
+        self.assertIn("minmax(min(300px, 100%), 1fr)", comp_css)
+
 
 if __name__ == "__main__":
     unittest.main()
