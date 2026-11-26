@@ -240,6 +240,12 @@ class TestUIRemediation(unittest.TestCase):
                 re.search(r"transition\s*:\s*all\b", content),
                 f"Disallowed 'transition: all' found in {css_file.name}",
             )
+            cleaned = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+            self.assertEqual(
+                cleaned.count("{"),
+                cleaned.count("}"),
+                f"Unbalanced CSS braces in {css_file.name}",
+            )
 
         bridge_js = (ROOT_DIR / "js" / "bridge.js").read_text(encoding="utf-8")
         for symbol in (
@@ -256,12 +262,12 @@ class TestUIRemediation(unittest.TestCase):
 
         index_html = (ROOT_DIR / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("glass-svg-defs", index_html)
-        self.assertIn("js/bridge.js?v=9", index_html)
-        self.assertIn("js/starapp_bundle.js?v=9", index_html)
+        self.assertIn("js/bridge.js?v=23", index_html)
+        self.assertIn("js/starapp_bundle.js?v=23", index_html)
 
         sw_js = (ROOT_DIR / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("starapp-runtime-cache-v2", sw_js)
-        self.assertIn("./css/liquid_glass.css?v=9", sw_js)
+        self.assertIn("starapp-runtime-cache-v16", sw_js)
+        self.assertIn("./css/liquid_glass.css?v=23", sw_js)
 
 
 if __name__ == "__main__":

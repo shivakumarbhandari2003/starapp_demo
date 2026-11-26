@@ -3,28 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StarApp — Autonomous Training & Badge Management Platform</title>
+  <title>STARAPP — StarApp</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' fill='%2317345C'/></svg>">
 
   <!-- StarApp Design System & Liquid-Glass Styling -->
-  <link rel="stylesheet" href="css/design_tokens.css?v=9">
-  <link rel="stylesheet" href="css/liquid_glass.css?v=9">
-  <link rel="stylesheet" href="css/layout.css?v=9">
-  <link rel="stylesheet" href="css/components.css?v=9">
-  <link rel="stylesheet" href="css/responsive.css?v=9">
+  <link rel="stylesheet" href="css/design_tokens.css?v=23">
+  <link rel="stylesheet" href="css/liquid_glass.css?v=23">
+  <link rel="stylesheet" href="css/layout.css?v=23">
+  <link rel="stylesheet" href="css/components.css?v=23">
+  <link rel="stylesheet" href="css/responsive.css?v=23">
 
   <!-- App Configuration & Backend API Client -->
-  <script src="js/api.js?v=10"></script>
+  <script src="js/api.js?v=23"></script>
   <script>
     window.__STARAPP_CONFIG__ = window.__STARAPP_CONFIG__ || {};
     window.__STARAPP_CONFIG__.USE_BACKEND_API = true;
+    /* STARAPP_SERVER_FLAGS */
+    try {
+      var _savedBoot = sessionStorage.getItem("starapp_fastapi_session");
+      if ((_savedBoot && JSON.parse(_savedBoot).user_id) || window.location.search.indexOf("role=") !== -1) {
+        document.documentElement.classList.add("starapp-restoring-session");
+      }
+    } catch (e) {}
   </script>
+  <style>html.starapp-restoring-session #app-root { opacity: 0; }</style>
 
-  <!-- Pyodide WebAssembly Python Runtime -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
-
-  <!-- StarApp Bridges & Python Module Bundle -->
-  <script src="js/bridge.js?v=9"></script>
-  <script src="js/starapp_bundle.js?v=9"></script>
+  <!-- StarApp UI Bridge (Pyodide & starapp_bundle.js are lazy-loaded only in offline/static mode) -->
+  <script src="js/bridge.js?v=23"></script>
 </head>
 <body>
 
@@ -32,6 +37,7 @@
        ROOT APPLICATION MOUNT POINT
        ======================================================================== -->
   <div id="app-root">
+    <!-- STARAPP_INITIAL_ROOT_START -->
     <!-- Frosted Liquid Glass Loading State during Pyodide initialization -->
     <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; width: 100%; padding: 24px;">
       <div class="liquid-glass-card" style="max-width: 480px; width: 100%; padding: 32px; text-align: center;">
@@ -50,55 +56,107 @@
         </div>
       </div>
     </div>
+    <!-- STARAPP_INITIAL_ROOT_END -->
   </div>
 
   <!-- ========================================================================
        PYODIDE BOOTSTRAPPER & PYTHON CONTROLLER INITIALIZATION
        ======================================================================== -->
   <script>
+    const STARAPP_OFFLINE_PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js";
+    const STARAPP_OFFLINE_BUNDLE_URL = "js/starapp_bundle.js?v=23";
+
+    function loadScriptOnce(src) {
+      return new Promise((resolve, reject) => {
+        const existing = Array.from(document.scripts).find((s) => s.src && s.src.includes(src.split("?")[0]));
+        if (existing) {
+          resolve();
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = false;
+        script.onload = () => resolve();
+        script.onerror = (err) => reject(err);
+        document.head.appendChild(script);
+      });
+    }
+
     async function initializeStarApp() {
       const statusText = document.getElementById("loading-status-text");
       const progressBar = document.getElementById("loading-progress-bar");
+      const urlParams = new URLSearchParams(window.location.search);
+      const requestedRole = urlParams.get("role");
 
-      // 0. Full-Stack Fast Path: If FastAPI backend is active, boot natively without Pyodide!
+      let savedSessionState = null;
       try {
-        const healthResp = await fetch("/api/health");
-        if (healthResp.ok) {
-          if (progressBar) progressBar.style.width = "75%";
-          if (statusText) statusText.innerText = "Connecting to FastAPI backend & SQLite3...";
-          const urlParams = new URLSearchParams(window.location.search);
-          const requestedRole = urlParams.get("role");
-          let sid = sessionStorage.getItem("starapp_window_session_id");
-          if (!sid) {
-            sid = (requestedRole ? requestedRole + "_" : "win_") + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-            sessionStorage.setItem("starapp_window_session_id", sid);
-          }
-          const dispatchResp = await fetch("/api/v1/dispatch", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Session-Id": sid
-            },
-            body: JSON.stringify({
-              action: "boot",
-              payload: JSON.stringify({ role: requestedRole || "" }),
-              session_id: sid
-            })
-          });
-          const data = await dispatchResp.json();
-          if (data && data.regions) {
-            window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
-          } else if (data && data.full_html) {
-            window.StarAppBridge.updateAppRoot(data.full_html);
-          }
-          console.log("[StarApp] Native Full-Stack FastAPI backend active. Initialized in <50ms without Pyodide.");
-          return;
-        }
-      } catch (backendErr) {
-        console.log("[StarApp] FastAPI backend not available, falling back to browser Pyodide runtime:", backendErr);
+        const rawSaved = sessionStorage.getItem("starapp_fastapi_session");
+        if (rawSaved) savedSessionState = JSON.parse(rawSaved);
+      } catch (e) {}
+
+      // 0a. Fast-path unauthenticated SSR Login: zero API calls needed before user signs in
+      if (window.__STARAPP_CONFIG__.SSR_LOGIN && !requestedRole && !(savedSessionState && savedSessionState.user_id)) {
+        return;
       }
 
+      // 0b. Authenticated or role-hinted FastAPI boot: single /api/v1/dispatch call (no extra /api/health roundtrip)
       try {
+        let sid = sessionStorage.getItem("starapp_window_session_id");
+        if (!sid) {
+          sid = (requestedRole ? requestedRole + "_" : "win_") + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+          sessionStorage.setItem("starapp_window_session_id", sid);
+        }
+        if (progressBar) progressBar.style.width = "75%";
+        if (statusText) statusText.innerText = "Connecting to FastAPI backend & SQLite3...";
+        const dispatchResp = await fetch("/api/v1/dispatch", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Id": sid
+          },
+          body: JSON.stringify({
+            action: "boot",
+            payload: JSON.stringify({
+              role: requestedRole || "",
+              restore_session: savedSessionState
+            }),
+            session_id: sid
+          })
+        });
+        if (dispatchResp.ok) {
+          const ctype = dispatchResp.headers.get("content-type") || "";
+          if (ctype.includes("application/json")) {
+            const data = await dispatchResp.json();
+            if (data && data.session_state && data.session_state.user_id) {
+              try { sessionStorage.setItem("starapp_fastapi_session", JSON.stringify(data.session_state)); } catch (e) {}
+            }
+            if (data && data.regions) {
+              window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
+            } else if (data && data.full_html) {
+              window.StarAppBridge.updateAppRoot(data.full_html);
+            }
+            document.documentElement.classList.remove("starapp-restoring-session");
+            return;
+          }
+        }
+      } catch (backendErr) {
+        document.documentElement.classList.remove("starapp-restoring-session");
+        console.log("[StarApp] FastAPI backend not available, falling back to browser Pyodide runtime:", backendErr);
+      }
+      document.documentElement.classList.remove("starapp-restoring-session");
+
+      try {
+        if (progressBar) progressBar.style.width = "30%";
+        if (statusText) statusText.innerText = "Loading offline Pyodide Python VM & SQLite bundle...";
+
+        if (typeof loadPyodide !== "function") {
+          await loadScriptOnce(STARAPP_OFFLINE_PYODIDE_URL);
+        }
+        if (!window.__STARAPP_PYTHON_MODULES__) {
+          await loadScriptOnce(STARAPP_OFFLINE_BUNDLE_URL);
+        }
+
         if (progressBar) progressBar.style.width = "40%";
         if (statusText) statusText.innerText = "Initializing WebAssembly Python VM...";
 
@@ -260,13 +318,17 @@ controller.initialize(stored_data, session_data, sqlite_db_b64)
     // Launch on DOM ready
     window.addEventListener("DOMContentLoaded", initializeStarApp);
 
-    // Register Service Worker for instant cached startup when served over HTTP/HTTPS
+    // Unregister legacy localhost SW when running via FastAPI backend to eliminate duplicate fetches;
+    // keep Service Worker enabled only for standalone static/Pyodide mode.
     if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").then((reg) => {
-          reg.update();
-          console.log("[StarApp] Service Worker active, scope:", reg.scope);
-        }).catch((err) => {
+        if (window.__STARAPP_CONFIG__ && window.__STARAPP_CONFIG__.FASTAPI_ACTIVE) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((reg) => reg.unregister());
+          }).catch(() => {});
+          return;
+        }
+        navigator.serviceWorker.register("sw.js").catch((err) => {
           console.warn("[StarApp] Service Worker registration skipped:", err);
         });
       });

@@ -40,7 +40,7 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_learning")
         html = self.ctrl.render()
         for b in ["B1", "B2", "B3", "B4", "B5", "B6"]:
-            self.assertIn(f"BAND {b}", html)
+            self.assertIn(f"Band {b}", html)
 
         cb_idx = html.find('data-nav-id="g_create_badge"')
         ba_idx = html.find('data-nav-id="g_badge_approval"')
@@ -67,15 +67,25 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         self.assertIn("Cycle 1", contrib_html)
 
     def test_band_selection_view(self):
-        """Verify navigating to g_create_badge without a selected band renders 6 band cards."""
+        """Verify navigating to g_create_badge without a selected band hides sidebar and renders 6 band cards."""
         self.ctrl.handle_event("nav_guardian", "g_create_badge")
         self.assertEqual(self.ctrl.current_view, "g_create_badge")
         html = self.ctrl.render()
 
-        self.assertIn("Select a band to configure a new badge", html)
+        self.assertIn("band-selection-hidden", html)
+        self.assertIn("Select Band Workspace", html)
+        self.assertNotIn("Global Filter:", html)
+        self.assertNotIn("Learning Pillar", html)
+        self.assertNotIn("Select Operational Band", html)
+        self.assertNotIn("Select a band to configure a new badge", html)
         for b in ["B1", "B2", "B3", "B4", "B5", "B6"]:
-            self.assertIn(f"BAND {b}", html)
+            self.assertIn(f"Band {b}", html)
             self.assertIn(f"select_create_badge_band', '{b}'", html)
+
+        # Entering a band restores the sidebar cleanly
+        self.ctrl.handle_event("select_create_badge_band", "B1")
+        inside_html = self.ctrl.render()
+        self.assertNotIn("band-selection-hidden", inside_html)
 
     def test_band_specific_create_badge_workspace_and_4_cards(self):
         """Verify selecting a band renders 4 selection cards and structured JSON prompt editor."""
@@ -404,10 +414,13 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         saved_titles = [b["title"] for b in saved]
         self.assertIn("Hardware Foundations", saved_titles)
 
-        # Verify rendered view shows Saved Badges section with -> mapping
+        # Verify rendered view shows Saved Badges section with vertical taxonomy hierarchy
         html = self.ctrl.render()
         self.assertIn("Saved Badges for Band B1", html)
-        self.assertTrue("Hardware Foundations -> Hardware" in html or "Hardware Foundations -&gt; Hardware" in html or "Hardware Foundations → Hardware" in html)
+        self.assertIn("lg-saved-badge-card", html)
+        self.assertIn("lg-hier-tree", html)
+        self.assertIn("Hardware", html)
+        self.assertIn("Data &amp; Machine", html)
 
     def test_no_skeleton_on_band_entry_and_hides_preview_after_save(self):
         """Verify band entry displays clean guidance card with zero skeleton shimmer, and save hides preview."""
@@ -510,6 +523,151 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         modal_html = self.ctrl.render()
         self.assertIn("Practice Project Prompt:", modal_html)
         self.assertIn("Learning Resources Prompt:", modal_html)
+
+    def test_inside_band_create_badge_ui_and_edit_flow(self):
+        """Verify streamlined Create Badge workspace, inside-dropdown taxonomy adds, Liquid-Glass output, auto-grow textareas, and top-right Back."""
+        self.ctrl.handle_event("select_create_badge_band", "B1")
+        full_html = self.ctrl.render()
+        main_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+        topbar_html = self.ctrl.last_rendered_regions["topbarHtml"]
+
+        # Back button lives only in topbar-right, never inline in Create Badge workspace
+        self.assertIn('class="topbar-right"', topbar_html)
+        self.assertIn("dispatchAction('go_back'", topbar_html)
+        self.assertIn('class="topbar-right"', full_html)
+        topbar_right = full_html.split('class="topbar-right"', 1)[1]
+        self.assertIn("dispatchAction('go_back'", topbar_right)
+        for clutter in (
+            "Back to Bands",
+            "Create Badge &rsaquo;",
+            "Choose Power, Capability",
+            "Badges authored and saved for curriculum allotment.",
+            "+ Add Capability",
+            "+ Add Skill",
+        ):
+            self.assertNotIn(clutter, main_html)
+
+        # Add options reside inside Capability and Skill selects; Selected strip is structured
+        self.assertIn('value="__add_custom_capability__"', main_html)
+        self.assertIn('value="__add_custom_skill__"', main_html)
+        self.assertIn("cb-taxonomy-row", main_html)
+        self.assertIn("cb-selection-bar", main_html)
+        self.assertIn('id="cb-crumb-power"', main_html)
+        self.assertIn('id="cb-crumb-cap"', main_html)
+        self.assertIn('id="cb-crumb-skill"', main_html)
+        self.assertIn("auto-grow-textarea", main_html)
+
+        # Generate badge -> structured Liquid-Glass result without emojis
+        from starapp.badge_generator import generate_badge_data
+        badge_data = generate_badge_data(
+            band="B1",
+            power="Tech",
+            capability="Data & Machine",
+            skill="Hardware",
+            outcome_sentence="Design telemetry circuits."
+        )
+        self.ctrl.handle_event("on_badge_generated", {"badge_data": badge_data})
+        self.ctrl.render()
+        res_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+        self.assertIn("cb-result-hero", res_html)
+        self.assertIn("cb-section-card", res_html)
+        self.assertIn("cb-prompt-surface", res_html)
+        for emoji in ("✏️", "💾", "▲", "▼", "①", "②", "③"):
+            self.assertNotIn(emoji, res_html)
+
+        # Enter Edit Mode -> all edit textareas non-resizable auto-grow + Apply Changes works
+        self.ctrl.handle_event("toggle_edit_badge", {})
+        self.ctrl.render()
+        edit_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+        for eid in (
+            "edit-badge-title-input",
+            "edit-badge-desc-input",
+            "edit-badge-outcomes-input",
+            "edit-practice-prompt-input",
+            "edit-resources-prompt-input",
+            "edit-topic-title-0",
+            "edit-topic-desc-0",
+        ):
+            self.assertIn(eid, edit_html)
+        self.assertIn("saveBadgeEdits()", edit_html)
+        self.assertNotIn("resize:vertical", edit_html)
+
+        self.ctrl.handle_event("save_badge_edits", json.dumps({
+            "title": "Edited Hardware Badge",
+            "description": "Updated scope description.",
+            "outcomes": ["Can validate hardware timing"],
+            "practice_prompt": "Role: Architect\n- Build test fixture\n- Measure jitter",
+            "resources_prompt": "- Official docs\n- Video walkthrough",
+        }))
+        self.ctrl.render()
+        saved_edit_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+        self.assertIn("Edited Hardware Badge", saved_edit_html)
+        self.assertIn("cb-prompt-bullets", saved_edit_html)
+
+    def test_reviewer_badge_approval_toolbar_hierarchy_and_titlecase(self):
+        """Verify streamlined Reviewer Badge Approval toolbar dropdowns, Title Case table, and visual Taxonomy Hierarchy."""
+        self.ctrl.handle_event("nav_guardian", "g_badge_approval")
+        self.ctrl.render()
+        ba_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+
+        for removed in (
+            "Curriculum Management",
+            "Reviewer Badge Approval Queue",
+            "Review, update and approve badges submitted for authorization.",
+            "+ Create New Badge",
+            "BAND B1",
+            "text-transform:uppercase",
+            "var(--frost-navy-50)",
+            "var(--frost-navy-75)",
+        ):
+            self.assertNotIn(removed, ba_html)
+
+        for required in (
+            "Reviewer Badge Approval",
+            "ba-toolbar-card",
+            'id="ba-status-filter-select"',
+            'id="ba-history-toggle-btn"',
+            'id="ba-band-filter-select"',
+            'id="ba-search-input"',
+            "All Submissions (",
+            "Ready for Review (",
+            "Pending Review (",
+            "Approved Badges (",
+            "Returned (",
+            "Review History &amp; Audit (",
+            "Taxonomy Hierarchy",
+            "lg-hier-tree",
+            "lg-hier-row",
+            "Band B1",
+        ):
+            self.assertIn(required, ba_html)
+
+        self.assertIn("ba-toolbar-card", ba_html)
+        self.assertIn("lg-hier-tree", ba_html)
+        self.assertIn("Power :", ba_html)
+        self.assertIn("Capability :", ba_html)
+        self.assertIn("Skill :", ba_html)
+        self.assertIn("lg-hier-branch", ba_html)
+        self.assertNotIn("liquid-select-chevron", ba_html)
+
+        # Switching to history renders visual hierarchy chips too
+        self.ctrl.handle_event("filter_badge_approval", "history")
+        self.ctrl.render()
+        hist_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+        self.assertIn("ba-history-btn is-active", hist_html)
+        self.assertIn("Taxonomy Hierarchy", hist_html)
+
+    def test_band_cards_positions_and_minimal_fields(self):
+        """Verify streamlined Band cards show only Band number, position name, member count, and button."""
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        self.ctrl.render()
+        bands_html = self.ctrl.last_rendered_regions["mainContentHtml"]
+
+        for pos in ("Trainee", "Associate", "Lead", "Expert", "Architect", "Principal"):
+            self.assertIn(pos, bands_html)
+        self.assertIn("Members", bands_html)
+        for clutter in ("Cohort", "Submissions", "Eligible Reviewers", "0 Badges", "Foundational engineering"):
+            self.assertNotIn(clutter, bands_html)
 
 
 if __name__ == "__main__":

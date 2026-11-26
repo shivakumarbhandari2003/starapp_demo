@@ -97,10 +97,13 @@ class TestBadgeMappingAndViewReflection(unittest.TestCase):
         self.assertIn("m_b4_1", m["cosmonauts"])
         self.assertIn("m_b4_2", m["cosmonauts"])
 
-        # Verify Live Mapped Review Allocations HTML displays Governance Architecture (not AIOS)
+        # Open dedicated badge mapping detail page & verify Live Mapped Review Allocations
+        self.ctrl.handle_event("open_mapping_badge_detail", "badge_b4_governance")
+        self.assertEqual(self.ctrl.current_view, "g_mapping_badge_detail")
         html = self.ctrl.render()
         self.assertIn("Live Mapped Review Allocations", html)
         self.assertIn("Governance Architecture", html)
+        self.ctrl.handle_event("go_back", "{}")
 
         # Verify BadgeTimeline records created in store
         tl1 = store.get_timeline("badge_b4_governance", "m_b4_1")
@@ -109,12 +112,17 @@ class TestBadgeMappingAndViewReflection(unittest.TestCase):
         self.assertEqual(tl1.status, "active")
 
     def test_03_badge_allotment_displays_dedicated_mapping_info(self):
-        """In Badge Allotment, Governance Architecture shows assigned cadets and reviewer."""
+        """In Badge Allotment, Governance Architecture shows summary and opens Timeline & Mapping modal."""
         self.ctrl.handle_event("nav_guardian", "g_allotment")
         html = self.ctrl.render()
         self.assertIn("Governance Architecture", html)
-        self.assertIn("BAND B4", html)
-        self.assertIn("Mapped Evaluation Personnel", html)
+        self.assertIn("Band B4", html)
+        self.assertIn("Timeline &amp; Mapping", html)
+        self.ctrl.handle_event("open_badge_timeline_mapping_modal", "badge_b4_governance")
+        modal_html = self.ctrl.render_active_modal()
+        self.assertIn("Personnel Mapping", modal_html)
+        self.assertIn("Assigned Cosmonauts", modal_html)
+        self.ctrl.handle_event("close_modal", "{}")
 
     def test_04_publish_badge_and_role_views_reflection(self):
         """Verify published badge appears in Cosmonaut roadmap and Reviewer schedule."""

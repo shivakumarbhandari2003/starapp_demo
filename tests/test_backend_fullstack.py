@@ -302,7 +302,7 @@ class TestStarAppFullStackBackend(unittest.TestCase):
         self.assertGreater(len(leaderboard), 0)
 
     def test_11_favicon_and_sw_routes_no_content_length_error(self):
-        """Verify /favicon.ico returns 204 with empty body (no Content-Length mismatch) and /sw.js returns 200."""
+        """Verify /favicon.ico returns 204 with empty body, /sw.js returns 200, and /index.html returns 200."""
         from fastapi.testclient import TestClient
         from backend.app.main import app
 
@@ -313,6 +313,19 @@ class TestStarAppFullStackBackend(unittest.TestCase):
 
             sw_res = client.get("/sw.js")
             self.assertEqual(sw_res.status_code, 200)
+
+            idx_res = client.get("/index.html")
+            self.assertEqual(idx_res.status_code, 200)
+            self.assertIn("StarApp", idx_res.text)
+            self.assertIn("lg-login-shell", idx_res.text)
+            self.assertIn("FASTAPI_ACTIVE = true", idx_res.text)
+            self.assertIn("SSR_LOGIN = true", idx_res.text)
+            self.assertNotIn('<script src="https://cdn.jsdelivr.net/pyodide', idx_res.text)
+            self.assertNotIn('<script src="js/starapp_bundle.js', idx_res.text)
+
+            css_res = client.get("/css/components.css?v=23")
+            self.assertEqual(css_res.status_code, 200)
+            self.assertIn("max-age=86400", css_res.headers.get("cache-control", ""))
 
 
 if __name__ == "__main__":

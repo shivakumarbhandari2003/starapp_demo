@@ -143,7 +143,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.handle_event("calculate_cycle_appraisals", json.dumps({"cycle_id": "cycle_1"}))
         g_cycles_html = self.ctrl.render()
         self.assertIn("Candidate Cycle Performance", g_cycles_html)
-        self.assertIn("starapp-sidebar-cycle-pill", g_cycles_html)
+        self.assertNotIn("starapp-sidebar-cycle-pill", g_cycles_html)
         self.assertNotIn("starapp-cycle-topbar", g_cycles_html)
 
         rows = {r["user_id"]: r for r in compute_cycle_candidate_performance("cycle_1", store)}
@@ -266,7 +266,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.assertEqual(self.ctrl.current_view, "g_cycles")
         p_html = self.ctrl.render()
         self.assertNotIn("starapp-cycle-topbar", p_html)
-        self.assertIn("starapp-sidebar-cycle-pill", p_html)
+        self.assertNotIn("starapp-sidebar-cycle-pill", p_html)
         self.assertLess(p_html.find('data-nav-id="g_cycles"'), p_html.find('data-nav-id="g_learning"'))
         self.assertLess(p_html.find('data-nav-id="g_learning"'), p_html.find('data-nav-id="g_earning"'))
         self.assertLess(p_html.find('data-nav-id="g_earning"'), p_html.find('data-nav-id="g_contribution"'))
@@ -320,11 +320,23 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.handle_event("login", _json.dumps({"username": "guardian"}))
         self.assertEqual(store.get_active_cycle_id(), "cycle_1")
 
-        # 1. Choose Cycle displays both cycle_1 (Active) and cycle_0 (Previous Cycle archive) + calendar creator
+        # 1. Choose Cycle displays both cycle_1 (Active) and cycle_0 (Previous Cycle archive) + modal creator trigger
         cyc_html = self.ctrl.render()
         self.assertIn("Previous Cycle (Jan–Jun 2026)", cyc_html)
-        self.assertIn("inline-calendar-cycle-creator", cyc_html)
+        self.assertIn("open_create_cycle_modal", cyc_html)
         self.assertIn("Set Active", cyc_html)
+        self.assertNotIn("inline-calendar-cycle-creator", cyc_html)
+        self.assertNotIn("Viewing Previous / Closed Cycle Archive", cyc_html)
+        self.assertNotIn("Review dual-role contributions across the 6-month cycle", cyc_html)
+        self.assertNotIn("Top Performer", cyc_html)
+        self.assertNotIn("Attention Queue", cyc_html)
+        self.assertNotIn("Appraisal &amp; Hike", cyc_html)
+        self.assertNotIn("Switch Cycle Filter", cyc_html)
+        self.ctrl.handle_event("open_create_cycle_modal", "{}")
+        modal_html = self.ctrl.render()
+        self.assertIn("lg-cycle-calendar-mount", modal_html)
+        self.assertIn("create_six_month_cycle", modal_html)
+        self.ctrl.handle_event("close_modal", "{}")
 
         # 2. Guardian clicks on cycle_0 -> entire Learning workspace filters to Previous Cycle data
         self.ctrl.handle_event("select_cycle", "cycle_0")

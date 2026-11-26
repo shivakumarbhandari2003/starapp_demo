@@ -190,18 +190,46 @@ table {
   }
 }
 
-/* 6. Review Detail Workspace: 66% Deliverables / 33% Rubric 100vh Layout */
-.page-review-detail {
-  padding: 8px 14px 8px 14px !important;
-  max-width: 100% !important;
+/* 6. Review Detail Workspace: 66% Deliverables / 33% Rubric Exact 100vh Zero-Scroll Fit */
+.app-main:has(.page-review-detail) {
   height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+.app-main:has(.page-review-detail) .app-back-strip {
+  padding: 6px 14px 2px 14px !important;
+}
+
+.app-main:has(.page-review-detail) #starapp-topbar-slot + .page-container {
+  padding-top: 4px !important;
+}
+
+.page-review-detail {
+  padding: 4px 14px 10px 14px !important;
+  max-width: 100% !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
   box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.page-review-detail #starapp-page-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
   overflow: hidden !important;
 }
 
 .review-detail-workspace {
-  height: calc(100vh - 16px) !important;
-  max-height: calc(100vh - 16px) !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -209,7 +237,7 @@ table {
 
 .review-workspace-grid {
   display: grid !important;
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr) !important;
+  grid-template-columns: minmax(0, 2fr) minmax(350px, 1fr) !important;
   gap: 12px !important;
   flex: 1 !important;
   min-height: 0 !important;
@@ -222,6 +250,12 @@ table {
   height: 100% !important;
   min-height: 0 !important;
   overflow: hidden !important;
+}
+
+@media (max-height: 690px) {
+  .review-rubric-body-fit {
+    overflow-y: auto !important;
+  }
 }
 
 @media (max-width: 992px) {

@@ -164,10 +164,12 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.assertTrue(len(guardian_signoff_notifs) > 0, "Guardian must be notified once Reviewer assesses submission")
 
         # -------------------------------------------------------------
-        # STEP 3: Guardian Views, Edits/Reviews Marks, and Clicks "Earn the Badge"
+        # STEP 3: Guardian Views 3-Level Hierarchy, Opens Marksheet, Clicks "Earn the Badge"
         # -------------------------------------------------------------
         self.app.current_user = self.guardian
         self.app.current_view = "g_reviews"
+        self.app.handle_event("open_assessment_badge", self.badge.id)
+        self.app.handle_event("open_assessment_cosmonaut", {"badge_id": self.badge.id, "cosmonaut_id": self.cosmonaut.id})
         html_g_queue = self.app.render()
 
         # Should show in "Ready for Guardian Sign-off"
@@ -178,6 +180,8 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.app.handle_event("open_submission_review_page", sub.id)
         self.assertEqual(self.app.current_view, "g_review_detail")
         html_g_detail = self.app.render()
+        self.assertNotIn("Authorized Reviewer Score", html_g_detail)
+        self.assertIn("Max 10", html_g_detail)
 
         # Check deliverable dropdown options in Guardian view
         self.assertIn("deliverable-type-select", html_g_detail)

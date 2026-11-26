@@ -40,6 +40,7 @@
     portalKey: null,
     routeKey: null,
     sidebarHtml: null,
+    topbarHtml: null,
     pageContainerClass: null,
     flashHtml: null,
     mainHtml: null,
@@ -763,11 +764,119 @@
       input.value = "";
     },
 
+    // Liquid-Glass quick-add dialog for adding custom capability or skill inside dropdown
+    openTaxonomyQuickAdd(kind) {
+      const existing = document.getElementById("lg-taxonomy-modal");
+      if (existing) existing.remove();
+
+      const isSkill = kind === "skill";
+      const capEl = document.getElementById("badge-capability-select");
+      const currentCap = capEl?.value || capEl?.dataset?.currentCap || "Data & Machine";
+      const titleText = isSkill ? "Add New Skill" : "Add New Capability";
+      const subtitleText = isSkill
+        ? `Create a persistent Skill under "${currentCap}".`
+        : "Create a persistent Capability across the taxonomy catalog.";
+      const placeholderText = isSkill
+        ? "e.g., Vector Search, Agent Orchestration"
+        : "e.g., Autonomous Systems, Spatial Computing";
+
+      const overlay = document.createElement("div");
+      overlay.id = "lg-taxonomy-modal";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-labelledby", "lg-taxonomy-modal-title");
+      overlay.style.cssText = [
+        "position:fixed", "inset:0", "z-index:9999",
+        "background:rgba(7,22,41,0.42)",
+        "backdrop-filter:blur(8px)", "-webkit-backdrop-filter:blur(8px)",
+        "display:flex", "align-items:center", "justify-content:center",
+        "padding:20px"
+      ].join(";");
+
+      const card = document.createElement("div");
+      card.className = "liquid-glass-card";
+      card.style.cssText = [
+        "width:100%", "max-width:460px", "padding:24px",
+        "border-radius:20px",
+        "background:rgba(255,255,255,0.95)",
+        "border:1.5px solid var(--icy-steel)",
+        "box-shadow:0 24px 60px rgba(7,22,41,0.22)"
+      ].join(";");
+
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px;">
+          <div>
+            <h3 id="lg-taxonomy-modal-title" style="margin:0 0 4px 0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">${titleText}</h3>
+            <p id="lg-taxonomy-modal-sub" style="margin:0; font-size:13.5px; font-weight:500; color:var(--frost-navy); line-height:1.45;"></p>
+          </div>
+          <button type="button" id="lg-taxonomy-close-btn" class="btn-secondary btn-sm" aria-label="Close" style="padding:6px 10px; display:inline-flex; align-items:center; justify-content:center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <form id="lg-taxonomy-form">
+          <label for="lg-taxonomy-name-input" style="display:block; font-size:12.5px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:7px;">
+            ${isSkill ? "Skill Name" : "Capability Name"}
+          </label>
+          <input type="text" id="lg-taxonomy-name-input" class="liquid-glass-control" autocomplete="off"
+                 style="width:100%; height:44px; padding:0 14px; font-size:14.5px; font-weight:600; color:var(--frost-navy); box-sizing:border-box;" />
+          <div id="lg-taxonomy-error" style="display:none; margin-top:8px; font-size:12.5px; font-weight:700; color:#DC2626;"></div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
+            <button type="button" id="lg-taxonomy-cancel-btn" class="btn-secondary" style="font-size:13.5px; font-weight:700; padding:9px 18px;">Cancel</button>
+            <button type="submit" class="btn-metal" style="font-size:13.5px; font-weight:800; padding:9px 20px;">Save ${isSkill ? "Skill" : "Capability"}</button>
+          </div>
+        </form>
+      `;
+
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      const subEl = document.getElementById("lg-taxonomy-modal-sub");
+      if (subEl) subEl.textContent = subtitleText;
+      const inputEl = document.getElementById("lg-taxonomy-name-input");
+      if (inputEl) {
+        inputEl.placeholder = placeholderText;
+        inputEl.focus();
+      }
+
+      const closeModal = () => {
+        overlay.remove();
+        document.removeEventListener("keydown", onEsc);
+      };
+      const onEsc = (e) => {
+        if (e.key === "Escape") closeModal();
+      };
+      document.addEventListener("keydown", onEsc);
+
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeModal();
+      });
+      document.getElementById("lg-taxonomy-close-btn")?.addEventListener("click", closeModal);
+      document.getElementById("lg-taxonomy-cancel-btn")?.addEventListener("click", closeModal);
+
+      document.getElementById("lg-taxonomy-form")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const trimmed = (inputEl?.value || "").trim();
+        const errEl = document.getElementById("lg-taxonomy-error");
+        if (!trimmed) {
+          if (errEl) {
+            errEl.textContent = `Please enter a valid ${isSkill ? "skill" : "capability"} name.`;
+            errEl.style.display = "block";
+          }
+          inputEl?.focus();
+          return;
+        }
+        closeModal();
+        if (isSkill) {
+          window.StarAppBridge.dispatchAction("add_custom_skill", JSON.stringify({ name: trimmed, capability: currentCap }));
+        } else {
+          window.StarAppBridge.dispatchAction("add_custom_capability", JSON.stringify({ name: trimmed }));
+        }
+      });
+    },
+
     // Prompt user to add a new custom capability
     promptAddCapability() {
-      const name = window.prompt("Enter new Capability name (e.g., 'Autonomous Systems', 'Spatial Computing'):");
-      if (!name || !name.trim()) return;
-      window.StarAppBridge.dispatchAction("add_custom_capability", JSON.stringify({ name: name.trim() }));
+      this.openTaxonomyQuickAdd("capability");
     },
 
     // Add custom skill
@@ -780,11 +889,7 @@
 
     // Prompt user to add a new custom skill under currently selected capability
     promptAddSkill() {
-      const capEl = document.getElementById("badge-capability-select");
-      const cap = capEl?.value || "Data & Machine";
-      const name = window.prompt(`Enter new Skill name to add under '${cap}':`);
-      if (!name || !name.trim()) return;
-      window.StarAppBridge.dispatchAction("add_custom_skill", JSON.stringify({ name: name.trim(), capability: cap }));
+      this.openTaxonomyQuickAdd("skill");
     },
 
     // Debounced JSON prompt change handler
@@ -984,23 +1089,67 @@
       };
     },
 
+    onPowerSelect(power) {
+      const crumbPower = document.getElementById("cb-crumb-power");
+      if (crumbPower) crumbPower.textContent = power;
+      window.StarAppBridge.dispatchAction("change_badge_power", power);
+    },
+
     onCapabilitySelect(capability) {
+      const capSelect = document.getElementById("badge-capability-select");
+      if (capability === "__add_custom_capability__") {
+        if (capSelect) {
+          capSelect.value = capSelect.dataset.currentCap || "Data & Machine";
+        }
+        this.openTaxonomyQuickAdd("capability");
+        return;
+      }
+      if (capSelect) {
+        capSelect.dataset.currentCap = capability;
+      }
+      const crumbCap = document.getElementById("cb-crumb-cap");
+      if (crumbCap) crumbCap.textContent = capability;
+
       const skillsMap = this.getCapabilitySkillsMap();
-      const skills = skillsMap[capability] || skillsMap["Data & Machine"];
+      const mappedSkills = skillsMap[capability];
       const skillSelect = document.getElementById("badge-skill-select");
-      if (skillSelect) {
+      if (skillSelect && Array.isArray(mappedSkills) && mappedSkills.length > 0) {
         skillSelect.innerHTML = "";
-        skills.forEach((s) => {
+        mappedSkills.forEach((s) => {
           const opt = document.createElement("option");
           opt.value = s;
           opt.textContent = s;
           skillSelect.appendChild(opt);
         });
+        const addOpt = document.createElement("option");
+        addOpt.value = "__add_custom_skill__";
+        addOpt.textContent = "+ Add New Skill...";
+        skillSelect.appendChild(addOpt);
+        skillSelect.dataset.currentSkill = mappedSkills[0];
+        const crumbSkill = document.getElementById("cb-crumb-skill");
+        if (crumbSkill) crumbSkill.textContent = mappedSkills[0];
       }
       window.StarAppBridge.dispatchAction("change_badge_capability", capability);
-      if (skills.length > 0) {
-        window.StarAppBridge.dispatchAction("change_badge_skill", skills[0]);
+      if (Array.isArray(mappedSkills) && mappedSkills.length > 0) {
+        window.StarAppBridge.dispatchAction("change_badge_skill", mappedSkills[0]);
       }
+    },
+
+    onSkillSelect(skill) {
+      const skillSelect = document.getElementById("badge-skill-select");
+      if (skill === "__add_custom_skill__") {
+        if (skillSelect) {
+          skillSelect.value = skillSelect.dataset.currentSkill || "";
+        }
+        this.openTaxonomyQuickAdd("skill");
+        return;
+      }
+      if (skillSelect) {
+        skillSelect.dataset.currentSkill = skill;
+      }
+      const crumbSkill = document.getElementById("cb-crumb-skill");
+      if (crumbSkill) crumbSkill.textContent = skill;
+      window.StarAppBridge.dispatchAction("change_badge_skill", skill);
     },
 
     async triggerCreateBadgeGemini() {
@@ -1278,16 +1427,26 @@ Return ONLY valid JSON matching this exact schema:
       }
     },
 
+    _setSectionChevronState(chevron, isOpen) {
+      if (!chevron) return;
+      const svg = chevron.querySelector("svg");
+      if (svg) {
+        svg.style.transform = isOpen ? "rotate(0deg)" : "rotate(180deg)";
+        chevron.dataset.open = isOpen ? "1" : "0";
+      } else {
+        chevron.textContent = isOpen ? "Open" : "Closed";
+      }
+    },
+
     toggleBadgeSection(sectionId) {
       const content = document.getElementById(`content-${sectionId}`);
       const chevron = document.getElementById(`chevron-${sectionId}`);
       if (!content) return;
-      if (content.style.display === "none") {
-        content.style.display = "block";
-        if (chevron) chevron.textContent = "▲";
-      } else {
-        content.style.display = "none";
-        if (chevron) chevron.textContent = "▼";
+      const isClosed = content.style.display === "none";
+      content.style.display = isClosed ? "block" : "none";
+      this._setSectionChevronState(chevron, isClosed);
+      if (isClosed) {
+        requestAnimationFrame(() => this.autoResizeTextareas(content));
       }
     },
 
@@ -1301,15 +1460,17 @@ Return ONLY valid JSON matching this exact schema:
           break;
         }
       }
+      const nextOpen = !anyOpen;
       for (const s of sections) {
         const c = document.getElementById(`content-${s}`);
         const ch = document.getElementById(`chevron-${s}`);
         if (c) {
-          c.style.display = anyOpen ? "none" : "block";
+          c.style.display = nextOpen ? "block" : "none";
         }
-        if (ch) {
-          ch.textContent = anyOpen ? "▼" : "▲";
-        }
+        this._setSectionChevronState(ch, nextOpen);
+      }
+      if (nextOpen) {
+        requestAnimationFrame(() => this.autoResizeTextareas(document));
       }
     },
 
@@ -1320,12 +1481,13 @@ Return ONLY valid JSON matching this exact schema:
     async copyTextFromElement(elementId, btnElement) {
       const el = document.getElementById(elementId);
       if (!el) return;
-      const textToCopy = el.textContent || el.innerText || "";
+      const textToCopy = (el.innerText || el.textContent || "").trim();
+      const copiedHtml = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied';
       try {
         await navigator.clipboard.writeText(textToCopy);
         const originalHtml = btnElement.innerHTML;
-        btnElement.innerHTML = `✓ Copied!`;
-        btnElement.style.background = "#10B981";
+        btnElement.innerHTML = copiedHtml;
+        btnElement.style.background = "#059669";
         btnElement.style.color = "#FFFFFF";
         setTimeout(() => {
           btnElement.innerHTML = originalHtml;
@@ -1339,13 +1501,16 @@ Return ONLY valid JSON matching this exact schema:
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        btnElement.textContent = "✓ Copied!";
-        setTimeout(() => { btnElement.textContent = "Copy"; }, 2000);
+        const originalHtml = btnElement.innerHTML;
+        btnElement.innerHTML = copiedHtml;
+        setTimeout(() => { btnElement.innerHTML = originalHtml; }, 2000);
       }
     },
 
     toggleEditBadge() {
-      if (window.starAppController && window.starAppController.is_editing_badge) {
+      const isEditingNow = !!document.getElementById("edit-badge-title-input")
+        || !!(window.starAppController && window.starAppController.is_editing_badge);
+      if (isEditingNow) {
         this.saveBadgeEdits();
       } else {
         window.StarAppBridge.dispatchAction("toggle_edit_badge");
@@ -1365,8 +1530,12 @@ Return ONLY valid JSON matching this exact schema:
         const descEl = document.getElementById(`edit-topic-desc-${i}`);
         if (!titleEl && !descEl) break;
         const existingTopic = window.starAppController?.created_badge_data?.learning_topics?.[i];
-        const status = existingTopic ? (existingTopic.status || (existingTopic.completed ? "Completed" : "In Progress")) : "In Progress";
-        const completed = existingTopic ? (existingTopic.completed ?? (status === "Completed")) : false;
+        const dsCompleted = titleEl?.dataset?.completed;
+        const dsStatus = titleEl?.dataset?.status;
+        const completed = dsCompleted !== undefined
+          ? dsCompleted === "1"
+          : (existingTopic ? (existingTopic.completed ?? (existingTopic.status === "Completed")) : false);
+        const status = dsStatus || (completed ? "Completed" : (existingTopic?.status || "In Progress"));
         topics.push({
           title: titleEl?.value?.trim() || `Topic ${i+1}`,
           description: descEl?.value?.trim() || "",
@@ -1488,7 +1657,8 @@ Return ONLY valid JSON matching this exact schema:
       const resourcesPromptInput = document.getElementById("edit-resources-prompt-input");
 
       const bandEl = document.getElementById("current-badge-band");
-      const activeBand = (bandEl ? bandEl.textContent.replace(/[^0-9A-Za-z]/g, "") : "") || sessionStorage.getItem("starapp_active_band") || "B1";
+      const bandRaw = bandEl ? (bandEl.value || bandEl.textContent || "") : "";
+      const activeBand = (bandRaw.replace(/[^0-9A-Za-z]/g, "")) || sessionStorage.getItem("starapp_active_band") || "B1";
 
       const payload = { band: activeBand };
 
@@ -1568,6 +1738,7 @@ Return ONLY valid JSON matching this exact schema:
         const payloadStr = typeof payloadJson === "string" ? payloadJson : JSON.stringify(payloadJson);
         fetch("/api/v1/dispatch", {
           method: "POST",
+          cache: "no-store",
           headers: {
             "Content-Type": "application/json",
             "X-Session-Id": sid
@@ -1576,6 +1747,15 @@ Return ONLY valid JSON matching this exact schema:
         })
         .then(res => res.json())
         .then(data => {
+          if (data && data.session_state) {
+            try {
+              if (action === "logout" || !data.session_state.user_id) {
+                sessionStorage.removeItem("starapp_fastapi_session");
+              } else {
+                sessionStorage.setItem("starapp_fastapi_session", JSON.stringify(data.session_state));
+              }
+            } catch (e) {}
+          }
           if (data && data.regions) {
             window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
           } else if (data && data.full_html) {
@@ -1723,6 +1903,8 @@ Return ONLY valid JSON matching this exact schema:
         renderState.mode = "login";
         renderState.portalKey = "login";
         renderState.routeKey = "login";
+        renderState.sidebarHtml = "";
+        renderState.topbarHtml = "";
         renderState.pageContainerClass = "";
         renderState.flashHtml = "";
         renderState.mainHtml = payload.mainContentHtml;
@@ -1732,9 +1914,10 @@ Return ONLY valid JSON matching this exact schema:
         return;
       }
 
-      // Mode 2: Authenticated 3-Region Workspace
+      // Mode 2: Authenticated Workspace with persistent top-right Back strip
       const existingSidebar = document.getElementById("starapp-shell-sidebar");
       const existingViewport = document.getElementById("starapp-main-viewport");
+      const existingTopbarSlot = document.getElementById("starapp-topbar-slot");
       const existingPageSlot = document.getElementById("starapp-page-slot");
       const existingFlashSlot = document.getElementById("starapp-flash-slot");
       const existingPageBody = document.getElementById("starapp-page-body");
@@ -1743,6 +1926,7 @@ Return ONLY valid JSON matching this exact schema:
       const canPatchRegions = Boolean(
         existingSidebar &&
         existingViewport &&
+        existingTopbarSlot &&
         existingPageSlot &&
         existingFlashSlot &&
         existingPageBody &&
@@ -1756,6 +1940,7 @@ Return ONLY valid JSON matching this exact schema:
         root.innerHTML =
           `${payload.sidebarHtml}` +
           `<div id="starapp-main-viewport" class="app-main">` +
+            `<div id="starapp-topbar-slot">${payload.topbarHtml || ""}</div>` +
             `<main id="starapp-page-slot" class="${payload.pageContainerClass}">` +
               `<div id="starapp-flash-slot">${payload.flashHtml || ""}</div>` +
               `<div id="starapp-page-body">${payload.mainContentHtml}</div>` +
@@ -1767,6 +1952,7 @@ Return ONLY valid JSON matching this exact schema:
         renderState.portalKey = payload.portalKey;
         renderState.routeKey = payload.routeKey;
         renderState.sidebarHtml = payload.sidebarHtml || "";
+        renderState.topbarHtml = payload.topbarHtml || "";
         renderState.pageContainerClass = payload.pageContainerClass;
         renderState.flashHtml = payload.flashHtml || "";
         renderState.mainHtml = payload.mainContentHtml;
@@ -1774,6 +1960,7 @@ Return ONLY valid JSON matching this exact schema:
         renderState.modalKey = payload.modalKey || "";
         renderState.modalHtml = payload.modalHtml || "";
         this.applyPersistedSidebarState();
+        this.initCycleWidgets();
         return;
       }
 
@@ -1788,6 +1975,13 @@ Return ONLY valid JSON matching this exact schema:
         this._updateSidebarInPlace(existingSidebar, payload.activeNavId, payload.sidebarBadges);
         this.applyPersistedSidebarState();
         renderState.regionSkipCounts.sidebarSkipped += 1;
+      }
+
+      // Region 1b: Universal top-right Back strip
+      const nextTopbar = payload.topbarHtml || "";
+      if (renderState.topbarHtml !== nextTopbar) {
+        existingTopbarSlot.innerHTML = nextTopbar;
+        renderState.topbarHtml = nextTopbar;
       }
 
       // Region 2: Main Page Content
@@ -1880,6 +2074,7 @@ Return ONLY valid JSON matching this exact schema:
             this._restoreFocus(modalFocus);
             renderState.modalHtml = nextModalHtml;
             renderState.regionSkipCounts.modalPatchedInPlace += 1;
+            this.initCycleWidgets();
             return;
           }
         }
@@ -1891,6 +2086,7 @@ Return ONLY valid JSON matching this exact schema:
         renderState.modalKey = nextModalKey;
         renderState.modalHtml = nextModalHtml;
       }
+      this.initCycleWidgets();
     },
 
     // Fallback atomic DOM update (with .app-main scroll support)
@@ -1911,6 +2107,304 @@ Return ONLY valid JSON matching this exact schema:
       }
       this._restoreScrolls(root, scrollSnapshots);
       this._restoreFocus(focusSnap);
+      this.initCycleWidgets();
+    },
+
+    // =========================================================================
+    // PERFORMANCE CYCLE SWITCHER & LIQUID-GLASS DATE RANGE CALENDAR
+    // =========================================================================
+    _cycleCalState: {
+      target: "start",
+      viewYear: 2026,
+      viewMonth: 0,
+      startIso: "",
+      endIso: ""
+    },
+
+    filterCycleCards(statusFilter, btnEl) {
+      const grid = document.getElementById("cycle-switcher-grid");
+      if (!grid) return;
+      grid.querySelectorAll(".cycle-item[data-cycle-status]").forEach((card) => {
+        const st = (card.getAttribute("data-cycle-status") || "").toLowerCase();
+        const show =
+          statusFilter === "all" ||
+          (statusFilter === "active" && (st === "active" || st === "evaluating")) ||
+          (statusFilter === "closed" && st === "closed");
+        card.style.display = show ? "" : "none";
+      });
+      if (btnEl && btnEl.parentElement) {
+        btnEl.parentElement.querySelectorAll(".cycle-tab-btn").forEach((b) => {
+          b.classList.toggle("is-active", b === btnEl);
+        });
+      }
+    },
+
+    _parseIsoDate(iso) {
+      if (!iso || typeof iso !== "string") return null;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim().slice(0, 10));
+      if (!m) return null;
+      const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+      const dt = new Date(y, mo, d);
+      if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
+      return dt;
+    },
+
+    _formatIsoDate(dt) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const d = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    },
+
+    _formatPrettyDate(iso) {
+      const dt = this._parseIsoDate(iso);
+      if (!dt) return iso || "Select date";
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${months[dt.getMonth()]} ${dd}, ${dt.getFullYear()}`;
+    },
+
+    _addSixMonthsMinusOne(iso) {
+      const dt = this._parseIsoDate(iso);
+      if (!dt) return iso;
+      const targetMonth = dt.getMonth() + 6;
+      const targetYear = dt.getFullYear() + Math.floor(targetMonth / 12);
+      const normalizedMonth = targetMonth % 12;
+      const daysInTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+      const clampedDay = Math.min(dt.getDate(), daysInTargetMonth);
+      const next = new Date(targetYear, normalizedMonth, clampedDay);
+      next.setDate(next.getDate() - 1);
+      return this._formatIsoDate(next);
+    },
+
+    autoResizeTextarea(el) {
+      if (!el || el.tagName !== "TEXTAREA") return;
+      el.style.resize = "none";
+      el.style.overflow = "hidden";
+      el.style.height = "auto";
+      const minH = parseFloat(el.dataset.minHeight || el.style.minHeight || "0") || 0;
+      if (el.scrollHeight > 0) {
+        el.style.height = Math.max(minH, el.scrollHeight + 2) + "px";
+      } else {
+        const rows = parseInt(el.getAttribute("rows") || "2", 10) || 2;
+        el.style.height = Math.max(minH, rows * 24 + 20) + "px";
+      }
+    },
+
+    autoResizeTextareas(root = document) {
+      if (!root || typeof root.querySelectorAll !== "function") return;
+      root.querySelectorAll("textarea").forEach((ta) => {
+        this.autoResizeTextarea(ta);
+      });
+    },
+
+    initAutoGrowTextareas() {
+      if (typeof document !== "undefined" && document.documentElement && !document.documentElement.dataset.autoGrowBound) {
+        document.documentElement.dataset.autoGrowBound = "1";
+        document.addEventListener("input", (e) => {
+          if (e.target && e.target.tagName === "TEXTAREA") {
+            this.autoResizeTextarea(e.target);
+          }
+        });
+        if (typeof window !== "undefined") {
+          window.addEventListener("resize", () => this.autoResizeTextareas(document));
+        }
+      }
+      this.autoResizeTextareas(document);
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => this.autoResizeTextareas(document));
+      }
+    },
+
+    initCycleWidgets() {
+      this.initAutoGrowTextareas();
+      const mount = document.getElementById("lg-cycle-calendar-mount");
+      if (!mount) return;
+      const startInput = document.getElementById("new-cycle-start");
+      const endInput = document.getElementById("new-cycle-end");
+      const startVal = startInput ? startInput.value : "";
+      const endVal = endInput ? endInput.value : "";
+      if (!mount.dataset.calBound || this._cycleCalState.startIso !== startVal || this._cycleCalState.endIso !== endVal) {
+        const refDt = this._parseIsoDate(startVal) || new Date();
+        if (!mount.dataset.calBound) {
+          this._cycleCalState.target = "start";
+          this._cycleCalState.viewYear = refDt.getFullYear();
+          this._cycleCalState.viewMonth = refDt.getMonth();
+          mount.dataset.calBound = "1";
+          mount.addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-cal-nav], [data-cal-date], [data-cal-preset]");
+            if (!btn) return;
+            e.preventDefault();
+            if (btn.dataset.calNav === "prev") {
+              this.cycleCalShiftMonth(-1);
+            } else if (btn.dataset.calNav === "next") {
+              this.cycleCalShiftMonth(1);
+            } else if (btn.dataset.calPreset === "6m") {
+              this.cycleCalApplySixMonth();
+            } else if (btn.dataset.calDate) {
+              this.cycleCalPickDate(btn.dataset.calDate);
+            }
+          });
+        }
+        this._cycleCalState.startIso = startVal;
+        this._cycleCalState.endIso = endVal;
+        this.cycleCalRender();
+      }
+    },
+
+    cycleCalSetTarget(target) {
+      this._cycleCalState.target = target === "end" ? "end" : "start";
+      const targetIso = target === "end" ? this._cycleCalState.endIso : this._cycleCalState.startIso;
+      const dt = this._parseIsoDate(targetIso);
+      if (dt) {
+        this._cycleCalState.viewYear = dt.getFullYear();
+        this._cycleCalState.viewMonth = dt.getMonth();
+      }
+      this.cycleCalRender();
+    },
+
+    cycleCalShiftMonth(delta) {
+      const dt = new Date(this._cycleCalState.viewYear, this._cycleCalState.viewMonth + delta, 1);
+      this._cycleCalState.viewYear = dt.getFullYear();
+      this._cycleCalState.viewMonth = dt.getMonth();
+      this.cycleCalRender();
+    },
+
+    cycleCalSetYear(yearVal) {
+      const yr = Number(yearVal);
+      if (!Number.isFinite(yr) || yr < 2000 || yr > 2100) return;
+      this._cycleCalState.viewYear = yr;
+      this.cycleCalRender();
+    },
+
+    cycleCalApplySixMonth() {
+      if (!this._cycleCalState.startIso) return;
+      this._cycleCalState.endIso = this._addSixMonthsMinusOne(this._cycleCalState.startIso);
+      this._cycleCalState.target = "end";
+      this._syncCycleDateInputs();
+      this.cycleCalRender();
+    },
+
+    cycleCalPickDate(iso) {
+      const st = this._cycleCalState;
+      if (st.target === "start") {
+        st.startIso = iso;
+        if (!st.endIso || st.endIso < iso) {
+          st.endIso = this._addSixMonthsMinusOne(iso);
+        }
+        st.target = "end";
+      } else {
+        if (st.startIso && iso < st.startIso) {
+          st.startIso = iso;
+          st.target = "end";
+        } else {
+          st.endIso = iso;
+          st.target = "start";
+        }
+      }
+      const picked = this._parseIsoDate(iso);
+      if (picked) {
+        st.viewYear = picked.getFullYear();
+        st.viewMonth = picked.getMonth();
+      }
+      this._syncCycleDateInputs();
+      this.cycleCalRender();
+    },
+
+    _syncCycleDateInputs() {
+      const startEl = document.getElementById("new-cycle-start");
+      const endEl = document.getElementById("new-cycle-end");
+      if (startEl) startEl.value = this._cycleCalState.startIso;
+      if (endEl) endEl.value = this._cycleCalState.endIso;
+      const startLabel = document.getElementById("cycle-start-display");
+      const endLabel = document.getElementById("cycle-end-display");
+      if (startLabel) startLabel.textContent = this._formatPrettyDate(this._cycleCalState.startIso);
+      if (endLabel) endLabel.textContent = this._formatPrettyDate(this._cycleCalState.endIso);
+    },
+
+    cycleCalRender() {
+      const mount = document.getElementById("lg-cycle-calendar-mount");
+      if (!mount) return;
+      const st = this._cycleCalState;
+      const startBtn = document.getElementById("cycle-trigger-start");
+      const endBtn = document.getElementById("cycle-trigger-end");
+      if (startBtn) startBtn.classList.toggle("is-editing", st.target === "start");
+      if (endBtn) endBtn.classList.toggle("is-editing", st.target === "end");
+      this._syncCycleDateInputs();
+
+      const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ];
+      const todayIso = this._formatIsoDate(new Date());
+      const firstOfMonth = new Date(st.viewYear, st.viewMonth, 1);
+      const startWeekday = firstOfMonth.getDay();
+      const gridStart = new Date(st.viewYear, st.viewMonth, 1 - startWeekday);
+
+      let yearOpts = "";
+      for (let y = st.viewYear - 2; y <= st.viewYear + 4; y += 1) {
+        yearOpts += `<option value="${y}"${y === st.viewYear ? " selected" : ""}>${y}</option>`;
+      }
+
+      let cellsHtml = "";
+      for (let i = 0; i < 42; i += 1) {
+        const cellDt = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+        const cellIso = this._formatIsoDate(cellDt);
+        const isOutside = cellDt.getMonth() !== st.viewMonth;
+        const isStart = st.startIso && cellIso === st.startIso;
+        const isEnd = st.endIso && cellIso === st.endIso;
+        const inRange = st.startIso && st.endIso && cellIso > st.startIso && cellIso < st.endIso;
+        const isToday = cellIso === todayIso;
+        const cls = [
+          "lg-cal-day",
+          isOutside ? "is-outside" : "",
+          inRange ? "is-in-range" : "",
+          isStart ? "is-range-start" : "",
+          isEnd ? "is-range-end" : "",
+          isToday ? "is-today" : ""
+        ].filter(Boolean).join(" ");
+        cellsHtml += `<button type="button" class="${cls}" data-cal-date="${cellIso}" aria-label="${cellIso}">${cellDt.getDate()}</button>`;
+      }
+
+      let durationText = "Select dates";
+      const sDt = this._parseIsoDate(st.startIso);
+      const eDt = this._parseIsoDate(st.endIso);
+      if (sDt && eDt && eDt >= sDt) {
+        const days = Math.round((eDt - sDt) / 86400000) + 1;
+        durationText = `${days} days selected`;
+      }
+
+      const modeHint = st.target === "start" ? "Picking From date" : "Picking To date";
+      mount.innerHTML = `
+        <div class="lg-cal-shell">
+          <div class="lg-cal-header">
+            <button type="button" class="lg-cal-nav" data-cal-nav="prev" title="Previous Month" aria-label="Previous Month">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="lg-cal-month-label">${monthNames[st.viewMonth]}</span>
+              <select class="liquid-glass-control liquid-glass-select" style="width:auto; height:30px; padding:0 28px 0 10px; font-size:12.5px;"
+                      onchange="window.StarAppBridge.cycleCalSetYear(this.value)" aria-label="Calendar Year">
+                ${yearOpts}
+              </select>
+            </div>
+            <button type="button" class="lg-cal-nav" data-cal-nav="next" title="Next Month" aria-label="Next Month">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <div class="lg-cal-weekdays">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+          <div class="lg-cal-grid">${cellsHtml}</div>
+          <div class="lg-cal-footer">
+            <span style="font-weight:700; color:var(--deep-frozen-midnight);">${modeHint}</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-variant-numeric:tabular-nums; color:var(--frost-navy-50);">${durationText}</span>
+              <button type="button" class="cycle-tab-btn is-active" data-cal-preset="6m" style="border:1px solid var(--icy-steel-50);">+6M Window</button>
+            </div>
+          </div>
+        </div>
+      `;
     }
   };
 })();

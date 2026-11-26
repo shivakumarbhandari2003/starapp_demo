@@ -219,7 +219,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         }
         store.save_band_mapping(mapping_record)
 
-        # Now render g_mapping with B1 selected: Live Mapped Allocations section appears
+        # Click the AIOS badge card to expand its saved mapping table
+        self.ctrl.handle_event("toggle_mapping_badge_card", "AIOS")
         html = self.ctrl.render()
         self.assertIn("Live Mapped Review Allocations", html)
         self.assertIn("Band B1", html)
@@ -235,7 +236,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
 
         # Verify editing UI indicators
         edit_html = self.ctrl.render()
-        self.assertIn("EDITING MODE", edit_html)
+        self.assertIn("Editing Mode", edit_html)
         self.assertIn("Update Badge Mapping", edit_html)
         self.assertIn("Cancel Edit", edit_html)
 
@@ -405,17 +406,21 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("m_b3_1", self.ctrl.mapping_selected_reviewers)
 
         # Send request
+        self.ctrl.handle_event("select_mapping_badge", "badge_b1_signals")
         self.ctrl.mapping_selected_cosmonauts = ["m_b1_1", "m_b1_2"]
         self.ctrl.handle_event("send_mapping_requests", "{}")
         self.ctrl.handle_event("accept_mapping_request", "req_B1_m_b2_1")
 
-        # Check that UI renders final review stage and master mapped table
+        # Verify Reset demo banner is removed from main g_mapping page, then open badge card detail page
+        main_html = self.ctrl.render()
+        self.assertNotIn("Reset Everything (Demo Mode)", main_html)
+        self.assertNotIn("Reset Workspace", main_html)
+        self.ctrl.handle_event("open_mapping_badge_detail", "badge_b1_signals")
         html = self.ctrl.render()
         self.assertIn("Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers", html)
-        self.assertIn("Reset Everything (Demo Mode)", html)
 
         # Execute map
-        self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")
+        self.ctrl.handle_event("execute_cosmonaut_mapping", json.dumps({"band": "B1", "badge_id": "badge_b1_signals", "badge": "Signals Foundations"}))
         mapped_html = self.ctrl.render()
         self.assertIn("Live Mapped Review Allocations", mapped_html)
         self.assertIn("Guardian Reviewer", mapped_html)
@@ -427,6 +432,124 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(len(store.get_mapping_requests()), 0)
         self.assertEqual(len(self.ctrl.mapping_selected_cosmonauts), 0)
         self.assertEqual(len(self.ctrl.mapping_selected_reviewers), 0)
+
+    def test_zero_defaults_select_all_flexible_calendar_and_staged_per_badge_flow(self):
+        """
+        Verify:
+        1. Zero default people are pre-selected on controller init or reset.
+        2. Clutter strings & top/calendar Save Mapping button are removed; Select All replaces Select Filtered.
+        3. Flexible working-day durations and Start->End range picking work cleanly.
+        4. Send Request refreshes badge, cosmonauts, and reviewers and shows collapsed badge card below.
+        5. Clicking the badge card opens Requests -> Candidate Cosmonauts & Accepted Reviewers -> Map -> Save Mapping -> Badge-scoped Saved Mapping.
+        """
+        fresh_ctrl = StarAppController()
+        self.assertEqual(fresh_ctrl.mapping_selected_cosmonauts, [])
+        self.assertEqual(fresh_ctrl.mapping_selected_reviewers, [])
+        self.assertEqual(fresh_ctrl.mapping_selected_badge, "")
+
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        html = self.ctrl.render()
+        self.assertIn("Select All", html)
+        self.assertNotIn("Select Filtered", html)
+        self.assertNotIn("Multiselect options for cohort roles", html)
+        self.assertNotIn("Choose 3-Day Window from Anchor:", html)
+        self.assertNotIn("Selected Anchor:", html)
+        self.assertNotIn("Guardian Portal", html)
+        self.assertNotIn("Real SQLite Data", html)
+        before_req_section = html.split("Badge Requests &amp; Mappings")[0]
+        self.assertNotIn("Save Mapping", before_req_section)
+
+        # Flexible duration (5 working days)
+        self.ctrl.handle_event("set_mapping_review_duration", "5")
+        self.assertEqual(self.ctrl.mapping_review_days_count, 5)
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-18")
+        self.assertEqual(
+            self.ctrl.mapping_review_dates,
+            ["2026-11-18", "2026-11-19", "2026-11-20", "2026-11-23", "2026-11-24"]
+        )
+
+        # Custom range mode (Start -> End)
+        self.ctrl.handle_event("set_mapping_review_mode", "range")
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-19")
+        self.assertEqual(self.ctrl.mapping_range_start, "2026-11-19")
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-25")
+        self.assertEqual(
+            self.ctrl.mapping_review_dates,
+            ["2026-11-19", "2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25"]
+        )
+
+        # Send Request refreshes ALL top selections (badge, cosmonauts, reviewers)
+        self.ctrl.handle_event("select_mapping_band", "B1")
+        self.ctrl.handle_event("select_all_mapping_cosmonauts", "{}")
+        self.assertTrue(len(self.ctrl.mapping_selected_cosmonauts) > 0)
+        self.ctrl.handle_event("toggle_mapping_reviewer", "m_b2_1")
+        self.ctrl.handle_event("send_mapping_requests", "{}")
+        self.assertEqual(self.ctrl.mapping_selected_badge, "")
+        self.assertEqual(self.ctrl.mapping_selected_badge_id, "")
+        self.assertEqual(self.ctrl.mapping_selected_cosmonauts, [])
+        self.assertEqual(self.ctrl.mapping_selected_reviewers, [])
+
+        # Rectangular badge card renders immediately below; details live on the dedicated detail page
+        collapsed_html = self.ctrl.render()
+        self.assertIn("Signals Foundations", collapsed_html)
+        self.assertIn("mapping-badge-rect-card", collapsed_html)
+        self.assertIn("Open Requests, Cohort &amp; Mapping", collapsed_html)
+        self.assertNotIn("1. Reviewer Requests History", collapsed_html)
+
+        reqs = [r for r in store.get_mapping_requests() if r.get("band") == "B1"]
+        self.assertTrue(len(reqs) >= 1)
+        req = reqs[0]
+        self.assertEqual(len(req["review_dates"]), 5)
+        self.ctrl.handle_event("accept_mapping_request", req["id"])
+
+        # Click the rectangular badge card -> opens dedicated badge mapping detail page
+        card_key = req.get("badge_id") or req["badge"]
+        self.ctrl.handle_event("open_mapping_badge_detail", json.dumps({"band": "B1", "badge_key": card_key}))
+        self.assertEqual(self.ctrl.current_view, "g_mapping_badge_detail")
+        expanded_html = self.ctrl.render()
+        self.assertIn("1. Reviewer Requests History", expanded_html)
+        self.assertIn("2. Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers", expanded_html)
+        self.assertIn("Selected Cosmonauts", expanded_html)
+        self.assertIn("Accepted Reviewers", expanded_html)
+
+        # Click Map -> stages preview without committing to DB
+        count_before_map = len(store.get_band_mappings())
+        payload = json.dumps({"band": "B1", "badge_id": req.get("badge_id", ""), "badge": req["badge"]})
+        self.ctrl.handle_event("preview_cosmonaut_mapping", payload)
+        self.assertEqual(len(store.get_band_mappings()), count_before_map)
+        staged_html = self.ctrl.render()
+        self.assertIn("Proposed Assignment Partition", staged_html)
+        self.assertIn("Save Mapping", staged_html)
+
+        # Click Save Mapping -> commits staged preview & displays inside that badge's detail page
+        self.ctrl.handle_event("save_staged_mapping", payload)
+        self.assertEqual(len(store.get_band_mappings()), count_before_map + 1)
+        saved_card_html = self.ctrl.render()
+        self.assertIn("Live Mapped Review Allocations", saved_card_html)
+
+        # Back button returns smoothly to g_mapping
+        self.ctrl.handle_event("go_back", "{}")
+        self.assertEqual(self.ctrl.current_view, "g_mapping")
+
+        # Verify Liquid-Glass Timeline & Mapping modal in Badge Allotment
+        self.ctrl.handle_event("open_badge_timeline_mapping_modal", card_key)
+        modal_html = self.ctrl.render_active_modal()
+        self.assertIn("lg-tl-track", modal_html)
+        self.assertIn("lg-tl-hero", modal_html)
+        self.assertIn("lg-mapping-glass-card", modal_html)
+        self.ctrl.handle_event("close_modal", "{}")
+
+        # Dispatch request for a second B1 badge independently
+        self.ctrl.handle_event("select_mapping_badge", json.dumps({"badge_id": "b1_int_01", "badge": "Intelligent Apps Foundations"}))
+        self.ctrl.mapping_selected_cosmonauts = ["m_b1_1"]
+        self.ctrl.mapping_selected_reviewers = ["m_b2_2"]
+        self.ctrl.handle_event("send_mapping_requests", "{}")
+        self.assertEqual(self.ctrl.mapping_selected_badge, "")
+        self.assertEqual(self.ctrl.mapping_expanded_badge_key, "")
+        multi_html = self.ctrl.render()
+        self.assertIn("Signals Foundations", multi_html)
+        self.assertIn("Intelligent Apps Foundations", multi_html)
+        self.assertNotIn("Live Mapped Review Allocations", multi_html)
 
 if __name__ == "__main__":
     unittest.main()

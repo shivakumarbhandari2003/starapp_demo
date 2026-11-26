@@ -56,7 +56,14 @@ ICON_SVGS = {
     "download": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
     "copy": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
     "dollar": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
-    "compass": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>'
+    "compass": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>',
+    "mail": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>',
+    "eye_off": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>',
+    "chevron_left": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polyline points="15 18 9 12 15 6"></polyline></svg>',
+    "chevron_right": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+    "folder": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+    "wrench": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>',
+    "x": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
 }
 
 def get_icon(name: str, size: int = 15, style: str = "") -> str:
@@ -69,6 +76,46 @@ def get_icon(name: str, size: int = 15, style: str = "") -> str:
 
 def escape(text: Any) -> str:
     return html.escape(str(text or ""))
+
+
+def render_taxonomy_hierarchy_tree(power: str, capability: str, skill: str, compact: bool = False) -> str:
+    """Renders a vertical hierarchical tree for Power -> Capability -> Skill."""
+    p_val = escape(power or "Tech")
+    c_val = escape(capability or "Data & Machine")
+    s_val = escape(skill or "Foundations")
+    compact_cls = " is-compact" if compact else ""
+    branch_svg = (
+        '<svg class="lg-hier-branch" width="14" height="14" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>'
+        '</svg>'
+    )
+    step_svg = (
+        '<span class="lg-hier-branch" aria-hidden="true">'
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M5 4v10a2 2 0 0 0 2 2h11"/><polyline points="14 12 18 16 14 20"/>'
+        '</svg></span>'
+    )
+    return f"""
+    <div class="lg-hier-tree{compact_cls}">
+        <div class="lg-hier-row is-power">
+            <span class="lg-hier-dot"></span>
+            <span class="lg-hier-k">Power :</span>
+            <span class="lg-hier-v">{p_val}</span>
+        </div>
+        <div class="lg-hier-row is-cap">
+            {step_svg}
+            <span class="lg-hier-k">Capability :</span>
+            <span class="lg-hier-v">{c_val}</span>
+        </div>
+        <div class="lg-hier-row is-skill">
+            {step_svg}
+            <span class="lg-hier-k">Skill :</span>
+            <span class="lg-hier-v">{s_val}</span>
+        </div>
+    </div>
+    """
 
 def render_liquid_card(
     content: str,
@@ -143,11 +190,13 @@ def render_back_button(
     label: str = "Back",
     extra_style: str = ""
 ) -> str:
-    """Renders a standard liquid-glass Back button for workspace and page navigation."""
+    """Universal Back lives in the top-right header bar; omit duplicate inline go_back buttons."""
+    if target_action == "go_back":
+        return ""
     onclick_attr = f"window.StarAppBridge.dispatchAction('{escape(target_action)}', '{escape(payload_json)}')"
     return f"""
     <button type="button" class="btn-secondary btn-sm" onclick="{onclick_attr}"
-            style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm); {extra_style}"
+            style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm); {extra_style}"
             title="Navigate back">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"></polyline>
@@ -521,13 +570,13 @@ def render_sidebar_cycle_pill(
         </div>
         <div class="band-switcher-content" style="border-color:rgba(16,185,129,0.4);">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--pure-ice);">Global Cycle</span>
+                <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-mist);">Global Cycle</span>
                 <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 6px; border-radius:999px;">{st_lbl}</span>
             </div>
             <div style="font-size:11.5px; font-weight:800; color:#fff; margin-top:3px; overflow:hidden; text-overflow:ellipsis;">{escape(c_name)}</div>
             <button type="button" class="btn-ghost btn-sm"
                     onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
-                    style="color:var(--pure-ice); font-size:10.5px; padding:3px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:700;"
+                    style="color:var(--frost-mist); font-size:10.5px; padding:3px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:700;"
                     title="Change Global Cycle Filter">
                 <span>Switch Cycle Filter &rarr;</span>
             </button>
@@ -545,15 +594,7 @@ def render_topbar(
     bell_badge = f'<span class="notif-badge">{unread_notifs_count}</span>' if unread_notifs_count > 0 else ""
     return f"""
     <header class="app-topbar">
-        <div class="topbar-left" style="display:flex; align-items:center; gap:8px;">
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')"
-                    style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:var(--radius-sm); margin-right:6px;"
-                    title="Go back to previous screen">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-                <span>Back</span>
-            </button>
+        <div class="topbar-left" style="display:flex; align-items:center; gap:10px;">
             <button type="button" class="topbar-sidebar-toggle-btn" onclick="window.StarAppBridge.toggleSidebar()" title="Toggle Sidebar Navigation">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
             </button>
@@ -573,16 +614,43 @@ def render_topbar(
             <div style="display:flex; align-items:center; gap:10px; padding-left:8px; border-left:1px solid var(--icy-steel-30);">
                 <div class="user-avatar" style="width:34px; height:34px; font-size:12px;">{escape(current_user.avatar)}</div>
                 <div style="line-height:1.2;">
-                    <div style="font-size:13px; font-weight:700; color:var(--frost-navy);">{escape(current_user.name)}</div>
-                    <div style="font-size:11px; text-transform:uppercase; color:var(--deep-frozen-midnight); font-weight:600;">{escape(current_user.role)}</div>
+                    <div style="font-size:13.5px; font-weight:700; color:var(--frost-navy);">{escape(current_user.name)}</div>
+                    <div style="font-size:11.5px; text-transform:uppercase; color:var(--deep-frozen-midnight); font-weight:700;">{escape(current_user.role)}</div>
                 </div>
             </div>
 
             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Switch User or Logout">
                 Sign Out
             </button>
+
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')"
+                    style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border-radius:var(--radius-sm); color:var(--frost-navy);"
+                    title="Go back to previous screen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <span>Back</span>
+            </button>
         </div>
     </header>
+    """
+
+
+def render_global_back_bar() -> str:
+    """Renders the universal top-right Back strip for every workspace screen."""
+    return """
+    <div class="app-back-strip">
+        <div class="topbar-right">
+            <button type="button" class="btn-secondary btn-sm app-global-back-btn"
+                    onclick="window.StarAppBridge.dispatchAction('go_back', '{}')"
+                    title="Go back to previous page">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <span>Back</span>
+            </button>
+        </div>
+    </div>
     """
 
 

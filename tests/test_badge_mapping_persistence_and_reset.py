@@ -73,9 +73,10 @@ class TestBadgeMappingPersistenceAndReset(unittest.TestCase):
         matching_req = next(r for r in reqs if r.get("badge_id") == badge_id and r.get("reviewer_id") == rev_id)
         self.ctrl.handle_event("accept_mapping_request", matching_req["id"])
 
-        # Verify selections are currently active before save
-        self.assertEqual(len(self.ctrl.mapping_selected_cosmonauts), 2)
-        self.assertEqual(len(self.ctrl.mapping_selected_reviewers), 1)
+        # Verify upper selections refreshed while independent request retained cosmonauts
+        self.assertEqual(len(self.ctrl.mapping_selected_cosmonauts), 0)
+        self.assertEqual(len(self.ctrl.mapping_selected_reviewers), 0)
+        self.assertEqual(matching_req["cosmonaut_ids"], cosmo_ids)
 
         # 5. Guardian executes Save Mapping
         self.ctrl.handle_event("execute_cosmonaut_mapping", "{}")

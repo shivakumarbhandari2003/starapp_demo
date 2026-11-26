@@ -174,8 +174,8 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
             all_band_mappings=store.get_band_mappings(),
             all_timelines=store.timelines
         )
-        self.assertIn("Mapped Evaluation Personnel", allotment_html)
-        self.assertIn("Active Mapped Badge Allocations", allotment_html)
+        self.assertIn("Timeline &amp; Mapping", allotment_html)
+        self.assertIn("Reviewer", allotment_html)
 
         # =========================================================================
         # 4. REVIEWER AI PROJECT GENERATION & 1:N DELIVERY ISOLATION

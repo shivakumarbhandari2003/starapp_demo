@@ -1722,7 +1722,14 @@ class DatabaseManager:
                 "role": r["primary_role"],
                 "roles": roles,
                 "name": r["name"],
-                "avatar": r["avatar"]
+                "avatar": r["avatar"],
+                "band": r["band"] if "band" in r.keys() else "",
+                "learning_track": r["learning_track"] if "learning_track" in r.keys() else "",
+                "age": r["age"] if "age" in r.keys() else 30,
+                "reporting_manager_id": r["reporting_manager_id"] if "reporting_manager_id" in r.keys() else None,
+                "reporting_manager_name": r["reporting_manager_name"] if "reporting_manager_name" in r.keys() else None,
+                "reporting_manager_band": r["reporting_manager_band"] if "reporting_manager_band" in r.keys() else None,
+                "password": r["password"] if "password" in r.keys() and r["password"] else "12345678",
             })
 
         # Profiles

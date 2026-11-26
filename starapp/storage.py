@@ -8,9 +8,16 @@ import json
 import datetime
 import time
 import re
+import hmac
 import contextvars
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
+
+_EMAIL_VALIDATION_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 from starapp.models import (
     DEFAULT_CYCLE_ID, DEFAULT_HIKE_POLICY,
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
@@ -261,7 +268,8 @@ class DataStore:
                 avatar=row["avatar"] or row["name"][:2].upper(),
                 roles=roles if roles else [user_role],
                 band=user_band,
-                learning_track=user_track
+                learning_track=user_track,
+                password=row["password"] if "password" in row.keys() and row["password"] else "12345678"
             )
             self.users[row["id"]] = user
             if user_id != row["id"]:
@@ -282,6 +290,151 @@ class DataStore:
         if row:
             return self.get_user_by_id(row["id"])
         return None
+
+    @staticmethod
+    def _verify_password_secret(plain_password: str, stored_password: str) -> bool:
+        """Verifies plaintext or bcrypt-hashed user passwords stored in SQLite."""
+        if not stored_password:
+            return False
+        if stored_password.startswith(("$2b$", "$2a$", "$2y$")):
+            if bcrypt is None:
+                return False
+            try:
+                return bool(bcrypt.checkpw(plain_password.encode("utf-8"), stored_password.encode("utf-8")))
+            except Exception:
+                return False
+        return hmac.compare_digest(plain_password.encode("utf-8"), stored_password.encode("utf-8"))
+
+    def authenticate_user(
+        self,
+        email_or_username: str,
+        password: Optional[str] = None,
+        require_password: bool = True
+    ) -> Tuple[Optional[User], str]:
+        """Validates email & password criteria and verifies active SQLite user credentials."""
+        ident = str(email_or_username or "").strip().lower()
+        pwd = "" if password is None else str(password)
+
+        if require_password:
+            if not ident:
+                return None, "Please enter your email address."
+            if not _EMAIL_VALIDATION_RE.match(ident):
+                return None, "Please enter a valid email address (for example, name@starapp.io)."
+            if not pwd.strip():
+                return None, "Please enter your password."
+            if len(pwd) < 6:
+                return None, "Password must be at least 6 characters long."
+
+            row = self.db.conn.execute(
+                "SELECT * FROM users WHERE lower(email) = ?",
+                (ident,)
+            ).fetchone()
+            if not row:
+                return None, "Invalid email or password. Account not found."
+
+            status_val = str(row["status"] if "status" in row.keys() and row["status"] else "active").strip().lower()
+            if status_val != "active":
+                return None, "This account is inactive. Please contact an Academy Guardian."
+
+            stored_pwd = str(row["password"] if "password" in row.keys() and row["password"] is not None else "")
+            if not self._verify_password_secret(pwd, stored_pwd):
+                return None, "Invalid email or password. Please check your credentials."
+
+            self.users.pop(row["id"], None)
+            user = self.get_user_by_id(row["id"])
+            if not user:
+                return None, "Unable to load user profile from database."
+            return user, ""
+
+        # Programmatic username lookup path (used by internal automation/unit tests)
+        if not ident:
+            return None, "Please enter an email address or username."
+        row = self.db.conn.execute(
+            "SELECT id, status FROM users WHERE lower(username) = ? OR lower(email) = ?",
+            (ident, ident)
+        ).fetchone()
+        if row:
+            status_val = str(row["status"] if "status" in row.keys() and row["status"] else "active").strip().lower()
+            if status_val != "active":
+                return None, "This account is inactive."
+        user = self.get_user_by_username(ident)
+        if user:
+            return user, ""
+        return None, "Account not found."
+
+    def get_quick_login_accounts(self) -> List[Dict[str, Any]]:
+        """Returns 6 band representatives (B1-B6) plus the CEO Guardian from SQLite for Quick Login pills."""
+        preferred_bands = [
+            ("B1", "m_b1_2"),
+            ("B2", "m_b2_4"),
+            ("B3", "m_b3_6"),
+            ("B4", "m_b4_1"),
+            ("B5", "m_b5_1"),
+            ("B6", "m_b6_1"),
+        ]
+        results: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        for band_code, pref_id in preferred_bands:
+            row = self.db.conn.execute(
+                """
+                SELECT id, name, email, band, primary_role, role
+                FROM users
+                WHERE id = ? AND lower(coalesce(status, 'active')) = 'active'
+                """,
+                (pref_id,)
+            ).fetchone()
+            if not row:
+                row = self.db.conn.execute(
+                    """
+                    SELECT id, name, email, band, primary_role, role
+                    FROM users
+                    WHERE band = ? AND lower(coalesce(status, 'active')) = 'active' AND id != 'guardian_1'
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (band_code,)
+                ).fetchone()
+            if row and row["id"] not in seen_ids:
+                seen_ids.add(row["id"])
+                results.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "email": row["email"],
+                    "band": row["band"] or band_code,
+                    "role_tag": row["band"] or band_code,
+                    "is_guardian": False,
+                })
+
+        guardian_row = self.db.conn.execute(
+            """
+            SELECT id, name, email, band, primary_role, role
+            FROM users
+            WHERE id = 'guardian_1' AND lower(coalesce(status, 'active')) = 'active'
+            """
+        ).fetchone()
+        if not guardian_row:
+            guardian_row = self.db.conn.execute(
+                """
+                SELECT id, name, email, band, primary_role, role
+                FROM users
+                WHERE lower(coalesce(primary_role, '')) = 'guardian'
+                  AND lower(coalesce(status, 'active')) = 'active'
+                ORDER BY id
+                LIMIT 1
+                """
+            ).fetchone()
+        if guardian_row and guardian_row["id"] not in seen_ids:
+            seen_ids.add(guardian_row["id"])
+            results.append({
+                "id": guardian_row["id"],
+                "name": guardian_row["name"],
+                "email": guardian_row["email"],
+                "band": guardian_row["band"] or "CEO",
+                "role_tag": "CEO · Guardian",
+                "is_guardian": True,
+            })
+        return results
 
     def get_all_cosmonauts(self) -> List[User]:
         # All members across B1 to B6 are cosmonauts/cadets
@@ -308,10 +461,20 @@ class DataStore:
         with self.db.conn:
             self.db.conn.execute(
                 """
-                INSERT OR REPLACE INTO users (id, username, email, name, primary_role, avatar, status, is_demo, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'active', 0, ?)
+                INSERT OR REPLACE INTO users (id, username, email, name, band, password, primary_role, avatar, status, is_demo, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?)
                 """,
-                (user.id, user.username, user.email, user.name, user.role, user.avatar, current_iso_timestamp())
+                (
+                    user.id,
+                    user.username,
+                    user.email,
+                    user.name,
+                    getattr(user, "band", "") or "B1",
+                    getattr(user, "password", "12345678") or "12345678",
+                    user.role,
+                    user.avatar,
+                    current_iso_timestamp()
+                )
             )
             for r in getattr(user, "roles", [user.role]):
                 self.db.conn.execute(

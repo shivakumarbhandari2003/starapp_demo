@@ -612,6 +612,21 @@ def get_consecutive_review_days(anchor_iso: str, direction: str = "after", count
 
     return sorted(dates)
 
+
+def get_working_days_between(start_iso: str, end_iso: str, max_days: int = 45) -> List[str]:
+    """Returns sorted ISO strings for all weekdays (Mon–Fri) between start_iso and end_iso inclusive."""
+    d1 = parse_iso_date(start_iso)
+    d2 = parse_iso_date(end_iso)
+    if d2 < d1:
+        d1, d2 = d2, d1
+    dates: List[str] = []
+    curr = d1
+    while curr <= d2 and len(dates) < max_days:
+        if not is_weekend_date(curr):
+            dates.append(curr.isoformat())
+        curr += datetime.timedelta(days=1)
+    return dates
+
 def format_review_date_human(iso_str: str) -> str:
     """Formats YYYY-MM-DD into 'Wed, Nov 18, 2026'."""
     try:

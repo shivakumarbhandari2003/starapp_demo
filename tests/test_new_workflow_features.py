@@ -39,7 +39,8 @@ class TestNewWorkflowFeatures(unittest.TestCase):
 
         # Render HTML
         html = self.ctrl.render()
-        self.assertIn("Reviewer Badge Approval Queue", html)
+        self.assertIn("Reviewer Badge Approval", html)
+        self.assertIn("Taxonomy Hierarchy", html)
 
     def test_02_mapping_request_dispatch_and_reviewer_decision(self):
         """Verify Guardian sending requests in Mapping populates reviewer's c_requests where they can Accept."""
@@ -120,8 +121,16 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_allotment")
 
         html = self.ctrl.render()
-        self.assertIn("Milestone Timeline Schedule", html)
-        self.assertIn("Configure Milestone Timeline Dates", html)
+        self.assertIn("Timeline &amp; Mapping", html)
+        self.assertNotIn("Badge Catalog &amp; Allotment Manager", html)
+        self.assertNotIn("Active Mapped Badge Allocations", html)
+
+        # Open Timeline & Mapping modal to inspect schedule and configure dates
+        self.ctrl.handle_event("open_badge_timeline_mapping_modal", "badge_b1_signals")
+        modal_html = self.ctrl.render_active_modal()
+        self.assertIn("Milestone Timeline Schedule", modal_html)
+        self.assertIn("Configure Milestone Timeline Dates", modal_html)
+        self.ctrl.handle_event("close_modal", "{}")
 
         # Test save_allotment_timeline action on existing badge
         timeline_payload = {

@@ -176,19 +176,96 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.assertIn("Please include distributed caching", html_create)
 
     def test_direct_demo_login_order(self):
-        """Verify one-click demo login lists Ananya Iyer - B1, Nisha Menon - B2, Tanvi Shah - B3 as the first three."""
+        """Verify Liquid-Glass Email+Password login page and Quick Login pills for 6 bands + CEO Guardian."""
         login_html = self.ctrl.render_login_view()
-        self.assertIn("Ananya Iyer - B1", login_html)
-        self.assertIn("Nisha Menon - B2", login_html)
-        self.assertIn("Tanvi Shah - B3", login_html)
-        self.assertIn("Arjun Mehta (CEO)", login_html)
-        self.assertIn("Aarav Sharma - B1", login_html)
+        self.assertIn('id="login-email"', login_html)
+        self.assertIn('id="login-password"', login_html)
+        self.assertIn("Quick Login", login_html)
+        self.assertIn("Ananya Iyer", login_html)
+        self.assertIn("Nisha Menon", login_html)
+        self.assertIn("Tanvi Shah", login_html)
+        self.assertIn("Rajiv Menon", login_html)
+        self.assertIn("Anirudh Krishnan", login_html)
+        self.assertIn("Devika Narayanan", login_html)
+        self.assertIn("Arjun Mehta", login_html)
+        self.assertIn("CEO · Guardian", login_html)
+        for b in ("B1", "B2", "B3", "B4", "B5", "B6"):
+            self.assertIn(f">{b}<", login_html)
+        self.assertNotIn("Multi-Window Live Sync Testing", login_html)
+        self.assertNotIn("One-Click Demo Account Access:", login_html)
 
-        # Verify exact order in the rendered HTML
-        pos_ananya = login_html.find("Ananya Iyer - B1")
-        pos_nisha = login_html.find("Nisha Menon - B2")
-        pos_tanvi = login_html.find("Tanvi Shah - B3")
-        self.assertTrue(pos_ananya < pos_nisha < pos_tanvi, "Demo accounts must be ordered Ananya, Nisha, Tanvi")
+        # Verify exact B1 -> B6 -> CEO pill order in the rendered HTML
+        pos_b1 = login_html.find("Ananya Iyer")
+        pos_b2 = login_html.find("Nisha Menon")
+        pos_b3 = login_html.find("Tanvi Shah")
+        pos_b4 = login_html.find("Rajiv Menon")
+        pos_b5 = login_html.find("Anirudh Krishnan")
+        pos_b6 = login_html.find("Devika Narayanan")
+        pos_ceo = login_html.find("Arjun Mehta")
+        self.assertTrue(pos_b1 < pos_b2 < pos_b3 < pos_b4 < pos_b5 < pos_b6 < pos_ceo)
+
+    def test_email_password_db_validation_and_quick_login(self):
+        """Verify SQLite email/password validation rules and Quick Login pill authentication."""
+        import starapp.storage as st
+
+        # 1. Empty email rejected
+        self.ctrl.handle_event("login", json.dumps({"email": "", "password": "12345678", "require_password": True}))
+        self.assertIsNone(self.ctrl.current_user)
+        self.assertIn("email address", (self.ctrl.login_error or "").lower())
+
+        # 2. Invalid email syntax rejected
+        self.ctrl.handle_event("login", json.dumps({"email": "bad-email", "password": "12345678", "require_password": True}))
+        self.assertIsNone(self.ctrl.current_user)
+        self.assertIn("valid email", (self.ctrl.login_error or "").lower())
+
+        # 3. Short password (< 6 chars) rejected
+        self.ctrl.handle_event("login", json.dumps({"email": "arjun.mehta@starapp.io", "password": "123", "require_password": True}))
+        self.assertIsNone(self.ctrl.current_user)
+        self.assertIn("at least 6 characters", (self.ctrl.login_error or "").lower())
+
+        # 4. Wrong password rejected against SQLite
+        self.ctrl.handle_event("login", json.dumps({"email": "arjun.mehta@starapp.io", "password": "wrongpassword", "require_password": True}))
+        self.assertIsNone(self.ctrl.current_user)
+        self.assertIn("invalid email or password", (self.ctrl.login_error or "").lower())
+        err_html = self.ctrl.render_login_view()
+        self.assertIn('id="login-error-banner"', err_html)
+        self.assertIn('value="arjun.mehta@starapp.io"', err_html)
+
+        # 5. Inactive user in SQLite rejected
+        st.store.db.conn.execute("UPDATE users SET status = 'inactive' WHERE id = 'm_b2_4'")
+        st.store.db.conn.commit()
+        try:
+            self.ctrl.handle_event("login", json.dumps({"email": "nisha.menon@starapp.io", "password": "12345678", "require_password": True}))
+            self.assertIsNone(self.ctrl.current_user)
+            self.assertIn("inactive", (self.ctrl.login_error or "").lower())
+        finally:
+            st.store.db.conn.execute("UPDATE users SET status = 'active' WHERE id = 'm_b2_4'")
+            st.store.db.conn.commit()
+
+        # 6. Valid CEO/Guardian email+password login against SQLite
+        self.ctrl.handle_event("login", json.dumps({"email": "arjun.mehta@starapp.io", "password": "12345678", "require_password": True}))
+        self.assertIsNotNone(self.ctrl.current_user)
+        self.assertEqual(self.ctrl.current_user.id, "guardian_1")
+        self.assertEqual(self.ctrl.current_view, "g_cycles")
+        self.assertIsNone(self.ctrl.login_error)
+
+        # 7. Logout + Valid Band B1 email+password login against SQLite
+        self.ctrl.handle_event("logout", "{}")
+        self.assertIsNone(self.ctrl.current_user)
+        self.ctrl.handle_event("login", json.dumps({"email": "ananya.iyer@starapp.io", "password": "12345678", "require_password": True}))
+        self.assertIsNotNone(self.ctrl.current_user)
+        self.assertEqual(self.ctrl.current_user.id, "m_b1_2")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+
+        # 8. Quick Login pill login (Band B6 & CEO Guardian)
+        self.ctrl.handle_event("logout", "{}")
+        self.ctrl.handle_event("select_demo_account", "m_b6_1")
+        self.assertEqual(self.ctrl.current_user.id, "m_b6_1")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        self.ctrl.handle_event("logout", "{}")
+        self.ctrl.handle_event("select_demo_account", "guardian_1")
+        self.assertEqual(self.ctrl.current_user.id, "guardian_1")
+        self.assertEqual(self.ctrl.current_view, "g_cycles")
 
     def test_universal_back_button_and_history_navigation(self):
         """Verify universal Back button in topbar and non-destructive history navigation."""
@@ -203,7 +280,8 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.ctrl.handle_event("select_create_badge_band", "B1")
         self.assertEqual(self.ctrl.create_badge_band, "B1")
         html_b1 = self.ctrl.render()
-        self.assertIn("Band B1 Workspace", html_b1)
+        self.assertIn(">B1<", html_b1)
+        self.assertIn("Configure Badge", html_b1)
 
         # 3. Click go_back -> Should return to 6 band cards view (band set to None)
         self.ctrl.handle_event("go_back")
@@ -221,8 +299,63 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
         self.assertEqual(self.ctrl.current_view, "c_submission")
+        self.assertNotIn("Guardian Window", self.ctrl.render())
         self.ctrl.handle_event("go_back")
         self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+
+    def test_ui_polish_vertical_hierarchy_sidebar_mapping_allotment(self):
+        """Verify enlarged STARAPP header, Liquid-Glass sidebar profile without icons, vertical taxonomy trees, Saved Badges, Mapping & Allotment cards."""
+        login_html = self.ctrl.render_login_view()
+        self.assertIn("STARAPP", login_html)
+        self.assertNotIn("Autonomous Training", login_html)
+
+        # Login as Guardian CEO & verify sidebar and views
+        self.ctrl.handle_event("select_demo_account", "guardian_1")
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        self.ctrl.handle_event("select_create_badge_band", "B1")
+        create_html = self.ctrl.render()
+        self.assertNotIn("Cosmonaut Window", create_html)
+        self.assertNotIn("All Band Cards", create_html)
+        self.assertNotIn("Workspace</span>", create_html)
+        self.assertIn("dispatchAction('nav_guardian', 'g_learning')", create_html)
+        self.assertIn("lg-sidebar-profile", create_html)
+        self.assertIn("Arjun Mehta", create_html)
+        self.assertIn("Academy Guardian", create_html)
+        self.assertIn("lg-sidebar-signout-btn", create_html)
+        self.assertNotIn('class="user-avatar"', create_html)
+        self.assertIn("lg-saved-badge-card", create_html)
+        self.assertIn("lg-hier-tree", create_html)
+        self.assertNotIn("(Band )", create_html)
+
+        # Reviewer Badge Approval vertical taxonomy hierarchy
+        self.ctrl.handle_event("nav_guardian", "g_badge_approval")
+        approval_html = self.ctrl.render()
+        self.assertIn("lg-hier-tree", approval_html)
+        self.assertIn("Power :", approval_html)
+        self.assertIn("Capability :", approval_html)
+        self.assertIn("Skill :", approval_html)
+
+        # Mapping card section sizing
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        mapping_html = self.ctrl.render()
+        self.assertIn("Badge Requests &amp; Mappings &bull; Band B1", mapping_html)
+
+        # Allotment cards visualization
+        self.ctrl.handle_event("nav_guardian", "g_allotment")
+        allot_html = self.ctrl.render()
+        self.assertIn("lg-allot-section-header", allot_html)
+        self.assertIn("lg-allot-card", allot_html)
+        self.assertIn("lg-allot-meta-cell", allot_html)
+        self.assertIn("lg-hier-tree", allot_html)
+
+        # Clicking Portal Pillars returns from band workspace to 6 Band Cards view
+        self.ctrl.handle_event("nav_guardian", "g_learning")
+        self.assertEqual(self.ctrl.current_view, "g_learning")
+        self.assertIsNone(self.ctrl.create_badge_band)
+        bands_html = self.ctrl.render()
+        self.assertIn("band-selection-hidden", bands_html)
+        self.assertIn("Trainee", bands_html)
+        self.assertIn("Principal", bands_html)
 
 if __name__ == "__main__":
     unittest.main()

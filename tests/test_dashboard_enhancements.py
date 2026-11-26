@@ -21,13 +21,18 @@ class TestDashboardEnhancements(unittest.TestCase):
         demos = get_dashboard_demo_cosmonauts()
         self.assertEqual(len(demos), 0)
 
-        # Verify login view contains the designated direct demo logins
+        # Verify login view contains Email+Password inputs and 6-band + CEO Guardian Quick Login pills
         login_html = self.app.render_login_view()
-        self.assertIn("Ananya Iyer - B1", login_html)
-        self.assertIn("Nisha Menon - B2", login_html)
-        self.assertIn("Tanvi Shah - B3", login_html)
-        self.assertIn("Arjun Mehta (CEO)", login_html)
-        self.assertIn("Aarav Sharma - B1", login_html)
+        self.assertIn('id="login-email"', login_html)
+        self.assertIn('id="login-password"', login_html)
+        self.assertIn("Ananya Iyer", login_html)
+        self.assertIn("Nisha Menon", login_html)
+        self.assertIn("Tanvi Shah", login_html)
+        self.assertIn("Rajiv Menon", login_html)
+        self.assertIn("Anirudh Krishnan", login_html)
+        self.assertIn("Devika Narayanan", login_html)
+        self.assertIn("Arjun Mehta", login_html)
+        self.assertIn("CEO · Guardian", login_html)
 
     def test_cosmonaut_dashboard_personalization_and_privacy(self):
         """Verify Aarav Sharma sees his actual data and zero fake demo data."""

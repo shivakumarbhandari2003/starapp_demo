@@ -6,20 +6,21 @@
  * 3. StarApp JavaScript bridge and Python bundle
  */
 
-const CACHE_NAME = "starapp-runtime-cache-v2";
+const CACHE_NAME = "starapp-runtime-cache-v16";
 const PYODIDE_CACHE_NAME = "starapp-pyodide-v0.26.2";
 
 // Static core assets to pre-cache on service worker install
 const CORE_STATIC_ASSETS = [
   "./",
   "./index.html",
-  "./css/design_tokens.css?v=9",
-  "./css/liquid_glass.css?v=9",
-  "./css/layout.css?v=9",
-  "./css/components.css?v=9",
-  "./css/responsive.css?v=9",
-  "./js/bridge.js?v=9",
-  "./js/starapp_bundle.js?v=9"
+  "./css/design_tokens.css?v=23",
+  "./css/liquid_glass.css?v=23",
+  "./css/layout.css?v=23",
+  "./css/components.css?v=23",
+  "./css/responsive.css?v=23",
+  "./js/api.js?v=23",
+  "./js/bridge.js?v=23",
+  "./js/starapp_bundle.js?v=23"
 ];
 
 // Install: Cache local static assets
@@ -76,12 +77,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. Local StarApp assets: Network-First strategy (always get latest live files)
+  // 2. Local StarApp assets: Network-First with cache:"no-store" so F5 always pulls latest live edits
   if (url.origin === self.location.origin) {
-    if (event.request.method !== "GET") return;
+    if (event.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
 
     event.respondWith(
-      fetch(event.request).then((networkResponse) => {
+      fetch(event.request, { cache: "no-store" }).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const resClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));

@@ -428,8 +428,8 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
             all_band_mappings=store.get_band_mappings(),
             all_timelines=store.timelines
         )
-        self.assertIn("Mapped Evaluation Personnel", allotment_html)
-        self.assertIn("Active Mapped Badge Allocations", allotment_html)
+        self.assertIn("Timeline &amp; Mapping", allotment_html)
+        self.assertIn("Reviewer", allotment_html)
 
         # 3. Reviewer logs in & opens timeline modal and project creator modal
         self.ctrl.handle_event("select_demo_account", reviewer_id)
