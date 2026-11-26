@@ -150,7 +150,10 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # Section 1: Outcomes
         self.assertIn("badge-section-outcomes", html)
         self.assertIn("Outcomes (4)", html)
-        self.assertIn("✓", html)
+        # Emoji / dingbat glyphs are rendered as professional vector icons (iconize_html), never as raw characters
+        outcomes_html = html.split("badge-section-outcomes", 1)[1][:6000]
+        self.assertIn("<svg", outcomes_html)
+        self.assertNotIn("✓", html)
 
         # Section 2: Earn the Badge (before project allocation)
         self.assertIn("badge-section-earn", html)

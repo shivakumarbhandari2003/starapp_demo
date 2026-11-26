@@ -37,6 +37,10 @@ except ImportError:
     UserRepository = BadgeRepository = TimelineRepository = AssessmentRepository = None
     MappingRepository = MaterialRepository = ExtensionRepository = AnnouncementRepository = None
 
+class StorageWriteError(RuntimeError):
+    """Raised when a database write fails; the in-memory cache has been invalidated."""
+
+
 _ACTIVE_READ_CYCLE_CTX: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("starapp_read_cycle_id", default=None)
 
 class DataStore:
@@ -75,14 +79,169 @@ class DataStore:
         self.dirty: bool = False
         self._cached_json: Optional[str] = None
 
+        # --- Scale layer (see STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md) ---
+        # Secondary in-memory indexes (cosmonaut / submission / reviewer lookups) so that
+        # per-user reads are O(1) instead of scanning every row of every user.
+        self._learning_version: int = 0
+        self._ix: Optional[Dict[str, Any]] = None
+        self._ix_stamp_val: Optional[tuple] = None
+        # Fingerprint-gated memo caches (invalidated by ANY write on this or another connection).
+        self._memo: Dict[str, Tuple[Any, Any]] = {}
+        self._cycle_tables_dv: Optional[int] = None
+        self._loaded_data_version: Optional[int] = None
+        self._cycle_appraisal_ix: Dict[Tuple[str, str], CyclePerformanceAppraisal] = {}
+        self._feed_rowids: Dict[str, int] = {"notifications": 0, "activity_events": 0}
+
         # Auto-load existing authoritative SQLite state if available
         try:
             if self.db and self.db.conn:
                 row = self.db.conn.execute("SELECT COUNT(*) FROM users").fetchone()
                 if row and row[0] > 0:
-                    exported = self.db.export_to_dict()
+                    exported = self.db.export_to_dict(include_blobs=False)
                     if exported.get("users"):
                         self.load_from_dict(exported)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Scale layer: fingerprints, memoisation and secondary indexes
+    # ------------------------------------------------------------------
+    def _write_failed(self, what: str, exc: Exception):
+        """
+        A failed database write must NEVER look like a success. Previously every save method printed the
+        error and carried on, leaving memory and SQLite silently out of sync (e.g. a "database is locked"
+        made a grade or submission vanish after the next reload). Roll back, drop derived caches and raise.
+        """
+        import logging
+        logging.getLogger("starapp.storage").error("Write failed (%s): %s", what, exc)
+        try:
+            self.db.conn.rollback()
+        except Exception:
+            pass
+        self._invalidate_indexes()
+        raise StorageWriteError(f"{what}: {exc}") from exc
+
+    def resync_from_database(self):
+        """Discards in-memory state and reloads it from SQLite (used after a failed write)."""
+        self._loaded_data_version = None
+        self.load_from_dict(self.db.export_to_dict(include_blobs=False))
+
+    def _db_fingerprint(self) -> Tuple[Any, Any]:
+        """
+        Cheap fingerprint that changes on EVERY write to the database:
+        `data_version` moves for writes made by other connections (REST routers, scripts) and
+        `total_changes` moves for writes made on this connection.
+        """
+        try:
+            conn = self.db.conn
+            return (conn.execute("PRAGMA data_version").fetchone()[0], conn.total_changes)
+        except Exception:
+            return (None, None)
+
+    def _memoized(self, key: str, builder, extra: Any = None, scope: str = "all"):
+        """
+        Returns builder() cached until the data it depends on changes.
+          scope="all"      invalidated by ANY write on this or another connection;
+          scope="learning" invalidated only by learning-data writes (see mark_dirty) or by another
+                           connection changing the database (PRAGMA data_version).
+        """
+        if scope == "learning":
+            stamp = (self._learning_version, self._db_fingerprint()[0], extra)
+        else:
+            stamp = (self.version, self._db_fingerprint(), extra)
+        hit = self._memo.get(key)
+        if hit is not None and hit[0] == stamp:
+            return hit[1]
+        value = builder()
+        self._memo[key] = (stamp, value)
+        return value
+
+    def _ix_stamp(self) -> tuple:
+        # id() detects whole-collection replacement (tests / reset flows); len() detects direct add/remove.
+        return (
+            id(self.submissions), len(self.submissions),
+            id(self.assessments), len(self.assessments),
+            id(self.extensions), len(self.extensions),
+            id(self.timelines), len(self.timelines),
+            id(self.notifications), len(self.notifications),
+            id(self.activities), len(self.activities),
+        )
+
+    def _ensure_ix(self) -> Dict[str, Any]:
+        """Builds (or incrementally keeps) the per-cosmonaut / per-submission / per-reviewer indexes."""
+        stamp = self._ix_stamp()
+        if self._ix is not None and self._ix_stamp_val == stamp:
+            return self._ix
+        ix: Dict[str, Any] = {
+            "subs_by_cosmo": {}, "asms_by_cosmo": {}, "asms_by_sub": {}, "exts_by_cosmo": {},
+            "tl_by_cosmo": {}, "tl_by_reviewer": {}, "tl_reviewer_of": {},
+            "notifs_by_user": {}, "acts_by_person": {},
+        }
+        for s in self.submissions.values():
+            ix["subs_by_cosmo"].setdefault(s.cosmonaut_id, {})[s.id] = s
+        for a in self.assessments.values():
+            ix["asms_by_cosmo"].setdefault(a.cosmonaut_id, {})[a.id] = a
+            ix["asms_by_sub"].setdefault(a.submission_id, {})[a.id] = a
+        for e in self.extensions.values():
+            ix["exts_by_cosmo"].setdefault(e.cosmonaut_id, {})[e.id] = e
+        for k, t in self.timelines.items():
+            ix["tl_by_cosmo"].setdefault(t.cosmonaut_id, {})[k] = t
+            rid = getattr(t, "reviewer_id", "") or ""
+            ix["tl_by_reviewer"].setdefault(rid, {})[k] = t
+            ix["tl_reviewer_of"][k] = rid
+        for n in self.notifications:
+            ix["notifs_by_user"].setdefault(n.recipient_id, []).append(n)
+        for act in self.activities:
+            ix["acts_by_person"].setdefault(act.cosmonaut_id, []).append(act)
+            if act.actor_id and act.actor_id != act.cosmonaut_id:
+                ix["acts_by_person"].setdefault(act.actor_id, []).append(act)
+        self._ix = ix
+        self._ix_stamp_val = stamp
+        return ix
+
+    def _ix_commit(self):
+        """Marks the index as consistent with the main collections after an incremental update."""
+        self._ix_stamp_val = self._ix_stamp()
+
+    def _invalidate_indexes(self):
+        self._ix = None
+        self._ix_stamp_val = None
+        self._memo.clear()
+
+    def _sync_feed_tables(self):
+        """
+        Pulls only NEW notification / activity rows (rowid watermark) written by db-level workflows
+        (badge create/approve/return) instead of re-exporting the entire database twice per action.
+        """
+        conn = self.db.conn
+        known_n = {n.id for n in self.notifications}
+        known_a = {a.id for a in self.activities}
+        try:
+            rows = conn.execute(
+                "SELECT rowid AS _rid, * FROM notifications WHERE rowid > ?", (self._feed_rowids["notifications"],)
+            ).fetchall()
+            for r in rows:
+                d = dict(r)
+                self._feed_rowids["notifications"] = max(self._feed_rowids["notifications"], d.pop("_rid"))
+                if d["id"] not in known_n:
+                    self.notifications.insert(0, Notification.from_dict(d))
+            rows = conn.execute(
+                "SELECT rowid AS _rid, * FROM activity_events WHERE rowid > ?", (self._feed_rowids["activity_events"],)
+            ).fetchall()
+            for r in rows:
+                d = dict(r)
+                self._feed_rowids["activity_events"] = max(self._feed_rowids["activity_events"], d.pop("_rid"))
+                if d["id"] not in known_a:
+                    self.activities.insert(0, ActivityEvent.from_dict(d))
+        except Exception as e:
+            print(f"[DataStore] feed sync error: {e}")
+        self._invalidate_indexes()
+
+    def _reset_feed_watermarks(self):
+        try:
+            for t in ("notifications", "activity_events"):
+                row = self.db.conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()
+                self._feed_rowids[t] = int(row[0] or 0)
         except Exception:
             pass
 
@@ -122,9 +281,17 @@ class DataStore:
             return ctx_cid
         return self.get_active_cycle_id()
 
-    def mark_dirty(self):
-        """Flags store as modified to trigger targeted SQLite export and persistence."""
+    def mark_dirty(self, learning: bool = True):
+        """
+        Flags store as modified to trigger targeted SQLite export and persistence.
+
+        `learning=False` is used for high-churn feed writes (notifications / activity / read receipts) that
+        cannot change any badge, timeline, submission, assessment or appraisal figure, so expensive
+        cohort-level caches are NOT thrown away every time somebody receives a notification.
+        """
         self.version += 1
+        if learning:
+            self._learning_version += 1
         self.dirty = True
         self._cached_json = None
 
@@ -143,6 +310,8 @@ class DataStore:
             self.timelines[f"{tl.badge_id}_{tl.cosmonaut_id}"] = tl
 
         self.submissions = {s["id"]: ProjectSubmission.from_dict(s) for s in data.get("submissions", [])}
+        for _sub in self.submissions.values():
+            _sub._loader = self._load_submission_blobs
         self.assessments = {a["id"]: AssessmentMarksheet.from_dict(a) for a in data.get("assessments", [])}
         self.materials = {m["id"]: LearningMaterial.from_dict(m) for m in data.get("materials", [])}
         self.extensions = {e["id"]: DeadlineExtension.from_dict(e) for e in data.get("extensions", [])}
@@ -163,6 +332,23 @@ class DataStore:
         self.version += 1
         self.dirty = False
         self._cached_json = None
+        self._cycle_tables_dv = None
+        self._cycle_appraisal_ix = {}
+        self._invalidate_indexes()
+        self._reset_feed_watermarks()
+        try:
+            self._loaded_data_version = self.db.conn.execute("PRAGMA data_version").fetchone()[0]
+        except Exception:
+            self._loaded_data_version = None
+
+    def _load_submission_blobs(self, sub_id: str) -> Dict[str, str]:
+        """Fetches the heavy payload columns of ONE submission on demand."""
+        row = self.db.conn.execute(
+            "SELECT payload, pdf_payload, code_payload FROM project_submissions WHERE id = ?", (sub_id,)
+        ).fetchone()
+        if not row:
+            return {}
+        return {"payload": row[0] or "", "pdf_payload": row[1] or "", "code_payload": row[2] or ""}
 
     def to_dict(self) -> Dict[str, Any]:
         """Returns structured dictionary representation from SQLite authoritative state."""
@@ -189,7 +375,7 @@ class DataStore:
         if sqlite_b64 and sqlite_b64.strip():
             try:
                 self.db.import_base64(sqlite_b64)
-                data = self.db.export_to_dict()
+                data = self.db.export_to_dict(include_blobs=False)
                 if data.get("users"):
                     self.load_from_dict(data)
                     return
@@ -202,18 +388,28 @@ class DataStore:
                 data = json.loads(json_str)
                 # Migrate JSON into SQLite
                 self.db.migrate_from_dict(data)
-                exported = self.db.export_to_dict()
+                exported = self.db.export_to_dict(include_blobs=False)
                 self.load_from_dict(exported)
                 return
             except Exception as e:
                 print(f"[DataStore] Failed to migrate from JSON snapshot: {e}, resetting to seed.")
 
         # 3. Check if existing authoritative SQLite database already has records
+        # PERFORMANCE: every new browser tab / login calls initialize() -> load_from_json(None, None).
+        # The store is a process-wide singleton that already mirrors the database, so reloading the
+        # ENTIRE database (and replacing every cached object) per tab is wasted work and also detaches
+        # objects other sessions are holding. Reload only when another connection changed the database.
+        if self.is_loaded and self.users and not (json_str and json_str.strip()) and not (sqlite_b64 and sqlite_b64.strip()):
+            try:
+                if self._loaded_data_version == self.db.conn.execute("PRAGMA data_version").fetchone()[0]:
+                    return
+            except Exception:
+                pass
         try:
             if self.db and self.db.conn:
                 row = self.db.conn.execute("SELECT COUNT(*) FROM users").fetchone()
                 if row and row[0] > 0:
-                    exported = self.db.export_to_dict()
+                    exported = self.db.export_to_dict(include_blobs=False)
                     if exported.get("users"):
                         self.load_from_dict(exported)
                         return
@@ -230,7 +426,7 @@ class DataStore:
         self.db.clear_all_tables()
         seed_data = get_initial_seed_data()
         self.db.migrate_from_dict(seed_data)
-        exported = self.db.export_to_dict()
+        exported = self.db.export_to_dict(include_blobs=False)
         self.load_from_dict(exported)
         if self.get_cycle("cycle_0") and not self.get_cycle_appraisals("cycle_0"):
             from starapp.cycles import calculate_and_save_cycle_appraisals
@@ -241,7 +437,7 @@ class DataStore:
                     app_obj.finalized_by = "guardian_1"
                     app_obj.finalized_at = "2026-06-30T18:00:00Z"
                     self.save_cycle_appraisal(app_obj)
-            self.load_from_dict(self.db.export_to_dict())
+            self.load_from_dict(self.db.export_to_dict(include_blobs=False))
         self.mark_dirty()
 
     # --- Users & Profiles ---
@@ -454,10 +650,21 @@ class DataStore:
 
     def get_all_cosmonauts(self) -> List[User]:
         # All members across B1 to B6 are cosmonauts/cadets
-        return [
-            u for u in self.users.values()
-            if u.role in ("cosmonaut", "cadet") or "cosmonaut" in getattr(u, "roles", []) or "cadet" in getattr(u, "roles", []) or (u.id != "guardian_1" and getattr(u, "band", "") in ("B1", "B2", "B3", "B4", "B5", "B6"))
-        ]
+        def build():
+            # Guardians / admins administer the Academy; they are not cadets and must not appear in the
+            # cohort, leaderboard, "enrolled cadets" or appraisal counts (the admin account used to, as B6).
+            def is_guardian(u):
+                roles = set(getattr(u, "roles", []) or []) | {u.role}
+                return bool(roles & {"guardian", "admin"}) and "cosmonaut" not in roles
+
+            return [
+                u for u in self.users.values()
+                if not is_guardian(u) and (
+                    u.role in ("cosmonaut", "cadet") or "cosmonaut" in getattr(u, "roles", []) or "cadet" in getattr(u, "roles", [])
+                    or (u.id != "guardian_1" and getattr(u, "band", "") in ("B1", "B2", "B3", "B4", "B5", "B6"))
+                )
+            ]
+        return list(self._memoized("all_cosmonauts", build, extra=len(self.users), scope="learning"))
 
     def get_all_users(self) -> List[User]:
         return list(self.users.values())
@@ -477,8 +684,12 @@ class DataStore:
         with self.db.conn:
             self.db.conn.execute(
                 """
-                INSERT OR REPLACE INTO users (id, username, email, name, band, password, primary_role, avatar, status, is_demo, created_at)
+                INSERT INTO users (id, username, email, name, band, password, primary_role, avatar, status, is_demo, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    username = excluded.username, email = excluded.email, name = excluded.name,
+                    band = excluded.band, password = excluded.password,
+                    primary_role = excluded.primary_role, avatar = excluded.avatar
                 """,
                 (
                     user.id,
@@ -541,24 +752,52 @@ class DataStore:
                     self.db.conn.execute("UPDATE user_band_memberships SET band_code = ? WHERE user_id = ?", (band_code, user_id))
                 self.db.conn.commit()
             except Exception as e:
-                print(f"Error updating user band: {e}")
+                self._write_failed("updating user band", e)
         self.mark_dirty()
 
     # --- 6-Month Performance Cycles, Enrollments & Appraisals ---
+    def _sync_cycle_tables(self):
+        """
+        Reloads cycles / enrollments / appraisals from SQLite ONLY when another connection changed the
+        database (PRAGMA data_version). Writes made through this store already update the caches, so
+        the previous behaviour of re-querying three tables on every single call is no longer needed.
+        """
+        conn = getattr(self.db, "conn", None)
+        if conn is None:
+            return
+        try:
+            dv = conn.execute("PRAGMA data_version").fetchone()[0]
+        except Exception:
+            return
+        if self._cycle_tables_dv == dv:
+            return
+        try:
+            cycles = {}
+            for r in conn.execute("SELECT * FROM performance_cycles ORDER BY start_date DESC, created_at DESC").fetchall():
+                d = dict(r)
+                cycles[d["id"]] = PerformanceCycle.from_dict(d)
+            enrollments = {}
+            for r in conn.execute("SELECT * FROM cycle_enrollments").fetchall():
+                e = CycleEnrollment.from_dict(dict(r))
+                enrollments[e.id] = e
+            appraisals = {}
+            for r in conn.execute("SELECT * FROM cycle_performance_appraisals").fetchall():
+                a = CyclePerformanceAppraisal.from_dict(dict(r))
+                appraisals[a.id] = a
+            self.cycles, self.cycle_enrollments, self.cycle_appraisals = cycles, enrollments, appraisals
+            self._cycle_appraisal_ix = {(a.cycle_id, a.cosmonaut_id): a for a in appraisals.values()}
+            self._cycle_tables_dv = dv
+        except Exception:
+            pass
+
     def get_all_cycles(self) -> List[PerformanceCycle]:
-        if self.db and getattr(self.db, "conn", None):
-            try:
-                rows = self.db.conn.execute("SELECT * FROM performance_cycles ORDER BY start_date DESC, created_at DESC").fetchall()
-                for r in rows:
-                    d = dict(r)
-                    self.cycles[d["id"]] = PerformanceCycle.from_dict(d)
-            except Exception:
-                pass
+        self._sync_cycle_tables()
         return sorted(self.cycles.values(), key=lambda c: (getattr(c, "start_date", ""), getattr(c, "created_at", "")), reverse=True)
 
     def get_cycle(self, cycle_id: str) -> Optional[PerformanceCycle]:
         if not cycle_id:
             return None
+        self._sync_cycle_tables()
         if cycle_id in self.cycles:
             return self.cycles[cycle_id]
         if self.db and getattr(self.db, "conn", None):
@@ -579,10 +818,15 @@ class DataStore:
                 with self.db.conn:
                     self.db.conn.execute(
                         """
-                        INSERT OR REPLACE INTO performance_cycles (
+                        INSERT INTO performance_cycles (
                             id, code, name, start_date, end_date, status, created_by,
                             created_at, closed_at, cloned_from_cycle_id, hike_policy_json, notes
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            code = excluded.code, name = excluded.name, start_date = excluded.start_date,
+                            end_date = excluded.end_date, status = excluded.status, created_by = excluded.created_by,
+                            closed_at = excluded.closed_at, cloned_from_cycle_id = excluded.cloned_from_cycle_id,
+                            hike_policy_json = excluded.hike_policy_json, notes = excluded.notes
                         """,
                         (
                             cyc.id, cyc.code, cyc.name, cyc.start_date, cyc.end_date,
@@ -592,20 +836,18 @@ class DataStore:
                     )
                 self.db.conn.commit()
             except Exception as e:
-                print(f"Error saving performance cycle: {e}")
+                self._write_failed("saving performance cycle", e)
         self.mark_dirty()
 
     def get_cycle_enrollments(self, cycle_id: Optional[str] = None) -> List[CycleEnrollment]:
         cid = self.get_effective_read_cycle_id(cycle_id)
-        if self.db and getattr(self.db, "conn", None):
-            try:
-                rows = self.db.conn.execute("SELECT * FROM cycle_enrollments WHERE cycle_id = ?", (cid,)).fetchall()
-                for r in rows:
-                    enr = CycleEnrollment.from_dict(dict(r))
-                    self.cycle_enrollments[enr.id] = enr
-            except Exception:
-                pass
-        return [e for e in self.cycle_enrollments.values() if e.cycle_id == cid]
+        self._sync_cycle_tables()
+        grouped = self._memoized(
+            "enrollments_by_cycle",
+            lambda: self._group_by_cycle(self.cycle_enrollments.values()),
+            extra=len(self.cycle_enrollments), scope="learning",
+        )
+        return list(grouped.get(cid, []))
 
     def save_cycle_enrollment(self, enr: CycleEnrollment):
         self.cycle_enrollments[enr.id] = enr
@@ -627,32 +869,41 @@ class DataStore:
                     )
                 self.db.conn.commit()
             except Exception as e:
-                print(f"Error saving cycle enrollment: {e}")
+                self._write_failed("saving cycle enrollment", e)
         self.mark_dirty()
 
     def get_cycle_appraisals(self, cycle_id: Optional[str] = None) -> List[CyclePerformanceAppraisal]:
         cid = self.get_effective_read_cycle_id(cycle_id)
-        if self.db and getattr(self.db, "conn", None):
-            try:
-                rows = self.db.conn.execute(
-                    "SELECT * FROM cycle_performance_appraisals WHERE cycle_id = ? ORDER BY composite_score DESC",
-                    (cid,)
-                ).fetchall()
-                for r in rows:
-                    app_obj = CyclePerformanceAppraisal.from_dict(dict(r))
-                    self.cycle_appraisals[app_obj.id] = app_obj
-            except Exception:
-                pass
-        return sorted([a for a in self.cycle_appraisals.values() if a.cycle_id == cid], key=lambda x: x.composite_score, reverse=True)
+        self._sync_cycle_tables()
+        grouped = self._memoized(
+            "appraisals_by_cycle",
+            lambda: self._group_by_cycle(self.cycle_appraisals.values()),
+            extra=len(self.cycle_appraisals), scope="learning",
+        )
+        return sorted(grouped.get(cid, []), key=lambda x: x.composite_score, reverse=True)
+
+    @staticmethod
+    def _group_by_cycle(items) -> Dict[str, List[Any]]:
+        grouped: Dict[str, List[Any]] = {}
+        for it in items:
+            grouped.setdefault(it.cycle_id, []).append(it)
+        return grouped
 
     def get_cycle_appraisal(self, cycle_id: str, user_id: str) -> Optional[CyclePerformanceAppraisal]:
-        for a in self.get_cycle_appraisals(cycle_id):
-            if a.cosmonaut_id == user_id:
+        """O(1) lookup (previously loaded + sorted EVERY appraisal of the cycle for each single user)."""
+        self._sync_cycle_tables()
+        hit = self._cycle_appraisal_ix.get((cycle_id, user_id))
+        if hit is not None and self.cycle_appraisals.get(hit.id) is hit:
+            return hit
+        for a in self.cycle_appraisals.values():
+            if a.cycle_id == cycle_id and a.cosmonaut_id == user_id:
+                self._cycle_appraisal_ix[(cycle_id, user_id)] = a
                 return a
         return None
 
     def save_cycle_appraisal(self, app_obj: CyclePerformanceAppraisal):
         self.cycle_appraisals[app_obj.id] = app_obj
+        self._cycle_appraisal_ix[(app_obj.cycle_id, app_obj.cosmonaut_id)] = app_obj
         if self.db and getattr(self.db, "conn", None):
             try:
                 with self.db.conn:
@@ -688,12 +939,27 @@ class DataStore:
                     )
                 self.db.conn.commit()
             except Exception as e:
-                print(f"Error saving cycle appraisal: {e}")
+                self._write_failed("saving cycle appraisal", e)
         self.mark_dirty()
 
     # --- Badges ---
     def get_all_badges(self, cycle_id: Optional[str] = None) -> List[Badge]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
+        fp = self._db_fingerprint()
+        if getattr(self, "_badge_sync_fp", None) != (fp, self.version):
+            self._sync_badges_from_db()
+            self._badge_sync_fp = (fp, self.version)
+        grouped = self._memoized("badges_by_cycle", self._group_badges_by_cycle, extra=len(self.badges), scope="learning")
+        return list(grouped.get(target_cid, []))
+
+    def _group_badges_by_cycle(self) -> Dict[str, List[Badge]]:
+        grouped: Dict[str, List[Badge]] = {}
+        for b in self.badges.values():
+            grouped.setdefault(getattr(b, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID, []).append(b)
+        return grouped
+
+    def _sync_badges_from_db(self):
+        """Merges rows written by other connections / db-level workflows into the in-memory badge cache."""
         if self.db and self.db.conn:
             try:
                 rows = self.db.conn.execute("SELECT * FROM badges").fetchall()
@@ -767,7 +1033,6 @@ class DataStore:
                         )
             except Exception:
                 pass
-        return [b for b in self.badges.values() if (getattr(b, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
 
     def get_badge(self, badge_id: str) -> Optional[Badge]:
         if not badge_id:
@@ -914,60 +1179,67 @@ class DataStore:
                 self.db.conn.commit()
         self.mark_dirty()
 
-    def get_badges_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[Badge]:
-        target_cid = self.get_effective_read_cycle_id(cycle_id)
-        target_ids = {cosmo_id}
-
-        # 1. Collect badge IDs from in-memory timelines within target cycle
-        mapped_badge_ids = set()
-        for t in self.timelines.values():
-            if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid and getattr(t, "cosmonaut_id", "") in target_ids:
-                mapped_badge_ids.add(t.badge_id)
-
-        # 2. Collect badge IDs from SQLite badge_timelines table within target cycle
-        if self.db and getattr(self.db, "conn", None):
+    def _cosmo_badge_map(self, target_cid: str):
+        """
+        Per-cycle lookup tables built ONCE per data change:
+          mapped   : cosmonaut_id -> badge ids reached through timelines / badge_timelines / band_mappings
+          assigned : cosmonaut_id -> badge ids directly listed in Badge.assigned_cosmonaut_ids
+        Previously every call re-scanned all timelines, ran a SQL query and looped every mapping x badge.
+        """
+        def build():
+            cycle_badges = self.get_all_badges(cycle_id=target_cid)
+            mapped: Dict[str, set] = {}
+            for t in self.timelines.values():
+                if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid:
+                    mapped.setdefault(t.cosmonaut_id, set()).add(t.badge_id)
+            if self.db and getattr(self.db, "conn", None):
+                try:
+                    for r in self.db.conn.execute(
+                        "SELECT cosmonaut_id, badge_id FROM badge_timelines WHERE cycle_id = ?", (target_cid,)
+                    ).fetchall():
+                        mapped.setdefault(r[0], set()).add(r[1])
+                except Exception:
+                    pass
+            ref_to_ids: Dict[str, List[str]] = {}
+            for b in cycle_badges:
+                for ref in {b.title, b.code, b.id}:
+                    ref_to_ids.setdefault(ref, []).append(b.id)
             try:
-                placeholders = ",".join(["?"] * len(target_ids))
-                rows = self.db.conn.execute(
-                    f"SELECT badge_id FROM badge_timelines WHERE cycle_id = ? AND cosmonaut_id IN ({placeholders})",
-                    [target_cid] + list(target_ids)
-                ).fetchall()
-                for r in rows:
-                    mapped_badge_ids.add(r[0])
+                for m in self.get_band_mappings(cycle_id=target_cid):
+                    ids = ref_to_ids.get(m.get("badge", ""), [])
+                    if ids:
+                        for cid in m.get("cosmonauts", []):
+                            mapped.setdefault(cid, set()).update(ids)
             except Exception:
                 pass
+            assigned: Dict[str, set] = {}
+            for b in cycle_badges:
+                for cid in getattr(b, "assigned_cosmonaut_ids", []):
+                    assigned.setdefault(cid, set()).add(b.id)
+            return mapped, assigned, cycle_badges
 
-        cycle_badges = self.get_all_badges(cycle_id=target_cid)
+        return self._memoized(f"cosmo_badge_map:{target_cid}", build, extra=(len(self.timelines), len(self.band_mappings)), scope="learning")
 
-        # 3. Collect badge IDs from band_mappings within target cycle
-        try:
-            mappings = self.get_band_mappings(cycle_id=target_cid)
-            for m in mappings:
-                m_cosmonauts = m.get("cosmonauts", [])
-                if any(cid in m_cosmonauts for cid in target_ids):
-                    b_ref = m.get("badge", "")
-                    for b in cycle_badges:
-                        if b.title == b_ref or b.code == b_ref or b.id == b_ref:
-                            mapped_badge_ids.add(b.id)
-        except Exception:
-            pass
-
-        # 4. Filter badges: direct assignment or mapped within target cycle (must be published, or already certified)
+    def get_badges_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[Badge]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        mapped, assigned, cycle_badges = self._cosmo_badge_map(target_cid)
+        ids_mapped = mapped.get(cosmo_id)
+        ids_assigned = assigned.get(cosmo_id)
+        if not ids_mapped and not ids_assigned:
+            return []
         approved_hist_ids = {
             a.badge_id
             for a in self.get_assessments_for_cosmonaut(cosmo_id, cycle_id=target_cid)
             if getattr(a, "decision", "") == "approve"
         }
-        result = []
-        for b in cycle_badges:
-            if not getattr(b, "is_published", False) and b.id not in approved_hist_ids:
-                continue
-            is_assigned = any(cid in getattr(b, "assigned_cosmonaut_ids", []) for cid in target_ids)
-            is_mapped = b.id in mapped_badge_ids
-            if is_assigned or is_mapped:
-                if b not in result:
-                    result.append(b)
-        return result
+        ids_mapped = ids_mapped or set()
+        ids_assigned = ids_assigned or set()
+        # Only published badges (or ones already certified) are visible to the cosmonaut.
+        return [
+            b for b in cycle_badges
+            if (getattr(b, "is_published", False) or b.id in approved_hist_ids)
+            and (b.id in ids_assigned or b.id in ids_mapped)
+        ]
 
     # --- Timelines ---
     def get_timelines_dict(self, cycle_id: Optional[str] = None) -> Dict[str, BadgeTimeline]:
@@ -976,6 +1248,40 @@ class DataStore:
             k: t for k, t in self.timelines.items()
             if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
         }
+
+    def get_timelines_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[BadgeTimeline]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return [
+            t for t in self._ensure_ix()["tl_by_cosmo"].get(cosmo_id, {}).values()
+            if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
+
+    def get_timelines_for_reviewer(self, reviewer_id: str, cycle_id: Optional[str] = None) -> List[BadgeTimeline]:
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        return [
+            t for t in self._ensure_ix()["tl_by_reviewer"].get(reviewer_id, {}).values()
+            if (getattr(t, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
+
+    def get_reviewer_submissions(self, reviewer_id: str, cycle_id: Optional[str] = None) -> List[ProjectSubmission]:
+        """
+        Submissions of the cadets a reviewer is responsible for: (badge, cadet) pairs whose timeline names the
+        reviewer, OR any cadet listed together with the reviewer in a band mapping. Touches only those
+        cadets' own submissions (indexed) instead of scanning every submission of the cycle.
+        """
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        pairs = {(t.badge_id, t.cosmonaut_id) for t in self.get_timelines_for_reviewer(reviewer_id, cycle_id=target_cid)}
+        mapped_cadets = set()
+        for m in self.get_band_mappings(cycle_id=target_cid):
+            if reviewer_id in (m.get("reviewers") or []):
+                mapped_cadets.update(m.get("cosmonauts") or [])
+        cadets = mapped_cadets | {c for _, c in pairs}
+        result: List[ProjectSubmission] = []
+        for cadet in cadets:
+            for sub in self.get_submissions_for_cosmonaut(cadet, cycle_id=target_cid):
+                if cadet in mapped_cadets or (sub.badge_id, cadet) in pairs:
+                    result.append(sub)
+        return result
 
     def get_timeline(self, badge_id: str, cosmo_id: str) -> Optional[BadgeTimeline]:
         key = f"{badge_id}_{cosmo_id}"
@@ -997,7 +1303,16 @@ class DataStore:
             b_obj = self.get_badge(timeline.badge_id)
             timeline.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         key = f"{timeline.badge_id}_{timeline.cosmonaut_id}"
+        ix = self._ensure_ix()
         self.timelines[key] = timeline
+        ix["tl_by_cosmo"].setdefault(timeline.cosmonaut_id, {})[key] = timeline
+        old_rid = ix["tl_reviewer_of"].get(key)
+        new_rid = getattr(timeline, "reviewer_id", "") or ""
+        if old_rid is not None and old_rid != new_rid:
+            ix["tl_by_reviewer"].get(old_rid, {}).pop(key, None)
+        ix["tl_by_reviewer"].setdefault(new_rid, {})[key] = timeline
+        ix["tl_reviewer_of"][key] = new_rid
+        self._ix_commit()
         try:
             with self.db.conn:
                 self.db.conn.execute(
@@ -1031,17 +1346,22 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error saving timeline: {e}")
+            self._write_failed("saving timeline", e)
         self.mark_dirty()
 
     # --- Submissions ---
     def get_all_submissions(self, cycle_id: Optional[str] = None) -> List[ProjectSubmission]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
-        return sorted(
-            [s for s in self.submissions.values() if (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
-            key=lambda s: s.submitted_at,
-            reverse=True
-        )
+
+        def build():
+            return sorted(
+                [s for s in self.submissions.values() if (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+                key=lambda s: s.submitted_at,
+                reverse=True
+            )
+        # Cached per cycle until learning data changes (every page render used to filter + sort ALL rows).
+        return list(self._memoized(f"all_submissions:{target_cid}", build,
+                                   extra=(id(self.submissions), len(self.submissions)), scope="learning"))
 
     def get_submission(self, sub_id: str) -> Optional[ProjectSubmission]:
         if sub_id in self.submissions:
@@ -1060,8 +1380,8 @@ class DataStore:
     def get_submissions_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[ProjectSubmission]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
         subs = [
-            s for s in self.submissions.values()
-            if s.cosmonaut_id == cosmo_id and (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+            s for s in self._ensure_ix()["subs_by_cosmo"].get(cosmo_id, {}).values()
+            if (getattr(s, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
         ]
         if badge_id:
             subs = [s for s in subs if s.badge_id == badge_id]
@@ -1071,8 +1391,26 @@ class DataStore:
         if not getattr(sub, "cycle_id", "") or sub.cycle_id == DEFAULT_CYCLE_ID:
             b_obj = self.get_badge(sub.badge_id)
             sub.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        ix = self._ensure_ix()
         self.submissions[sub.id] = sub
+        ix["subs_by_cosmo"].setdefault(sub.cosmonaut_id, {})[sub.id] = sub
+        self._ix_commit()
         try:
+            if sub.payload_is_lazy:
+                # Payload was never loaded into memory -> update metadata only, never rewrite heavy blobs.
+                with self.db.conn:
+                    self.db.conn.execute(
+                        """
+                        UPDATE project_submissions SET badge_id = ?, cosmonaut_id = ?, attempt_number = ?,
+                            submission_type = ?, file_name = ?, submitted_at = ?, status = ?, pdf_name = ?,
+                            code_name = ?, github_url = ?, cycle_id = ? WHERE id = ?
+                        """,
+                        (sub.badge_id, sub.cosmonaut_id, sub.attempt_number, sub.submission_type, sub.file_name,
+                         sub.submitted_at, sub.status, getattr(sub, "pdf_name", ""), getattr(sub, "code_name", ""),
+                         getattr(sub, "github_url", ""), sub.cycle_id, sub.id)
+                    )
+                self.mark_dirty()
+                return
             with self.db.conn:
                 self.db.conn.execute(
                     """
@@ -1118,49 +1456,53 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error saving submission: {e}")
+            self._write_failed("saving submission", e)
         self.mark_dirty()
 
     # --- Assessments ---
     def get_all_assessments(self, cycle_id: Optional[str] = None) -> List[AssessmentMarksheet]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
-        return sorted(
-            [a for a in self.assessments.values() if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
-            key=lambda a: a.reviewed_at,
-            reverse=True
-        )
+
+        def build():
+            return sorted(
+                [a for a in self.assessments.values() if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+                key=lambda a: a.reviewed_at,
+                reverse=True
+            )
+        return list(self._memoized(f"all_assessments:{target_cid}", build,
+                                   extra=(id(self.assessments), len(self.assessments)), scope="learning"))
 
     def get_assessment(self, asm_id: str) -> Optional[AssessmentMarksheet]:
         return self.assessments.get(asm_id)
 
     def get_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
         # Return Guardian final assessment if present, otherwise latest assessment
-        sub_asms = [a for a in self.assessments.values() if a.submission_id == sub_id]
+        sub_asms = list(self._ensure_ix()["asms_by_sub"].get(sub_id, {}).values())
         if not sub_asms:
             return None
         guardian_asm = next((a for a in sub_asms if getattr(a, "assessor_role", "guardian") == "guardian"), None)
         return guardian_asm or sub_asms[-1]
 
     def get_all_assessments_for_submission(self, sub_id: str) -> List[AssessmentMarksheet]:
-        return [a for a in self.assessments.values() if a.submission_id == sub_id]
+        return list(self._ensure_ix()["asms_by_sub"].get(sub_id, {}).values())
 
     def get_reviewer_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
-        for a in self.assessments.values():
-            if a.submission_id == sub_id and getattr(a, "assessor_role", "") == "reviewer":
+        for a in self._ensure_ix()["asms_by_sub"].get(sub_id, {}).values():
+            if getattr(a, "assessor_role", "") == "reviewer":
                 return a
         return None
 
     def get_guardian_assessment_for_submission(self, sub_id: str) -> Optional[AssessmentMarksheet]:
-        for a in self.assessments.values():
-            if a.submission_id == sub_id and getattr(a, "assessor_role", "guardian") == "guardian":
+        for a in self._ensure_ix()["asms_by_sub"].get(sub_id, {}).values():
+            if getattr(a, "assessor_role", "guardian") == "guardian":
                 return a
         return None
 
     def get_assessments_for_cosmonaut(self, cosmo_id: str, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[AssessmentMarksheet]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
         asms = [
-            a for a in self.assessments.values()
-            if a.cosmonaut_id == cosmo_id and (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+            a for a in self._ensure_ix()["asms_by_cosmo"].get(cosmo_id, {}).values()
+            if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
         ]
         if badge_id:
             asms = [a for a in asms if a.badge_id == badge_id]
@@ -1170,7 +1512,11 @@ class DataStore:
         if not getattr(asm, "cycle_id", "") or asm.cycle_id == DEFAULT_CYCLE_ID:
             b_obj = self.get_badge(asm.badge_id)
             asm.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        ix = self._ensure_ix()
         self.assessments[asm.id] = asm
+        ix["asms_by_cosmo"].setdefault(asm.cosmonaut_id, {})[asm.id] = asm
+        ix["asms_by_sub"].setdefault(asm.submission_id, {})[asm.id] = asm
+        self._ix_commit()
         try:
             with self.db.conn:
                 self.db.conn.execute(
@@ -1212,7 +1558,7 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error saving assessment: {e}")
+            self._write_failed("saving assessment", e)
         self.mark_dirty()
 
     # --- Materials ---
@@ -1262,14 +1608,23 @@ class DataStore:
     # --- Extensions ---
     def get_all_extensions(self, cycle_id: Optional[str] = None) -> List[DeadlineExtension]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
-        return sorted(
-            [e for e in self.extensions.values() if (getattr(e, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
-            key=lambda e: e.requested_at,
-            reverse=True
-        )
+
+        def build():
+            return sorted(
+                [e for e in self.extensions.values() if (getattr(e, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid],
+                key=lambda e: e.requested_at,
+                reverse=True
+            )
+        return list(self._memoized(f"all_extensions:{target_cid}", build,
+                                   extra=(id(self.extensions), len(self.extensions)), scope="learning"))
 
     def get_extensions_for_cosmonaut(self, cosmo_id: str, cycle_id: Optional[str] = None) -> List[DeadlineExtension]:
-        return [e for e in self.get_all_extensions(cycle_id=cycle_id) if e.cosmonaut_id == cosmo_id]
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        exts = [
+            e for e in self._ensure_ix()["exts_by_cosmo"].get(cosmo_id, {}).values()
+            if (getattr(e, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+        ]
+        return sorted(exts, key=lambda e: e.requested_at, reverse=True)
 
     def get_extension(self, ext_id: str) -> Optional[DeadlineExtension]:
         return self.extensions.get(ext_id)
@@ -1278,7 +1633,10 @@ class DataStore:
         if not getattr(ext, "cycle_id", "") or ext.cycle_id == DEFAULT_CYCLE_ID:
             b_obj = self.get_badge(ext.badge_id)
             ext.cycle_id = (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
+        ix = self._ensure_ix()
         self.extensions[ext.id] = ext
+        ix["exts_by_cosmo"].setdefault(ext.cosmonaut_id, {})[ext.id] = ext
+        self._ix_commit()
         with self.db.conn:
             self.db.conn.execute(
                 """
@@ -1361,9 +1719,8 @@ class DataStore:
     # --- Activities ---
     def get_activities(self, cosmo_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[ActivityEvent]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
-        acts = [a for a in self.activities if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
-        if cosmo_id:
-            acts = [a for a in acts if a.cosmonaut_id == cosmo_id or (a.actor_id == cosmo_id)]
+        source = self._ensure_ix()["acts_by_person"].get(cosmo_id, []) if cosmo_id else self.activities
+        acts = [a for a in source if (getattr(a, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid]
         return sorted(acts, key=lambda a: a.timestamp, reverse=True)
 
     def add_activity(
@@ -1391,7 +1748,12 @@ class DataStore:
             details=details,
             cycle_id=cid
         )
+        ix = self._ensure_ix()
         self.activities.insert(0, event)
+        ix["acts_by_person"].setdefault(event.cosmonaut_id, []).insert(0, event)
+        if event.actor_id and event.actor_id != event.cosmonaut_id:
+            ix["acts_by_person"].setdefault(event.actor_id, []).insert(0, event)
+        self._ix_commit()
         with self.db.conn:
             self.db.conn.execute(
                 """
@@ -1401,14 +1763,14 @@ class DataStore:
                 """,
                 (event.id, event.timestamp, event.event_type, event.actor_id, event.actor_name, event.cosmonaut_id, event.badge_id, event.summary, event.details, cid)
             )
-        self.mark_dirty()
+        self.mark_dirty(learning=False)
 
     # --- Notifications ---
     def get_notifications(self, user_id: str, cycle_id: Optional[str] = None) -> List[Notification]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
         notifs = [
-            n for n in self.notifications
-            if n.recipient_id == user_id and (getattr(n, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
+            n for n in self._ensure_ix()["notifs_by_user"].get(user_id, [])
+            if (getattr(n, "cycle_id", DEFAULT_CYCLE_ID) or DEFAULT_CYCLE_ID) == target_cid
         ]
         return sorted(notifs, key=lambda n: n.created_at, reverse=True)
 
@@ -1425,7 +1787,10 @@ class DataStore:
             is_read=False,
             cycle_id=cid
         )
+        ix = self._ensure_ix()
         self.notifications.insert(0, notif)
+        ix["notifs_by_user"].setdefault(notif.recipient_id, []).insert(0, notif)
+        self._ix_commit()
         with self.db.conn:
             self.db.conn.execute(
                 """
@@ -1435,7 +1800,7 @@ class DataStore:
                 """,
                 (notif.id, notif.recipient_id, notif.title, notif.message, notif.link_section, notif.created_at, event_type, related_badge_id, cid)
             )
-        self.mark_dirty()
+        self.mark_dirty(learning=False)
 
     def mark_notification_read(self, notif_id: str):
         for n in self.notifications:
@@ -1443,7 +1808,7 @@ class DataStore:
                 n.is_read = True
                 with self.db.conn:
                     self.db.conn.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notif_id,))
-                self.mark_dirty()
+                self.mark_dirty(learning=False)
                 break
 
     def mark_all_notifications_read(self, user_id: str):
@@ -1452,7 +1817,7 @@ class DataStore:
                 n.is_read = True
         with self.db.conn:
             self.db.conn.execute("UPDATE notifications SET is_read = 1 WHERE recipient_id = ?", (user_id,))
-        self.mark_dirty()
+        self.mark_dirty(learning=False)
 
     # --- Band Mappings & Requests ---
     def get_band_mappings(self, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -1510,7 +1875,7 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error saving band_mapping: {e}")
+            self._write_failed("saving band_mapping", e)
         self.mark_dirty()
 
     def delete_band_mapping(self, mapping_id: str):
@@ -1522,7 +1887,7 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error deleting band_mapping: {e}")
+            self._write_failed("deleting band_mapping", e)
         self.mark_dirty()
 
     def get_mapping_requests(self, cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -1572,7 +1937,7 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error adding mapping request: {e}")
+            self._write_failed("adding mapping request", e)
         self.mark_dirty()
 
     def update_mapping_request_status(self, req_id: str, status: str, cycle_id: Optional[str] = None):
@@ -1596,7 +1961,7 @@ class DataStore:
                 if self.db and self.db.conn:
                     self.db.conn.commit()
             except Exception as e:
-                print(f"Error updating mapping request status: {e}")
+                self._write_failed("updating mapping request status", e)
             self.mark_dirty()
 
     def delete_mapping_request(self, req_id: str, cycle_id: Optional[str] = None):
@@ -1620,7 +1985,7 @@ class DataStore:
                     if self.db and self.db.conn:
                         self.db.conn.commit()
                 except Exception as e:
-                    print(f"Error deleting mapping request: {e}")
+                    self._write_failed("deleting mapping request", e)
                 self.mark_dirty()
 
     def clear_mapping_requests(self, band: Optional[str] = None, cycle_id: Optional[str] = None):
@@ -1703,7 +2068,7 @@ class DataStore:
             if self.db and self.db.conn:
                 self.db.conn.commit()
         except Exception as e:
-            print(f"Error saving reviewer_project_prompt: {e}")
+            self._write_failed("saving reviewer_project_prompt", e)
         self.mark_dirty()
 
     def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Any]:
@@ -1895,8 +2260,7 @@ class DataStore:
                 cycle_id=badge_data["cycle_id"]
             )
             # Reload notifications & activities
-            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
-            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self._sync_feed_tables()
             self.mark_dirty()
         return ok, msg, b_id
 
@@ -1945,8 +2309,7 @@ class DataStore:
             b = self.get_badge(badge_id)
             if b:
                 b.workflow_status = "approved"
-            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
-            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self._sync_feed_tables()
             self.mark_dirty()
         return ok, msg
 
@@ -1959,8 +2322,7 @@ class DataStore:
             b = self.get_badge(badge_id)
             if b:
                 b.workflow_status = "returned"
-            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
-            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self._sync_feed_tables()
             self.mark_dirty()
         return ok, msg
 
@@ -1971,8 +2333,7 @@ class DataStore:
             if b:
                 b.workflow_status = "pending_review"
                 b.assigned_reviewer_id = reviewer_id
-            self.notifications = [Notification.from_dict(n) for n in self.db.export_to_dict()["notifications"]]
-            self.activities = [ActivityEvent.from_dict(act) for act in self.db.export_to_dict()["activities"]]
+            self._sync_feed_tables()
             self.mark_dirty()
         return ok, msg
 

@@ -39,11 +39,11 @@ PERSISTENT SQLITE3 DATABASE (data/starapp.db — WAL mode, PRAGMA foreign_keys =
 | `backend/app/database/` | Database Layer | `connection.py` (connection pool & PRAGMAs), `migrations.py` (versioned DDL) |
 | `backend/app/features/` | Feature Modules | Modular features: `auth`, `users`, `bands`, `badges`, `reviews`, `allotments`, `submissions`, `evaluations`, `audit` |
 | `backend/app/integrations/` | External Services | `gemini/` (server-side Gemini API client & fallback generator) |
-| `data/starapp.db` | Persistent Storage | Single authoritative SQLite database (33 tables + 1 view) |
+| `data/starapp.db` | Persistent Storage | Single authoritative SQLite database (38 tables + 1 view) |
 | `js/api.js` | Frontend API Client | Reusable client exposing `window.StarAppAPI` |
 | `js/bridge.js` | UI Bridge | Bridges UI DOM events to the API layer |
 | `css/` | Presentation | Design tokens, liquid-glass frosted cards, responsive grid |
-| `tests/` | QA & Verification | `run_tests.py` (89 tests including 79 baseline + 10 full-stack backend) |
+| `tests/` | QA & Verification | `run_tests.py` (190 tests; runs on a throw-away copy of the DB) and `test_scale_and_security_regressions.py` (scale / security / workflow-rule / UI regressions) |
 
 ---
 
@@ -91,7 +91,7 @@ When tasked with modifying a specific feature, **edit only the files in its row*
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run the full test suite (89 tests)
+# 2. Run the full test suite (190 tests, isolated DB copy - never touches data/starapp.db)
 python tests/run_tests.py
 
 # 3. Run only full-stack backend tests (fast, ~1.8s)

@@ -246,6 +246,9 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
     def test_03_fastapi_cycles_rest_api_endpoints(self):
         """Verify FastAPI /api/v1/cycles endpoints work cleanly over HTTP."""
         with TestClient(app) as client:
+            # The cycles API is guardian-only: authenticate through the real login endpoint (cookie session).
+            res_login = client.post("/api/v1/auth/login", json={"username_or_email": "admin", "password": "123456789", "selected_role": "guardian"})
+            self.assertEqual(res_login.status_code, 200, res_login.text)
             res_list = client.get("/api/v1/cycles/")
             self.assertEqual(res_list.status_code, 200)
             body = res_list.json()

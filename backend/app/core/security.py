@@ -2,6 +2,7 @@
 Cryptographic and security utilities: password hashing, session tokens, and sanitization.
 """
 import bcrypt
+import hmac
 import secrets
 import hashlib
 from typing import Optional
@@ -19,7 +20,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
     # Backward compatibility with legacy plaintext passwords (e.g. '12345678')
     if not hashed_password.startswith("$2b$") and not hashed_password.startswith("$2a$"):
-        return plain_password == hashed_password
+        return hmac.compare_digest(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception:

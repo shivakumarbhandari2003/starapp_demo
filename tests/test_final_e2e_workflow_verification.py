@@ -411,7 +411,7 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
         self.assertEqual(len(badge1_asms), 2, "Both Reviewer and Guardian marksheets must persist")
 
         # SQLite integrity and foreign key checks
-        conn = sqlite3.connect("data/starapp.db")
+        conn = sqlite3.connect(store.db.db_path)
         cur = conn.cursor()
         integrity = cur.execute("PRAGMA integrity_check").fetchall()
         self.assertEqual(integrity, [("ok",)])

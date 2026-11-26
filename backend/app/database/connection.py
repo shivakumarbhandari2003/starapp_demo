@@ -54,7 +54,7 @@ def check_database_integrity() -> dict:
         integrity = cur.fetchone()[0]
         cur.execute("PRAGMA foreign_key_check;")
         fk_violations = cur.fetchall()
-        cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table';")
+        cur.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")  # ignore SQLite-internal tables (e.g. sqlite_stat1)
         table_count = cur.fetchone()[0]
         return {
             "integrity": integrity,

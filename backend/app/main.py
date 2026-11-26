@@ -4,15 +4,18 @@ Main FastAPI Application Entrypoint for StarApp.
 from contextlib import asynccontextmanager
 from pathlib import Path
 import importlib
+import os
 import re
 import sys
 import threading
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, Response, HTMLResponse
 
-from backend.app.core.config import DEBUG, BASE_DIR
+from backend.app.core.config import DEBUG, BASE_DIR, SECRET_KEY, SESSION_EXPIRE_HOURS, DEMO_MODE, MAX_SESSIONS, HOT_RELOAD
 from backend.app.core.exceptions import StarAppException, starapp_exception_handler
 from backend.app.database.migrations import apply_migrations
 from backend.app.database.connection import check_database_integrity
@@ -32,6 +35,10 @@ from backend.app.integrations.gemini.router import router as gemini_router
 from pydantic import BaseModel
 from typing import Any, Optional, Dict, Union
 import json
+import collections
+import hashlib
+import hmac
+import time
 from starapp.app import StarAppController, controller
 from starapp.storage import store
 
@@ -42,9 +49,43 @@ class ActionDispatchRequest(BaseModel):
     session_id: Optional[str] = None
 
 
-# Tab-isolated session controller registry for concurrent multi-window testing
-_session_controllers: Dict[str, StarAppController] = {"default": controller}
+# Tab-isolated session controller registry. It is an LRU: at most MAX_SESSIONS controllers stay in
+# memory; the least recently used one is evicted (its user is restored from the signed snapshot the
+# browser sends on its next request), so memory stays bounded however many users visit.
+_session_controllers: "collections.OrderedDict[str, StarAppController]" = collections.OrderedDict()
+_session_controllers["default"] = controller
 _reload_lock = threading.RLock()
+# All StarApp actions share ONE in-memory store, so state-changing work is serialised with this lock.
+# The lock is taken inside a worker thread (see dispatch_action) so the event loop never blocks.
+_dispatch_lock = threading.RLock()
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{8,96}$")
+_SIGNING_KEY = SECRET_KEY.encode("utf-8")
+_SNAPSHOT_MAX_AGE_SECONDS = max(1, SESSION_EXPIRE_HOURS) * 3600
+
+
+def _sign_session_state(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Adds an issued-at timestamp and an HMAC-SHA256 signature so the browser cannot forge who it is."""
+    payload = {k: v for k, v in state.items() if k not in ("_sig", "_iat")}
+    payload["_iat"] = int(time.time())
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    payload["_sig"] = hmac.new(_SIGNING_KEY, raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return payload
+
+
+def _verify_session_state(state: Any) -> bool:
+    """True only for a snapshot WE signed, that has not expired."""
+    if not isinstance(state, dict):
+        return False
+    sig = state.get("_sig")
+    iat = state.get("_iat")
+    if not isinstance(sig, str) or not isinstance(iat, int):
+        return False
+    if time.time() - iat > _SNAPSHOT_MAX_AGE_SECONDS or iat > time.time() + 300:
+        return False
+    payload = {k: v for k, v in state.items() if k != "_sig"}
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    expected = hmac.new(_SIGNING_KEY, raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected)
 
 _CORE_MODEL_FILES = ("models.py", "database.py", "sqlite_store.py", "storage.py", "seed_data.py", "previous_cycle_seed.py")
 _UI_RELOAD_ORDER = (
@@ -189,6 +230,8 @@ def _restore_controller_state(ctrl: StarAppController, state: Dict[str, Any], fo
 def _reload_starapp_if_changed() -> None:
     """Hot-reload changed starapp modules in-process so a browser refresh reflects edits immediately."""
     global _LOADED_CORE_VER, _LOADED_UI_VER, StarAppController, controller, store
+    if not HOT_RELOAD:
+        return
     with _reload_lock:
         core_ver, ui_ver = _compute_starapp_versions()
         if core_ver <= _LOADED_CORE_VER and ui_ver <= _LOADED_UI_VER:
@@ -235,25 +278,44 @@ def _reload_starapp_if_changed() -> None:
 def get_session_controller(session_id: Optional[str] = None, role_hint: Optional[str] = None) -> StarAppController:
     """
     Returns an isolated StarAppController for each browser window/tab session,
-    allowing concurrent multi-user testing (e.g. Guardian in Window 1, Cosmonaut in Window 2)
+    allowing concurrent multi-user use (e.g. Guardian in Window 1, Cosmonaut in Window 2)
     while sharing the authoritative persistent SQLite3 database.
+
+    SECURITY: a session starts logged OUT. The previous behaviour auto-logged-in as the admin or a
+    cosmonaut whenever the (client chosen) session id merely CONTAINED "guard" / "cosmo". Passwordless
+    role shortcuts now exist only when STARAPP_DEMO_MODE is on AND the caller asks for them explicitly.
     """
     sid = session_id or "default"
-    if sid not in _session_controllers:
-        ctrl = StarAppController()
-        ctrl.initialize()
-        if role_hint == "cosmonaut" or "cosmo" in sid.lower():
-            user = store.get_user_by_id("cosmo_1")
-            if user:
-                ctrl.current_user = user
-                ctrl.current_view = "c_dashboard"
-        elif role_hint == "guardian" or "guard" in sid.lower():
-            user = store.get_user_by_id("admin") or store.get_user_by_id("guardian_1")
-            if user:
-                ctrl.current_user = user
-                ctrl.current_view = "g_dashboard"
-        _session_controllers[sid] = ctrl
-    return _session_controllers[sid]
+    if sid in _session_controllers:
+        _session_controllers.move_to_end(sid)
+        return _session_controllers[sid]
+
+    ctrl = StarAppController()
+    ctrl.initialize()
+    if DEMO_MODE and role_hint == "cosmonaut":
+        user = store.get_user_by_id("cosmo_1")
+        if user:
+            ctrl.current_user = user
+            ctrl.current_view = "c_dashboard"
+    elif DEMO_MODE and role_hint == "guardian":
+        user = store.get_user_by_id("admin") or store.get_user_by_id("guardian_1")
+        if user:
+            ctrl.current_user = user
+            ctrl.current_view = "g_dashboard"
+    _session_controllers[sid] = ctrl
+    _evict_idle_sessions()
+    return ctrl
+
+
+def _evict_idle_sessions() -> None:
+    """Drops least-recently-used controllers beyond MAX_SESSIONS (never the shared default one)."""
+    while len(_session_controllers) > max(2, MAX_SESSIONS):
+        for victim in _session_controllers:
+            if victim != "default":
+                _session_controllers.pop(victim, None)
+                break
+        else:
+            break
 
 
 @asynccontextmanager
@@ -275,10 +337,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS configuration for local development
+# Compress HTML / JSON / JS / CSS responses (dispatch payloads are mostly repetitive markup).
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+
+# CORS: wildcard origin + credentials is both invalid per the CORS spec and unsafe. Local development
+# origins are allowed by default; set STARAPP_CORS_ORIGINS="https://a.example,https://b.example" in prod.
+_cors_origins = [o.strip() for o in os.getenv("STARAPP_CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -316,18 +383,13 @@ app.include_router(cycles_router, prefix=api_v1_prefix)
 app.include_router(gemini_router, prefix=api_v1_prefix)
 
 
-@app.post("/api/v1/dispatch")
-async def dispatch_action(req: ActionDispatchRequest, request: Request):
-    """
-    Full-stack action dispatcher: Executes UI actions server-side on the FastAPI backend,
-    persists changes to authoritative SQLite3 (data/starapp.db), and returns incremental regions.
-    Supports tab-isolated sessions via session_id or X-Session-Id header, plus live module reload.
-    """
+def _run_dispatch(req: "ActionDispatchRequest", header_sid: Optional[str]) -> Dict[str, Any]:
+    """Synchronous body of the dispatcher; executed in a worker thread under `_dispatch_lock`."""
     _reload_starapp_if_changed()
 
     action = req.action
     payload_str = req.payload if isinstance(req.payload, str) else json.dumps(req.payload)
-    sid = req.session_id or request.headers.get("X-Session-Id") or "default"
+    sid = req.session_id or header_sid or ""
 
     role_hint = None
     restore_session = None
@@ -347,10 +409,11 @@ async def dispatch_action(req: ActionDispatchRequest, request: Request):
     ctrl = get_session_controller(sid, role_hint=role_hint)
 
     if action == "boot":
-        # Recover exact page & role across server worker restarts when browser sends restore_session
-        if (not had_existing_session or not getattr(ctrl, "current_user", None)) and isinstance(restore_session, dict):
+        # Recover exact page & role across server restarts / LRU eviction -- ONLY from a snapshot this
+        # server signed (the browser can no longer claim to be an arbitrary user_id).
+        if (not had_existing_session or not getattr(ctrl, "current_user", None)) and _verify_session_state(restore_session):
             _restore_controller_state(ctrl, restore_session, force_user=True)
-        elif role_hint:
+        elif DEMO_MODE and role_hint:
             if role_hint == "cosmonaut" and (not ctrl.current_user or ctrl.current_user.id != "cosmo_1"):
                 user = store.get_user_by_id("cosmo_1")
                 if user:
@@ -362,26 +425,56 @@ async def dispatch_action(req: ActionDispatchRequest, request: Request):
                     ctrl.current_user = user
                     ctrl.current_view = "g_dashboard"
 
+    # handle_event() already renders at the end of every action; render again only when it did not
+    # (boot / get_ui / actions that return early). This removes the duplicate render per click.
+    gen_before = getattr(ctrl, "render_generation", 0)
     if action not in ("boot", "get_ui", "initial_render"):
         ctrl.handle_event(action, payload_str)
-
-    full_html = ctrl.render()
+    if action in ("boot", "get_ui", "initial_render") or getattr(ctrl, "render_generation", 0) == gen_before \
+            or getattr(ctrl, "last_rendered_html", None) is None:
+        full_html = ctrl.render()
+    else:
+        full_html = ctrl.last_rendered_html
     regions = getattr(ctrl, "last_rendered_regions", None)
 
+    state = _extract_controller_state(ctrl)
     return {
         "success": True,
         "action": action,
-        "full_html": full_html,
+        # `regions` carries every HTML fragment already; shipping the full page twice doubled the payload.
+        "full_html": None if regions else full_html,
         "regions": regions,
         "session_id": sid,
         "current_view": getattr(ctrl, "current_view", "login"),
-        "session_state": _extract_controller_state(ctrl),
+        "session_state": _sign_session_state(state) if state.get("user_id") else state,
         "user": {
             "id": ctrl.current_user.id,
             "name": ctrl.current_user.name,
             "role": ctrl.current_user.role,
         } if ctrl.current_user else None,
     }
+
+
+@app.post("/api/v1/dispatch")
+async def dispatch_action(req: ActionDispatchRequest, request: Request):
+    """
+    Full-stack action dispatcher: Executes UI actions server-side on the FastAPI backend,
+    persists changes to authoritative SQLite3 (data/starapp.db), and returns incremental regions.
+    Supports tab-isolated sessions via session_id or X-Session-Id header, plus live module reload.
+
+    The (CPU heavy) work runs in a worker thread so the event loop keeps serving static files, health
+    checks and REST calls; actions themselves are serialised because they share one in-memory store.
+    """
+    header_sid = request.headers.get("X-Session-Id")
+    sid = req.session_id or header_sid or ""
+    if sid != "default" and not _SESSION_ID_RE.match(sid):
+        return JSONResponse(status_code=400, content={"success": False, "error": {"code": "BAD_SESSION", "message": "A valid X-Session-Id is required."}})
+
+    def _locked() -> Dict[str, Any]:
+        with _dispatch_lock:
+            return _run_dispatch(req, header_sid)
+
+    return await run_in_threadpool(_locked)
 
 
 @app.get("/api/health")
@@ -400,6 +493,21 @@ css_dir = BASE_DIR / "css"
 js_dir = BASE_DIR / "js"
 if css_dir.exists():
     app.mount("/css", StaticFiles(directory=str(css_dir)), name="css")
+
+
+@app.get("/js/starapp_bundle.js")
+async def offline_runtime_bundle():
+    """
+    The offline (Pyodide) bundle embeds a BASE64 COPY OF THE WHOLE DATABASE, passwords included. It is a
+    demo-only convenience: with STARAPP_DEMO_MODE=false it is never served. (Registered before the /js
+    static mount so it takes precedence.)
+    """
+    bundle = js_dir / "starapp_bundle.js"
+    if not DEMO_MODE or not bundle.exists():
+        return JSONResponse(status_code=404, content={"message": "Not found"})
+    return FileResponse(str(bundle), media_type="application/javascript")
+
+
 if js_dir.exists():
     app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
 

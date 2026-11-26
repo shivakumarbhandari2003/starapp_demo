@@ -48,6 +48,35 @@ def compute_cycle_candidate_performance(
     users_override: Optional[List[User]] = None
 ) -> List[Dict[str, Any]]:
     """
+    Public entry point. The full-cohort result (users_override is None) is memoised per cycle and
+    recomputed only after the store / database actually changes, so navigating between Guardian pages
+    does not redo the whole appraisal maths. Rows are returned as copies so callers may mutate them.
+    """
+    if hasattr(store, "_memoized"):
+        def build():
+            rows = _compute_cycle_candidate_performance_uncached(cycle_id, store, None)
+            return rows, {r["user_id"]: r for r in rows}
+
+        rows, by_uid = store._memoized(f"cycle_perf:{cycle_id}", build, extra=cycle_id, scope="learning")
+        if users_override is None:
+            return [dict(r) for r in rows]
+        # A single user's row does not depend on anybody else's, so serve it from the cached cohort result
+        # instead of regrouping every table of the cycle for one person (done on every cadet page view).
+        if all(u.id in by_uid for u in users_override):
+            ordered = sorted(
+                users_override,
+                key=lambda u: ({b: i for i, b in enumerate(BAND_CODES)}.get(getattr(u, "band", "B1"), 99), getattr(u, "name", ""))
+            )
+            return [dict(by_uid[u.id]) for u in ordered]
+    return _compute_cycle_candidate_performance_uncached(cycle_id, store, users_override)
+
+
+def _compute_cycle_candidate_performance_uncached(
+    cycle_id: str,
+    store: Any,
+    users_override: Optional[List[User]] = None
+) -> List[Dict[str, Any]]:
+    """
     Computes complete performance telemetry inside `cycle_id` for every candidate across BOTH roles:
       1. Performance as Cosmonaut (assigned badges, earned badges, 50-mark avg & rubric breakdown, first-attempt rate)
       2. Performance as Reviewer (badge reviews completed, projects authored/released, submissions graded, avg marks awarded)
@@ -87,6 +116,77 @@ def compute_cycle_candidate_performance(
         except Exception:
             pass
 
+    # ----------------------------------------------------------------------------------
+    # PERFORMANCE: group every cycle table by user ONCE. The previous implementation re-scanned
+    # the full submission / assessment / timeline / mapping lists for each candidate (O(users x rows)),
+    # which took ~50 s for 3,000 users. Grouped lookups make the whole computation O(users + rows).
+    # ----------------------------------------------------------------------------------
+    subs_by_cosmo: Dict[str, List[Any]] = {}
+    subs_by_pair: Dict[Tuple[str, str], List[Any]] = {}
+    for sub_row in cycle_subs:
+        subs_by_cosmo.setdefault(sub_row.cosmonaut_id, []).append(sub_row)
+        subs_by_pair.setdefault((sub_row.badge_id, sub_row.cosmonaut_id), []).append(sub_row)
+    asms_by_cosmo: Dict[str, List[Any]] = {}
+    reviewer_asms_by_uid: Dict[str, List[Any]] = {}
+    for asm_row in cycle_asms:
+        asms_by_cosmo.setdefault(asm_row.cosmonaut_id, []).append(asm_row)
+        if getattr(asm_row, "assessor_role", "") == "reviewer":
+            reviewer_asms_by_uid.setdefault(asm_row.reviewer_id, []).append(asm_row)
+    exts_by_cosmo: Dict[str, List[Any]] = {}
+    for ext_row in cycle_exts:
+        exts_by_cosmo.setdefault(ext_row.cosmonaut_id, []).append(ext_row)
+
+    badge_lookup: Dict[str, Any] = {}
+    for b_row in cycle_badges:
+        for key in (b_row.id, b_row.code, b_row.title):
+            badge_lookup.setdefault(key, b_row)
+
+    # Only published badges count as active assigned milestones (same rule as before, computed once).
+    published_badge_ids = {b_row.id for b_row in cycle_badges if getattr(b_row, "is_published", False)}
+
+    timeline_badges_by_cosmo: Dict[str, set] = {}
+    completed_badges_by_cosmo: Dict[str, set] = {}
+    pairs_by_reviewer: Dict[str, set] = {}
+    for tl_row in cycle_timelines.values():
+        if tl_row.badge_id in published_badge_ids:
+            timeline_badges_by_cosmo.setdefault(tl_row.cosmonaut_id, set()).add(tl_row.badge_id)
+            rid = getattr(tl_row, "reviewer_id", "")
+            if rid:
+                pairs_by_reviewer.setdefault(rid, set()).add((tl_row.badge_id, tl_row.cosmonaut_id))
+        if getattr(tl_row, "status", "") == "completed":
+            completed_badges_by_cosmo.setdefault(tl_row.cosmonaut_id, set()).add(tl_row.badge_id)
+
+    mapped_badges_by_cosmo: Dict[str, set] = {}
+    for m in cycle_mappings:
+        m_b = m.get("badge_id") or m.get("badge")
+        matched_b = badge_lookup.get(m_b)
+        if matched_b and matched_b.id in published_badge_ids:
+            for cid in m.get("cosmonauts", []):
+                mapped_badges_by_cosmo.setdefault(cid, set()).add(matched_b.id)
+        resolved_bid = matched_b.id if matched_b else m_b
+        if resolved_bid and (resolved_bid in published_badge_ids or not matched_b):
+            for rid in m.get("reviewers", []):
+                bucket = pairs_by_reviewer.setdefault(rid, set())
+                for cid in m.get("cosmonauts", []):
+                    bucket.add((resolved_bid, cid))
+
+    assigned_published_by_cosmo: Dict[str, set] = {}
+    badges_by_reviewer: Dict[str, List[Any]] = {}
+    for b_row in cycle_badges:
+        if getattr(b_row, "is_published", False):
+            for cid in getattr(b_row, "assigned_cosmonaut_ids", []):
+                assigned_published_by_cosmo.setdefault(cid, set()).add(b_row.id)
+        arid = getattr(b_row, "assigned_reviewer_id", "")
+        if arid:
+            badges_by_reviewer.setdefault(arid, []).append(b_row)
+
+    prompts_by_reviewer: Dict[str, List[Any]] = {}
+    for p_row in cycle_prompts:
+        prompts_by_reviewer.setdefault(getattr(p_row, "reviewer_id", ""), []).append(p_row)
+    requests_by_reviewer: Dict[str, List[Any]] = {}
+    for r_row in cycle_requests:
+        requests_by_reviewer.setdefault(r_row.get("reviewer_id"), []).append(r_row)
+
     results: List[Dict[str, Any]] = []
 
     for u in candidates:
@@ -98,25 +198,13 @@ def compute_cycle_candidate_performance(
         # ------------------------------------------------------------------
         # 1. AS COSMONAUT METRICS (within cycle_id)
         # ------------------------------------------------------------------
-        # Only count published badges (or badges with actual submissions/approvals) as active assigned milestones
-        published_badge_ids = {b.id for b in cycle_badges if getattr(b, "is_published", False)}
-        assigned_badge_ids = set()
-        for t in cycle_timelines.values():
-            if t.cosmonaut_id == uid and t.badge_id in published_badge_ids:
-                assigned_badge_ids.add(t.badge_id)
-        for m in cycle_mappings:
-            if uid in m.get("cosmonauts", []):
-                m_b = m.get("badge_id") or m.get("badge")
-                matched_b = next((b for b in cycle_badges if b.id == m_b or b.code == m_b or b.title == m_b), None)
-                if matched_b and matched_b.id in published_badge_ids:
-                    assigned_badge_ids.add(matched_b.id)
-        for b in cycle_badges:
-            if uid in getattr(b, "assigned_cosmonaut_ids", []) and getattr(b, "is_published", False):
-                assigned_badge_ids.add(b.id)
+        assigned_badge_ids = set(timeline_badges_by_cosmo.get(uid, ()))
+        assigned_badge_ids |= mapped_badges_by_cosmo.get(uid, set())
+        assigned_badge_ids |= assigned_published_by_cosmo.get(uid, set())
 
-        u_subs = [s for s in cycle_subs if s.cosmonaut_id == uid]
-        u_asms = [a for a in cycle_asms if a.cosmonaut_id == uid]
-        u_exts = [e for e in cycle_exts if e.cosmonaut_id == uid]
+        u_subs = subs_by_cosmo.get(uid, [])
+        u_asms = asms_by_cosmo.get(uid, [])
+        u_exts = exts_by_cosmo.get(uid, [])
 
         for s in u_subs:
             assigned_badge_ids.add(s.badge_id)
@@ -131,9 +219,7 @@ def compute_cycle_candidate_performance(
             if a.decision in ("approve", "approved") and getattr(a, "assessor_role", "guardian") == "guardian"
         ]
         earned_badge_ids = {a.badge_id for a in guardian_approved_asms}
-        for t in cycle_timelines.values():
-            if t.cosmonaut_id == uid and getattr(t, "status", "") == "completed":
-                earned_badge_ids.add(t.badge_id)
+        earned_badge_ids |= completed_badges_by_cosmo.get(uid, set())
 
         badges_earned = len(earned_badge_ids)
         first_attempt_passes = sum(1 for a in guardian_approved_asms if getattr(a, "attempt_number", 1) == 1)
@@ -175,8 +261,8 @@ def compute_cycle_candidate_performance(
         # ------------------------------------------------------------------
         u_badge_assigns = list(rev_assignments_by_user.get(uid, []))
         assigned_review_badge_ids = {a["badge_id"] for a in u_badge_assigns}
-        for b in cycle_badges:
-            if getattr(b, "assigned_reviewer_id", "") == uid and b.id not in assigned_review_badge_ids:
+        for b in badges_by_reviewer.get(uid, ()):
+            if b.id not in assigned_review_badge_ids:
                 assigned_review_badge_ids.add(b.id)
                 u_badge_assigns.append({
                     "badge_id": b.id,
@@ -188,38 +274,24 @@ def compute_cycle_candidate_performance(
         badge_reviews_assigned = len(u_badge_assigns)
         badge_reviews_completed = sum(1 for a in u_badge_assigns if a.get("status") in ("approved", "returned"))
 
-        u_map_reqs = [r for r in cycle_requests if r.get("reviewer_id") == uid]
+        u_map_reqs = requests_by_reviewer.get(uid, [])
         mapping_invitations_total = len(u_map_reqs)
         mapping_invitations_accepted = sum(1 for r in u_map_reqs if r.get("status") == "accepted")
 
         # Cadets & badges mapped to this reviewer for cohort mentorship / project creation / grading (published badges)
-        reviewer_mapped_pairs = set()
-        for t in cycle_timelines.values():
-            if getattr(t, "reviewer_id", "") == uid and t.badge_id in published_badge_ids:
-                reviewer_mapped_pairs.add((t.badge_id, t.cosmonaut_id))
-        for m in cycle_mappings:
-            if uid in m.get("reviewers", []):
-                m_b = m.get("badge_id") or m.get("badge")
-                matched_b = next((b for b in cycle_badges if b.id == m_b or b.code == m_b or b.title == m_b), None)
-                resolved_bid = matched_b.id if matched_b else m_b
-                if resolved_bid and (resolved_bid in published_badge_ids or not matched_b):
-                    for cid in m.get("cosmonauts", []):
-                        reviewer_mapped_pairs.add((resolved_bid, cid))
+        reviewer_mapped_pairs = pairs_by_reviewer.get(uid, set())
 
-        u_prompts = [p for p in cycle_prompts if getattr(p, "reviewer_id", "") == uid]
+        u_prompts = prompts_by_reviewer.get(uid, [])
         projects_created = len(u_prompts)
         projects_released = sum(1 for p in u_prompts if getattr(p, "status", "") in ("released", "sent"))
 
         # Submissions assigned to this reviewer in cycle_id
-        assigned_sub_ids = {
-            s.id for s in cycle_subs
-            if (s.badge_id, s.cosmonaut_id) in reviewer_mapped_pairs
-        }
+        assigned_sub_ids = set()
+        for pair in reviewer_mapped_pairs:
+            for sub_row in subs_by_pair.get(pair, ()):
+                assigned_sub_ids.add(sub_row.id)
         # Reviewer marksheets submitted by uid in cycle_id
-        u_reviewer_asms = [
-            a for a in cycle_asms
-            if a.reviewer_id == uid and getattr(a, "assessor_role", "") == "reviewer"
-        ]
+        u_reviewer_asms = reviewer_asms_by_uid.get(uid, [])
         for a in u_reviewer_asms:
             assigned_sub_ids.add(a.submission_id)
 

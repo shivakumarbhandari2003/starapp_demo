@@ -1841,6 +1841,15 @@ Return ONLY valid JSON matching this exact schema:
       });
     },
 
+    // Structural signature of the sidebar markup that IGNORES which link is active. The server renders the
+    // "active" class into the HTML, so comparing raw strings made every navigation look like a sidebar
+    // change and the whole <aside> was rebuilt (hover/scroll state lost, visible flicker) even though
+    // _updateSidebarInPlace already knows how to move the highlight. Now only a REAL structural change
+    // (different links, badge counts, user, cycle pill) replaces the element.
+    _sidebarSignature(html) {
+      return String(html || "").replace(/class="nav-link active"/g, 'class="nav-link"');
+    },
+
     // Update persistent sidebar active state and badges in-place without rebuilding <aside>
     _updateSidebarInPlace(sidebarEl, activeNavId, badgesMap) {
       if (!sidebarEl) return;
@@ -1951,7 +1960,7 @@ Return ONLY valid JSON matching this exact schema:
         renderState.mode = "workspace";
         renderState.portalKey = payload.portalKey;
         renderState.routeKey = payload.routeKey;
-        renderState.sidebarHtml = payload.sidebarHtml || "";
+        renderState.sidebarHtml = this._sidebarSignature(payload.sidebarHtml);
         renderState.topbarHtml = payload.topbarHtml || "";
         renderState.pageContainerClass = payload.pageContainerClass;
         renderState.flashHtml = payload.flashHtml || "";
@@ -1965,9 +1974,10 @@ Return ONLY valid JSON matching this exact schema:
       }
 
       // Region 1: Persistent Sidebar (update active link + badge counts in place, or replace when sidebarHtml changes)
-      if (payload.sidebarHtml && renderState.sidebarHtml !== payload.sidebarHtml) {
+      const nextSidebarSig = this._sidebarSignature(payload.sidebarHtml);
+      if (payload.sidebarHtml && renderState.sidebarHtml !== nextSidebarSig) {
         existingSidebar.outerHTML = payload.sidebarHtml;
-        renderState.sidebarHtml = payload.sidebarHtml;
+        renderState.sidebarHtml = nextSidebarSig;
         const newSidebar = document.getElementById("starapp-shell-sidebar");
         this._updateSidebarInPlace(newSidebar, payload.activeNavId, payload.sidebarBadges);
         this.applyPersistedSidebarState();

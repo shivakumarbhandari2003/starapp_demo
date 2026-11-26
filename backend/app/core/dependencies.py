@@ -5,7 +5,7 @@ import sqlite3
 import datetime
 from typing import Generator, Optional, Dict, Any, List
 from fastapi import Request, Depends, Cookie, Header
-from backend.app.core.config import SESSION_COOKIE_NAME
+from backend.app.core.config import SESSION_COOKIE_NAME, DEMO_MODE
 from backend.app.core.exceptions import UnauthorizedException, ForbiddenException
 from backend.app.database.connection import get_connection
 
@@ -21,6 +21,16 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         raise
     finally:
         conn.close()
+
+
+def _attach_roles(cur: sqlite3.Cursor, user_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Adds every system role the user holds (guardian / badge_reviewer / project_reviewer / cosmonaut)."""
+    try:
+        cur.execute("SELECT role_id FROM user_role_assignments WHERE user_id = ?;", (user_dict.get("id"),))
+        user_dict["roles"] = [r[0] for r in cur.fetchall()]
+    except Exception:
+        user_dict["roles"] = []
+    return user_dict
 
 
 async def get_current_user(
@@ -39,8 +49,12 @@ async def get_current_user(
     elif authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1].strip()
 
+    if not token and not DEMO_MODE:
+        # Production: identity comes ONLY from a verified session token (cookie / Bearer).
+        raise UnauthorizedException("Authentication required. Please log in.")
+
     if not token:
-        # Check if request has demo user query param or header for instant switching
+        # DEMO MODE ONLY: instant user switching via ?demo_user_id= / X-User-Id, or the active UI session.
         demo_user_id = request.query_params.get("demo_user_id") or request.headers.get("X-User-Id")
         if demo_user_id:
             cur = conn.cursor()
@@ -49,7 +63,7 @@ async def get_current_user(
             if user_row:
                 user_dict = dict(user_row)
                 user_dict["active_role"] = user_dict.get("primary_role", "cosmonaut")
-                return user_dict
+                return _attach_roles(cur, user_dict)
 
         # Check active controller user in unified full-stack process
         try:
@@ -64,7 +78,7 @@ async def get_current_user(
                 if user_row:
                     user_dict = dict(user_row)
                     user_dict["active_role"] = active_u.role or user_dict.get("primary_role", "cosmonaut")
-                    return user_dict
+                    return _attach_roles(cur, user_dict)
         except Exception:
             pass
 
@@ -77,7 +91,7 @@ async def get_current_user(
                 if user_row:
                     user_dict = dict(user_row)
                     user_dict["active_role"] = controller.current_user.role or user_dict.get("primary_role", "cosmonaut")
-                    return user_dict
+                    return _attach_roles(cur, user_dict)
         except Exception:
             pass
 
@@ -87,7 +101,7 @@ async def get_current_user(
     # Check session
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     cur.execute("""
-        SELECT s.id AS session_id, s.role AS session_role, s.expires_at,
+        SELECT s.id AS session_id, s.role AS session_role, s.expires_at, s.last_active_at,
                u.*
         FROM user_sessions s
         JOIN users u ON s.user_id = u.id
@@ -97,25 +111,56 @@ async def get_current_user(
     if not row:
         raise UnauthorizedException("Invalid or expired session. Please log in again.")
 
-    # Update last_active_at
-    cur.execute("UPDATE user_sessions SET last_active_at = ? WHERE id = ?;", (now_iso, token))
+    # Touch last_active_at at most once every 5 minutes and COMMIT IMMEDIATELY. Writing on every request
+    # and keeping the transaction open until the response was sent held SQLite's single write lock, so
+    # every store write made while handling the same request waited out the 5 s busy timeout.
     user_dict = dict(row)
+    try:
+        last_active = datetime.datetime.fromisoformat(str(row["last_active_at"]))
+        stale = (datetime.datetime.now(datetime.timezone.utc) - last_active).total_seconds() > 300
+    except Exception:
+        stale = True
+    if stale:
+        cur.execute("UPDATE user_sessions SET last_active_at = ? WHERE id = ?;", (now_iso, token))
+        conn.commit()
     # Allow overriding role from session if session_role was explicitly selected
     if user_dict.get("session_role"):
         user_dict["active_role"] = user_dict["session_role"]
     else:
         user_dict["active_role"] = user_dict.get("primary_role", "cosmonaut")
-    return user_dict
+    return _attach_roles(cur, user_dict)
+
+
+# Which concrete role names satisfy each logical requirement.
+_ROLE_ALIASES = {
+    "guardian": {"guardian", "admin"},
+    "admin": {"guardian", "admin"},
+    "reviewer": {"reviewer", "badge_reviewer", "project_reviewer"},
+    "cosmonaut": {"cosmonaut", "cadet"},
+}
 
 
 def require_roles(allowed_roles: List[str]):
-    """Factory dependency requiring one of the specified roles."""
+    """
+    Factory dependency requiring at least one of the specified roles.
+
+    BUG FIXED: the old condition `... and "admin" not in allowed and ...` was always False for the
+    guardian / reviewer / cosmonaut guards (all of them list "admin"), so EVERY authenticated user
+    passed EVERY role guard. A user is now authorised when the role of their session, or any system
+    role assigned to them, satisfies the requirement. Guardians / admins may do everything.
+    """
+    needed = set()
+    for r in allowed_roles:
+        needed |= _ROLE_ALIASES.get(r.lower(), {r.lower()})
+
     async def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-        user_role = current_user.get("active_role", "").lower()
-        allowed = [r.lower() for r in allowed_roles]
-        if user_role not in allowed and "admin" not in allowed and user_role != "admin" and user_role != "guardian":
-            raise ForbiddenException(f"Access denied for role '{user_role}'. Required roles: {allowed_roles}")
-        return current_user
+        held = {str(current_user.get("active_role", "")).lower()}
+        held |= {str(r).lower() for r in current_user.get("roles", [])}
+        if held & needed or held & {"guardian", "admin"}:
+            return current_user
+        raise ForbiddenException(
+            f"Access denied for role '{current_user.get('active_role', '')}'. Required roles: {allowed_roles}"
+        )
     return role_checker
 
 
@@ -129,7 +174,9 @@ async def get_current_user_optional(
     try:
         return await get_current_user(request, conn, starapp_session, authorization)
     except Exception:
-        # Fallback to guardian_1 in local development if available
+        if not DEMO_MODE:
+            return None  # production: unauthenticated callers stay anonymous (never silently a guardian)
+        # DEMO MODE ONLY: fall back to guardian_1 for local development
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE id IN ('guardian_1', 'admin') LIMIT 1;")
         row = cur.fetchone()

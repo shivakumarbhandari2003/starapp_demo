@@ -116,12 +116,11 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
             c_user = store.users.get(cid)
             self.assertNotIn(c_user.name, html_expanded, f"Cadet {c_user.name} must NOT appear in Reviewer A schedule")
 
-        # Check dedicated cadet card format matching media_1795503560861_d07d3c79.png
-        self.assertIn("Upcoming Review", html_expanded)
+        # Dedicated cadet card: one compact row per cadet (the badge header is not repeated inside it)
         self.assertIn("3-Day Project Preparation", html_expanded)
         self.assertIn("Review Window:", html_expanded)
         self.assertIn("Submission Deadline:", html_expanded)
-        self.assertIn("3-Day Window:", html_expanded)
+        self.assertNotIn("Reviewer creates project, Cadet learns concepts", html_expanded)  # removed boilerplate
         self.assertIn("View Timeline", html_expanded)
         self.assertIn("Create Project (AI)", html_expanded)
         self.assertIn("Cadet Assessments", html_expanded)

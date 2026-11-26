@@ -54,7 +54,7 @@ class TestSaveBadgeVerification(unittest.TestCase):
         self.assertEqual(saved_curation["target_band"], "B2")
 
         # 5. Verify it is persisted in SQLite
-        conn = sqlite3.connect("data/starapp.db")
+        conn = sqlite3.connect(store.db.db_path)
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM badges WHERE id = ?", (saved_curation["id"],)).fetchone()
         self.assertIsNotNone(row)
@@ -73,7 +73,7 @@ class TestSaveBadgeVerification(unittest.TestCase):
         self.assertIn("saved successfully", self.ctrl.last_flash_message)
 
         # Verify update reflected in DB
-        conn = sqlite3.connect("data/starapp.db")
+        conn = sqlite3.connect(store.db.db_path)
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM badges WHERE id = ?", (saved_curation["id"],)).fetchone()
         self.assertIsNotNone(row)

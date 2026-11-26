@@ -662,8 +662,64 @@ class DatabaseManager:
             except Exception:
                 pass
 
+        self.ensure_performance_indexes()
         self.ensure_default_cycle()
         self.conn.commit()
+
+    # Composite / foreign-key indexes that match the access paths of the application. SQLite does not
+    # index foreign keys automatically, so lookups such as "all timelines of cosmonaut X in cycle Y" or
+    # "notifications of user Z" were full table scans. All statements are idempotent (IF NOT EXISTS) and
+    # run on every start-up, so existing databases are upgraded in place.
+    PERFORMANCE_INDEXES = (
+        # identity & login
+        ("idx_users_band_status", "users(band, status)"),
+        ("idx_users_email_lower", "users(lower(email))"),
+        ("idx_users_username_lower", "users(lower(username))"),
+        ("idx_users_reporting_manager", "users(reporting_manager_id)"),
+        ("idx_user_role_assignments_role", "user_role_assignments(role_id, user_id)"),
+        ("idx_cycle_enrollments_user", "cycle_enrollments(user_id, cycle_id)"),
+        # learning workflow (per cosmonaut / per reviewer inside a cycle)
+        ("idx_badge_timelines_cosmo_cycle", "badge_timelines(cosmonaut_id, cycle_id)"),
+        ("idx_badge_timelines_reviewer_cycle", "badge_timelines(reviewer_id, cycle_id)"),
+        ("idx_badge_timelines_badge_status", "badge_timelines(badge_id, status)"),
+        ("idx_project_submissions_cosmo_cycle", "project_submissions(cosmonaut_id, cycle_id, badge_id)"),
+        ("idx_project_submissions_cycle_status", "project_submissions(cycle_id, status)"),
+        ("idx_assessment_marksheets_cosmo_cycle", "assessment_marksheets(cosmonaut_id, cycle_id)"),
+        ("idx_assessment_marksheets_reviewer_role", "assessment_marksheets(reviewer_id, assessor_role)"),
+        ("idx_deadline_extensions_cosmo", "deadline_extensions(cosmonaut_id, cycle_id)"),
+        ("idx_deadline_extensions_status", "deadline_extensions(status, cycle_id)"),
+        ("idx_learning_materials_badge", "learning_materials(badge_id, cycle_id)"),
+        ("idx_badges_cycle_band_status", "badges(cycle_id, target_band, workflow_status)"),
+        ("idx_badge_reviewer_assignments_badge", "badge_reviewer_assignments(badge_id, cycle_id)"),
+        ("idx_badge_review_events_badge", "badge_review_events(badge_id, timestamp)"),
+        ("idx_reviewer_project_prompts_cycle_badge", "reviewer_project_prompts(cycle_id, badge_id)"),
+        # mapping
+        ("idx_mapping_requests_reviewer_status", "mapping_requests(reviewer_id, status, cycle_id)"),
+        ("idx_mapping_requests_band", "mapping_requests(band, cycle_id)"),
+        ("idx_band_mappings_band_badge", "band_mappings(band, badge_id, cycle_id)"),
+        # feeds
+        ("idx_notifications_recipient_cycle", "notifications(recipient_id, cycle_id, created_at)"),
+        ("idx_activity_events_cosmo_cycle", "activity_events(cosmonaut_id, cycle_id, timestamp)"),
+        ("idx_activity_events_actor", "activity_events(actor_id, timestamp)"),
+        ("idx_announcements_published", "announcements(cycle_id, published_at)"),
+        ("idx_announcement_recipients_cosmo", "announcement_recipients(cosmonaut_id)"),
+        ("idx_announcement_read_receipts_cosmo", "announcement_read_receipts(cosmonaut_id)"),
+        # appraisals
+        ("idx_cycle_appraisals_composite", "cycle_performance_appraisals(cycle_id, composite_score)"),
+    )
+
+    def ensure_performance_indexes(self):
+        if not SQLITE_AVAILABLE or self._conn is None:
+            return
+        for name, target in self.PERFORMANCE_INDEXES:
+            try:
+                self._conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {target};")
+            except Exception:
+                pass  # a table/column that does not exist in an older schema must never block start-up
+        try:
+            self._conn.execute("PRAGMA optimize;")
+        except Exception:
+            pass
 
     def _get_active_cycle_id(self) -> str:
         """Returns the current writable active/evaluating cycle id, falling back to 'cycle_1'."""
@@ -1703,10 +1759,14 @@ class DatabaseManager:
     def import_from_dict(self, data: Dict[str, Any]):
         return self.migrate_from_dict(data)
 
-    def export_to_dict(self) -> Dict[str, Any]:
+    def export_to_dict(self, include_blobs: bool = True) -> Dict[str, Any]:
         """
         Extracts structured relational records from SQLite into a clean JSON-serializable dictionary.
         Enables 100% backward compatibility with DataStore and views.
+
+        include_blobs=False omits the large submission payloads (PDF / source-code data URLs). The
+        in-memory DataStore uses this mode and hydrates a payload lazily only when a viewer opens it,
+        which keeps server memory and (re)load time flat as submissions grow.
         """
         if not SQLITE_AVAILABLE or self.conn is None:
             return {}
@@ -1714,10 +1774,12 @@ class DatabaseManager:
 
         # Users: all active users directly from SQLite
         users_rows = c.execute("SELECT * FROM users ORDER BY id").fetchall()
+        roles_by_user: Dict[str, List[str]] = {}
+        for row in c.execute("SELECT user_id, role_id FROM user_role_assignments").fetchall():
+            roles_by_user.setdefault(row[0], []).append(row[1])
         users = []
         for r in users_rows:
-            # Fetch assigned roles
-            roles = [row[0] for row in c.execute("SELECT role_id FROM user_role_assignments WHERE user_id = ?", (r["id"],)).fetchall()]
+            roles = roles_by_user.get(r["id"], [])
             users.append({
                 "id": r["id"],
                 "username": r["username"],
@@ -1750,9 +1812,12 @@ class DatabaseManager:
 
         # Badges & Prerequisites
         badges_rows = c.execute("SELECT * FROM badges ORDER BY id").fetchall()
+        prereqs_by_badge: Dict[str, List[str]] = {}
+        for row in c.execute("SELECT badge_id, prerequisite_badge_id FROM badge_prerequisites").fetchall():
+            prereqs_by_badge.setdefault(row[0], []).append(row[1])
         badges = []
         for r in badges_rows:
-            prereqs = [row[0] for row in c.execute("SELECT prerequisite_badge_id FROM badge_prerequisites WHERE badge_id = ?", (r["id"],)).fetchall()]
+            prereqs = prereqs_by_badge.get(r["id"], [])
             badges.append({
                 "id": r["id"],
                 "code": r["code"],
@@ -1786,8 +1851,25 @@ class DatabaseManager:
         timelines = [dict(r) for r in timelines_rows]
 
         # Submissions
-        subs_rows = c.execute("SELECT * FROM project_submissions ORDER BY submitted_at DESC").fetchall()
-        submissions = [dict(r) for r in subs_rows]
+        if include_blobs:
+            subs_rows = c.execute("SELECT * FROM project_submissions ORDER BY submitted_at DESC").fetchall()
+            submissions = [dict(r) for r in subs_rows]
+        else:
+            subs_rows = c.execute(
+                """
+                SELECT id, badge_id, cosmonaut_id, attempt_number, submission_type,
+                       CASE WHEN submission_type = 'github' THEN payload ELSE '' END AS payload,
+                       file_name, submitted_at, status, pdf_name, code_name, github_url, cycle_id
+                FROM project_submissions ORDER BY submitted_at DESC
+                """
+            ).fetchall()
+            submissions = []
+            for r in subs_rows:
+                d = dict(r)
+                d["pdf_payload"] = ""
+                d["code_payload"] = ""
+                d["lazy_payload"] = True
+                submissions.append(d)
 
         # Assessments
         asms_rows = c.execute("SELECT * FROM assessment_marksheets ORDER BY reviewed_at DESC").fetchall()
@@ -1803,10 +1885,16 @@ class DatabaseManager:
 
         # Announcements & Read receipts
         anns_rows = c.execute("SELECT * FROM announcements ORDER BY published_at DESC").fetchall()
+        recips_by_ann: Dict[str, List[str]] = {}
+        for row in c.execute("SELECT announcement_id, cosmonaut_id FROM announcement_recipients").fetchall():
+            recips_by_ann.setdefault(row[0], []).append(row[1])
+        reads_by_ann: Dict[str, List[str]] = {}
+        for row in c.execute("SELECT announcement_id, cosmonaut_id FROM announcement_read_receipts").fetchall():
+            reads_by_ann.setdefault(row[0], []).append(row[1])
         announcements = []
         for r in anns_rows:
-            recips = [row[0] for row in c.execute("SELECT cosmonaut_id FROM announcement_recipients WHERE announcement_id = ?", (r["id"],)).fetchall()]
-            reads = [row[0] for row in c.execute("SELECT cosmonaut_id FROM announcement_read_receipts WHERE announcement_id = ?", (r["id"],)).fetchall()]
+            recips = recips_by_ann.get(r["id"], [])
+            reads = reads_by_ann.get(r["id"], [])
             announcements.append({
                 "id": r["id"],
                 "title": r["title"],
@@ -2195,6 +2283,49 @@ class DatabaseManager:
     # BADGE CREATION & APPROVAL WORKFLOW
     # ==========================================================================
 
+    def authorize_badge_decision(self, badge_row: Any, reviewer_id: str) -> Optional[str]:
+        """
+        Returns an error message when `reviewer_id` may NOT approve / return `badge_row`, else None.
+
+        Business rules (previously only "has the badge_reviewer role" was checked, so any reviewer could
+        approve or return ANY badge, including ones assigned to somebody else, already approved and live,
+        or from a band the reviewer is not above):
+          1. the badge must currently be awaiting review (`pending_review`);
+          2. the decision-maker must be the reviewer this badge was assigned to, or a Guardian;
+          3. Reviewer_Band > Badge_Band for peer reviewers (rule 1 of the platform);
+          4. nobody reviews a badge they authored.
+        """
+        status = badge_row["workflow_status"] if "workflow_status" in badge_row.keys() else ""
+        if status != "pending_review":
+            return f"This badge is '{status or 'not submitted'}' and is not awaiting review."
+
+        roles = {r[0] for r in self.conn.execute(
+            "SELECT role_id FROM user_role_assignments WHERE user_id = ?", (reviewer_id,)
+        ).fetchall()}
+        if "guardian" in roles:
+            return None  # Guardians / the Executive Council oversee every badge (incl. Band B6)
+        if "badge_reviewer" not in roles:
+            return "Access Denied: Current user does not hold Badge Reviewer credentials."
+
+        creator_id = badge_row["creator_id"] if "creator_id" in badge_row.keys() else ""
+        if creator_id and creator_id == reviewer_id:
+            return "You cannot review a badge that you created."
+
+        assigned = badge_row["assigned_reviewer_id"] if "assigned_reviewer_id" in badge_row.keys() else ""
+        has_pending = self.conn.execute(
+            "SELECT 1 FROM badge_reviewer_assignments WHERE badge_id = ? AND reviewer_id = ? AND status = 'pending'",
+            (badge_row["id"], reviewer_id)
+        ).fetchone()
+        if assigned != reviewer_id and not has_pending:
+            return "This badge is assigned to a different reviewer."
+
+        target_band = badge_row["target_band"] if "target_band" in badge_row.keys() else ""
+        if target_band:
+            ok, why = self.verify_reviewer_eligibility(reviewer_id, target_band)
+            if not ok:
+                return why
+        return None
+
     def create_badge_for_review(
         self,
         badge_data: Dict[str, Any],
@@ -2490,21 +2621,17 @@ class DatabaseManager:
         if not SQLITE_AVAILABLE or self.conn is None:
             return True, f"Badge {badge_id} successfully approved!"
 
-        # Authorization check: verify user has badge_reviewer role
-        role_check = self.conn.execute(
-            "SELECT 1 FROM user_role_assignments WHERE user_id = ? AND role_id = 'badge_reviewer'",
-            (reviewer_id,)
-        ).fetchone()
-        if not role_check:
-            return False, "Access Denied: Current user does not hold Badge Reviewer credentials."
-
-        # Verify badge exists and is pending review
+        # Verify badge exists first, then run the full authorisation / state rules
         badge_row = self.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
         if not badge_row:
             return False, "Badge not found."
 
         if badge_row["workflow_status"] == "approved":
             return False, "Badge is already approved."
+
+        denied = self.authorize_badge_decision(badge_row, reviewer_id)
+        if denied:
+            return False, denied
 
         creator_id = badge_row["creator_id"] or "guardian_1"
         badge_code = badge_row["code"]
@@ -2537,7 +2664,7 @@ class DatabaseManager:
                 )
 
                 # 3. Audit Review Event
-                event_id = f"bre_{badge_id}_approved"
+                event_id = f"bre_{badge_id}_approved_{int(datetime.datetime.now().timestamp() * 1000)}"
                 self.conn.execute(
                     """
                     INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
@@ -2606,6 +2733,10 @@ class DatabaseManager:
             badge_row = self.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
             if not badge_row:
                 return False, f"Badge {badge_id} not found."
+
+            denied = self.authorize_badge_decision(badge_row, reviewer_id)
+            if denied:
+                return False, denied
 
             creator_id = badge_row["creator_id"] or "guardian_1"
             badge_code = badge_row["code"]

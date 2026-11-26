@@ -4,9 +4,10 @@ Provides REST endpoints to list/create 6-month cycles, compute Cosmonaut+Reviewe
 performance appraisals, adjust hike/promotion fields, and finalize/close cycles.
 """
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.app.core.dependencies import get_current_user, require_guardian
 from starapp.storage import store
 from starapp.cycles import (
     compute_cycle_candidate_performance,
@@ -40,7 +41,7 @@ class AppraisalUpdateRequest(BaseModel):
 
 
 @router.get("/")
-async def list_cycles():
+async def list_cycles(user=Depends(get_current_user)):
     cycles = [c.to_dict() for c in store.get_all_cycles()]
     return {
         "active_cycle_id": store.get_active_cycle_id(),
@@ -49,14 +50,14 @@ async def list_cycles():
 
 
 @router.post("/")
-async def create_cycle(req: CreateCycleRequest):
+async def create_cycle(req: CreateCycleRequest, user=Depends(require_guardian)):
     ok, msg, new_cyc = create_new_six_month_cycle(
         store=store,
         name=req.name,
         start_date=req.start_date,
         end_date=req.end_date or "",
         code=req.code or "",
-        created_by=req.created_by or "guardian_1",
+        created_by=user["id"],  # actor comes from the authenticated session, never from the request body
         clone_badges_from_cycle_id=req.clone_badges_from_cycle_id or "",
         auto_close_previous=req.auto_close_previous,
         notes=req.notes or "",
@@ -68,15 +69,15 @@ async def create_cycle(req: CreateCycleRequest):
 
 
 @router.post("/{cycle_id}/activate")
-async def activate_target_cycle(cycle_id: str, actor_id: str = "guardian_1"):
-    ok, msg, cyc = activate_cycle(cycle_id, store, actor_id=actor_id)
+async def activate_target_cycle(cycle_id: str, user=Depends(require_guardian)):
+    ok, msg, cyc = activate_cycle(cycle_id, store, actor_id=user["id"])
     if not ok or not cyc:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "cycle": cyc.to_dict()}
 
 
 @router.get("/{cycle_id}/performance")
-async def get_cycle_performance(cycle_id: str):
+async def get_cycle_performance(cycle_id: str, user=Depends(require_guardian)):
     cyc = store.get_cycle(cycle_id)
     if not cyc:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -86,7 +87,8 @@ async def get_cycle_performance(cycle_id: str):
 
 
 @router.post("/{cycle_id}/calculate")
-async def calculate_cycle_performance(cycle_id: str, actor_id: str = "guardian_1"):
+async def calculate_cycle_performance(cycle_id: str, user=Depends(require_guardian)):
+    actor_id = user["id"]
     cyc = store.get_cycle(cycle_id)
     if not cyc:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -96,7 +98,7 @@ async def calculate_cycle_performance(cycle_id: str, actor_id: str = "guardian_1
 
 
 @router.put("/{cycle_id}/appraisals/{user_id}")
-async def update_candidate_appraisal(cycle_id: str, user_id: str, req: AppraisalUpdateRequest):
+async def update_candidate_appraisal(cycle_id: str, user_id: str, req: AppraisalUpdateRequest, user=Depends(require_guardian)):
     cyc = store.get_cycle(cycle_id)
     if not cyc:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -127,9 +129,9 @@ async def update_candidate_appraisal(cycle_id: str, user_id: str, req: Appraisal
 
 
 @router.post("/{cycle_id}/finalize")
-async def finalize_cycle(cycle_id: str, actor_id: str = "guardian_1"):
+async def finalize_cycle(cycle_id: str, user=Depends(require_guardian)):
     with store.cycle_scope(cycle_id):
-        ok, msg = finalize_and_close_cycle(cycle_id, store, actor_id=actor_id)
+        ok, msg = finalize_and_close_cycle(cycle_id, store, actor_id=user["id"])
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg}

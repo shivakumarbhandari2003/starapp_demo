@@ -48,6 +48,8 @@ ICON_SVGS = {
     "medal_1": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="8" r="6" fill="#FFD700" fill-opacity="0.25"></circle><path d="M12 2l2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8z" fill="#FFD700"></path><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>',
     "medal_2": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="#8A9BA8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="8" r="6" fill="#C0C0C0" fill-opacity="0.25"></circle><path d="M12 2l2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8z" fill="#C0C0C0"></path><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>',
     "medal_3": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="#A97142" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><circle cx="12" cy="8" r="6" fill="#CD7F32" fill-opacity="0.25"></circle><path d="M12 2l2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8z" fill="#CD7F32"></path><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>',
+    "star": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    "flag": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
     "flash": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
     "filter": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>',
     "external_link": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>',
@@ -575,7 +577,8 @@ def render_sidebar_cycle_pill(
         dot_color = "#10B981"
         st_lbl = "ACTIVE"
 
-    short_code = escape(c_code[:10])
+    # The collapsed rail is 72px wide: show "C1" (not a clipped "C1-202"); the full code shows when it expands.
+    short_code = escape(str(c_code).split("-")[0][:4])
     return f"""
     <div id="starapp-sidebar-cycle-pill" class="sidebar-band-switcher">
         <div class="band-switcher-mini" title="Switch Cycle Filter: {escape(c_name)} ({escape(c_start)} to {escape(c_end)})">
@@ -590,7 +593,7 @@ def render_sidebar_cycle_pill(
                     title="Switch Cycle Filter: {escape(c_name)}"
                     style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.92); border:1px solid rgba(157,183,213,0.55); color:var(--frost-navy); font-size:11.5px; font-weight:800; cursor:pointer;">
                 <span style="overflow:hidden; text-overflow:ellipsis;">{escape(c_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 7px; border-radius:999px; flex-shrink:0;">{st_lbl}</span>
+                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 7px; border-radius:999px; flex-shrink:0;">{st_lbl}</span>
             </button>
         </div>
     </div>
@@ -945,3 +948,101 @@ def render_learning_materials_view(
     """
 
 
+# ==============================================================================
+# PROFESSIONAL ICONS: emoji / dingbat characters -> the vector icon set
+# ==============================================================================
+# Emoji render differently on every OS (and as colour bitmaps next to our line icons), which made the
+# Cosmonaut / Reviewer portal look unfinished beside the Guardian portal. Rather than hand-editing
+# hundreds of strings in the view modules (and every future one), the finished markup is passed through
+# `iconize_html`, which swaps those characters for `get_icon(...)` SVGs.
+#
+# Safety: only TEXT NODES are touched. Tags are matched quote-aware (so `=>` inside an onclick attribute
+# cannot fool it) and <option>/<textarea>/<title>/<script>/<style>/<select> contents are left alone.
+
+import re as _re
+
+_GLYPH_ICONS = {
+    "&#10003;": "check", "\u2713": "check", "\u2714": "check",
+    "&#10005;": "x", "&#10007;": "x", "\u2715": "x", "\u2717": "x", "\u2718": "x",
+    "&#9888;": "alert_triangle", "\u26a0\ufe0f": "alert_triangle", "\u26a0": "alert_triangle",
+    "&#9733;": "star", "\u2605": "star", "\u2b50": "star",
+    "&#9873;": "flag", "\u2691": "flag",
+    "&#129351;": "medal_1", "\U0001F947": "medal_1",
+    "&#129352;": "medal_2", "\U0001F948": "medal_2",
+    "&#129353;": "medal_3", "\U0001F949": "medal_3",
+    "&#127942;": "award", "\U0001F3C6": "award", "\U0001F396\ufe0f": "award",
+    "&#128197;": "calendar", "\U0001F4C5": "calendar", "\U0001F4C6": "calendar",
+    "&#9200;": "clock", "\u23f0": "clock", "&#9203;": "clock", "\u23f3": "clock", "\u231b": "clock",
+    "&#9999;": "edit", "\u270f\ufe0f": "edit", "\u270f": "edit", "\U0001F4DD": "edit", "\U0001F58A\ufe0f": "edit",
+    "&#127891;": "book", "\U0001F393": "book", "\U0001F4DA": "book",
+    "&#9878;": "scale", "\u2696\ufe0f": "scale", "\u2696": "scale",
+    "&#128640;": "rocket", "\U0001F680": "rocket",
+    "&#9889;": "flash", "\u26a1": "flash",
+    "&#128101;": "users", "\U0001F465": "users", "\U0001F46A": "users",
+    "\U0001F4C4": "file_text", "\U0001F4CB": "clipboard", "\U0001F4CA": "analytics", "\U0001F3AF": "target",
+    "\U0001F514": "bell", "\U0001F512": "lock", "\U0001F513": "unlock", "\U0001F50D": "search",
+    "\U0001F4C1": "folder", "\U0001F6E1\ufe0f": "shield", "\U0001F6E1": "shield",
+    "\u2728": "flash", "&#10024;": "flash", "\U0001F4E5": "download", "\U0001F4E4": "download",
+    "\U0001F4CE": "folder", "\U0001F517": "external_link", "\U0001F4A1": "flash", "\U0001F4C8": "analytics",
+    "\U0001F4C9": "analytics", "\U0001F9E0": "target",
+}
+_GLYPH_RE = _re.compile("|".join(_re.escape(g) for g in sorted(_GLYPH_ICONS, key=len, reverse=True)))
+# quote-aware tag / comment matcher (attribute values may legally contain ">" e.g. "x => x.checked")
+_MARKUP_TOKEN_RE = _re.compile(r"""(<!--.*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>)|([^<]+)""", _re.S)
+_RAW_TEXT_TAG_RE = _re.compile(r"<(/?)(option|textarea|title|script|style|select)\b", _re.I)
+
+
+def _glyph_to_icon(match) -> str:
+    return get_icon(_GLYPH_ICONS[match.group(0)], "1.1em", "margin-right:0.18em; vertical-align:-0.18em; flex-shrink:0;")
+
+
+def iconize_html(markup: str) -> str:
+    """Replaces emoji / dingbat characters in TEXT NODES of `markup` with professional SVG icons."""
+    if not markup or not _GLYPH_RE.search(markup):
+        return markup
+    out = []
+    raw_depth = 0
+    for tok in _MARKUP_TOKEN_RE.finditer(markup):
+        tag, text = tok.group(1), tok.group(2)
+        if tag is not None:
+            m = _RAW_TEXT_TAG_RE.match(tag)
+            if m:
+                raw_depth = max(0, raw_depth + (-1 if m.group(1) else 1))
+            out.append(tag)
+        elif raw_depth > 0:
+            out.append(text)
+        else:
+            out.append(_GLYPH_RE.sub(_glyph_to_icon, text))
+    return "".join(out)
+
+
+# ==============================================================================
+# HUMAN-READABLE TEXT: internal ids -> names / badge codes
+# ==============================================================================
+_USER_ID_RE = _re.compile(r"\b(?:m_b[1-6]_\d+|cosmo_\d+|guardian_\d+)\b")
+_BADGE_ID_RE = _re.compile(r"\bbadge_[a-z0-9]+(?:_[a-z0-9]+)*\b|\bb[1-6]_[a-z]{2,6}_\d{2}\b", _re.I)
+
+
+def humanize_internal_ids(text: str) -> str:
+    """
+    Activity summaries were stored with raw ids ("Mapped m_b1_1 to ...", "badge_b1_sig_01_1795596050").
+    Show people by name and badges by code instead. Unknown ids are left as they are.
+    """
+    if not text or ("_" not in text):
+        return text or ""
+    from starapp.storage import store
+
+    def user_name(m):
+        u = store.get_user_by_id(m.group(0))
+        return u.name if u else m.group(0)
+
+    def badge_code(m):
+        raw = m.group(0)
+        b = store.get_badge(raw)
+        if not b:
+            # ids with a trailing timestamp (badge_x_1795596050) -> try without it
+            trimmed = _re.sub(r"_\d{8,}$", "", raw)
+            b = store.get_badge(trimmed) if trimmed != raw else None
+        return b.code if b else raw
+
+    return _BADGE_ID_RE.sub(badge_code, _USER_ID_RE.sub(user_name, text))

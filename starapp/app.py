@@ -13,7 +13,8 @@ from starapp.models import (
     LearningMaterial, DeadlineExtension, Announcement, ReviewerProjectPrompt,
     CycleEnrollment, CyclePerformanceAppraisal, current_iso_timestamp
 )
-from starapp.storage import store
+from starapp.storage import store, StorageWriteError
+from starapp.pagination import bind_page_state, reset_page_state
 from starapp.cycles import (
     compute_cycle_candidate_performance, calculate_and_save_cycle_appraisals,
     finalize_and_close_cycle, create_new_six_month_cycle, activate_cycle
@@ -35,7 +36,7 @@ from starapp.analytics import (
 from starapp.views_common import (
     get_icon, render_global_back_bar,
     render_cycle_context_bar, render_topbar, render_liquid_card, render_metal_button, escape,
-    render_status_pill, render_standard_marksheet, render_9point_timeline
+    render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html
 )
 from starapp.views_guardian import (
     render_guardian_sidebar, render_guardian_dashboard,
@@ -83,6 +84,28 @@ except ImportError:
     js = None
     IS_BROWSER = False
 
+class ActionDenied(Exception):
+    """Raised by an action handler when the signed-in user may not perform it (message is shown to them)."""
+
+
+# Per-file upload ceiling (characters of the base64 data URL / source text). Keeps one submission from
+# exhausting server memory or the database; roughly 9 MB of binary data.
+MAX_UPLOAD_CHARS = 12_000_000
+
+
+def _demo_mode_enabled() -> bool:
+    """
+    Passwordless demo conveniences (quick-login pills, username-only login) are allowed only while
+    STARAPP_DEMO_MODE is on (default). In the browser/Pyodide runtime there is no environment, so the
+    offline demo keeps working. Set STARAPP_DEMO_MODE=false for any deployment with real accounts.
+    """
+    try:
+        import os as _os
+        return _os.environ.get("STARAPP_DEMO_MODE", "true").strip().lower() in ("true", "1", "yes", "on")
+    except Exception:
+        return True
+
+
 class StarAppController:
     def __init__(self):
         self.current_user: Optional[User] = None
@@ -112,6 +135,8 @@ class StarAppController:
         self.render_generation: int = 0
         self._last_render_source: str = "init"
         self.view_history: list = []
+        # Current page of every paginated list/table (key -> 1-based page). See starapp/pagination.py
+        self.list_pages: Dict[str, int] = {}
 
         # Mapping workspace state
         self.mapping_selected_band: str = "B1"
@@ -657,6 +682,53 @@ class StarAppController:
 
         return "", "Badge", "BDG"
 
+    # ------------------------------------------------------------------------------------------
+    # CENTRAL ACTION AUTHORISATION. The browser chooses the action name, so the server must decide whether
+    # the signed-in user may run it. These actions change organisation-wide state (badges, mappings,
+    # allotments, cycles, salaries, announcements, final marks) and are Guardian-only.
+    # ------------------------------------------------------------------------------------------
+    _GUARDIAN_ONLY_ACTIONS = frozenset({
+        # cycles & appraisals (salary / hike / promotion)
+        "activate_cycle", "create_six_month_cycle", "calculate_cycle_appraisals",
+        "update_cycle_appraisal", "finalize_and_close_cycle", "reset_demo_data",
+        # badge authoring & publication
+        "save_generated_badge", "create_badge", "save_badge_edits", "send_badge_review_request",
+        "add_custom_capability", "add_custom_skill", "save_badge_form",
+        "publish_and_unlock_badge", "publish_badge", "unpublish_badge", "revoke_badge",
+        # mapping & allotment
+        "save_band_mapping", "delete_band_mapping", "edit_band_mapping", "send_mapping_requests",
+        "save_allotment_timeline", "delete_mapping_request", "save_staged_mapping",
+        "execute_cosmonaut_mapping", "clear_band_mappings", "reset_all_mapping_state", "reset_mapping_demo",
+        # learning materials, extensions, announcements
+        "save_bulk_materials", "save_material_form", "update_material", "delete_material",
+        "submit_extension_decision", "broadcast_announcement",
+        # final assessment / badge award
+        "submit_guardian_final_assessment", "earn_badge", "award_badge",
+    })
+
+    def _reviewer_cadets_for_badge(self, reviewer_id: str, badge_id: str) -> set:
+        """Cadets a reviewer is mapped to for one badge (timelines, band mappings, badge assignment)."""
+        cadets = set()
+        for tl in store.get_timelines_for_reviewer(reviewer_id):
+            if tl.badge_id == badge_id:
+                cadets.add(tl.cosmonaut_id)
+        b_obj = store.get_badge(badge_id)
+        for m in store.get_band_mappings():
+            if reviewer_id in (m.get("reviewers") or []):
+                m_b = m.get("badge_id") or m.get("badge")
+                if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
+                    cadets.update(m.get("cosmonauts") or [])
+        if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == reviewer_id:
+            cadets.update(getattr(b_obj, "assigned_cosmonaut_ids", []) or [])
+        return cadets
+
+    def _is_guardian_user(self) -> bool:
+        u = self.current_user
+        if not u:
+            return False
+        roles = set(getattr(u, "roles", None) or []) | {getattr(u, "role", "")}
+        return bool(roles & {"guardian", "admin"}) or u.id in ("guardian_1", "admin")
+
     _CYCLE_READONLY_SAFE_ACTIONS = {
         "login", "select_demo_account", "logout", "reset_demo_data", "go_back",
         "nav_guardian", "nav_cosmonaut", "nav_to_submit_badge",
@@ -684,7 +756,7 @@ class StarAppController:
         "toggle_mapping_badge_card", "open_mapping_badge_detail",
         "change_mapping_calendar_month", "cancel_edit_band_mapping", "reset_mapping_selection",
         "view_saved_badge", "search_skills", "preview_new_badge", "open_locked_milestone_notice",
-        "mark_announcement_as_read"
+        "mark_announcement_as_read", "set_list_page"
     }
 
     # ==========================================================================
@@ -692,6 +764,13 @@ class StarAppController:
     # ==========================================================================
 
     def handle_event(self, action: str, payload_json: str = "{}"):
+        if action in self._GUARDIAN_ONLY_ACTIONS and not self._is_guardian_user():
+            self.set_flash("You do not have permission to perform that action.", "error")
+            print(f"[Controller] DENIED guardian-only action '{action}' for user "
+                  f"{getattr(self.current_user, 'id', None)!r}")
+            self._last_render_source = f"action:{action}"
+            self.render()
+            return
         eff_cid = self._get_effective_cycle_id()
         curr_cyc = store.get_cycle(eff_cid)
         if curr_cyc and getattr(curr_cyc, "status", "active") == "closed" and action not in self._CYCLE_READONLY_SAFE_ACTIONS:
@@ -704,7 +783,25 @@ class StarAppController:
                 self.render()
             return
         with store.cycle_scope(eff_cid):
-            return self._handle_event_impl(action, payload_json)
+            try:
+                return self._handle_event_impl(action, payload_json)
+            except ActionDenied as exc:
+                self.set_flash(str(exc), "error")
+            except StorageWriteError as exc:
+                # The write was rolled back; discard any half-applied in-memory change and tell the user.
+                try:
+                    store.resync_from_database()
+                except Exception:
+                    pass
+                self.set_flash("Your change could not be saved (database busy). Nothing was modified - please try again.", "error")
+                print(f"[Controller] write failure during '{action}': {exc}")
+            except Exception as exc:  # never leave the UI frozen on an unexpected handler error
+                import traceback
+                traceback.print_exc()
+                self.set_flash("Something went wrong while processing that action. Please try again.", "error")
+                print(f"[Controller] unexpected error during '{action}': {exc!r}")
+            self._last_render_source = f"action:{action}"
+            self.render()
 
     def _handle_event_impl(self, action: str, payload_json: str = "{}"):
         import time
@@ -715,6 +812,22 @@ class StarAppController:
                 payload = payload_json
         else:
             payload = payload_json
+
+        # --- Pagination (pure UI state, safe in every cycle) ---
+        if action == "set_list_page":
+            if isinstance(payload, dict):
+                key = str(payload.get("key", ""))[:160]
+                try:
+                    page = max(1, int(payload.get("page", 1)))
+                except (TypeError, ValueError):
+                    page = 1
+                if key:
+                    self.list_pages[key] = page
+                    if len(self.list_pages) > 200:  # bound the per-session state
+                        self.list_pages.pop(next(iter(self.list_pages)))
+            self._last_render_source = "action:set_list_page"
+            self.render()
+            return
 
         # --- Authentication Actions ---
         if action == "login":
@@ -728,6 +841,8 @@ class StarAppController:
                 pwd_input = payload.get("password", "")
                 self.login_email_draft = email_input
                 user, err_msg = store.authenticate_user(email_input, pwd_input, require_password=True)
+            elif not _demo_mode_enabled():
+                user, err_msg = None, "Password is required to sign in."
             else:
                 ident = str(payload.get("username", "") if isinstance(payload, dict) else payload).strip().lower()
                 user, err_msg = store.authenticate_user(ident, None, require_password=False)
@@ -760,7 +875,10 @@ class StarAppController:
             self.view_history = []
             self.reviewer_expanded_badge_id = None
             user_id = payload.get("user_id") if isinstance(payload, dict) else payload
-            user = store.get_user_by_id(user_id)
+            user = store.get_user_by_id(user_id) if _demo_mode_enabled() else None
+            if not user and not _demo_mode_enabled():
+                self.login_error = "Quick login is disabled. Please sign in with your email and password."
+                self.set_flash(self.login_error, "error")
             if user:
                 self.login_error = None
                 self.login_email_draft = ""
@@ -1743,8 +1861,11 @@ class StarAppController:
                         self.current_view = "c_choose_cycle"
 
         elif action == "nav_guardian":
-            self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
+            view_id = str(view_id or "").strip().strip('"')
+            if not self._is_guardian_user() or view_id not in self._GUARDIAN_VIEWS:
+                raise ActionDenied("That page is not available for your account.")
+            self._push_history()
             self.current_view = view_id
             self.active_modal = None
             if view_id == "g_learning":
@@ -1758,8 +1879,11 @@ class StarAppController:
                 self.mapping_selected_band = self.create_badge_band
 
         elif action == "nav_cosmonaut":
-            self._push_history()
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
+            view_id = str(view_id or "").strip().strip('"')
+            if view_id not in self._COSMONAUT_VIEWS:
+                raise ActionDenied("That page does not exist.")
+            self._push_history()
             self.current_view = view_id
             if view_id == "c_submission":
                 self.cosmonaut_expanded_badge_id = None
@@ -2336,10 +2460,34 @@ class StarAppController:
                 elif not self.mapping_selected_reviewers:
                     self.set_flash("Please select at least 1 reviewer before sending requests.", "warning")
                 else:
+                    # SERVER-SIDE RULE ENFORCEMENT (the UI only offers valid choices, the server must not trust it):
+                    #   * the badge must be approved,
+                    #   * every reviewer must be an active badge reviewer whose band is HIGHER than the badge band,
+                    #   * every cosmonaut must be an active user of the badge band.
+                    badge_obj = store.get_badge(b_id) if b_id else None
+                    if badge_obj and getattr(badge_obj, "workflow_status", "approved") != "approved":
+                        raise ActionDenied(f"'{badge_obj.title}' is not approved yet, so it cannot be mapped.")
+                    bad_reviewers = []
+                    valid_reviewer_ids = []
+                    for r_id in self.mapping_selected_reviewers:
+                        ok_rev, why_rev = store.verify_reviewer_eligibility(r_id, effective_band)
+                        if ok_rev:
+                            valid_reviewer_ids.append(r_id)
+                        else:
+                            bad_reviewers.append(r_id)
+                    if not valid_reviewer_ids:
+                        raise ActionDenied("None of the selected reviewers is eligible: a reviewer must hold a higher band than Band "
+                                           f"{effective_band}.")
+                    valid_cosmo_ids = [
+                        cid for cid in self.mapping_selected_cosmonauts
+                        if (lambda u: bool(u) and (getattr(u, "band", "") or effective_band) == effective_band)(store.get_user_by_id(cid))
+                    ]
+                    if not valid_cosmo_ids:
+                        raise ActionDenied(f"None of the selected cosmonauts belongs to Band {effective_band}.")
                     created_count = 0
                     sent_dates = list(getattr(self, "mapping_review_dates", []) or [])
-                    sent_cosmo_ids = list(self.mapping_selected_cosmonauts)
-                    for r_id in self.mapping_selected_reviewers:
+                    sent_cosmo_ids = valid_cosmo_ids
+                    for r_id in valid_reviewer_ids:
                         u = store.get_user_by_id(r_id)
                         req_id = f"req_{effective_band}_{b_id or b_code}_{r_id}"
                         new_req = {
@@ -2362,9 +2510,12 @@ class StarAppController:
                         store.add_mapping_request(new_req)
                         store.add_notification(
                             r_id,
-                            f"Review Request: Guardian has requested your evaluation for {b_title} (Band {effective_band})",
-                            "request",
-                            link_section="c_requests"
+                            f"Review Request: {b_title} (Band {effective_band})",
+                            f"The Guardian has asked you to mentor and evaluate {len(sent_cosmo_ids)} cosmonaut(s) for "
+                            f"'{b_title}' (Band {effective_band}). Open Review Requests to accept or decline.",
+                            link_section="c_requests",
+                            event_type="mapping_request",
+                            related_badge_id=b_id or ""
                         )
                         created_count += 1
                     preview_key = f"{effective_band}::{b_id or b_title}"
@@ -2476,8 +2627,23 @@ class StarAppController:
                     ),
                     None
                 )
-                actor_id = (self.current_user.id if self.current_user else None) or (matched_req.get("reviewer_id") if matched_req else "reviewer")
-                actor_name = (self.current_user.name if self.current_user else None) or (matched_req.get("reviewer_name") if matched_req else "Reviewer")
+                # AUTHORISATION: only the invited reviewer may accept / decline an invitation and only a
+                # Guardian may withdraw one. Any signed-in user could previously act on any request id.
+                if not self.current_user:
+                    raise ActionDenied("Please sign in to respond to a mapping request.")
+                _roles = set(getattr(self.current_user, "roles", None) or [self.current_user.role])
+                _is_guardian_actor = bool(_roles & {"guardian", "admin"}) or self.current_user.id in ("guardian_1", "admin")
+                if not matched_req:
+                    raise ActionDenied("That mapping request no longer exists.")
+                if action == "delete_mapping_request" and not _is_guardian_actor:
+                    raise ActionDenied("Only a Guardian can withdraw a mapping request.")
+                if action in ("accept_mapping_request", "reject_mapping_request") and not (
+                    _is_guardian_actor or matched_req.get("reviewer_id") == self.current_user.id
+                ):
+                    raise ActionDenied("This mapping request was addressed to a different reviewer.")
+                req_id = matched_req.get("id", req_id)  # resolve to the exact id (no ambiguous prefix updates)
+                actor_id = self.current_user.id
+                actor_name = self.current_user.name
                 b_ref = matched_req.get("badge_id", "") if matched_req else ""
                 b_label = matched_req.get("badge", req_id) if matched_req else req_id
                 band_lbl = matched_req.get("band", "") if matched_req else ""
@@ -3241,7 +3407,20 @@ class StarAppController:
             else:
                 outcomes = []
 
-            rev_id = (self.current_user.id if self.current_user else None) or payload.get("reviewer_id") or "reviewer_1"
+            if not self.current_user:
+                raise ActionDenied("Please sign in to create a project brief.")
+            # AUTHORISATION: only a reviewer mapped to this badge (or a Guardian) may author / release its project
+            # brief, and only to cadets they are responsible for. Previously any user could release a brief for
+            # any badge to any cadets.
+            if badge_id and not self._is_guardian_user():
+                mapped_cadets = self._reviewer_cadets_for_badge(self.current_user.id, badge_id)
+                if not mapped_cadets:
+                    raise ActionDenied("You are not the mapped reviewer for this badge, so you cannot release its project.")
+                if cosmonaut_ids:
+                    cosmonaut_ids = [c for c in cosmonaut_ids if c in mapped_cadets]
+                    if not cosmonaut_ids:
+                        raise ActionDenied("None of the selected cadets is mapped to you for this badge.")
+            rev_id = self.current_user.id
             rev_user = store.get_user_by_id(rev_id) if store else None
             rev_name = (self.current_user.name if self.current_user else None) or (rev_user.name if rev_user else None) or "Authorized Reviewer"
 
@@ -3416,6 +3595,13 @@ class StarAppController:
         if "guardian" not in user_roles and assessor_role == "guardian":
             assessor_role = "reviewer"
 
+        # A finalised attempt is immutable. Marksheet ids are deterministic (asm_<role>_<submission>_<attempt>)
+        # and saved with INSERT OR REPLACE, so a second grading used to silently overwrite the final result
+        # (for example turning an earned badge back into a retake).
+        if sub.status in ("approved", "retake_required", "resubmission_requested"):
+            self.set_flash("This attempt has already received a final decision and can no longer be re-graded.", "info")
+            return
+
         try:
             bu = float(payload_dict.get("bu", 0)) if "bu" in payload_dict else None
             ar = float(payload_dict.get("ar", 0)) if "ar" in payload_dict else None
@@ -3430,19 +3616,19 @@ class StarAppController:
             if IS_BROWSER and hasattr(js, "document"):
                 if bu is None:
                     bu_el = js.document.getElementById("rubric-bu")
-                    bu = float(bu_el.value) if bu_el and bu_el.value else 9.0
+                    bu = float(bu_el.value) if bu_el and bu_el.value else None
                 if ar is None:
                     ar_el = js.document.getElementById("rubric-ar")
-                    ar = float(ar_el.value) if ar_el and ar_el.value else 9.0
+                    ar = float(ar_el.value) if ar_el and ar_el.value else None
                 if tk is None:
                     tk_el = js.document.getElementById("rubric-tk")
-                    tk = float(tk_el.value) if tk_el and tk_el.value else 9.0
+                    tk = float(tk_el.value) if tk_el and tk_el.value else None
                 if pr is None:
                     pr_el = js.document.getElementById("rubric-pr")
-                    pr = float(pr_el.value) if pr_el and pr_el.value else 9.0
+                    pr = float(pr_el.value) if pr_el and pr_el.value else None
                 if qa is None:
                     qa_el = js.document.getElementById("rubric-qa")
-                    qa = float(qa_el.value) if qa_el and qa_el.value else 9.0
+                    qa = float(qa_el.value) if qa_el and qa_el.value else None
                 if not strengths:
                     str_el = js.document.getElementById("rubric-strengths")
                     strengths = str(str_el.value).strip() if str_el and str_el.value else ""
@@ -3697,9 +3883,24 @@ class StarAppController:
                     self.set_flash(f"Cannot submit: Prerequisite milestone '{p}' is not yet completed and approved.", "error")
                     return
 
+            # ELIGIBILITY: a cadet may only submit against a badge that is mapped/assigned to them and
+            # published (or one they already hold a timeline for). Previously ANY badge id was accepted.
+            my_tl = store.get_timeline(badge_id, self.current_user.id)
+            my_badge_ids = {b.id for b in store.get_badges_for_cosmonaut(self.current_user.id)}
+            if not my_tl and badge_id not in my_badge_ids:
+                self.set_flash("This milestone is not allotted to you, so deliverables cannot be submitted for it.", "error")
+                return
+
             # Determine single submission / edit vs new submission
             existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, badge_id)
             latest_sub = existing_subs[-1] if existing_subs else None
+            if latest_sub and latest_sub.status == "approved":
+                self.set_flash(f"{badge.code} has already been earned. No further attempts are needed.", "info")
+                return
+            if latest_sub and latest_sub.status == "reviewer_assessed":
+                self.set_flash("Your latest attempt has been graded by the reviewer and is awaiting the Guardian's final decision. "
+                               "You can submit a new attempt only if a retake is requested.", "info")
+                return
             # Only treat as edit if latest attempt is still pending or draft
             is_edit = bool(latest_sub and latest_sub.status in ("pending", "draft"))
             if is_edit and latest_sub:
@@ -3727,17 +3928,47 @@ class StarAppController:
                 if not gh_url and gh_inp and gh_inp.value:
                     gh_url = str(gh_inp.value).strip()
 
-            # Ensure high-quality defaults so all deliverables are present and readable in reviews
-            ref_sub = latest_sub if is_edit else None
+            # DELIVERABLES: anything the cadet did not provide is inherited from their previous attempt.
+            # Placeholder files / a fake GitHub URL are generated ONLY in demo mode -- in a real deployment
+            # an empty submission used to be silently padded with dummy content that reviewers then graded.
+            ref_sub = latest_sub
+            if ref_sub:
+                pdf_name = pdf_name or getattr(ref_sub, "pdf_name", "")
+                pdf_payload = pdf_payload or getattr(ref_sub, "pdf_payload", "")
+                code_name = code_name or getattr(ref_sub, "code_name", "")
+                code_payload = code_payload or getattr(ref_sub, "code_payload", "")
+                gh_url = gh_url or getattr(ref_sub, "github_url", "")
+
+            demo_fill = _demo_mode_enabled()
+            if not demo_fill:
+                missing = [label for label, val in (
+                    ("PDF architecture report", pdf_payload and pdf_name),
+                    ("source-code file", code_payload and code_name),
+                    ("GitHub repository URL", gh_url),
+                ) if not val]
+                if missing:
+                    self.set_flash("Please provide all deliverables before submitting. Missing: " + ", ".join(missing) + ".", "error")
+                    return
+
+            if gh_url and not (gh_url.lower().startswith("https://") or gh_url.lower().startswith("http://")):
+                self.set_flash("The GitHub repository must be a valid http(s) URL (for example https://github.com/org/repo).", "error")
+                return
+            if pdf_name and not pdf_name.lower().endswith(".pdf"):
+                self.set_flash("The architecture report must be a PDF file.", "error")
+                return
+            if len(pdf_payload) > MAX_UPLOAD_CHARS or len(code_payload) > MAX_UPLOAD_CHARS:
+                self.set_flash("A deliverable is too large (limit about 9 MB per file). Please upload a smaller file.", "error")
+                return
+
             if not pdf_name:
-                pdf_name = ref_sub.pdf_name if ref_sub and getattr(ref_sub, "pdf_name", "") else f"{self.current_user.name.split()[0]}_{badge.code}_Architecture_Report.pdf"
+                pdf_name = f"{self.current_user.name.split()[0]}_{badge.code}_Architecture_Report.pdf"
             if not pdf_payload:
-                pdf_payload = ref_sub.pdf_payload if ref_sub and getattr(ref_sub, "pdf_payload", "") else "data/Chemistry%20Syllabus.pdf"
+                pdf_payload = "data/Chemistry%20Syllabus.pdf"
 
             if not code_name:
-                code_name = ref_sub.code_name if ref_sub and getattr(ref_sub, "code_name", "") else f"{badge.code.lower().replace('-', '_')}_implementation.py"
+                code_name = f"{badge.code.lower().replace('-', '_')}_implementation.py"
             if not code_payload:
-                code_payload = ref_sub.code_payload if ref_sub and getattr(ref_sub, "code_payload", "") else f'''"""
+                code_payload = f'''"""
 StarApp Academy: {badge.code} {badge.title} Implementation
 Cosmonaut: {self.current_user.name} ({self.current_user.id})
 Milestone Deliverable - Attempt #{attempt_num}
@@ -3759,7 +3990,7 @@ if __name__ == "__main__":
 '''
 
             if not gh_url:
-                gh_url = ref_sub.github_url if ref_sub and getattr(ref_sub, "github_url", "") else f"https://github.com/starapp-cosmonauts/{badge.code.lower().replace('-', '_')}-deliverable"
+                gh_url = f"https://github.com/starapp-cosmonauts/{badge.code.lower().replace('-', '_')}-deliverable"
 
             if is_edit and latest_sub:
                 sub = latest_sub
@@ -3801,6 +4032,15 @@ if __name__ == "__main__":
                 tl.status = "awaiting_review"
                 store.save_timeline(tl)
 
+            # Late-submission awareness (the deadline is recorded, never silently ignored)
+            late_note = ""
+            try:
+                dl = datetime.date.fromisoformat(str(getattr(tl, "submission_deadline", "") or "")[:10]) if tl else None
+                if dl and datetime.date.today() > dl:
+                    late_note = f" Submitted {(datetime.date.today() - dl).days} day(s) after the {dl.isoformat()} deadline."
+            except ValueError:
+                late_note = ""
+
             # Log activity
             store.add_activity(
                 event_type="project_submitted",
@@ -3809,7 +4049,7 @@ if __name__ == "__main__":
                 cosmonaut_id=self.current_user.id,
                 badge_id=badge_id,
                 summary=f"Project Deliverable Submitted (Attempt #{attempt_num})",
-                details=f"{self.current_user.name} submitted {badge.code}: {badge.title} with PDF, Code, and GitHub repository."
+                details=f"{self.current_user.name} submitted {badge.code}: {badge.title} with PDF, Code, and GitHub repository.{late_note}"
             )
 
             # Route deliverable strictly to assigned reviewer (not guardian)
@@ -3824,7 +4064,7 @@ if __name__ == "__main__":
                 store.add_notification(
                     recipient_id=assigned_rev_id,
                     title=f"Cadet Deliverable Assigned: {self.current_user.name}",
-                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. 3-Day review window active.",
+                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. 3-Day review window active.{late_note}",
                     link_section="c_assessments"
                 )
 
@@ -3850,14 +4090,24 @@ if __name__ == "__main__":
             reason = payload.get("reason")
 
             tl = store.get_timeline(badge_id, self.current_user.id)
-            curr_date = tl.submission_deadline if tl else "2026-11-20"
+            if not tl:
+                # Previously a made-up default deadline was used, so extensions could be requested for ANY badge.
+                self.set_flash("You can only request an extension for a milestone that is allotted to you.", "error")
+                return
+            if getattr(tl, "status", "") == "completed":
+                self.set_flash("This milestone is already completed; no extension is needed.", "info")
+                return
+            if any(e.badge_id == badge_id and e.status == "pending" for e in store.get_extensions_for_cosmonaut(self.current_user.id)):
+                self.set_flash("You already have a pending extension request for this milestone.", "info")
+                return
+            curr_date = tl.submission_deadline
 
             valid, err = validate_extension_request(curr_date, prop_date, reason)
             if not valid:
                 self.set_flash(f"Request error: {err}", "error")
                 return
 
-            ext_id = f"ext_{self.current_user.id}_{badge_id}_{len(store.get_all_extensions()) + 1}"
+            ext_id = f"ext_{self.current_user.id}_{badge_id}_{int(time.time() * 1000)}"
             ext = DeadlineExtension(
                 id=ext_id,
                 badge_id=badge_id,
@@ -4619,8 +4869,8 @@ if __name__ == "__main__":
                         <div style="min-width:0;">
                             <div style="font-size:12px; font-weight:800; color:var(--frost-navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{escape(c.name)}</div>
                             <div style="display:flex; align-items:center; gap:4px; margin-top:1px;">
-                                <span style="font-size:9.5px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:1px 5px; border-radius:8px;">{escape(c_band)}</span>
-                                <span style="font-size:9.5px; color:var(--frost-navy-50);">{escape(c_track)}</span>
+                                <span style="font-size:10px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:1px 5px; border-radius:8px;">{escape(c_band)}</span>
+                                <span style="font-size:10px; color:var(--frost-navy-50);">{escape(c_track)}</span>
                             </div>
                         </div>
                     </div>
@@ -4989,7 +5239,7 @@ if __name__ == "__main__":
     # ==========================================================================
 
     def render_login_view(self) -> str:
-        quick_accounts = store.get_quick_login_accounts()
+        quick_accounts = store.get_quick_login_accounts() if _demo_mode_enabled() else []
         quick_pills = []
         for acc in quick_accounts:
             acc_id = escape(acc["id"])
@@ -5143,9 +5393,18 @@ if __name__ == "__main__":
             )
             return html_output
 
+        # Defence in depth: whatever put the controller on a Guardian page (a stale session snapshot, a
+        # crafted action, a role change), a non-guardian can never be RENDERED a g_* page.
+        if self.current_view.startswith("g_") and not self._is_guardian_user():
+            self.current_view = "c_choose_cycle"
+            self.active_modal = None
         effective_cid = self._get_effective_cycle_id()
-        with store.cycle_scope(effective_cid):
-            return self._render_workspace_scoped(render_source, effective_cid)
+        page_token = bind_page_state(self.list_pages)
+        try:
+            with store.cycle_scope(effective_cid):
+                return self._render_workspace_scoped(render_source, effective_cid)
+        finally:
+            reset_page_state(page_token)
 
     def _render_workspace_scoped(self, render_source: str, effective_cid: str) -> str:
         # Common data calculations (scoped to effective_cid)
@@ -5678,7 +5937,8 @@ if __name__ == "__main__":
                     user_perf_per_cycle=perf_list
                 )
 
-        modal_html = self.render_active_modal()
+        modal_html = iconize_html(self.render_active_modal())
+        main_content_html = iconize_html(main_content_html)
 
         flash_html = ""
         if self.flash_message:

@@ -376,6 +376,11 @@ class BadgeTimeline:
 
 
 class ProjectSubmission:
+    """
+    A cadet's deliverable attempt. The three large payload fields (`payload`, `pdf_payload`,
+    `code_payload`) can be LAZY: when the store loads thousands of submissions it keeps only the
+    metadata in memory and fetches the heavy data URLs from SQLite the first time they are read.
+    """
     def __init__(
         self,
         id: str,
@@ -392,24 +397,79 @@ class ProjectSubmission:
         code_name: str = "",
         code_payload: str = "",
         github_url: str = "",
-        cycle_id: str = DEFAULT_CYCLE_ID
+        cycle_id: str = DEFAULT_CYCLE_ID,
+        lazy_payload: bool = False,
     ):
         self.id = id
         self.badge_id = badge_id
         self.cosmonaut_id = cosmonaut_id
         self.attempt_number = attempt_number
         self.submission_type = submission_type
-        self.payload = payload
         self.file_name = file_name
         self.submitted_at = submitted_at
         self.status = status
 
+        # Lazy state must exist before any payload property is touched.
+        self._lazy = bool(lazy_payload)
+        self._loader = None
+        self._payload = payload
+        self._pdf_payload = pdf_payload or (payload if submission_type == "pdf" else "")
+        self._code_payload = code_payload or (payload if submission_type == "code" else "")
+
         self.pdf_name = pdf_name or (file_name if submission_type == "pdf" else "")
-        self.pdf_payload = pdf_payload or (payload if submission_type == "pdf" else "")
         self.code_name = code_name or (file_name if submission_type == "code" else "")
-        self.code_payload = code_payload or (payload if submission_type == "code" else "")
         self.github_url = github_url or (payload if submission_type == "github" else "")
         self.cycle_id = cycle_id or DEFAULT_CYCLE_ID
+
+    # -- lazy payload handling ------------------------------------------------
+    @property
+    def payload_is_lazy(self) -> bool:
+        return self._lazy
+
+    def _hydrate(self):
+        if not self._lazy:
+            return
+        self._lazy = False
+        loader = self._loader
+        if loader is None:
+            return
+        try:
+            blobs = loader(self.id) or {}
+        except Exception:
+            blobs = {}
+        self._payload = blobs.get("payload", self._payload) or ""
+        self._pdf_payload = blobs.get("pdf_payload", "") or (self._payload if self.submission_type == "pdf" else "")
+        self._code_payload = blobs.get("code_payload", "") or (self._payload if self.submission_type == "code" else "")
+
+    @property
+    def payload(self) -> str:
+        self._hydrate()
+        return self._payload
+
+    @payload.setter
+    def payload(self, value: str):
+        self._hydrate()
+        self._payload = value
+
+    @property
+    def pdf_payload(self) -> str:
+        self._hydrate()
+        return self._pdf_payload
+
+    @pdf_payload.setter
+    def pdf_payload(self, value: str):
+        self._hydrate()
+        self._pdf_payload = value
+
+    @property
+    def code_payload(self) -> str:
+        self._hydrate()
+        return self._code_payload
+
+    @code_payload.setter
+    def code_payload(self, value: str):
+        self._hydrate()
+        self._code_payload = value
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -423,9 +483,9 @@ class ProjectSubmission:
             "submitted_at": self.submitted_at,
             "status": self.status,
             "pdf_name": getattr(self, "pdf_name", ""),
-            "pdf_payload": getattr(self, "pdf_payload", ""),
+            "pdf_payload": self.pdf_payload,
             "code_name": getattr(self, "code_name", ""),
-            "code_payload": getattr(self, "code_payload", ""),
+            "code_payload": self.code_payload,
             "github_url": getattr(self, "github_url", ""),
             "cycle_id": getattr(self, "cycle_id", DEFAULT_CYCLE_ID)
         }
@@ -450,7 +510,8 @@ class ProjectSubmission:
             code_name=data.get("code_name", fname if sub_type == "code" else ""),
             code_payload=data.get("code_payload", payload if sub_type == "code" else ""),
             github_url=data.get("github_url", payload if sub_type == "github" else ""),
-            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID
+            cycle_id=data.get("cycle_id") or DEFAULT_CYCLE_ID,
+            lazy_payload=bool(data.get("lazy_payload", False)),
         )
 
 

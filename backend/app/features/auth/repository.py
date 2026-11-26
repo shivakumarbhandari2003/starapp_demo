@@ -36,6 +36,11 @@ class AuthRepository:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_user_role_ids(self, user_id: str) -> List[str]:
+        cur = self.conn.cursor()
+        cur.execute("SELECT role_id FROM user_role_assignments WHERE user_id = ?;", (user_id,))
+        return [r[0] for r in cur.fetchall()]
+
     def create_session(self, session_id: str, user_id: str, role: str, expires_at: str, ip: str = None, ua: str = None):
         cur = self.conn.cursor()
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()

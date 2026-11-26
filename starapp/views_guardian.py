@@ -5,8 +5,10 @@ Implements the 7 core workspaces for training managers and mentors.
 
 import json
 from typing import List, Dict, Any, Optional
+from starapp.pagination import page_slice
 from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet, LearningMaterial, DeadlineExtension, Announcement, ActivityEvent
 from starapp.views_common import (
+    humanize_internal_ids,
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
@@ -47,7 +49,7 @@ def render_metric_info_popover(key: str, data: Dict[str, Any], scope: str = "coh
             </div>
             <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
                 <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
-                <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
+                <span class="popover-data-val" style="color:#047857;">{escape(info.get('value', ''))}</span>
             </div>
             <div class="popover-criteria-section">
                 <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
@@ -263,9 +265,14 @@ def render_guardian_dashboard(
 
     # 1. Cosmonaut selector dropdown options
     selector_options = [
-        f'<option value="all"{" selected" if selected_cosmo_id == "all" else ""}>All Cosmonauts (Cohort Aggregate — 6 Profiles)</option>'
+        f'<option value="all"{" selected" if selected_cosmo_id == "all" else ""}>All Cosmonauts (Cohort Aggregate &mdash; {len(cohort_profiles):,} Profiles)</option>'
     ]
-    for p in cohort_profiles:
+    # A <select> with thousands of <option>s is unusable and enormous; list the first 150 plus the current
+    # selection. Every cadet remains reachable through the paginated monitoring matrix below.
+    _selector_profiles = list(cohort_profiles[:150])
+    if selected_cosmo_id != "all" and not any(p["id"] == selected_cosmo_id for p in _selector_profiles):
+        _selector_profiles += [p for p in cohort_profiles if p["id"] == selected_cosmo_id][:1]
+    for p in _selector_profiles:
         sel = " selected" if p["id"] == selected_cosmo_id else ""
         selector_options.append(f'<option value="{p["id"]}"{sel}>{escape(p["name"])} ({p["id"]})</option>')
 
@@ -312,6 +319,12 @@ def render_guardian_dashboard(
     attention_count = cohort_analytics["requiring_attention"]
     first_attempt_rate = cohort_analytics["first_attempt_rate"]
 
+    _risk_counts = {"At Risk": 0, "Needs Attention": 0, "Monitor": 0}
+    for _p in cohort_profiles:
+        if _p.get("risk_status") in _risk_counts:
+            _risk_counts[_p["risk_status"]] += 1
+    _attention_breakdown = " &bull; ".join(f"{n} {label}" for label, n in _risk_counts.items() if n) or "All cadets on track"
+
     kpis = f"""
     <div class="kpi-grid guardian-kpi-row" style="margin-bottom:24px;">
         <!-- KPI 1: Enrolled Cadets -->
@@ -328,7 +341,7 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{total_profiles}</div>
-            <div class="kpi-subtext" style="color:#10B981; font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">● Active Batch Enrollment</div>
+            <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">● Active Batch Enrollment</div>
         </div>
 
         <!-- KPI 2: Average Assessment Score -->
@@ -357,7 +370,7 @@ def render_guardian_dashboard(
                     </span>
                     {render_metric_info_popover('pending_evals', cohort_analytics, 'cohort', 'right')}
                 </div>
-                <div class="kpi-icon-bubble" style="width:28px; height:28px; min-width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-xs); background:rgba(239,68,68,0.1); color:#EF4444;">
+                <div class="kpi-icon-bubble" style="width:28px; height:28px; min-width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-xs); background:rgba(239,68,68,0.1); color:#B91C1C;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </div>
             </div>
@@ -376,12 +389,12 @@ def render_guardian_dashboard(
                     </span>
                     {render_metric_info_popover('cadets_attention', cohort_analytics, 'cohort', 'right')}
                 </div>
-                <div class="kpi-icon-bubble" style="width:28px; height:28px; min-width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-xs); background:rgba(245,158,11,0.1); color:#F59E0B;">
+                <div class="kpi-icon-bubble" style="width:28px; height:28px; min-width:28px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-xs); background:rgba(245,158,11,0.1); color:#B45309;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:{'#F59E0B' if attention_count > 0 else 'var(--frost-navy)'};">{attention_count}</div>
-            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">1 Needs Attention &bull; 1 Monitor</div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_attention_breakdown}</div>
         </div>
 
         <!-- KPI 5: First-Attempt Pass Rate -->
@@ -408,15 +421,37 @@ def render_guardian_dashboard(
     # --------------------------------------------------------------------------
     # Per-student grouped bar chart: Completed Badges | Pending Badges | Extra Attempts Taken
     # Dynamically derived from cohort_profiles across all 6 enrolled cadets
-    TOTAL_BADGES = 5  # Standard cohort curriculum milestone count
-    BAR_MAX_H = 100   # Maximum bar height in px for 5 badges
+    BAR_MAX_H = 100   # Maximum bar height in px
+    MAX_CHART_CADETS = 12  # one grouped bar per cadet is only readable for a handful of people
 
-    cadet_bars = []
+    # Totals are computed over the FULL cohort from real assignments (previously every cadet was
+    # assumed to have exactly 5 badges, which made the completion % wrong for everyone else).
     total_completed_all = 0
     total_pending_all = 0
     total_extra_all = 0
+    total_assigned_all = 0
+    for _p in cohort_profiles:
+        _assigned = int(_p.get("total_assigned", 0) or 0)
+        _done = _p.get("completed_count", 0) or len([a for a in _p.get("assessments", []) if a.get("decision") == "approve"])
+        total_completed_all += _done
+        total_pending_all += max(0, _assigned - _done)
+        total_extra_all += _p.get("resubmission_count", 0)
+        total_assigned_all += _assigned
 
-    for idx, profile in enumerate(cohort_profiles):
+    # The chart itself shows the cadets that need the Guardian most (risk first), up to MAX_CHART_CADETS.
+    _risk_rank = {"At Risk": 0, "Needs Attention": 1, "Monitor": 2, "On Track": 3}
+    if len(cohort_profiles) > MAX_CHART_CADETS:
+        chart_profiles = sorted(
+            cohort_profiles,
+            key=lambda x: (_risk_rank.get(x.get("risk_status", "On Track"), 3), -x.get("completed_count", 0), x.get("name", ""))
+        )[:MAX_CHART_CADETS]
+    else:
+        chart_profiles = list(cohort_profiles)
+    TOTAL_BADGES = max(1, max((int(_p.get("total_assigned", 0) or 0) for _p in chart_profiles), default=1))
+
+    cadet_bars = []
+
+    for idx, profile in enumerate(chart_profiles):
         name_full = profile.get("name", "Cadet")
         first_name = name_full.split()[0]
         avatar = profile.get("avatar", name_full[:2].upper())
@@ -435,10 +470,6 @@ def render_guardian_dashboard(
         # 3. Pending badges (remaining milestones to clear)
         total_assigned = profile.get("total_assigned", TOTAL_BADGES)
         pending = max(0, total_assigned - completed)
-
-        total_completed_all += completed
-        total_pending_all += pending
-        total_extra_all += extra
 
         # Risk indicator color
         risk_color_map = {
@@ -462,7 +493,7 @@ def render_guardian_dashboard(
         # Tooltip alignment (first item aligns left, last aligns right, middle aligns center)
         if idx == 0:
             pop_align = "pop-align-left"
-        elif idx >= len(cohort_profiles) - 1:
+        elif idx >= len(chart_profiles) - 1:
             pop_align = "pop-align-right"
         else:
             pop_align = "pop-align-center"
@@ -473,10 +504,10 @@ def render_guardian_dashboard(
             <div class="velocity-hover-popover">
                 <div class="vel-pop-header">
                     <span style="display:flex; align-items:center; gap:6px;">
-                        <span style="width:20px; height:20px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center;">{escape(avatar)}</span>
+                        <span style="width:20px; height:20px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center;">{escape(avatar)}</span>
                         {escape(name_full)}
                     </span>
-                    <span style="font-size:9.5px; font-weight:700; color:{risk_color}; padding:2px 6px; background:rgba(255,255,255,0.12); border-radius:8px;">{escape(risk)}</span>
+                    <span style="font-size:10px; font-weight:700; color:{risk_color}; padding:2px 6px; background:rgba(255,255,255,0.12); border-radius:8px;">{escape(risk)}</span>
                 </div>
                 <div class="vel-pop-row">
                     <span class="vel-pop-label">Completed:</span>
@@ -509,7 +540,7 @@ def render_guardian_dashboard(
                 </div>
                 <!-- Pending Bar -->
                 <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
-                    <span style="font-size:10.5px; font-weight:800; color:#D97706;">{pending}</span>
+                    <span style="font-size:10.5px; font-weight:800; color:#B45309;">{pending}</span>
                     <div style="width:14px; height:{h_pend}px; background:linear-gradient(180deg, #F59E0B 0%, #FCD34D 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(245,158,11,0.25);" title="Pending: {pending}"></div>
                 </div>
                 <!-- Extra Attempts Bar -->
@@ -521,13 +552,18 @@ def render_guardian_dashboard(
 
             <!-- Cadet Identity Pill Below Bars -->
             <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-                <div style="width:24px; height:24px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:9.5px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid {risk_color}; box-shadow:0 1px 4px rgba(7,22,41,0.15);">{escape(avatar)}</div>
+                <div style="width:24px; height:24px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid {risk_color}; box-shadow:0 1px 4px rgba(7,22,41,0.15);">{escape(avatar)}</div>
                 <span style="font-size:10.5px; font-weight:800; color:var(--frost-navy); white-space:nowrap; max-width:54px; overflow:hidden; text-overflow:ellipsis;" title="{escape(name_full)}">{escape(first_name)}</span>
             </div>
         </div>
         """)
 
-    avg_completion_pct = round((total_completed_all / max(1, len(cohort_profiles) * TOTAL_BADGES)) * 100.0, 1)
+    avg_completion_pct = round((total_completed_all / max(1, total_assigned_all)) * 100.0, 1)
+    _chart_scope_note = (
+        f"Showing the {len(chart_profiles)} cadets needing the most attention out of {len(cohort_profiles):,}."
+        if len(cohort_profiles) > MAX_CHART_CADETS
+        else f"Individual cadet milestone completion, pending backlog &amp; extra attempts across all {len(cohort_profiles)} enrolled cadets."
+    )
 
     top_command_deck = f"""
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:20px; margin-bottom:24px;">
@@ -539,7 +575,7 @@ def render_guardian_dashboard(
                         Weekly Curriculum Velocity & Pacing
                         {render_metric_info_popover('weekly_velocity', cohort_analytics, 'cohort', 'right')}
                     </h3>
-                    <div style="font-size:11.5px; color:var(--frost-navy-50);">Individual cadet milestone completion, pending backlog &amp; extra attempts across all 6 enrolled cadets.</div>
+                    <div style="font-size:11.5px; color:var(--frost-navy-50);">{_chart_scope_note}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:12px; font-size:11px; flex-wrap:wrap;">
                     <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #071629 0%, #17345C 100%); border-radius:3px;"></span> <strong style="color:var(--frost-navy);">Completed</strong></span>
@@ -550,14 +586,9 @@ def render_guardian_dashboard(
 
             <!-- Y-Axis + Multi-Cadet Grouped Bars Container -->
             <div style="display:flex; gap:0; align-items:stretch; position:relative; min-height:190px;">
-                <!-- Y-Axis Scale (0 to 5 Badges) -->
+                <!-- Y-Axis Scale (0 to the largest badge count shown) -->
                 <div style="display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-right:8px; height:{BAR_MAX_H + 26 + 48}px; padding-bottom:48px; padding-top:6px;">
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">5</span>
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">4</span>
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">3</span>
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">2</span>
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">1</span>
-                    <span style="font-size:9px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">0</span>
+                    {"".join(f'<span style="font-size:10px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">{i}</span>' for i in range(TOTAL_BADGES, -1, -1))}
                 </div>
                 <!-- Plot Area with Horizontal Grid Lines -->
                 <div style="flex:1; position:relative;">
@@ -573,8 +604,8 @@ def render_guardian_dashboard(
 
             <!-- Aggregate Performance Summary Footer -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30); font-size:11.5px; flex-wrap:wrap; gap:8px;">
-                <span style="color:var(--frost-navy-75);">Batch Completion: <strong style="color:#059669;">{avg_completion_pct:.1f}% ({total_completed_all}/{len(cohort_profiles) * TOTAL_BADGES} Total Certified)</strong></span>
-                <span style="color:var(--frost-navy-50);">Pending: <strong style="color:#D97706;">{total_pending_all} Milestones</strong> &bull; Resubmissions: <strong style="color:#DC2626;">{total_extra_all} Extra Attempts</strong></span>
+                <span style="color:var(--frost-navy-75);">Batch Completion: <strong style="color:#047857;">{avg_completion_pct:.1f}% ({total_completed_all}/{total_assigned_all} Total Certified)</strong></span>
+                <span style="color:var(--frost-navy-50);">Pending: <strong style="color:#B45309;">{total_pending_all} Milestones</strong> &bull; Resubmissions: <strong style="color:#DC2626;">{total_extra_all} Extra Attempts</strong></span>
             </div>
         </div>
 
@@ -636,7 +667,10 @@ def render_guardian_dashboard(
     # --------------------------------------------------------------------------
     sorted_cohort = sorted(cohort_profiles, key=lambda x: (x.get("average_marks", 0.0), x.get("completed_count", 0)), reverse=True)
     leaderboard_rows = []
-    for idx, c in enumerate(sorted_cohort, start=1):
+    _lb_page_items, leaderboard_pager_html = page_slice("g_dashboard_leaderboard", sorted_cohort, 10)
+    # ranks stay global (page 2 starts at rank 11)
+    _lb_offset = sorted_cohort.index(_lb_page_items[0]) if _lb_page_items else 0
+    for idx, c in enumerate(_lb_page_items, start=_lb_offset + 1):
         # Rank medal styling
         if idx == 1:
             rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:12px; border:1px solid #FCD34D;">1</span>'
@@ -668,9 +702,9 @@ def render_guardian_dashboard(
                 </div>
             </td>
             <td style="padding:10px 14px; text-align:center; vertical-align:middle;">
-                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:11px; opacity:0.6;">/ 5 Badges</span>
+                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:11px; opacity:0.6;">/ {c.get("total_assigned", 0)} Badge{"s" if c.get("total_assigned", 0) != 1 else ""}</span>
                 <div style="width:50px; height:4px; border-radius:2px; background:rgba(157,183,213,0.3); margin:3px auto 0 auto; overflow:hidden;">
-                    <div style="width:{round((c_comp/5)*100)}%; height:100%; background:#10B981;"></div>
+                    <div style="width:{min(100, round((c_comp / max(1, c.get("total_assigned", 0))) * 100))}%; height:100%; background:#10B981;"></div>
                 </div>
             </td>
             <td style="padding:10px 14px; vertical-align:middle;">
@@ -724,6 +758,7 @@ def render_guardian_dashboard(
                 </tbody>
             </table>
         </div>
+        {leaderboard_pager_html}
     </div>
     """
 
@@ -740,7 +775,8 @@ def render_guardian_dashboard(
         filtered_profiles.append(p)
 
     roster_rows = []
-    for p in filtered_profiles:
+    page_profiles, roster_pager_html = page_slice(f"g_dashboard:{risk_filter}", filtered_profiles, 25)
+    for p in page_profiles:
         r_st = p.get("risk_status", "On Track")
         if r_st == "On Track":
             r_pill = '<span style="font-size:11px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10003; On Track</span>'
@@ -752,8 +788,8 @@ def render_guardian_dashboard(
             r_pill = '<span style="font-size:11px; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10005; At Risk</span>'
 
         # Relative active time calculation
-        days_inact = p.get("days_inactive", 0)
-        rel_act = "Today" if days_inact == 0 else f"{days_inact}d ago"
+        days_inact = p.get("days_inactive", None)
+        rel_act = "No activity yet" if days_inact is None else ("Today" if days_inact == 0 else f"{days_inact}d ago")
 
         roster_rows.append(f"""
         <tr style="border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;">
@@ -767,9 +803,9 @@ def render_guardian_dashboard(
                 </div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:10%;">
-                <div style="font-weight:800; font-size:14px; color:var(--deep-frozen-midnight);">{p.get("completed_count", 0)} <span style="font-size:11.5px; font-weight:600; opacity:0.6;">/ 5</span></div>
+                <div style="font-weight:800; font-size:14px; color:var(--deep-frozen-midnight);">{p.get("completed_count", 0)} <span style="font-size:11.5px; font-weight:600; opacity:0.6;">/ {p.get("total_assigned", 0)}</span></div>
                 <div style="width:55px; height:4px; border-radius:2px; background:rgba(157,183,213,0.3); margin:4px auto 0 auto; overflow:hidden;">
-                    <div style="width:{round((p.get('completed_count', 0)/5)*100)}%; height:100%; background:#10B981;"></div>
+                    <div style="width:{min(100, round((p.get('completed_count', 0) / max(1, p.get('total_assigned', 0))) * 100))}%; height:100%; background:#10B981;"></div>
                 </div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:14%;">
@@ -839,6 +875,7 @@ def render_guardian_dashboard(
                 </tbody>
             </table>
         </div>
+        {roster_pager_html}
     </div>
     """
 
@@ -878,7 +915,7 @@ def render_individual_cosmo_dossier(
     if is_demo:
         badge_tag = '<span style="font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel);">DEMONSTRATION ANALYTICS PROFILE</span>'
     else:
-        badge_tag = '<span style="font-size:11px; font-weight:800; background:#10B981; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">ACTUAL APPLICATION COSMONAUT</span>'
+        badge_tag = '<span style="font-size:11px; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">ACTUAL APPLICATION COSMONAUT</span>'
 
     # Risk Status Pill
     if r_status == "On Track":
@@ -957,7 +994,7 @@ def render_individual_cosmo_dossier(
         <div style="font-weight:800; font-size:12px; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
         <div style="font-size:11px; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
         <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:11.5px; color:#FFFFFF;">
-            Rubric Score: <strong style="color:#10B981;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
+            Rubric Score: <strong style="color:#047857;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
         </div>
         <div style="font-size:11px; color:var(--pure-ice); margin-top:2px;">Attempt #{att} &bull; Certified Assessment</div>
         <div style="font-size:10.5px; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
@@ -1006,7 +1043,7 @@ def render_individual_cosmo_dossier(
         <div style="background:rgba(234,244,255,0.35); border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); padding:32px 24px 20px 24px; position:relative; overflow:visible;">
             <!-- Passing Threshold Guide Line (35.0 / 50.0 = 70% from baseline = 30% from top of bar zone) -->
             <div style="position:absolute; top:32%; left:24px; right:24px; height:1px; border-top:1.5px dashed rgba(16,185,129,0.6); z-index:1; pointer-events:none;">
-                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#059669; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                     Passing Threshold: 35.0 / 50.0 (70%)
                 </span>
             </div>
@@ -1081,7 +1118,7 @@ def render_individual_cosmo_dossier(
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11.5px; gap:8px; flex-wrap:wrap;">
                 <span style="font-weight:800; color:{sk_col}; background:rgba(37,99,235,0.08); padding:2px 8px; border-radius:4px;">{escape(sk_prof)}</span>
                 <span style="font-weight:800; font-size:11.5px; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
-                    &#9733; Rating: <strong style="color:#059669; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
+                    &#9733; Rating: <strong style="color:#047857; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
                 </span>
             </div>
             <div style="width:100%; height:6px; background:rgba(157,183,213,0.25); border-radius:3px; overflow:hidden;">
@@ -1134,14 +1171,14 @@ def render_individual_cosmo_dossier(
 
     str_items = "".join([f"""
     <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#10B981; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
+        <span style="color:#047857; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
         <span>{escape(s)}</span>
     </li>
     """ for s in strengths_data])
 
     imp_items = "".join([f"""
     <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#F59E0B; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
+        <span style="color:#B45309; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
         <span>{escape(im)}</span>
     </li>
     """ for im in improvements_data])
@@ -1151,7 +1188,7 @@ def render_individual_cosmo_dossier(
         <!-- Column 1: Strengths -->
         <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.22); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px 18px;">
             <div style="font-size:13px; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#10B981; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
+                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
                 Demonstrated Engineering Strengths
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -1234,7 +1271,7 @@ def render_individual_cosmo_dossier(
                     </span>
                 </div>
                 <div class="kpi-value">{comp_count} / {total_assigned}</div>
-                <div class="kpi-subtext" style="color:#10B981; font-weight:700;">{round((comp_count/max(1, total_assigned))*100)}% Roadmap Completed</div>
+                <div class="kpi-subtext" style="color:#047857; font-weight:700;">{round((comp_count/max(1, total_assigned))*100)}% Roadmap Completed</div>
             </div>
             <div class="liquid-glass-card kpi-card" style="padding:18px 20px;">
                 <div class="kpi-header">
@@ -1252,7 +1289,7 @@ def render_individual_cosmo_dossier(
                         Cohort Leaderboard Rank
                     </span>
                 </div>
-                <div class="kpi-value" style="color:#059669;">#{rank} <span style="font-size:13px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
+                <div class="kpi-value" style="color:#047857;">#{rank} <span style="font-size:13px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
                 <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700;">Top {round((rank/max(1, total_cohort))*100)}% of Batch</div>
             </div>
             <div class="liquid-glass-card kpi-card" style="padding:18px 20px;">
@@ -1484,7 +1521,7 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
             c_av = getattr(cu, "avatar", cname[:2].upper() if cname else "CM")
             cad_chips.append(f"""
             <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.88); border:1px solid rgba(157,183,213,0.45); color:var(--frost-navy); font-size:12px; font-weight:700;">
-                <span style="width:18px; height:18px; border-radius:50%; background:rgba(23,52,92,0.12); display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:800;">{escape(c_av)}</span>
+                <span style="width:18px; height:18px; border-radius:50%; background:rgba(23,52,92,0.12); display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_av)}</span>
                 {escape(cname)}
             </span>
             """)
@@ -3021,19 +3058,29 @@ def render_guardian_materials(
 # 7.5 ACTIVITY HISTORY
 # ==============================================================================
 
+def _feed_badge_label(badge_id: str) -> str:
+    """Badge CODE for the audit table instead of an internal id such as 'badge_b1_architecture'."""
+    if not badge_id:
+        return "General"
+    from starapp.storage import store as _store_ref
+    b = _store_ref.get_badge(badge_id)
+    return b.code if b else badge_id
+
+
 def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: List[User]) -> str:
     rows = []
-    for act in activities:
+    page_acts, activity_pager_html = page_slice("g_activity", activities, 50)
+    for act in page_acts:
         rows.append(f"""
         <tr>
             <td style="font-family:var(--font-family-mono); font-size:12px; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
             <td><strong style="color:var(--deep-frozen-midnight);">{escape(act.actor_name or act.actor_id)}</strong></td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
-                <div style="font-weight:700;">{escape(act.summary)}</div>
-                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(act.details)}</div>
+                <div style="font-weight:700;">{escape(humanize_internal_ids(act.summary))}</div>
+                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
             </td>
-            <td>{escape(act.badge_id or "General")}</td>
+            <td>{escape(_feed_badge_label(act.badge_id))}</td>
         </tr>
         """)
 
@@ -3054,6 +3101,7 @@ def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: L
             </tbody>
         </table>
     </div>
+    {activity_pager_html}
     """
 
     return f"""
@@ -3101,7 +3149,7 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
             """
 
         if ext.status == "approved":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#10B981; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
         elif ext.status == "rejected":
             status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
         else:
@@ -3540,6 +3588,33 @@ def render_mapping_calendar_modal(
     """
 
 
+MAPPING_LIST_DISPLAY_CAP = 60
+
+
+def _cap_member_list(members: List[Dict[str, Any]], selected_ids) -> tuple:
+    """
+    Bounds how many people one mapping card renders. Searching / role filters (server side) narrow the
+    list; "select all" already acts on the full filtered set on the server. Anything already selected is
+    always shown so the Guardian never loses sight of their choices. Returns (visible, hidden_count).
+    """
+    if len(members) <= MAPPING_LIST_DISPLAY_CAP:
+        return members, 0
+    visible = members[:MAPPING_LIST_DISPLAY_CAP]
+    shown_ids = {m.get("id") for m in visible}
+    extra_selected = [m for m in members[MAPPING_LIST_DISPLAY_CAP:] if m.get("id") in selected_ids and m.get("id") not in shown_ids]
+    visible = visible + extra_selected
+    return visible, len(members) - len(visible)
+
+
+def _member_overflow_note(hidden: int, total: int) -> str:
+    return (
+        '<div class="mapping-list-overflow" role="note" style="padding:10px 12px; font-size:12px; font-weight:700; '
+        'color:var(--frost-navy); text-align:center; opacity:0.85;">'
+        f'+{hidden:,} more of {total:,} &mdash; use the search box or role filters to narrow the list.'
+        '</div>'
+    )
+
+
 def render_guardian_mapping(
     selected_band: str = "B1",
     selected_roles: Optional[List[str]] = None,
@@ -3828,7 +3903,8 @@ def render_guardian_mapping(
     # CARD 3: SELECT COSMONAUTS
     # --------------------------------------------------------------------------
     cosmo_list_html = []
-    for m in filtered_cosmonauts:
+    _cosmo_visible, _cosmo_hidden = _cap_member_list(filtered_cosmonauts, selected_cosmonauts_set)
+    for m in _cosmo_visible:
         m_id = m.get("id", "")
         m_name = m.get("name", m_id)
         m_role = m.get("role", "Engineer")
@@ -3853,6 +3929,8 @@ def render_guardian_mapping(
             {check_box}
         </div>
         """)
+    if _cosmo_hidden:
+        cosmo_list_html.append(_member_overflow_note(_cosmo_hidden, len(filtered_cosmonauts)))
 
     # --------------------------------------------------------------------------
     # CARD 4: SELECT REVIEWERS
@@ -3875,7 +3953,8 @@ def render_guardian_mapping(
         """)
 
     reviewers_list_html = []
-    for m in filtered_reviewers:
+    _rev_visible, _rev_hidden = _cap_member_list(filtered_reviewers, selected_reviewers_set)
+    for m in _rev_visible:
         m_id = m.get("id", "")
         m_name = m.get("name", m_id)
         m_role = m.get("role", "Reviewer")
@@ -3904,6 +3983,8 @@ def render_guardian_mapping(
             {r_check}
         </div>
         """)
+    if _rev_hidden:
+        reviewers_list_html.append(_member_overflow_note(_rev_hidden, len(filtered_reviewers)))
 
     # --------------------------------------------------------------------------
     # SECTION 4: RECTANGULAR CLICKABLE BADGE CARDS (OPEN DEDICATED DETAIL PAGE)
@@ -4342,11 +4423,11 @@ def render_guardian_mapping_badge_detail(
             c_avatar = cosmo.get("avatar") or (c_name[:2].upper() if c_name else "CAD")
             cadet_cells.append(f"""
             <div class="mapped-cosmo-chip" style="display:inline-flex; align-items:center; gap:7px; padding:6px 11px; background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="width:22px; height:22px; border-radius:999px; background:rgba(23,52,92,0.12); display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800; color:var(--frost-navy);">
+                <div style="width:22px; height:22px; border-radius:999px; background:rgba(23,52,92,0.12); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:var(--frost-navy);">
                     {escape(c_avatar)}
                 </div>
                 <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(c_name)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:1px 5px; border-radius:3px;">{escape(c_band)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:1px 5px; border-radius:3px;">{escape(c_band)}</span>
             </div>
             """)
 
@@ -4394,7 +4475,7 @@ def render_guardian_mapping_badge_detail(
         <div class="liquid-glass-card" style="padding:22px; margin-bottom:24px; border:1.5px solid rgba(5,150,105,0.4);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    {get_icon("target", 17, "color:#059669;")}
+                    {get_icon("target", 17, "color:#047857;")}
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
                         3. Live Mapped Review Allocations &bull; {escape(grp_title)}
                     </h3>
@@ -6076,7 +6157,7 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
     if res_prompt:
         resources_card_html = f"""
         <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; color:#2563EB; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+            <div style="font-size:12px; font-weight:700; color:#1D4ED8; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
                 {get_icon("book", 14)}<span>Learning Resources Prompt:</span>
             </div>
             <div style="background:rgba(241,245,249,0.9); border:1px solid rgba(59,130,246,0.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--frost-navy); line-height:1.6; white-space:pre-wrap; max-height:180px; overflow-y:auto;">{escape(res_prompt)}</div>
@@ -6444,7 +6525,7 @@ def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) 
     return f"""
     <div style="padding:6px 0;">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-            <div style="width:42px; height:42px; border-radius:50%; background:rgba(16,185,129,0.12); border:1.5px solid #10B981; display:flex; align-items:center; justify-content:center; color:#10B981; flex-shrink:0;">
+            <div style="width:42px; height:42px; border-radius:50%; background:rgba(16,185,129,0.12); border:1.5px solid #10B981; display:flex; align-items:center; justify-content:center; color:#047857; flex-shrink:0;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div>
@@ -6461,7 +6542,7 @@ def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) 
         </div>
 
         <div style="padding:12px 14px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:20px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">
-            <strong style="color:#059669;">Institutional Authorization Notice:</strong> By authorizing this badge, you certify that its learning objectives, assessment instructions, and project rubric meet StarApp's curriculum standards for Band {band}.
+            <strong style="color:#047857;">Institutional Authorization Notice:</strong> By authorizing this badge, you certify that its learning objectives, assessment instructions, and project rubric meet StarApp's curriculum standards for Band {band}.
             <div style="margin-top:6px; font-size:11.5px; color:var(--frost-navy-50);">Note: The badge will be marked Approved and the originating Guardian will be notified. It will NOT be automatically allotted to Cosmonauts.</div>
         </div>
 
@@ -6490,7 +6571,7 @@ def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) ->
     return f"""
     <div style="padding:6px 0;">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-            <div style="width:42px; height:42px; border-radius:50%; background:rgba(239,68,68,0.12); border:1.5px solid #EF4444; display:flex; align-items:center; justify-content:center; color:#EF4444; flex-shrink:0;">
+            <div style="width:42px; height:42px; border-radius:50%; background:rgba(239,68,68,0.12); border:1.5px solid #EF4444; display:flex; align-items:center; justify-content:center; color:#B91C1C; flex-shrink:0;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             </div>
             <div>
@@ -6730,8 +6811,10 @@ def render_guardian_cycles_view(
         """
 
     # Candidate rows table (4 clean columns; click row to inspect/appraise details)
+    # PERFORMANCE: only the current page (25 rows) is rendered; KPIs above still use the full cohort.
+    page_rows, cycles_pager_html = page_slice(f"g_cycles:{c_id}:{band_filter}:{role_filter}", filtered, 25)
     table_rows = []
-    for r in filtered:
+    for r in page_rows:
         uid = r["user_id"]
         sub_label = _candidate_role_sublabel(r)
 
@@ -6887,6 +6970,7 @@ def render_guardian_cycles_view(
                     </tbody>
                 </table>
             </div>
+            {cycles_pager_html}
         </div>
     </div>
     """

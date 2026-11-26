@@ -4,17 +4,51 @@ Computes standardized metrics, cohort aggregations, and diagnostic telemetry.
 Guarantees strict data isolation between the actual Cosmonaut and demonstration profiles.
 """
 
+import datetime
 from typing import List, Dict, Any, Optional
 from starapp.assessment import RUBRIC_CRITERIA, calculate_cosmonaut_score_summary
 from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet
 from starapp.dashboard_demo import get_dashboard_demo_cosmonauts, get_demo_cosmonaut_by_id
+
+def _parse_date(value: Any) -> Optional[datetime.date]:
+    try:
+        return datetime.date.fromisoformat(str(value)[:10]) if value else None
+    except ValueError:
+        return None
+
+
+def _derive_activity(
+    submissions: List[ProjectSubmission],
+    assessments: List[AssessmentMarksheet],
+    timelines: List[Any],
+    today: datetime.date,
+) -> Dict[str, Any]:
+    """Last-active date and next deadline computed from the cadet's REAL records (no fixed dates)."""
+    stamps = [str(s.submitted_at)[:10] for s in submissions if getattr(s, "submitted_at", "")]
+    stamps += [str(a.reviewed_at)[:10] for a in assessments if getattr(a, "reviewed_at", "")]
+    last_dates = [d for d in (_parse_date(x) for x in stamps) if d]
+    last_active = max(last_dates) if last_dates else None
+    deadlines = sorted(
+        d for d in (
+            _parse_date(getattr(t, "submission_deadline", ""))
+            for t in timelines if getattr(t, "status", "") not in ("completed",)
+        ) if d
+    )
+    upcoming = next((d for d in deadlines if d >= today), deadlines[-1] if deadlines else None)
+    return {
+        "last_active": last_active.isoformat() if last_active else "N/A",
+        "days_inactive": max(0, (today - last_active).days) if last_active else None,
+        "upcoming_deadline": upcoming.isoformat() if upcoming else "N/A",
+    }
+
 
 def build_cosmonaut_analytics_record(
     actual_cosmo: User,
     assigned_badges: List[Badge],
     assessments: List[AssessmentMarksheet],
     submissions: List[ProjectSubmission],
-    extensions: Optional[List[Any]] = None
+    extensions: Optional[List[Any]] = None,
+    timelines: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """
     Constructs a standardized analytics profile for a Cosmonaut
@@ -151,26 +185,37 @@ def build_cosmonaut_analytics_record(
     if pending_subs:
         last_activity_summary = f"Submitted deliverable package for {active_b.code if active_b else 'milestone'}"
     elif approved_asms:
-        last_activity_summary = f"Completed {approved_asms[-1].badge_id} evaluation"
+        _last_badge = badge_map.get(approved_asms[-1].badge_id)
+        last_activity_summary = f"Completed {getattr(_last_badge, 'code', '') or getattr(_last_badge, 'title', '') or 'a milestone'} evaluation"
     else:
         last_activity_summary = "Enrolled in cohort curriculum"
+
+    if timelines is None:
+        from starapp.storage import store as _store
+        timelines = _store.get_timelines_for_cosmonaut(actual_cosmo.id)
+    activity = _derive_activity(submissions, assessments, timelines, datetime.date.today())
+
+    from starapp.storage import store as _profile_store
+    _profile = _profile_store.profiles.get(actual_cosmo.id)
 
     return {
         "id": actual_cosmo.id,
         "name": actual_cosmo.name,
         "email": actual_cosmo.email,
         "avatar": actual_cosmo.avatar,
-        "batch": "Batch Orion-24",
+        "band": getattr(actual_cosmo, "band", "") or "",
+        "track": getattr(actual_cosmo, "learning_track", "") or "",
+        "batch": getattr(_profile, "batch_name", "") or "",
         "is_demo": False,
         "completed_count": completed_count,
         "total_assigned": total_assigned,
         "active_badge_id": active_b.id if active_b else "None",
         "active_badge_code": active_b.code if active_b else "N/A",
         "active_badge_title": active_b.title if active_b else "All Completed",
-        "upcoming_deadline": "2026-12-02",
+        "upcoming_deadline": activity["upcoming_deadline"],
         "deadline_status": "Attempt in Review" if pending_subs else "On Schedule",
-        "last_active": "2026-11-08",
-        "days_inactive": 0,
+        "last_active": activity["last_active"],
+        "days_inactive": activity["days_inactive"],
         "last_activity_summary": last_activity_summary,
         "risk_status": risk_status,
         "risk_reason": risk_reason,
@@ -202,20 +247,32 @@ def get_guardian_cohort_profiles(
     Returns cohort profiles computed directly from SQLite users.
     """
     from starapp.storage import store
-    primary = build_cosmonaut_analytics_record(actual_cosmo, assigned_badges, assessments, submissions, extensions)
-    cohort = [primary]
+    primary = build_cosmonaut_analytics_record(
+        actual_cosmo, assigned_badges, assessments, submissions, extensions,
+        timelines=store.get_timelines_for_cosmonaut(actual_cosmo.id),
+    )
 
-    # Populate cohort profiles dynamically from SQLite cosmonauts
-    all_cosmonauts = store.get_all_cosmonauts()
-    seen_ids = {actual_cosmo.id}
-    for c in all_cosmonauts:
-        if c.id not in seen_ids:
-            seen_ids.add(c.id)
-            c_badges = store.get_badges_for_cosmonaut(c.id)
-            c_asms = store.get_assessments_for_cosmonaut(c.id)
-            c_subs = store.get_submissions_for_cosmonaut(c.id)
-            c_exts = store.get_extensions_for_cosmonaut(c.id)
-            cohort.append(build_cosmonaut_analytics_record(c, c_badges, c_asms, c_subs, c_exts))
+    # The records of everybody else are identical for every viewer, so they are built once per data
+    # change (learning scope) and shared, instead of once per page view per user.
+    def build_all():
+        records: Dict[str, Dict[str, Any]] = {}
+        for c in store.get_all_cosmonauts():
+            records[c.id] = build_cosmonaut_analytics_record(
+                c,
+                store.get_badges_for_cosmonaut(c.id),
+                store.get_assessments_for_cosmonaut(c.id),
+                store.get_submissions_for_cosmonaut(c.id),
+                store.get_extensions_for_cosmonaut(c.id),
+                timelines=store.get_timelines_for_cosmonaut(c.id),
+            )
+        return records
+
+    everyone = store._memoized(
+        f"cohort_profiles:{store.get_effective_read_cycle_id()}:{datetime.date.today().isoformat()}",
+        build_all, scope="learning",
+    )
+    cohort = [primary]
+    cohort.extend(rec for cid, rec in everyone.items() if cid != actual_cosmo.id)
     return cohort
 
 _COHORT_ANALYTICS_CACHE: Dict[str, Any] = {}
@@ -233,7 +290,7 @@ def calculate_guardian_cohort_analytics(
     curr_cid = store.get_effective_read_cycle_id()
     asms_sum = sum(getattr(a, "total_marks", 0) for a in actual_asms)
     total_completed_badges = sum(p.get("completed_count", 0) for p in cohort_profiles)
-    cache_key = f"{curr_cid}_{len(cohort_profiles)}_{len(actual_subs)}_{len(actual_asms)}_{asms_sum}_{total_completed_badges}"
+    cache_key = f"{curr_cid}_{datetime.date.today().isoformat()}_{len(cohort_profiles)}_{len(actual_subs)}_{len(actual_asms)}_{asms_sum}_{total_completed_badges}"
     if _COHORT_ANALYTICS_CACHE.get("key") == cache_key:
         return dict(_COHORT_ANALYTICS_CACHE["data"])
 
@@ -295,123 +352,93 @@ def calculate_guardian_cohort_analytics(
         "locked": total_locked
     }
 
-    # Badge-wise performance comparison
-    badge_catalog = [
-        {
-            "id": "badge_gov_101",
-            "code": "GOV-101",
-            "title": "Data Governance Foundations",
-            "pillar": "Enterprise Compliance",
-            "level": "Level 1 • Foundation",
-            "level_color": "#10B981",
-            "target_days": 10,
-            "avg_days": 6.2,
-            "first_attempt_rate": 100.0,
-            "bottleneck": "Multi-tenant retention policies & audit log immutability.",
-            "pedagogy": "Enterprise compliance boundaries and schema catalog RBAC.",
-            "status_summary": "6 / 6 Cadets Certified (100% Cleared)"
-        },
-        {
-            "id": "badge_cur_102",
-            "code": "CUR-102",
-            "title": "Data Curation & Stewardship",
-            "pillar": "Data Quality",
-            "level": "Level 2 • Intermediate",
-            "level_color": "#3B82F6",
-            "target_days": 12,
-            "avg_days": 9.4,
-            "first_attempt_rate": 83.3,
-            "bottleneck": "Dead-Letter Queue (DLQ) retry backoff under network partition.",
-            "pedagogy": "Stream ingestion buffer and automated quarantine rules.",
-            "status_summary": "5 Certified • 1 in Extension (Kaelen Frost)"
-        },
-        {
-            "id": "badge_dat_103",
-            "code": "DAT-103",
-            "title": "In-Memory Datastores",
-            "pillar": "Storage Engineering",
-            "level": "Level 3 • Advanced",
-            "level_color": "#6366F1",
-            "target_days": 14,
-            "avg_days": 11.8,
-            "first_attempt_rate": 75.0,
-            "bottleneck": "Small-file compaction overhead and Iceberg snapshot metadata bloat.",
-            "pedagogy": "Parquet compaction strategies and partition pruning.",
-            "status_summary": "4 Certified • 2 Active Sprints"
-        },
-        {
-            "id": "badge_ing_104",
-            "code": "ING-104",
-            "title": "Ingestion Foundations",
-            "pillar": "Distributed Streaming",
-            "level": "Level 4 • High Complexity",
-            "level_color": "#F59E0B",
-            "target_days": 14,
-            "avg_days": 14.5,
-            "first_attempt_rate": 50.0,
-            "bottleneck": "Consumer group partition rebalance storms & idempotent producer deduplication.",
-            "pedagogy": "Exactly-once Kafka consumer semantics and failure recovery.",
-            "status_summary": "2 Certified • 1 In Review (Aarav Sharma Attempt #2) • 3 In Progress"
-        },
-        {
-            "id": "badge_sql_201",
-            "code": "SQL-201",
-            "title": "Advanced Analytical SQL",
-            "pillar": "Analytical Computing",
-            "level": "Level 5 • Master Capstone",
-            "level_color": "#E11D48",
-            "target_days": 18,
-            "avg_days": 18.0,
-            "first_attempt_rate": 0.0,
-            "bottleneck": "Skewed join keys causing single-reducer executor memory exhaustion.",
-            "pedagogy": "Cost-based optimizer (CBO) plan inspection and spill mitigation.",
-            "status_summary": "0 Certified • 6 Sprints Queued (Capstone Sprint)"
-        }
-    ]
+    # ------------------------------------------------------------------------------------------
+    # Badge-wise performance: computed from the cycle's REAL badges, timelines and marksheets.
+    # (Previously a hard-coded catalogue of five fictional badges with invented statistics.)
+    # ------------------------------------------------------------------------------------------
+    today = datetime.date.today()
+    cycle_obj = store.get_cycle(curr_cid)
+    cycle_start = _parse_date(getattr(cycle_obj, "start_date", "")) or today
+    weeks_elapsed = max(1, (min(today, _parse_date(getattr(cycle_obj, "end_date", "")) or today) - cycle_start).days // 7 + 1)
 
+    asms_by_badge: Dict[str, List[Dict[str, Any]]] = {}
+    for ev in all_approved_evals:
+        asms_by_badge.setdefault(ev.get("badge_id"), []).append(ev)
+    subs_by_badge: Dict[str, List[Any]] = {}
+    for sub in actual_subs:
+        subs_by_badge.setdefault(sub.badge_id, []).append(sub)
+    timelines_by_badge: Dict[str, List[Any]] = {}
+    for tl in store.get_timelines_dict().values():
+        timelines_by_badge.setdefault(tl.badge_id, []).append(tl)
+
+    palette = ["#10B981", "#3B82F6", "#6366F1", "#F59E0B", "#E11D48", "#0EA5E9"]
     badge_performance = []
-    for b in badge_catalog:
-        b_asms = [a for a in all_approved_evals if a.get("badge_id") == b["id"]]
+    cycle_badges = [bd for bd in store.get_all_badges() if getattr(bd, "is_published", False)]
+    for bd in sorted(cycle_badges, key=lambda x: (getattr(x, "target_band", ""), x.code))[:12]:
+        b_asms = asms_by_badge.get(bd.id, [])
         b_count = len(b_asms)
-        b_avg = round(sum(a["total_marks"] for a in b_asms) / b_count, 1) if b_count > 0 else 0.0
-        
-        # Determine challenge level
-        if b_avg >= 48.0 or b_count == 0:
+        b_avg = round(sum(x["total_marks"] for x in b_asms) / b_count, 1) if b_count else 0.0
+        b_tls = timelines_by_badge.get(bd.id, [])
+        planned, actual = [], []
+        for tl in b_tls:
+            d0, d1 = _parse_date(tl.assignment_date), _parse_date(tl.submission_deadline)
+            if d0 and d1:
+                planned.append((d1 - d0).days)
+            d2 = _parse_date(tl.actual_award_date)
+            if d0 and d2:
+                actual.append((d2 - d0).days)
+        first_pass = sum(1 for x in b_asms if x.get("attempt_number") == 1)
+        attempted = len({sub.cosmonaut_id for sub in subs_by_badge.get(bd.id, [])})
+        crit_avgs = {}
+        for crit in RUBRIC_CRITERIA:
+            vals = [x.get(crit["key"], 0.0) for x in b_asms]
+            if vals:
+                crit_avgs[crit["title"]] = sum(vals) / len(vals)
+        weakest = min(crit_avgs.items(), key=lambda kv: kv[1]) if crit_avgs else None
+        in_review = sum(1 for tl in b_tls if tl.status == "reviewer_assessed")
+        in_progress = sum(1 for tl in b_tls if tl.status in ("active", "retake_required"))
+        if b_avg >= 45.0 or b_count == 0:
             difficulty = "Moderate"
-        elif b_avg >= 44.0:
+        elif b_avg >= 40.0:
             difficulty = "Standard"
         else:
             difficulty = "Challenging"
-
         badge_performance.append({
-            "code": b["code"],
-            "title": b["title"],
-            "pillar": b["pillar"],
-            "level": b["level"],
-            "level_color": b["level_color"],
-            "target_days": b["target_days"],
-            "avg_days": b["avg_days"],
-            "first_attempt_rate": b["first_attempt_rate"],
-            "bottleneck": b["bottleneck"],
-            "pedagogy": b["pedagogy"],
-            "status_summary": b["status_summary"],
+            "code": bd.code,
+            "title": bd.title,
+            "pillar": getattr(bd, "capability", "") or getattr(bd, "category", ""),
+            "level": f"Band {getattr(bd, 'target_band', '')}",
+            "level_color": palette[(int(getattr(bd, "target_band", "B1")[1:] or 1) - 1) % len(palette)] if getattr(bd, "target_band", "") else palette[0],
+            "target_days": round(sum(planned) / len(planned)) if planned else 0,
+            "avg_days": round(sum(actual) / len(actual), 1) if actual else 0.0,
+            "first_attempt_rate": round(first_pass / max(1, attempted) * 100.0, 1) if attempted else 0.0,
+            "bottleneck": f"Lowest rubric area: {weakest[0]} ({weakest[1]:.1f}/10)" if weakest else "No evaluations yet",
+            "pedagogy": (bd.description or "")[:140],
+            "status_summary": f"{b_count} Certified \u2022 {in_review} In Review \u2022 {in_progress} In Progress",
             "completed_count": b_count,
             "average_marks": b_avg,
-            "difficulty": difficulty
+            "difficulty": difficulty,
         })
 
-    # Weekly progress trends (6 weeks)
-    weekly_trends = [
-        {"week": "W1", "label": "Oct 01 - Oct 07", "completions": 2, "submissions": 3, "avg_score": 45.5},
-        {"week": "W2", "label": "Oct 08 - Oct 14", "completions": 3, "submissions": 4, "avg_score": 46.2},
-        {"week": "W3", "label": "Oct 15 - Oct 21", "completions": 4, "submissions": 5, "avg_score": 47.0},
-        {"week": "W4", "label": "Oct 22 - Oct 28", "completions": 3, "submissions": 4, "avg_score": 46.8},
-        {"week": "W5", "label": "Oct 29 - Nov 04", "completions": 3, "submissions": 4, "avg_score": 47.5},
-        {"week": "W6", "label": "Nov 05 - Nov 11", "completions": 2, "submissions": 3, "avg_score": 48.0}
-    ]
+    # Weekly progress trends: the last 6 calendar weeks of REAL submissions / certifications.
+    weekly_trends = []
+    week_start = today - datetime.timedelta(days=today.weekday())
+    for offset in range(5, -1, -1):
+        w0 = week_start - datetime.timedelta(weeks=offset)
+        w1 = w0 + datetime.timedelta(days=6)
+        w_subs = [sub for sub in actual_subs if (_parse_date(sub.submitted_at) or datetime.date.min) >= w0 and (_parse_date(sub.submitted_at) or datetime.date.max) <= w1]
+        w_done = [ev for ev in all_approved_evals if w0 <= (_parse_date(ev.get("reviewed_at")) or datetime.date.min) <= w1]
+        weekly_trends.append({
+            "week": f"W{6 - offset}",
+            "label": f"{w0.strftime('%b %d')} - {w1.strftime('%b %d')}",
+            "completions": len(w_done),
+            "submissions": len(w_subs),
+            "avg_score": round(sum(ev["total_marks"] for ev in w_done) / len(w_done), 1) if w_done else 0.0,
+        })
 
-    weekly_velocity = round(total_completed_badges / 6.0, 1) if total_completed_badges else 0.0
-    total_marks_sum = round(sum(a["total_marks"] for a in all_approved_evals), 1)
+    weekly_velocity = round(total_completed_badges / float(weeks_elapsed), 1) if total_completed_badges else 0.0
+    total_marks_sum = round(sum(x["total_marks"] for x in all_approved_evals), 1)
+    flagged = [p["name"] for p in cohort_profiles if p.get("risk_status") in ("At Risk", "Needs Attention", "Monitor")]
 
     result = {
         "total_profiles": total_profiles,
@@ -434,7 +461,12 @@ def calculate_guardian_cohort_analytics(
         "distribution": distribution,
         "badge_distribution": badge_distribution,
         "badge_performance": badge_performance,
-        "weekly_trends": weekly_trends
+        "weekly_trends": weekly_trends,
+        "weeks_elapsed": weeks_elapsed,
+        "flagged_names": flagged[:5],
+        "flagged_total": len(flagged),
+        "on_track_count": max(0, total_profiles - len(flagged)),
+        "cycle_name": getattr(cycle_obj, "name", "") or curr_cid,
     }
 
     _COHORT_ANALYTICS_CACHE["key"] = cache_key
@@ -451,42 +483,42 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
             "enrolled_cadets": {
                 "title": "Total Cohort Cosmonauts",
                 "formula": "Count(Active Enrolled Cadets in Batch)",
-                "numerator": f"{data.get('total_profiles', 6)} Registered Profiles",
-                "denominator": "Batch Orion-24 Enrollment",
-                "value": f"{data.get('total_profiles', 6)} Cadets",
-                "scope": "Cohort Aggregate (6 Profiles)",
-                "included": "All active enrolled engineering cadets in Batch Orion-24",
+                "numerator": f"{data.get('total_profiles', 0):,} Registered Profiles",
+                "denominator": f"{data.get('cycle_name', 'Current Cycle')} Enrollment",
+                "value": f"{data.get('total_profiles', 0):,} Cadets",
+                "scope": f"Cohort Aggregate ({data.get('total_profiles', 0):,} Profiles)",
+                "included": f"All active enrolled engineering cadets in {data.get('cycle_name', 'the current cycle')}",
                 "excluded": "Graduated alumni, external auditors, or unassigned accounts",
-                "insight": "Active training cohort size representing the total instructional footprint for Guardian Arjun Mehta."
+                "insight": "Active training cohort size representing the total instructional footprint of the Academy."
             },
             "completion_rate": {
                 "title": "Badge Completion Rate",
                 "formula": "(Total Completed Badges / Total Assigned Badges) × 100",
-                "numerator": f"{data.get('total_completed_badges', 20)} Completed Badges across cohort",
-                "denominator": f"{data.get('total_assigned_badges', 30)} Total Assigned Badges (6 Cadets × 5 Badges)",
-                "value": f"{data.get('overall_completion_pct', 66.7):.1f}%",
+                "numerator": f"{data.get('total_completed_badges', 0):,} Completed Badges across cohort",
+                "denominator": f"{data.get('total_assigned_badges', 0):,} Total Assigned Badges ({data.get('total_profiles', 0):,} Cadets)",
+                "value": f"{data.get('overall_completion_pct', 0.0):.1f}%",
                 "scope": "Cohort Aggregate",
                 "included": "All officially certified milestone pass marksheets",
                 "excluded": "Active in-progress deliverables, drafts, and resubmissions",
-                "insight": "Measures total curriculum completion across all 5 standard enterprise milestone pillars."
+                "insight": "Measures total curriculum completion across every badge assigned to the cohort in this cycle."
             },
             "weekly_velocity": {
                 "title": "Weekly Completion Velocity",
                 "formula": "Total Certified Badges / Active Curriculum Elapsed Weeks",
-                "numerator": f"{data.get('total_completed_badges', 20)} Certified Badges",
-                "denominator": "6 Active Curriculum Weeks",
-                "value": f"{data.get('weekly_velocity', 3.3):.1f} badges / week",
+                "numerator": f"{data.get('total_completed_badges', 0):,} Certified Badges",
+                "denominator": f"{data.get('weeks_elapsed', 1)} Active Curriculum Weeks",
+                "value": f"{data.get('weekly_velocity', 0.0):.1f} badges / week",
                 "scope": "Cohort Velocity",
                 "included": "All final approved assessment submissions to date",
                 "excluded": "Pending queue submissions and non-assessed milestones",
-                "insight": "Curriculum throughput velocity is currently +18% ahead of baseline pace (2.8 badges/week)."
+                "insight": "Average certifications per week since the cycle started (live figure, no baseline assumed)."
             },
             "average_score": {
                 "title": "Average Assessment Score",
                 "formula": "Sum(Approved Marksheet Scores) / Count(Approved Evaluations)",
-                "numerator": f"{data.get('total_marks_sum', 924.0):.1f} Total Rubric Marks Awarded",
-                "denominator": f"{data.get('eval_count', 20)} Officially Evaluated Marksheets",
-                "value": f"{data.get('average_score', 46.2):.1f} / 50.0 ({data.get('average_pct', 92.4):.1f}%)",
+                "numerator": f"{data.get('total_marks_sum', 0.0):.1f} Total Rubric Marks Awarded",
+                "denominator": f"{data.get('eval_count', 0):,} Officially Evaluated Marksheets",
+                "value": f"{data.get('average_score', 0.0):.1f} / 50.0 ({data.get('average_pct', 0.0):.1f}%)",
                 "scope": "Cohort Aggregate",
                 "included": "All final approved evaluations graded by Guardian (Rubric-50)",
                 "excluded": "Pending deliverables awaiting review and rejected initial attempts",
@@ -495,23 +527,23 @@ def get_kpi_popover(metric_key: str, data: Dict[str, Any], scope: str = "cohort"
             "first_attempt": {
                 "title": "First-Attempt Success Rate",
                 "formula": "(Milestones Cleared on Attempt #1 / Attempted Milestones) × 100",
-                "numerator": f"{data.get('total_passes', 17)} First-Attempt Passes",
-                "denominator": f"{data.get('total_eligible', 20)} Total First Attempts Graded",
-                "value": f"{data.get('first_attempt_rate', 85.0):.1f}%",
+                "numerator": f"{data.get('total_passes', 0):,} First-Attempt Passes",
+                "denominator": f"{data.get('total_eligible', 0):,} Total First Attempts Graded",
+                "value": f"{data.get('first_attempt_rate', 0.0):.1f}%",
                 "scope": "Cohort Aggregate",
-                "included": "Initial submissions meeting the 35.0/50.0 (70%) passing threshold on Attempt #1",
+                "included": "Initial submissions meeting the badge passing threshold (default 70% = 35/50) on Attempt #1",
                 "excluded": "Attempt #2 and subsequent revision submissions",
                 "insight": "High first-attempt success indicates high initial deliverable quality and clear prerequisite instructions."
             },
             "cadets_attention": {
                 "title": "Cadets Requiring Attention",
                 "formula": "Count(Cadets where Risk Status ∈ {'At Risk', 'Needs Attention', 'Monitor'})",
-                "numerator": f"{data.get('requiring_attention', 2)} Cadets Flagged",
-                "denominator": f"{data.get('total_profiles', 6)} Enrolled Cadets (33.3% Cohort Risk Surface)",
-                "value": f"{data.get('requiring_attention', 2)} Cadets",
+                "numerator": f"{data.get('requiring_attention', 0):,} Cadets Flagged",
+                "denominator": f"{data.get('total_profiles', 0):,} Enrolled Cadets ({round(data.get('requiring_attention', 0) / max(1, data.get('total_profiles', 1)) * 100, 1)}% Cohort Risk Surface)",
+                "value": f"{data.get('requiring_attention', 0):,} Cadets",
                 "scope": "Intervention Queue",
-                "included": "Kaelen Frost (Needs Attention - Overdue/Resubmission), Cassian Reed (Monitor - Slower Velocity)",
-                "excluded": "4 Cadets with risk status 'On Track' in good standing",
+                "included": (", ".join(data.get("flagged_names", [])) + (f" and {data.get('flagged_total', 0) - len(data.get('flagged_names', [])):,} more" if data.get("flagged_total", 0) > len(data.get("flagged_names", [])) else "")) or "No cadets are currently flagged",
+                "excluded": f"{data.get('on_track_count', 0):,} Cadets with risk status 'On Track' in good standing",
                 "insight": "Actionable intervention list enabling proactive Guardian mentoring before milestone deadlines lapse."
             },
             "pending_evals": {

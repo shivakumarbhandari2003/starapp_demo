@@ -9,6 +9,14 @@ class TestGuardianReviewFlow(unittest.TestCase):
         self.app.initialize()
 
     def test_multi_deliverable_submission_and_guardian_review(self):
+        # 0. The Guardian allots + publishes the milestone to the cadet (submissions are only accepted for
+        #    badges that are assigned to the cadet and published).
+        badge = store.get_badge("b1_int_01")
+        badge.is_published = True
+        if "cosmo_1" not in badge.assigned_cosmonaut_ids:
+            badge.assigned_cosmonaut_ids.append("cosmo_1")
+        store.save_badge(badge)
+
         # 1. Cosmonaut submits deliverable with badge name, pdf file, code file, and github link
         self.app.current_user = store.users.get("cosmo_1")
         sub_payload = {

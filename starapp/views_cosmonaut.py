@@ -5,12 +5,14 @@ Implements the 10 personalized learning workspaces for learners.
 
 import json
 from typing import List, Dict, Any, Optional
+from starapp.pagination import page_slice
 from starapp.models import (
     User, CosmonautProfile, Badge, BadgeTimeline, ProjectSubmission,
     AssessmentMarksheet, LearningMaterial, DeadlineExtension,
     Announcement, ActivityEvent
 )
 from starapp.views_common import (
+    humanize_internal_ids,
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
@@ -45,7 +47,7 @@ def render_cosmo_metric_info_popover(key: str, data: Dict[str, Any], scope: str 
             </div>
             <div class="popover-data-row" style="border-top:1px solid rgba(157,183,213,0.25); padding-top:4px; margin-top:4px;">
                 <span class="popover-data-label" style="color:var(--pure-ice);">Current Value:</span>
-                <span class="popover-data-val" style="color:#10B981;">{escape(info.get('value', ''))}</span>
+                <span class="popover-data-val" style="color:#047857;">{escape(info.get('value', ''))}</span>
             </div>
             <div class="popover-criteria-section">
                 <div><strong>Included:</strong> {escape(info.get('included', ''))}</div>
@@ -101,11 +103,8 @@ def render_cosmonaut_sidebar(
     if is_eligible:
         pending_asms_count = 0
         try:
-            cadet_subs = [
-                s for s in store.get_all_submissions()
-                if (store.get_timeline(s.badge_id, s.cosmonaut_id) and getattr(store.get_timeline(s.badge_id, s.cosmonaut_id), "reviewer_id", "") == current_user.id)
-                or any(current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []) for m in store.get_band_mappings())
-            ]
+            # Indexed lookup of this reviewer's cadets (was: every submission x get_timeline x get_band_mappings)
+            cadet_subs = store.get_reviewer_submissions(current_user.id)
             pending_asms_count = len([s for s in cadet_subs if s.status in ("pending", "submitted")])
         except Exception:
             pending_asms_count = 0
@@ -227,6 +226,10 @@ def render_cosmonaut_dashboard(
     if cohort_profiles is None:
         cohort_profiles = get_guardian_cohort_profiles(current_user, assigned_badges, assessments, cadet_subs, cadet_exts)
 
+    from starapp.storage import store as _store_ref
+    _mentor_user = _store_ref.get_user_by_id(getattr(profile, "assigned_guardian_id", "") or "")
+    _mentor_name = _mentor_user.name if _mentor_user else ""
+
     comp_count = astraea_rec.get("completed_count", 0)
     total_assigned = astraea_rec.get("total_assigned", 5)
     progress_pct = round((comp_count / max(1, total_assigned)) * 100.0, 1)
@@ -237,7 +240,7 @@ def render_cosmonaut_dashboard(
     tier = astraea_rec.get("standing_tier", "Excellent Performance")
     asms = astraea_rec.get("assessments", [])
     r_status = astraea_rec.get("risk_status", "On Track")
-    last_act = astraea_rec.get("last_active", "2026-11-08")
+    last_act = astraea_rec.get("last_active", "N/A")
     last_act_desc = astraea_rec.get("last_activity_summary", "")
 
     # Cohort Leaderboard ranking calculation
@@ -306,7 +309,12 @@ def render_cosmonaut_dashboard(
     # SECTION D: Cohort Academic Leaderboard
     # --------------------------------------------------------------------------
     leaderboard_rows = []
-    for idx, c in enumerate(sorted_cohort, start=1):
+    # Show the top 10 plus the signed-in cadet's own row (with true rank) instead of every employee.
+    _top_n = 10
+    _leaderboard_view = [(i, cp) for i, cp in enumerate(sorted_cohort, start=1) if i <= _top_n]
+    if rank > _top_n:
+        _leaderboard_view.append((rank, sorted_cohort[rank - 1]))
+    for idx, c in _leaderboard_view:
         if idx == 1:
             r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:12px; border:1px solid #FCD34D;">1</span>'
         elif idx == 2:
@@ -327,7 +335,7 @@ def render_cosmonaut_dashboard(
         is_current_cadet = (c.get("id") == current_user.id)
         if is_current_cadet:
             row_style = "background:linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(234,244,255,0.6) 100%); border-left:4px solid #10B981; border-bottom:1px solid rgba(16,185,129,0.3);"
-            you_tag = '<span style="font-size:10px; font-weight:800; background:#10B981; color:#FFFFFF; padding:2px 7px; border-radius:999px; margin-left:6px; letter-spacing:0.5px;">YOU</span>'
+            you_tag = '<span style="font-size:10px; font-weight:800; background:#047857; color:#FFFFFF; padding:2px 7px; border-radius:999px; margin-left:6px; letter-spacing:0.5px;">YOU</span>'
         else:
             row_style = "border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;"
             you_tag = ""
@@ -345,7 +353,7 @@ def render_cosmonaut_dashboard(
                             <strong style="font-size:13px; color:var(--frost-navy);">{escape(c.get("name", "Cadet"))}</strong>
                             {you_tag}
                         </div>
-                        <div style="font-size:10.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(c.get("id", ""))}</div>
+                        <div style="font-size:11px; color:var(--frost-navy-50);">{escape(c.get("band", "") or "")}{" &bull; " if c.get("band") else ""}{escape(c.get("track", "") or c.get("role", "") or "Cadet")}</div>
                     </div>
                 </div>
             </td>
@@ -382,7 +390,7 @@ def render_cosmonaut_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Cohort Academic Leaderboard</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress. Compare your score with cohort mates.</div>
+                <div style="font-size:12px; color:var(--frost-navy-50);">Ranked by average assessment score and certified milestones.</div>
             </div>
             <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                 {total_cohort} Enrolled Cadets &bull; Your Rank: #{rank}
@@ -458,7 +466,7 @@ def render_cosmonaut_dashboard(
         <div style="font-weight:800; font-size:12px; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
         <div style="font-size:11px; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
         <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:11.5px; color:#FFFFFF;">
-            Rubric Score: <strong style="color:#10B981;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
+            Rubric Score: <strong style="color:#047857;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
         </div>
         <div style="font-size:11px; color:var(--pure-ice); margin-top:2px;">Attempt #{att if att > 0 else '—'} &bull; {"Certified Assessment" if att > 0 else "Pending Deliverable"}</div>
         <div style="font-size:10.5px; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
@@ -519,7 +527,7 @@ def render_cosmonaut_dashboard(
         <div style="background:rgba(234,244,255,0.35); border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); padding:32px 24px 20px 24px; position:relative; overflow:visible;">
             {"<!-- Passing Threshold Guide Line (35.0 / 50.0 = 70% from baseline) -->" if bargraph_cols else ""}
             {f'''<div style="position:absolute; top:32%; left:24px; right:24px; height:1px; border-top:1.5px dashed rgba(16,185,129,0.6); z-index:1; pointer-events:none;">
-                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#059669; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                     Passing Threshold: 35.0 / 50.0 (70%)
                 </span>
             </div>''' if bargraph_cols else ''}
@@ -595,7 +603,7 @@ def render_cosmonaut_dashboard(
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11.5px; gap:8px; flex-wrap:wrap;">
                 <span style="font-weight:800; color:{sk_col}; background:rgba(37,99,235,0.08); padding:2px 8px; border-radius:4px;">{escape(sk_prof)}</span>
                 <span style="font-weight:800; font-size:11.5px; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
-                    &#9733; Rating: <strong style="color:#059669; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
+                    &#9733; Rating: <strong style="color:#047857; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
                 </span>
             </div>
             <div style="width:100%; height:6px; background:rgba(157,183,213,0.25); border-radius:3px; overflow:hidden;">
@@ -654,14 +662,14 @@ def render_cosmonaut_dashboard(
 
     str_items = "".join([f"""
     <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#10B981; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
+        <span style="color:#047857; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
         <span>{escape(s)}</span>
     </li>
     """ for s in strengths_data])
 
     imp_items = "".join([f"""
     <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#F59E0B; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
+        <span style="color:#B45309; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
         <span>{escape(im)}</span>
     </li>
     """ for im in improvements_data])
@@ -671,7 +679,7 @@ def render_cosmonaut_dashboard(
         <!-- Column 1: Strengths -->
         <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.22); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px 18px;">
             <div style="font-size:13px; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#10B981; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
+                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
                 Demonstrated Engineering Strengths
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -682,7 +690,7 @@ def render_cosmonaut_dashboard(
         <!-- Column 2: Improvement Areas -->
         <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.22); border-left:4px solid #F59E0B; border-radius:var(--radius-sm); padding:16px 18px;">
             <div style="font-size:13px; font-weight:800; color:#92400E; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#F59E0B; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#9678;</span>
+                <span style="background:#F59E0B; color:#451A03; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#9678;</span>
                 Targeted Improvement & Growth Areas
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -738,10 +746,10 @@ def render_cosmonaut_dashboard(
                     <div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Welcome back, {escape(current_user.name)}</h2>
-                            <span style="font-size:11px; font-weight:800; background:#10B981; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">FLIGHT OFFICER</span>
+                            <span style="font-size:11px; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">FLIGHT OFFICER</span>
                         </div>
                         <div style="font-size:12.5px; color:var(--frost-navy-75); margin-top:3px;">
-                            ID: <strong style="font-family:var(--font-family-mono);">{escape(current_user.id)}</strong> &bull; Batch: <strong>{escape(profile.batch_name or "Orion-24")}</strong> &bull; Lead Mentor: <strong>Arjun Mehta</strong>
+                            Band <strong>{escape(getattr(current_user, "band", "") or "B1")}</strong> &bull; <strong>{escape(getattr(current_user, "learning_track", "") or "Cosmonaut")}</strong>{(" &bull; Batch: <strong>" + escape(profile.batch_name) + "</strong>") if getattr(profile, "batch_name", "") else ""}{(" &bull; Mentor: <strong>" + escape(_mentor_name) + "</strong>") if _mentor_name else ""}
                         </div>
                     </div>
                 </div>
@@ -774,7 +782,7 @@ def render_cosmonaut_dashboard(
                 <div style="height:5px; border-radius:3px; background:rgba(157,183,213,0.3); overflow:hidden; margin:4px 0;">
                     <div style="height:100%; width:{progress_pct}%; background:#10B981;"></div>
                 </div>
-                <div class="kpi-subtext" style="color:#10B981; font-weight:700; font-size:11px;">▲ {progress_pct}% Roadmap Certified</div>
+                <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:11px;">▲ {progress_pct}% Roadmap Certified</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
@@ -797,7 +805,7 @@ def render_cosmonaut_dashboard(
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                     </div>
                 </div>
-                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:#059669;">#{rank} <span style="font-size:12.5px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
+                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:#047857;">#{rank} <span style="font-size:12.5px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
                 <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">Top {round((rank/max(1, total_cohort))*100)}% of Cohort</div>
             </div>
 
@@ -1182,7 +1190,7 @@ def render_gamified_roadmap(
             code_style = "color: #92400E; font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
             title_style = "color: #78350F; font-weight: 800; font-size: 14px; margin: 3px 0 2px;"
             desc_style = "color: #92400E; font-size: 11px; font-weight: 600;"
-            status_html = '<span class="status-pill status-approved" style="font-size:10.5px; padding:2px 8px; border-radius:12px; font-weight:800; background:#F59E0B; color:#FFFFFF; border:1px solid #D97706; box-shadow:0 2px 6px rgba(245,158,11,0.4); display:inline-flex; align-items:center; gap:3px;">★ Completed</span>'
+            status_html = '<span class="status-pill status-approved" style="font-size:10.5px; padding:2px 8px; border-radius:12px; font-weight:800; background:#F59E0B; color:#451A03; border:1px solid #D97706; box-shadow:0 2px 6px rgba(245,158,11,0.4); display:inline-flex; align-items:center; gap:3px;">★ Completed</span>'
         elif state == "active":
             card_style = (
                 "background: linear-gradient(135deg, rgba(234, 244, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%); "
@@ -1494,7 +1502,7 @@ def _render_assigned_project_spec_inner(
     outcomes_html = ""
     if outcomes_items:
         outcomes_pills = "".join([
-            f'<li style="margin-bottom:4px; display:flex; align-items:flex-start; gap:6px;"><span style="color:#059669; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>'
+            f'<li style="margin-bottom:4px; display:flex; align-items:flex-start; gap:6px;"><span style="color:#047857; font-weight:800;">✓</span><span>{escape(str(o))}</span></li>'
             for o in outcomes_items
         ])
         outcomes_html = f"""
@@ -1507,7 +1515,7 @@ def _render_assigned_project_spec_inner(
         """
 
     if is_earned:
-        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border-color:#D97706;">{get_icon("award", 12)} Completed</span>'
+        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border-color:#D97706;">{get_icon("award", 12)} Completed</span>'
     elif existing_sub:
         status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800;">{get_icon("check", 12)} Submitted</span>'
     else:
@@ -1543,7 +1551,7 @@ def _render_assigned_project_spec_inner(
         <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Mandatory Deliverable Files (Mapped to 50-Mark Rubric):</div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
-                <div style="display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:800; color:#059669;">{get_icon("code", 13)}<span>{escape(code_name)}</span></div>
+                <div style="display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:800; color:#047857;">{get_icon("code", 13)}<span>{escape(code_name)}</span></div>
                 <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(code_info)}</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
@@ -1671,7 +1679,7 @@ def render_cosmonaut_badge_card_expanded_content(
     # Section 1: Outcomes HTML
     outcomes_list_items = "".join([
         f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
-            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#10B981; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
             <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
         </div>'''
         for o in outcomes
@@ -1818,9 +1826,9 @@ def render_cosmonaut_badge_card_expanded_content(
 
     if is_earned:
         top_card_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%); box-shadow:0 12px 36px rgba(245,158,11,0.25);"
-        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#D97706;"
+        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#B45309;"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
-        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
 
         tot_m = earned_asm.total_marks if earned_asm else 45.0
         pct_m = earned_asm.percentage if earned_asm else 90.0
@@ -1879,7 +1887,7 @@ def render_cosmonaut_badge_card_expanded_content(
         <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
                         🏆
                     </span>
                     <div>
@@ -1940,7 +1948,7 @@ def render_cosmonaut_badge_card_expanded_content(
         if has_allocated_project:
             meta_chip = '<span style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project Allocated</span>'
         else:
-            meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+            meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
             earn_section_html = f"""
@@ -1968,17 +1976,17 @@ def render_cosmonaut_badge_card_expanded_content(
             <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
             <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
                 <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     {project_allocated_btn_html}
-                    <span style="background:rgba(245,158,11,0.15); color:#D97706; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
                         Pending Reviewer Evaluation
                     </span>
                     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:700; font-size:12px;">
@@ -1992,16 +2000,16 @@ def render_cosmonaut_badge_card_expanded_content(
             <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
             <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
                 <div style="display:flex; align-items:flex-start; gap:12px; flex:1; min-width:260px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
                         Allocated Milestone
                     </span>
                     {project_allocated_btn_html}
@@ -2132,7 +2140,7 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
                         <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
                         <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                         <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
                         <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
                         <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
@@ -2170,10 +2178,10 @@ def render_cosmonaut_badge_card_expanded_content(
             <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
                 <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#047857; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
+                        <span style="font-size:15px; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
                     </div>
                     <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
                 </div>
@@ -2215,7 +2223,7 @@ def render_cosmonaut_badge_card_expanded_content(
             <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
                 <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
                     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0E7490; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                         </span>
                         <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
@@ -2240,10 +2248,10 @@ def render_cosmonaut_badge_card_expanded_content(
             <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
                 <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                        <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
+                        <span style="font-size:15px; font-weight:800; color:#1D4ED8;">Learning Resources</span>
                     </div>
                     <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
                 </div>
@@ -2281,7 +2289,7 @@ def render_cosmonaut_badge_card_expanded_content(
                         </div>
                         <div>
                             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                            <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                            <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                         </div>
                         <div>
                             <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
@@ -2415,7 +2423,7 @@ def render_cosmonaut_allocated_project_modal(badge: Badge, current_user: User, s
                 <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
             </div>
             <span style="font-size:11.5px; color:var(--frost-navy-50);">
-                Mapped Reviewer: <strong style="color:#059669;">{escape(rev_name)}</strong>
+                Mapped Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong>
             </span>
         </div>
 
@@ -2487,9 +2495,9 @@ def render_cosmonaut_submission_workspace(
 
             earned_meta_html = ""
             if is_earned:
-                sub_chip = f'<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">{get_icon("award", 12)} Badge Earned • Completed</span>'
+                sub_chip = f'<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">{get_icon("award", 12)} Badge Earned • Completed</span>'
                 action_btn_txt = "View Feedback & Marks"
-                btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#fff; border-color:#D97706;"
+                btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#451A03; border-color:#D97706;"
                 card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
                 sc_str = f"{earned_card_asm.total_marks:.1f}/50 ({earned_card_asm.percentage:.1f}%)" if earned_card_asm else "Certified"
                 aw_str = (getattr(tl, "actual_award_date", "") if tl else "") or (earned_card_asm.reviewed_at[:10] if earned_card_asm and getattr(earned_card_asm, "reviewed_at", "") else "Awarded")
@@ -2512,7 +2520,7 @@ def render_cosmonaut_submission_workspace(
                 btn_color_style = "background:linear-gradient(135deg, #DC2626 0%, #B91C1C 100%); color:#fff; border-color:#DC2626;"
                 card_border_style = "border:1.5px solid rgba(239,68,68,0.45); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(254,242,242,0.85) 100%); box-shadow:0 6px 24px rgba(239,68,68,0.08);"
             elif cadet_sub:
-                sub_chip = f'<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("check", 12)} Submitted</span>'
+                sub_chip = f'<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("check", 12)} Submitted</span>'
                 action_btn_txt = "View Badge & Submission"
                 btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
                 card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
@@ -2597,9 +2605,6 @@ def render_cosmonaut_submission_workspace(
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div>
                     <h2 style="font-size:1.6rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0; letter-spacing:-0.3px;">Allocated Badges &amp; Milestone Projects</h2>
-                    <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
-                        Select any allocated badge card to open its full milestone page with outcomes, assigned project specifications, and deliverables submission.
-                    </p>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">Allocated Badges:</span>
@@ -2669,7 +2674,7 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
         <div style="background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.3); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:#10B981; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
+                    <span style="background:#047857; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
                     <span style="font-size:12.5px; font-weight:700; color:#047857;">Submitted on {escape(submitted_at_fmt)}</span>
                 </div>
                 <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Status: {escape(getattr(existing_sub, 'status', 'pending').upper())}</span>
@@ -2680,8 +2685,8 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
         </div>
         """
 
-    current_pdf_hint = f'<div style="font-size:11px; color:#059669; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
-    current_code_hint = f'<div style="font-size:11px; color:#059669; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
+    current_pdf_hint = f'<div style="font-size:11px; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
+    current_code_hint = f'<div style="font-size:11px; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
     gh_val = getattr(existing_sub, "github_url", "") if existing_sub else ""
 
     submit_btn_txt = (
@@ -2700,7 +2705,7 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
                 <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
             </div>
             <div style="font-size:11.5px; color:var(--frost-navy-50);">
-                <span>Assigned Reviewer: <strong style="color:#059669;">{escape(rev_name)}</strong></span>
+                <span>Assigned Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong></span>
             </div>
         </div>
 
@@ -2824,7 +2829,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
     # Section 1: Outcomes HTML
     outcomes_list_items = "".join([
         f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
-            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#10B981; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
             <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
         </div>'''
         for o in outcomes
@@ -2907,9 +2912,9 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
 
     if is_earned:
         modal_top_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%);"
-        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#D97706;"
+        top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#B45309;"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
-        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#fff; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
 
         tot_m = earned_asm.total_marks if earned_asm else 45.0
         pct_m = earned_asm.percentage if earned_asm else 90.0
@@ -2927,7 +2932,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#FFFFFF; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
                         🏆
                     </span>
                     <div>
@@ -2981,7 +2986,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         modal_top_style = "border:1.5px solid var(--deep-frozen-midnight);"
         top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
-        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
             earn_section_html = f"""
@@ -3008,16 +3013,16 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
             <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
                 <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:rgba(245,158,11,0.15); color:#D97706; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
                         Pending Reviewer Evaluation
                     </span>
                 </div>
@@ -3028,16 +3033,16 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
             <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
                 <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#2563EB;">Earn the Badge</div>
+                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
                         <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="background:rgba(16,185,129,0.15); color:#059669; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
                         Allocated Milestone
                     </span>
                     <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
@@ -3060,7 +3065,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
                     <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
                     <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                     <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
                     <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
                     <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
@@ -3093,10 +3098,10 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="badge-section-outcomes" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #10B981; overflow:hidden; background:rgba(255,255,255,0.98);">
             <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#10B981; display:flex; align-items:center; justify-content:center;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#047857; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#10B981;">Outcomes ({len(outcomes)})</span>
+                    <span style="font-size:15px; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
                 </div>
                 <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
             </div>
@@ -3137,7 +3142,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="badge-section-topics" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; overflow:hidden; background:rgba(255,255,255,0.98);">
             <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
                 <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#06B6D4; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0E7490; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                     </span>
                     <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
@@ -3162,10 +3167,10 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="badge-section-resources" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; overflow:hidden; background:rgba(255,255,255,0.98);">
             <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#3B82F6; display:flex; align-items:center; justify-content:center;">
+                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#2563EB;">Learning Resources</span>
+                    <span style="font-size:15px; font-weight:800; color:#1D4ED8;">Learning Resources</span>
                 </div>
                 <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
             </div>
@@ -3203,7 +3208,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     </div>
                     <div>
                         <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                        <span style="background:rgba(59,130,246,0.12); color:#2563EB; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                     </div>
                     <div>
                         <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
@@ -3272,7 +3277,6 @@ def render_cosmonaut_results(
                 {render_back_button()}
                 <div>
                     <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
-                    <div style="font-size:13px; color:var(--frost-navy-50);">Institutional evaluation rubric scores and performance breakdown.</div>
                 </div>
             </div>
             <div class="liquid-glass-card" style="padding:48px 32px; text-align:center; border:1.5px dashed var(--icy-steel); background:rgba(255,255,255,0.75);">
@@ -3320,7 +3324,7 @@ def render_cosmonaut_results(
                 ext_banner = f"""
                 <div style="margin-bottom:20px; padding:12px 18px; background:linear-gradient(135deg, rgba(16,185,129,0.09) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #10B981; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#10B981; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
+                        <span style="background:#047857; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
                         <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
                             Official Submission Deadline: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> (Approved by Guardian)
                         </span>
@@ -3334,7 +3338,7 @@ def render_cosmonaut_results(
                 ext_banner = f"""
                 <div style="margin-bottom:20px; padding:12px 18px; background:rgba(245,158,11,0.08); border:1.5px solid #F59E0B; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#F59E0B; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
+                        <span style="background:#F59E0B; color:#451A03; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
                         <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
                             Requested Extension to <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> &bull; Awaiting Guardian Review
                         </span>
@@ -3362,7 +3366,6 @@ def render_cosmonaut_results(
             {render_back_button()}
             <div>
                 <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
-                <div style="font-size:13px; color:var(--frost-navy-50);">Institutional evaluation rubric scores and performance breakdown.</div>
             </div>
         </div>
         <div style="min-width:320px;">
@@ -3451,7 +3454,7 @@ def render_cosmonaut_extensions(
         b_title = badge.title if badge else "Milestone Deliverable"
 
         if ext.status == "approved":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#10B981; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
             action_btn = f"""
             <button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
                 Submit Deliverable &rarr;
@@ -3465,7 +3468,7 @@ def render_cosmonaut_extensions(
             </button>
             """
         else:
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
+            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#451A03; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
             action_btn = '<span style="font-size:12px; color:var(--frost-navy-50); font-weight:600; font-style:italic;">Awaiting Mentor</span>'
 
         feedback_html = ""
@@ -3675,17 +3678,20 @@ def render_cosmonaut_announcements(
 # ==============================================================================
 
 def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
+    from starapp.storage import store as _store_ref
     rows = []
-    for act in activities:
+    page_acts, activity_pager_html = page_slice("c_activity", activities, 25)
+    for act in page_acts:
+        _badge = _store_ref.get_badge(act.badge_id) if act.badge_id else None
         rows.append(f"""
         <tr>
             <td style="font-family:var(--font-family-mono); font-size:12px; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
-                <div style="font-weight:700;">{escape(act.summary)}</div>
-                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(act.details)}</div>
+                <div style="font-weight:700;">{escape(humanize_internal_ids(act.summary))}</div>
+                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
             </td>
-            <td>{escape(act.badge_id or "Academy")}</td>
+            <td>{escape(_badge.code if _badge else (act.badge_id or "Academy"))}</td>
         </tr>
         """)
 
@@ -3696,7 +3702,6 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
                 {render_back_button()}
                 <div>
                     <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0;">Personal Activity Feed</h2>
-                    <p style="font-size:13px; color:var(--frost-navy-50); margin:2px 0 0 0;">Your verified training progression, milestone submissions, and marksheet publications.</p>
                 </div>
             </div>
         </div>
@@ -3715,6 +3720,7 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
                     {"".join(rows) if rows else '<tr><td colspan="4" style="text-align:center; padding:24px; color:var(--frost-navy-50);">No recorded activities yet.</td></tr>'}
                 </tbody>
             </table>
+            {activity_pager_html}
         </div>
     </div>
     """
@@ -4044,7 +4050,7 @@ def render_cosmonaut_review_requests(
         sent_at = sent_ts[:10] if sent_ts else ""
 
         if r_status == "accepted":
-            status_badge = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">{get_icon("check", 12)} Request Accepted</span>'
+            status_badge = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">{get_icon("check", 12)} Request Accepted</span>'
             action_btns = f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'reject_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline / Revoke</button>'
             card_border = "border:1.5px solid #059669; background:rgba(5,150,105,0.03);"
         elif r_status == "rejected":
@@ -4052,7 +4058,7 @@ def render_cosmonaut_review_requests(
             action_btns = f'<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'accept_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;">{get_icon("check", 12)} Accept Request</button>'
             card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
         else:
-            status_badge = f'<span class="status-pill status-pending" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">{get_icon("clock", 12)} Awaiting Your Decision</span>'
+            status_badge = f'<span class="status-pill status-pending" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">{get_icon("clock", 12)} Awaiting Your Decision</span>'
             action_btns = f'''<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:6px 14px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">{get_icon("check", 12)} Accept & Confirm</button>
             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:6px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline</button>'''
             card_border = "border:1.5px solid var(--icy-steel-50); background:rgba(255,255,255,0.95);"
@@ -4069,7 +4075,7 @@ def render_cosmonaut_review_requests(
                     <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("users", 13)} <strong>{cosmo_count}</strong> Assigned Cosmonaut(s): <span style="color:var(--deep-frozen-midnight); font-weight:600;">{escape(cosmo_names_str)}</span></span>
                 </div>
                 <div style="font-size:11.5px; color:var(--frost-navy-50); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                    <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("calendar", 13)} Review Window: <strong style="color:#059669;">{escape(dates_str)}</strong></span>
+                    <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("calendar", 13)} Review Window: <strong style="color:#047857;">{escape(dates_str)}</strong></span>
                     {f'<span>&bull; Sent: {escape(sent_at)}</span>' if sent_at else ''}
                 </div>
             </div>
@@ -4086,12 +4092,9 @@ def render_cosmonaut_review_requests(
                 <div style="display:flex; align-items:center; gap:8px;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                        Reviewer Selected Requests (Cadet Evaluation Mapping)
+                        Cadet Evaluation Invitations
                     </h3>
                 </div>
-                <p style="font-size:12px; color:var(--frost-navy-50); margin:4px 0 0 0;">
-                    Guardian invitations for you to evaluate cohort projects during the scheduled review window. Accept or decline to confirm availability.
-                </p>
             </div>
             <span class="status-pill status-active" style="font-weight:700; font-size:11px;">
                 {len(mapping_reqs)} Review Assignment(s)
@@ -4113,9 +4116,6 @@ def render_cosmonaut_review_requests(
                     <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">{user_track}</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Review Requests</h1>
-                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
-                    Higher-band peer review workspace. Inspect, edit specifications, and authorize badges submitted by Guardians.
-                </p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 {render_back_button()}
@@ -4130,11 +4130,8 @@ def render_cosmonaut_review_requests(
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                        Badge Approval Requests (Specification Oversight)
+                        Badge Approval Requests
                     </h3>
-                    <p style="font-size:12px; color:var(--frost-navy-50); margin:4px 0 0 0;">
-                        Inspect, verify, edit specifications, and approve newly authored badges for lower bands.
-                    </p>
                 </div>
             </div>
 
@@ -4153,7 +4150,7 @@ def render_cosmonaut_review_requests(
             </div>
         </div>
 
-        <!-- Section 2: Reviewer Selected Requests (Cadet Evaluation Mapping) -->
+        <!-- Section 2: Cadet Evaluation Invitations -->
         {mapping_section_html}
     </div>
     """
@@ -4564,13 +4561,13 @@ def render_reviewer_badge_schedule(
         badge_prompt_status = getattr(b_prompt[0], "status", "none") if b_prompt else "none"
 
         if badge_prompt_status in ("released", "sent"):
-            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#059669; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
+            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
             badge_btn_text = "✏️ Edit Project"
         elif badge_prompt_status == "draft":
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
             badge_btn_text = "📝 Continue Project Draft"
         else:
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#D97706; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
             badge_btn_text = "✨ Create Project (AI)"
 
         chevron = "▲" if is_expanded else "▼"
@@ -4597,7 +4594,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:2px 10px; border-radius:999px;"><span>&bull;</span> Retake Required (Awaiting Cadet)</span>'
                 short_status = "Retake Required"
                 card_action_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #FCA5A5; color:#991B1B;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     Inspect Submission &amp; History &rarr;
                 </button>
                 """
@@ -4605,7 +4602,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#EEF2FF; border:1px solid #C7D2FE; color:#4338CA; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ✓ Evaluated: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
                 short_status = f"Evaluated {rev_asm.total_marks:.1f}/50"
                 card_action_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id if sub else rev_asm.submission_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id if sub else rev_asm.submission_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     📊 View Marksheet ({rev_asm.total_marks:.1f}/50) &rarr;
                 </button>
                 """
@@ -4613,7 +4610,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📥 Deliverables Submitted</span>'
                 short_status = f"Attempt #{getattr(sub, 'attempt_number', 1)} Submitted"
                 card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #059669, #047857); border:1px solid #059669; color:#FFFFFF;">
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     📝 Inspect Deliverables & Allocate Marks &rarr;
                 </button>
                 """
@@ -4621,7 +4618,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#E0F2FE; border:1px solid #BAE6FD; color:#0284C7; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 🚀 Project Given</span>'
                 short_status = "Project Given"
                 card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     ✏️ Edit Project
                 </button>
                 """
@@ -4629,7 +4626,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📝 Draft Project Saved</span>'
                 short_status = "Draft Saved"
                 card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     📝 Continue Project Draft
                 </button>
                 """
@@ -4637,7 +4634,7 @@ def render_reviewer_badge_schedule(
                 card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ⏳ 3-Day Project Preparation</span>'
                 short_status = "3-Day Prep"
                 card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; padding:7px 16px; border-radius:6px; background:linear-gradient(135deg, #0284C7, #0369A1); border:1px solid #0284C7; color:#FFFFFF;">
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                     ✨ Create Project (AI)
                 </button>
                 """
@@ -4669,40 +4666,30 @@ def render_reviewer_badge_schedule(
                 eval_note_html = f'<div style="font-size:11.5px; color:#1E293B; background:rgba(238,242,255,0.75); border:1px solid #C7D2FE; border-radius:7px; padding:7px 11px; margin-bottom:10px; line-height:1.45;">{"<br>".join(bits)}</div>'
 
             cadet_cards_html.append(f"""
-            <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid #0F2847; background:#FFFFFF; border-radius:12px; box-shadow:0 4px 14px rgba(7,22,41,0.06); margin-bottom:12px;">
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                    {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
-                    <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
-                    {f'<span style="font-size:12px; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
-                    <span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:2px 10px; border-radius:999px;">
-                        <span style="font-size:13px; line-height:1;">&bull;</span> Upcoming Review
-                    </span>
+            <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid var(--icy-steel); background:#FFFFFF; border-radius:12px; box-shadow:0 4px 14px rgba(7,22,41,0.05); margin-bottom:12px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div class="user-avatar" style="width:34px; height:34px; font-size:11.5px; font-weight:800; border:1px solid var(--icy-steel); flex-shrink:0;">{escape(c_avatar)}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:15px; font-weight:800; color:var(--frost-navy); line-height:1.25;">{escape(c_name)}</div>
+                            <div style="font-size:12.5px; color:var(--frost-navy-75);">Band {escape(c_band)} &bull; {escape(c_track)}</div>
+                        </div>
+                    </div>
                     {card_status_pill}
                 </div>
-                <h3 style="font-size:1.35rem; font-weight:800; color:#0F172A; margin:4px 0 8px 0; letter-spacing:-0.3px;">
-                    {escape(bg["badge_title"])}
-                </h3>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:#1E293B; margin-bottom:10px;">
-                    <div style="width:24px; height:24px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; margin-right:4px;">
-                        {escape(c_avatar)}
-                    </div>
-                    <span>Assigned Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)} &bull; {escape(c_track)})</span>
-                    <span style="color:#94A3B8;">&bull;</span>
-                    <span>📅 Review Window: <strong style="color:#059669;">{escape(r_date)}</strong></span>
-                    <span style="color:#94A3B8;">&bull;</span>
-                    <span>⏰ Submission Deadline: <strong style="color:#DC2626;">{escape(deadline)}</strong></span>
-                    <span style="color:#94A3B8;">&bull;</span>
-                    <span>⚡ <strong>3-Day Window:</strong> Reviewer creates project, Cadet learns concepts</span>
+                <div style="display:flex; gap:22px; flex-wrap:wrap; font-size:12.5px; color:var(--frost-navy); margin-bottom:12px;">
+                    <span>📅 Review Window: <strong style="color:#047857;">{escape(r_date)}</strong></span>
+                    <span>⏰ Submission Deadline: <strong style="color:#B91C1C;">{escape(deadline)}</strong></span>
                 </div>
                 {proj_banner_html}
                 {sub_tray_html}
                 {eval_note_html}
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
                         📅 View Timeline
                     </button>
                     {card_action_btn}
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:7px 14px; border-radius:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="display:inline-flex; align-items:center; gap:6px;">
                         Cadet Assessments &rarr;
                     </button>
                 </div>
@@ -4732,7 +4719,7 @@ def render_reviewer_badge_schedule(
                         {escape(bg["badge_title"])}
                     </h3>
                     <div style="font-size:12px; color:var(--frost-navy-50); margin-bottom:8px;">
-                        📅 Review Window: <strong style="color:#059669;">{escape(bg["review_date"])}</strong> &bull; ⏰ Deadline: <strong style="color:#DC2626;">{escape(bg["deadline"])}</strong>
+                        📅 Review Window: <strong style="color:#047857;">{escape(bg["review_date"])}</strong> &bull; ⏰ Deadline: <strong style="color:#DC2626;">{escape(bg["deadline"])}</strong>
                     </div>
                     <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                         {"".join(roster_summary_chips)}
@@ -4831,7 +4818,7 @@ def render_reviewer_badge_schedule(
                     </div>
                     <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(b_title)}</div>
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--frost-navy-75);">
-                        <span style="width:22px; height:22px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800;">{escape(c_avatar)}</span>
+                        <span style="width:22px; height:22px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_avatar)}</span>
                         <span>Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)} &bull; {escape(c_track)}{f' &bull; {escape(c_email)}' if c_email else ''})</span>
                         <span style="color:#94A3B8;">&bull;</span>
                         <span>📅 Window: <strong>{escape(r_win_c)}</strong></span>
@@ -4865,9 +4852,6 @@ def render_reviewer_badge_schedule(
                     <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Project Reviewer</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review Schedule</h1>
-                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
-                    Your upcoming ({len(upcoming_entries)} cadet assignment{'s' if len(upcoming_entries) != 1 else ''}) and completed ({len(completed_cards_html)} certified review{'s' if len(completed_cards_html) != 1 else ''}) commitments across assigned curriculum badges.
-                </p>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
                 <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
@@ -4888,7 +4872,6 @@ def render_reviewer_badge_schedule(
                         Upcoming Reviews ({len(upcoming_cards_html)})
                     </h3>
                 </div>
-                <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Active Cohort Commitments</span>
             </div>
             <div>
                 {"".join(upcoming_cards_html) if upcoming_cards_html else "<div style='text-align:center; padding:36px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No upcoming badge reviews scheduled. When a Guardian allocates badges to cadets and designates you as reviewer, they will appear here.</div>"}
@@ -4904,7 +4887,6 @@ def render_reviewer_badge_schedule(
                         Completed Reviews ({len(completed_cards_html)})
                     </h3>
                 </div>
-                <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Certified &amp; Finalized</span>
             </div>
             <div>
                 {"".join(completed_cards_html) if completed_cards_html else "<div style='text-align:center; padding:30px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No completed badge evaluations on record yet.</div>"}
@@ -4947,12 +4929,16 @@ def render_reviewer_assessment_queue(
     # Find submissions of cadets assigned strictly to this reviewer
     assigned_subs = []
     is_guardian = (getattr(current_user, "role", "") == "guardian" or "guardian" in getattr(current_user, "roles", []))
+    _all_band_mappings = store.get_band_mappings() if store else []
+    _mappings_by_badge: Dict[str, List[Dict[str, Any]]] = {}  # computed once per badge, not once per submission
     for s in unique_submissions:
         b_obj = badges_map.get(s.badge_id) or (store.get_badge(s.badge_id) if store else None)
-        badge_mappings = [
-            m for m in store.get_band_mappings()
-            if (m.get("badge_id") == s.badge_id or (b_obj and m.get("badge") in (b_obj.title, b_obj.code, b_obj.id)))
-        ] if store else []
+        if s.badge_id not in _mappings_by_badge:
+            _mappings_by_badge[s.badge_id] = [
+                m for m in _all_band_mappings
+                if (m.get("badge_id") == s.badge_id or (b_obj and m.get("badge") in (b_obj.title, b_obj.code, b_obj.id)))
+            ]
+        badge_mappings = _mappings_by_badge[s.badge_id] if store else []
 
         is_assigned = False
         if is_guardian:
@@ -5044,9 +5030,9 @@ def render_reviewer_assessment_queue(
 
         # Assessment status badges
         if rev_asm:
-            rev_badge = f'<span style="font-size:11.5px; font-weight:800; color:#059669; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
+            rev_badge = f'<span style="font-size:11.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
         else:
-            rev_badge = '<span style="font-size:11.5px; font-weight:800; color:#D97706; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
+            rev_badge = '<span style="font-size:11.5px; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
 
         cards.append(f"""
         <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
@@ -5057,7 +5043,7 @@ def render_reviewer_assessment_queue(
                         {escape(cosmo_avatar)}
                     </div>
                     <div>
-                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:#06B6D4;">(Band {escape(cosmo_band)})</span></div>
+                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:#0E7490;">(Band {escape(cosmo_band)})</span></div>
                         <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned to You as Peer Reviewer</div>
                     </div>
                 </div>
@@ -5450,7 +5436,7 @@ def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: U
                 </div>
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:6px 0 0 0;">{escape(badge.title)}</h3>
             </div>
-            <span style="font-size:12px; font-weight:700; color:#059669; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
+            <span style="font-size:12px; font-weight:700; color:#047857; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
                 Reviewer: {escape(current_user.name)}
             </span>
         </div>
@@ -5472,7 +5458,7 @@ def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: U
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
                 <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">1. Allocation &amp; Publish</div>
                 <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(alloc_date)}</div>
-                <div style="font-size:11px; color:#059669; margin-top:2px;">Guardian Approved</div>
+                <div style="font-size:11px; color:#047857; margin-top:2px;">Guardian Approved</div>
             </div>
             <div style="background:#fff; border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:12px;">
                 <div style="font-size:10px; font-weight:800; color:#0284C7; text-transform:uppercase;">2. 3-Day Prep &amp; Learning</div>
@@ -5490,9 +5476,9 @@ def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: U
                 <div style="font-size:11px; color:#DC2626; margin-top:2px;">Strict Deliverables Due</div>
             </div>
             <div style="background:rgba(5,150,105,0.05); border:1.5px solid rgba(5,150,105,0.3); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:#059669; text-transform:uppercase;">5. 3-Day Review Window</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#059669; margin-top:4px;">{escape(review_date)}</div>
-                <div style="font-size:11px; color:#059669; margin-top:2px;">50-Mark Rubric Assessment</div>
+                <div style="font-size:10px; font-weight:800; color:#047857; text-transform:uppercase;">5. 3-Day Review Window</div>
+                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#047857; margin-top:4px;">{escape(review_date)}</div>
+                <div style="font-size:11px; color:#047857; margin-top:2px;">50-Mark Rubric Assessment</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
                 <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">6. Certification Award</div>
@@ -5551,7 +5537,7 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
         c_av = getattr(c, "avatar", c.name[:2].upper())
         cadet_chips.append(f"""
         <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); border-radius:var(--radius-xs); font-size:11.5px; font-weight:700; color:var(--frost-navy);">
-            <span style="width:16px; height:16px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:800;">{escape(c_av)}</span>
+            <span style="width:16px; height:16px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_av)}</span>
             {escape(c.name)}
         </span>
         """)
@@ -5653,7 +5639,7 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                 <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:6px;">Mandatory Deliverables Checklist (Mapped to 50-Mark Rubric)</label>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:10px;">
                     <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
-                        <div style="font-size:11px; font-weight:800; color:#059669; display:flex; align-items:center; gap:5px;">💻 1. Source Code File (.py)</div>
+                        <div style="font-size:11px; font-weight:800; color:#047857; display:flex; align-items:center; gap:5px;">💻 1. Source Code File (.py)</div>
                         <input type="text" id="rev_proj_code_desc" class="form-input" value="{escape(code_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
                     </div>
                     <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">

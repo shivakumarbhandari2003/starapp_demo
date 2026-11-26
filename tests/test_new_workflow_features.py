@@ -68,9 +68,9 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         self.ctrl.handle_event("nav_cosmonaut", "c_requests")
         self.assertEqual(self.ctrl.current_view, "c_requests")
 
-        # Render review requests workspace - should contain Reviewer Selected Requests section
+        # Render review requests workspace - should contain the Cadet Evaluation Invitations section
         html = self.ctrl.render()
-        self.assertIn("Reviewer Selected Requests", html)
+        self.assertIn("Cadet Evaluation Invitations", html)
         self.assertIn("Signals Foundations", html)
 
         # Reviewer accepts the request
@@ -212,7 +212,7 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         self.assertIn("Review Requests", rendered)
         self.assertIn("Badge Approval Requests", rendered)
         self.assertIn("Null Due Test Badge", rendered)
-        self.assertIn("Reviewer Selected Requests (Cadet Evaluation Mapping)", rendered)
+        self.assertIn("Cadet Evaluation Invitations", rendered)
 
 if __name__ == "__main__":
     unittest.main()
