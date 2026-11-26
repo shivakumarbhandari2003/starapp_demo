@@ -14,7 +14,7 @@ from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
-    render_learning_materials_view, render_back_button
+    render_learning_materials_view, render_back_button, render_taxonomy_hierarchy_tree
 )
 from starapp.roadmap import generate_roadmap_graph
 from starapp.assessment import RUBRIC_CRITERIA
@@ -2459,13 +2459,9 @@ def render_cosmonaut_submission_workspace(
                         {sub_chip}
                     </div>
 
-                    <!-- Hierarchy Breadcrumb -->
-                    <div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-bottom:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span style="color:#7C3AED;">{b_power}</span>
-                        <span>&rsaquo;</span>
-                        <span style="color:#2563EB;">{b_cap}</span>
-                        <span>&rsaquo;</span>
-                        <span style="color:#0891B2;">{b_skill}</span>
+                    <!-- Connected Collapsible Taxonomy Lineage -->
+                    <div style="margin-bottom:10px;">
+                        {render_taxonomy_hierarchy_tree(getattr(b, "power", "Tech") or "Tech", getattr(b, "capability", "Data & Machine") or "Data & Machine", getattr(b, "skill", "Curation") or "Curation", compact=True)}
                     </div>
 
                     <!-- Headline Title -->

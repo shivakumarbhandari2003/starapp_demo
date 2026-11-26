@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS users (
     reporting_manager_id TEXT,
     reporting_manager_name TEXT,
     reporting_manager_band TEXT,
-    password TEXT NOT NULL DEFAULT '12345678',
+    password TEXT NOT NULL DEFAULT '123456789',
     primary_role TEXT NOT NULL DEFAULT 'cosmonaut',
     avatar TEXT,
     status TEXT NOT NULL DEFAULT 'active',
@@ -603,11 +603,14 @@ class DatabaseManager:
                     ("reporting_manager_id", "TEXT"),
                     ("reporting_manager_name", "TEXT"),
                     ("reporting_manager_band", "TEXT"),
-                    ("password", "TEXT NOT NULL DEFAULT '12345678'"),
+                    ("password", "TEXT NOT NULL DEFAULT '123456789'"),
                 ]
                 for col_name, col_def in needed_cols:
                     if col_name not in existing_cols:
                         self.conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def};")
+                self.conn.execute(
+                    "UPDATE users SET password = '123456789' WHERE password IS NULL OR password = '' OR password = '12345678'"
+                )
         except Exception:
             pass
 
@@ -829,7 +832,7 @@ class DatabaseManager:
             u_mgr_id = m.get("reporting_manager_id")
             u_mgr_name = m.get("reporting_manager_name")
             u_mgr_band = m.get("reporting_manager_band")
-            u_pwd = m.get("password", "12345678")
+            u_pwd = m.get("password", "123456789")
 
             c.execute(
                 """
@@ -895,7 +898,7 @@ class DatabaseManager:
                 password, primary_role, avatar, status, is_demo, created_at
             )
             VALUES ('cosmo_1', 'astraea', 'cosmo.aarav@starapp.io', 'Aarav Sharma', 26, 'Solutions Designer', 'Solutions Designer', 'SD', 'B1',
-                    'm_b2_1', 'Rohan Deshmukh', 'B2', '12345678', 'cosmonaut', 'AS', 'active', 1, ?)
+                    'm_b2_1', 'Rohan Deshmukh', 'B2', '123456789', 'cosmonaut', 'AS', 'active', 1, ?)
             """,
             (current_iso_timestamp(),)
         )
@@ -910,7 +913,7 @@ class DatabaseManager:
                 password, primary_role, avatar, status, is_demo, created_at
             )
             VALUES ('admin', 'admin', 'admin@starapp.io', 'Guardian Admin', 40, 'Guardian Administrator', 'Curriculum Authority', 'EXEC', 'B6',
-                    '12345678', 'guardian', 'GA', 'active', 1, ?)
+                    '123456789', 'guardian', 'GA', 'active', 1, ?)
             """,
             (current_iso_timestamp(),)
         )
@@ -1177,7 +1180,7 @@ class DatabaseManager:
                     u_email = "arjun.mehta@starapp.io"
                     u_age = 55
                     u_avatar = "AM"
-                    u_pwd = "12345678"
+                    u_pwd = "123456789"
                     u_role = "guardian"
                     u_mgr_id = None
                     u_mgr_name = None
@@ -1191,7 +1194,7 @@ class DatabaseManager:
                     u_mgr_id = u.get("reporting_manager_id")
                     u_mgr_name = u.get("reporting_manager_name")
                     u_mgr_band = u.get("reporting_manager_band")
-                    u_pwd = u.get("password", "12345678")
+                    u_pwd = u.get("password", "123456789")
 
                 c.execute(
                     """
@@ -1729,7 +1732,7 @@ class DatabaseManager:
                 "reporting_manager_id": r["reporting_manager_id"] if "reporting_manager_id" in r.keys() else None,
                 "reporting_manager_name": r["reporting_manager_name"] if "reporting_manager_name" in r.keys() else None,
                 "reporting_manager_band": r["reporting_manager_band"] if "reporting_manager_band" in r.keys() else None,
-                "password": r["password"] if "password" in r.keys() and r["password"] else "12345678",
+                "password": r["password"] if "password" in r.keys() and r["password"] else "123456789",
             })
 
         # Profiles

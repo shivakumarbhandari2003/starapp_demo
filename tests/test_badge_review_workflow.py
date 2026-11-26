@@ -209,12 +209,12 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         import starapp.storage as st
 
         # 1. Empty email rejected
-        self.ctrl.handle_event("login", json.dumps({"email": "", "password": "12345678", "require_password": True}))
+        self.ctrl.handle_event("login", json.dumps({"email": "", "password": "123456789", "require_password": True}))
         self.assertIsNone(self.ctrl.current_user)
         self.assertIn("email address", (self.ctrl.login_error or "").lower())
 
         # 2. Invalid email syntax rejected
-        self.ctrl.handle_event("login", json.dumps({"email": "bad-email", "password": "12345678", "require_password": True}))
+        self.ctrl.handle_event("login", json.dumps({"email": "bad-email", "password": "123456789", "require_password": True}))
         self.assertIsNone(self.ctrl.current_user)
         self.assertIn("valid email", (self.ctrl.login_error or "").lower())
 
@@ -235,27 +235,33 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         st.store.db.conn.execute("UPDATE users SET status = 'inactive' WHERE id = 'm_b2_4'")
         st.store.db.conn.commit()
         try:
-            self.ctrl.handle_event("login", json.dumps({"email": "nisha.menon@starapp.io", "password": "12345678", "require_password": True}))
+            self.ctrl.handle_event("login", json.dumps({"email": "nisha.menon@starapp.io", "password": "123456789", "require_password": True}))
             self.assertIsNone(self.ctrl.current_user)
             self.assertIn("inactive", (self.ctrl.login_error or "").lower())
         finally:
             st.store.db.conn.execute("UPDATE users SET status = 'active' WHERE id = 'm_b2_4'")
             st.store.db.conn.commit()
 
-        # 6. Valid CEO/Guardian email+password login against SQLite
-        self.ctrl.handle_event("login", json.dumps({"email": "arjun.mehta@starapp.io", "password": "12345678", "require_password": True}))
+        # 6. Valid CEO/Guardian email+password login against SQLite (shared password 123456789)
+        self.ctrl.handle_event("login", json.dumps({"email": "arjun.mehta@starapp.io", "password": "123456789", "require_password": True}))
         self.assertIsNotNone(self.ctrl.current_user)
         self.assertEqual(self.ctrl.current_user.id, "guardian_1")
         self.assertEqual(self.ctrl.current_view, "g_cycles")
         self.assertIsNone(self.ctrl.login_error)
 
-        # 7. Logout + Valid Band B1 email+password login against SQLite
-        self.ctrl.handle_event("logout", "{}")
-        self.assertIsNone(self.ctrl.current_user)
-        self.ctrl.handle_event("login", json.dumps({"email": "ananya.iyer@starapp.io", "password": "12345678", "require_password": True}))
-        self.assertIsNotNone(self.ctrl.current_user)
-        self.assertEqual(self.ctrl.current_user.id, "m_b1_2")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        # 7. Any-account shared password login across bands + optional .b1-.b6 email suffix alias
+        for test_email, expected_id in (
+            ("ananya.iyer@starapp.io", "m_b1_2"),
+            ("aarav.sharma.b3@starapp.io", "m_b1_1"),
+            ("vikram.rao@starapp.io", "m_b3_1"),
+            ("devika.narayanan@starapp.io", "m_b6_1"),
+        ):
+            self.ctrl.handle_event("logout", "{}")
+            self.assertIsNone(self.ctrl.current_user)
+            self.ctrl.handle_event("login", json.dumps({"email": test_email, "password": "123456789", "require_password": True}))
+            self.assertIsNotNone(self.ctrl.current_user, f"Failed shared password login for {test_email}")
+            self.assertEqual(self.ctrl.current_user.id, expected_id)
+            self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
 
         # 8. Quick Login pill login (Band B6 & CEO Guardian)
         self.ctrl.handle_event("logout", "{}")

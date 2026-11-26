@@ -82,10 +82,18 @@ table {
   .app-sidebar {
     width: 100% !important;
     min-width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
     position: relative !important;
     border-right: none !important;
     border-bottom: 2px solid var(--deep-frozen-midnight) !important;
     padding: 12px 16px !important;
+  }
+
+  .app-sidebar:not(.band-selection-hidden) + .app-main,
+  .app-sidebar.pinned-expanded:not(.band-selection-hidden) + .app-main {
+    margin-left: 0 !important;
+    width: 100% !important;
   }
 
   .sidebar-header {

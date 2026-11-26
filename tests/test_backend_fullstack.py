@@ -53,16 +53,20 @@ class TestStarAppFullStackBackend(unittest.TestCase):
         auth_service = AuthService(AuthRepository(self.conn))
         
         # Admin login
-        token, user = auth_service.login("admin", "12345678", "guardian")
+        token, user = auth_service.login("admin", "123456789", "guardian")
         self.assertIsNotNone(token)
         self.assertEqual(user["id"], "admin")
         self.assertEqual(user["active_role"], "guardian")
 
-        # Demo user login (Ananya Iyer B1)
-        token_cadet, cadet = auth_service.login("ananya.iyer", "12345678", "cosmonaut")
+        # Demo user login (Ananya Iyer B1) + optional .b1-.b6 band suffix alias (aarav.sharma.b3@starapp.io)
+        token_cadet, cadet = auth_service.login("ananya.iyer", "123456789", "cosmonaut")
         self.assertIsNotNone(token_cadet)
         self.assertEqual(cadet["name"], "Ananya Iyer")
         self.assertEqual(cadet["band"], "B1")
+
+        token_alias, alias_user = auth_service.login("aarav.sharma.b3@starapp.io", "123456789", "cosmonaut")
+        self.assertIsNotNone(token_alias)
+        self.assertEqual(alias_user["name"], "Aarav Sharma")
 
         # Invalid password rejected
         with self.assertRaises(Exception):

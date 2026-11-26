@@ -79,42 +79,55 @@ def escape(text: Any) -> str:
 
 
 def render_taxonomy_hierarchy_tree(power: str, capability: str, skill: str, compact: bool = False) -> str:
-    """Renders a vertical hierarchical tree for Power -> Capability -> Skill."""
+    """Renders a unified clickable Skill pill that unfolds in-place into a connected Power -> Capability -> Skill lineage tree."""
     p_val = escape(power or "Tech")
     c_val = escape(capability or "Data & Machine")
     s_val = escape(skill or "Foundations")
     compact_cls = " is-compact" if compact else ""
-    branch_svg = (
-        '<svg class="lg-hier-branch" width="14" height="14" viewBox="0 0 24 24" fill="none" '
-        'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>'
-        '</svg>'
+    layers_svg = (
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M12 2L2 7l10 5 10-5-10-5z"/>'
+        '<path d="M2 17l10 5 10-5"/>'
+        '<path d="M2 12l10 5 10-5"/></svg>'
     )
-    step_svg = (
-        '<span class="lg-hier-branch" aria-hidden="true">'
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M5 4v10a2 2 0 0 0 2 2h11"/><polyline points="14 12 18 16 14 20"/>'
-        '</svg></span>'
+    chev_svg = (
+        '<svg class="lg-hier-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" '
+        'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<polyline points="9 18 15 12 9 6"/></svg>'
     )
     return f"""
-    <div class="lg-hier-tree{compact_cls}">
-        <div class="lg-hier-row is-power">
-            <span class="lg-hier-dot"></span>
-            <span class="lg-hier-k">Power :</span>
-            <span class="lg-hier-v">{p_val}</span>
+    <details class="lg-hier-disclosure{compact_cls}" onclick="event.stopPropagation();">
+        <summary class="lg-hier-summary" title="Click to toggle connected Power &rarr; Capability &rarr; Skill lineage">
+            <span class="lg-hier-summary-closed">
+                <span class="lg-hier-skill-dot" aria-hidden="true"></span>
+                <span class="lg-hier-k">Skill :</span>
+                <span class="lg-hier-v">{s_val}</span>
+            </span>
+            <span class="lg-hier-summary-open">
+                <span class="lg-hier-path-ico" aria-hidden="true">{layers_svg}</span>
+                <span class="lg-hier-open-label">Taxonomy Lineage</span>
+            </span>
+            <span class="lg-hier-chev-pill" aria-hidden="true">{chev_svg}</span>
+        </summary>
+        <div class="lg-hier-tree{compact_cls}">
+            <div class="lg-hier-row is-power">
+                <span class="lg-hier-dot" aria-hidden="true"></span>
+                <span class="lg-hier-k">Power :</span>
+                <span class="lg-hier-v">{p_val}</span>
+            </div>
+            <div class="lg-hier-row is-cap">
+                <span class="lg-hier-branch is-cap-node" aria-hidden="true"></span>
+                <span class="lg-hier-k">Capability :</span>
+                <span class="lg-hier-v">{c_val}</span>
+            </div>
+            <div class="lg-hier-row is-skill">
+                <span class="lg-hier-branch is-skill-node" aria-hidden="true"></span>
+                <span class="lg-hier-k">Skill :</span>
+                <span class="lg-hier-v">{s_val}</span>
+            </div>
         </div>
-        <div class="lg-hier-row is-cap">
-            {step_svg}
-            <span class="lg-hier-k">Capability :</span>
-            <span class="lg-hier-v">{c_val}</span>
-        </div>
-        <div class="lg-hier-row is-skill">
-            {step_svg}
-            <span class="lg-hier-k">Skill :</span>
-            <span class="lg-hier-v">{s_val}</span>
-        </div>
-    </div>
+    </details>
     """
 
 def render_liquid_card(
@@ -563,22 +576,20 @@ def render_sidebar_cycle_pill(
 
     short_code = escape(c_code[:10])
     return f"""
-    <div id="starapp-sidebar-cycle-pill" class="sidebar-band-switcher" style="margin-top:4px; margin-bottom:4px;">
-        <div class="band-switcher-mini" title="Global Cycle Filter: {escape(c_name)} ({escape(c_start)} -> {escape(c_end)})">
-            <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(16,185,129,0.18); border:1px solid {dot_color}; color:#fff; padding:2px 6px; border-radius:8px; cursor:pointer;"
-                  onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')">{short_code}</span>
-        </div>
-        <div class="band-switcher-content" style="border-color:rgba(16,185,129,0.4);">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                <span style="font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-mist);">Global Cycle</span>
-                <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 6px; border-radius:999px;">{st_lbl}</span>
-            </div>
-            <div style="font-size:11.5px; font-weight:800; color:#fff; margin-top:3px; overflow:hidden; text-overflow:ellipsis;">{escape(c_name)}</div>
-            <button type="button" class="btn-ghost btn-sm"
+    <div id="starapp-sidebar-cycle-pill" class="sidebar-band-switcher">
+        <div class="band-switcher-mini" title="Switch Cycle Filter: {escape(c_name)} ({escape(c_start)} to {escape(c_end)})">
+            <button type="button"
                     onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
-                    style="color:var(--frost-mist); font-size:10.5px; padding:3px 0 0 0; text-align:left; cursor:pointer; background:none; border:none; display:flex; align-items:center; gap:4px; font-weight:700;"
-                    title="Change Global Cycle Filter">
-                <span>Switch Cycle Filter &rarr;</span>
+                    style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(255,255,255,0.92); border:1.5px solid {dot_color}; color:var(--frost-navy); padding:3px 7px; border-radius:999px; cursor:pointer;"
+                    aria-label="Switch Cycle Filter">{short_code[:6]}</button>
+        </div>
+        <div class="band-switcher-content">
+            <button type="button"
+                    onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
+                    title="Switch Cycle Filter: {escape(c_name)}"
+                    style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.92); border:1px solid rgba(157,183,213,0.55); color:var(--frost-navy); font-size:11.5px; font-weight:800; cursor:pointer;">
+                <span style="overflow:hidden; text-overflow:ellipsis;">{escape(c_code)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:9.5px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 7px; border-radius:999px; flex-shrink:0;">{st_lbl}</span>
             </button>
         </div>
     </div>

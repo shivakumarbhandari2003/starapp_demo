@@ -11,12 +11,23 @@ class AuthRepository:
         self.conn = conn
 
     def find_user_by_username_or_email(self, identifier: str) -> Optional[Dict[str, Any]]:
+        import re
         cur = self.conn.cursor()
+        ident = (identifier or "").strip().lower()
         cur.execute("""
             SELECT * FROM users
             WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?);
-        """, (identifier, identifier))
+        """, (ident, ident))
         row = cur.fetchone()
+        if not row:
+            alias_match = re.match(r"^([a-z0-9._-]+)\.b[1-6]@([a-z0-9.-]+\.[a-z]{2,})$", ident)
+            if alias_match:
+                canonical_email = f"{alias_match.group(1)}@{alias_match.group(2)}"
+                cur.execute("""
+                    SELECT * FROM users
+                    WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?);
+                """, (canonical_email, alias_match.group(1)))
+                row = cur.fetchone()
         return dict(row) if row else None
 
     def find_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:

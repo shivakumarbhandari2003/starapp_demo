@@ -60,7 +60,7 @@ class User:
         reporting_manager_id: Optional[str] = None,
         reporting_manager_name: Optional[str] = None,
         reporting_manager_band: Optional[str] = None,
-        password: str = "12345678"
+        password: str = "123456789"
     ):
         self.id = id
         self.username = username
@@ -99,7 +99,7 @@ class User:
             "reporting_manager_id": getattr(self, "reporting_manager_id", None),
             "reporting_manager_name": getattr(self, "reporting_manager_name", None),
             "reporting_manager_band": getattr(self, "reporting_manager_band", None),
-            "password": getattr(self, "password", "12345678")
+            "password": getattr(self, "password", "123456789")
         }
 
     @classmethod
@@ -118,7 +118,7 @@ class User:
             reporting_manager_id=data.get("reporting_manager_id"),
             reporting_manager_name=data.get("reporting_manager_name"),
             reporting_manager_band=data.get("reporting_manager_band"),
-            password=data.get("password", "12345678")
+            password=data.get("password", "123456789")
         )
 
 

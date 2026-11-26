@@ -420,9 +420,7 @@ async def favicon():
     return Response(status_code=204)
 
 
-@app.get("/")
-@app.get("/index.html")
-async def root():
+def _build_index_response() -> Any:
     index_file = BASE_DIR / "index.html"
     if index_file.exists():
         _reload_starapp_if_changed()
@@ -451,3 +449,9 @@ async def root():
             },
         )
     return {"message": "StarApp Full-Stack Backend Active"}
+
+
+@app.get("/")
+@app.get("/index.html")
+async def root():
+    return _build_index_response()

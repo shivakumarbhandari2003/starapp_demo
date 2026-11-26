@@ -4,6 +4,7 @@ Orchestrates role-based navigation, state mutation, event dispatch, and UI rende
 Works seamlessly in browser Pyodide runtime and in local Python test suites.
 """
 
+import datetime
 import json
 import time
 from typing import Optional, Dict, Any, Tuple, List
@@ -39,6 +40,7 @@ from starapp.views_common import (
 from starapp.views_guardian import (
     render_guardian_sidebar, render_guardian_dashboard,
     render_guardian_badge_allotment, render_guardian_mapping, render_guardian_mapping_badge_detail,
+    render_mapping_calendar_modal,
     render_guardian_review_queue, render_guardian_review_detail,
     render_assessment_modal_content, render_guardian_materials,
     render_guardian_activity_feed, render_guardian_extensions,
@@ -123,8 +125,8 @@ class StarAppController:
         self.mapping_cosmo_search: str = ""
         self.mapping_reviewer_search: str = ""
         self.mapping_badge_search: str = ""
-        self.mapping_calendar_year: int = 2026
-        self.mapping_calendar_month: int = 11
+        self.mapping_calendar_year: int = datetime.date.today().year
+        self.mapping_calendar_month: int = datetime.date.today().month
         self.mapping_review_anchor: str = "2026-11-18"
         self.mapping_review_direction: str = "after"
         self.mapping_review_days_count: int = 3
@@ -677,7 +679,9 @@ class StarAppController:
         "open_reviewer_badge_timeline_modal", "open_badge_timeline_mapping_modal", "open_allocated_project_modal",
         "view_allocated_project", "recalc_rubric_total", "select_mapping_band",
         "select_mapping_badge", "select_mapping_review_anchor", "set_mapping_review_direction",
-        "set_mapping_review_duration", "set_mapping_review_mode", "toggle_mapping_badge_card", "open_mapping_badge_detail",
+        "set_mapping_review_duration", "set_mapping_review_mode", "set_mapping_date_range",
+        "jump_mapping_calendar_today", "open_mapping_calendar_modal",
+        "toggle_mapping_badge_card", "open_mapping_badge_detail",
         "change_mapping_calendar_month", "cancel_edit_band_mapping", "reset_mapping_selection",
         "view_saved_badge", "search_skills", "preview_new_badge", "open_locked_milestone_notice",
         "mark_announcement_as_read"
@@ -2002,8 +2006,8 @@ class StarAppController:
             self.mapping_cosmo_search = ""
             self.mapping_reviewer_search = ""
             self.mapping_badge_search = ""
-            self.mapping_calendar_year = 2026
-            self.mapping_calendar_month = 11
+            self.mapping_calendar_year = datetime.date.today().year
+            self.mapping_calendar_month = datetime.date.today().month
             self.mapping_review_anchor = "2026-11-18"
             self.mapping_review_direction = "after"
             self.mapping_review_days_count = 3
@@ -2016,6 +2020,9 @@ class StarAppController:
         elif action == "select_mapping_review_anchor":
             date_iso = payload if isinstance(payload, str) else (payload.get("date") if isinstance(payload, dict) else "")
             if date_iso:
+                p_clicked = parse_iso_date(date_iso)
+                self.mapping_calendar_year = p_clicked.year
+                self.mapping_calendar_month = p_clicked.month
                 if getattr(self, "mapping_review_mode", "gap") == "range":
                     if not getattr(self, "mapping_range_start", ""):
                         self.mapping_range_start = date_iso
@@ -2031,6 +2038,45 @@ class StarAppController:
                     days_n = max(1, min(30, int(getattr(self, "mapping_review_days_count", 3) or 3)))
                     self.mapping_review_anchor = date_iso
                     self.mapping_review_dates = get_consecutive_review_days(date_iso, self.mapping_review_direction, days_n)
+
+        elif action == "set_mapping_date_range":
+            data = payload if isinstance(payload, dict) else {}
+            start_iso = str(data.get("start") or "").strip()[:10]
+            end_iso = str(data.get("end") or "").strip()[:10]
+            if start_iso and end_iso:
+                dates = get_working_days_between(start_iso, end_iso, max_days=45)
+                if dates:
+                    self.mapping_review_mode = "range"
+                    self.mapping_range_start = ""
+                    self.mapping_review_dates = dates
+                    self.mapping_review_days_count = len(dates)
+                    self.mapping_review_anchor = dates[0]
+                    p_start = parse_iso_date(dates[0])
+                    self.mapping_calendar_year = p_start.year
+                    self.mapping_calendar_month = p_start.month
+            elif start_iso:
+                days_n = max(1, min(30, int(getattr(self, "mapping_review_days_count", 3) or 3)))
+                self.mapping_review_anchor = start_iso
+                self.mapping_review_dates = get_consecutive_review_days(start_iso, "after", days_n)
+                p_start = parse_iso_date(start_iso)
+                self.mapping_calendar_year = p_start.year
+                self.mapping_calendar_month = p_start.month
+
+        elif action == "open_mapping_calendar_modal":
+            self.active_modal = "mapping_calendar_modal"
+            self.modal_payload = {}
+
+        elif action == "jump_mapping_calendar_today":
+            today_dt = datetime.date.today()
+            self.mapping_calendar_year = today_dt.year
+            self.mapping_calendar_month = today_dt.month
+            days_n = max(1, min(30, int(getattr(self, "mapping_review_days_count", 3) or 3)))
+            dates = get_consecutive_review_days(today_dt.isoformat(), "after", days_n)
+            self.mapping_review_mode = "gap"
+            self.mapping_review_direction = "after"
+            self.mapping_range_start = ""
+            self.mapping_review_anchor = dates[0] if dates else today_dt.isoformat()
+            self.mapping_review_dates = dates
 
         elif action == "set_mapping_review_direction":
             direction = payload if isinstance(payload, str) else (payload.get("direction", "after") if isinstance(payload, dict) else "after")
@@ -2061,13 +2107,13 @@ class StarAppController:
 
         elif action == "change_mapping_calendar_month":
             if isinstance(payload, dict):
-                self.mapping_calendar_year = int(payload.get("year", self.mapping_calendar_year))
-                self.mapping_calendar_month = int(payload.get("month", self.mapping_calendar_month))
+                self.mapping_calendar_year = max(2020, min(2040, int(payload.get("year", self.mapping_calendar_year))))
+                self.mapping_calendar_month = max(1, min(12, int(payload.get("month", self.mapping_calendar_month))))
             elif isinstance(payload, str) and payload.strip():
                 try:
                     p = json.loads(payload)
-                    self.mapping_calendar_year = int(p.get("year", self.mapping_calendar_year))
-                    self.mapping_calendar_month = int(p.get("month", self.mapping_calendar_month))
+                    self.mapping_calendar_year = max(2020, min(2040, int(p.get("year", self.mapping_calendar_year))))
+                    self.mapping_calendar_month = max(1, min(12, int(p.get("month", self.mapping_calendar_month))))
                 except Exception:
                     pass
 
@@ -2680,8 +2726,8 @@ class StarAppController:
             self.mapping_cosmo_search = ""
             self.mapping_reviewer_search = ""
             self.mapping_badge_search = ""
-            self.mapping_calendar_year = 2026
-            self.mapping_calendar_month = 11
+            self.mapping_calendar_year = datetime.date.today().year
+            self.mapping_calendar_month = datetime.date.today().month
             self.mapping_review_anchor = "2026-11-18"
             self.mapping_review_direction = "after"
             self.mapping_review_days_count = 3
@@ -4905,10 +4951,23 @@ if __name__ == "__main__":
                 title = "Cycle Candidate Details"
                 body = "<p style='padding:20px; text-align:center;'>Candidate or cycle not found.</p>"
 
+        elif self.active_modal == "mapping_calendar_modal":
+            title = "Review Schedule Calendar"
+            body = render_mapping_calendar_modal(
+                review_dates=getattr(self, "mapping_review_dates", None),
+                review_anchor=getattr(self, "mapping_review_anchor", "2026-11-18"),
+                review_direction=getattr(self, "mapping_review_direction", "after"),
+                review_days_count=getattr(self, "mapping_review_days_count", 3),
+                review_mode=getattr(self, "mapping_review_mode", "gap"),
+                range_start=getattr(self, "mapping_range_start", ""),
+                calendar_year=getattr(self, "mapping_calendar_year", 2026),
+                calendar_month=getattr(self, "mapping_calendar_month", 11),
+            )
+
         modal_dialog_class = "liquid-glass-modal modal-dialog"
         if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "badge_timeline_mapping", "reviewer_project_creator", "submission_portal_modal", "allocated_project_modal", "cycle_candidate_detail_modal"]:
             modal_dialog_class += " modal-xl modal-lg"
-        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_reviewer_return", "create_cycle_modal"]:
+        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_reviewer_return", "create_cycle_modal", "mapping_calendar_modal"]:
             modal_dialog_class += " modal-lg"
 
         return f"""

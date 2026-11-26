@@ -1713,22 +1713,21 @@ def render_guardian_badge_allotment(
 
         return f"""
         <div class="{card_cls}">
-            <div>
-                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:12px;">
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span style="font-family:var(--font-family-mono); font-size:13px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 10px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
-                        <span style="font-size:12px; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy); padding:4px 10px; border-radius:var(--radius-full);">Band {escape(b_band)}</span>
-                        <span style="font-size:12px; font-weight:700; background:rgba(255,255,255,0.88); border:1px solid rgba(157,183,213,0.45); color:var(--frost-navy); padding:3px 10px; border-radius:var(--radius-full);">{escape(b.category)}</span>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span style="font-size:11.5px; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy); padding:3px 9px; border-radius:var(--radius-full);">Band {escape(b_band)}</span>
                     </div>
                     {status_pill}
                 </div>
 
-                <h4 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:2px 0 12px 0; line-height:1.3;">{escape(b.title)}</h4>
+                <div>
+                    <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0; line-height:1.3;">{escape(b.title)}</h4>
+                    {hier_tree_html}
+                </div>
 
-                <!-- Vertical Taxonomy Hierarchy Tree -->
-                {hier_tree_html}
-
-                <!-- Structured Mapping & Schedule Context -->
+                <!-- Compact Mapping & Schedule Context -->
                 <div class="allot-summary-strip">
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Reviewer</div>
@@ -1740,23 +1739,23 @@ def render_guardian_badge_allotment(
                     </div>
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Review Window</div>
-                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:13px;">{escape(rev_window_disp)}</div>
+                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:12.5px;">{escape(rev_window_disp)}</div>
                     </div>
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Submission Deadline</div>
-                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:13px; color:#B91C1C;">{escape(sub_deadline)}</div>
+                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:12.5px; color:#B91C1C;">{escape(sub_deadline)}</div>
                     </div>
                 </div>
             </div>
 
             <!-- Action Row -->
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-top:14px; border-top:1px solid rgba(157,183,213,0.4); flex-wrap:wrap;">
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:12.5px; padding:7px 14px; display:inline-flex; align-items:center; gap:6px;" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_mapping_modal', '{b.id}')">
-                        {get_icon("calendar", 14)} Timeline &amp; Mapping
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.4); flex-wrap:wrap;">
+                <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                    <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_mapping_modal', '{b.id}')">
+                        {get_icon("calendar", 13)} Timeline &amp; Mapping
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:12.5px; padding:7px 14px; color:var(--frost-navy); display:inline-flex; align-items:center; gap:6px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                        {get_icon("edit", 14)} Edit Badge
+                    <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:12px; padding:6px 12px; color:var(--frost-navy); display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
+                        {get_icon("edit", 13)} Edit Badge
                     </button>
                 </div>
                 {action_btn}
@@ -3373,6 +3372,174 @@ def _build_mapping_badge_groups(
     return ordered_groups
 
 
+def render_mapping_calendar_modal(
+    review_dates: Optional[List[str]] = None,
+    review_anchor: str = "2026-11-18",
+    review_direction: str = "after",
+    review_days_count: int = 3,
+    review_mode: str = "gap",
+    range_start: str = "",
+    calendar_year: int = 2026,
+    calendar_month: int = 11,
+) -> str:
+    """Renders the real Liquid-Glass interactive Review Schedule Calendar modal for Guardian Mapping."""
+    review_dates = list(review_dates or ["2026-11-18", "2026-11-19", "2026-11-20"])
+    cal_grid = generate_calendar_month_grid(calendar_year, calendar_month, review_dates, review_anchor)
+    cal_svg_14 = get_icon("calendar", 14)
+    active_days_total = len(review_dates)
+
+    if active_days_total > 3:
+        human_dates_str = f"{format_review_date_human(review_dates[0])} \u2192 {format_review_date_human(review_dates[-1])} ({active_days_total} Working Days)"
+    elif active_days_total >= 1:
+        human_dates_str = " \u2192 ".join([format_review_date_human(d) for d in review_dates])
+    else:
+        human_dates_str = "None selected"
+
+    cal_days_cells = []
+    for week in cal_grid["weeks"]:
+        for d in week:
+            today_cls = " is-today" if d.get("is_today") else ""
+            other_cls = " other-month" if not d["is_current_month"] else ""
+            if d["is_weekend"]:
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell weekend{other_cls}{today_cls}" title="Weekend ({d['date']})">
+                    <span class="cal-day-num">{d['day']}</span>
+                </div>
+                """)
+            elif d["is_selected"]:
+                order_tag = f"Day {d['order_idx']}" if d["order_idx"] else "Selected"
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell selected-review-day{other_cls}{today_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Selected Review Day ({d['date']})">
+                    <span class="cal-day-num">{d['day']}</span>
+                    <span class="cal-day-order-badge">{order_tag}</span>
+                </div>
+                """)
+            else:
+                today_tag = '<span class="cal-today-tag">Today</span>' if d.get("is_today") else ""
+                cal_days_cells.append(f"""
+                <div class="cal-day-cell{other_cls}{today_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Select {d['date']}">
+                    <span class="cal-day-num">{d['day']}</span>
+                    {today_tag}
+                </div>
+                """)
+
+    gap_pills_html = []
+    for preset_d in (1, 2, 3, 5, 7, 10):
+        is_preset_active = (review_mode == "gap" and review_days_count == preset_d)
+        gap_pills_html.append(f"""
+        <button type="button" class="cal-gap-pill {'active' if is_preset_active else ''}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_duration', {preset_d})">
+            {preset_d}d
+        </button>
+        """)
+
+    dir_after_active = "active" if (review_mode == "gap" and review_direction == "after") else ""
+    dir_before_active = "active" if (review_mode == "gap" and review_direction == "before") else ""
+    range_mode_active = "active" if review_mode == "range" else ""
+
+    range_hint_html = ""
+    if review_mode == "range":
+        range_hint_html = (
+            f'<div style="padding:6px 10px; border-radius:var(--radius-xs); background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); font-size:11.5px; font-weight:700; color:#047857;">Start: {escape(format_review_date_human(range_start))} \u2014 Click End Date</div>'
+            if range_start else
+            '<div style="padding:6px 10px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.06); border:1px solid var(--icy-steel-30); font-size:11.5px; font-weight:700; color:var(--frost-navy);">Range Mode: Click Start Date, then End Date</div>'
+        )
+
+    return f"""
+    <div class="mapping-calendar-modal-glass lg-mapcal-modal">
+        <div class="lg-mapcal-side">
+            <div class="lg-mapcal-head-row">
+                <h4 class="lg-mapcal-title">
+                    {cal_svg_14}<span>Select Estimated Review Date</span>
+                </h4>
+                <span class="status-pill status-active" style="font-size:11px; font-weight:800;">{active_days_total} Working Days</span>
+            </div>
+
+            <div class="cal-date-range-inputs" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
+                <label class="cal-date-field" for="mapping-date-from" style="display:flex; flex-direction:column; gap:2px; padding:7px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); margin:0;">
+                    <span class="lg-mapcal-field-label" style="margin:0;">From</span>
+                    <input type="date" id="mapping-date-from" class="lg-mapcal-date-input" value="{escape(review_dates[0] if review_dates else review_anchor)}" onchange="(function(){{var f=document.getElementById('mapping-date-from');var t=document.getElementById('mapping-date-to');window.StarAppBridge.dispatchAction('set_mapping_date_range', JSON.stringify({{start:f?f.value:'', end:t?t.value:''}}));}})()">
+                </label>
+                <label class="cal-date-field" for="mapping-date-to" style="display:flex; flex-direction:column; gap:2px; padding:7px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); margin:0;">
+                    <span class="lg-mapcal-field-label" style="margin:0;">To</span>
+                    <input type="date" id="mapping-date-to" class="lg-mapcal-date-input" value="{escape(review_dates[-1] if review_dates else review_anchor)}" onchange="(function(){{var f=document.getElementById('mapping-date-from');var t=document.getElementById('mapping-date-to');window.StarAppBridge.dispatchAction('set_mapping_date_range', JSON.stringify({{start:f?f.value:'', end:t?t.value:''}}));}})()">
+                </label>
+            </div>
+
+            <div>
+                <span class="lg-mapcal-field-label">Working Days Window</span>
+                <div class="lg-mapcal-presets">
+                    {"".join(gap_pills_html)}
+                    <input type="number" min="1" max="30" class="cal-days-input" value="{active_days_total if review_mode == 'range' else review_days_count}" onchange="window.StarAppBridge.dispatchAction('set_mapping_review_duration', this.value)" title="Custom number of working days">
+                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Days</span>
+                </div>
+            </div>
+
+            <div>
+                <span class="lg-mapcal-field-label">Selection Mode</span>
+                <div class="lg-mapcal-seg">
+                    <button type="button" class="cal-direction-btn {dir_after_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'after')">
+                        Forward
+                    </button>
+                    <button type="button" class="cal-direction-btn {dir_before_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'before')">
+                        Backward
+                    </button>
+                    <button type="button" class="cal-direction-btn {range_mode_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_mode', '{'gap' if review_mode == 'range' else 'range'}')">
+                        Range Pick
+                    </button>
+                </div>
+            </div>
+            {range_hint_html}
+
+            <div class="lg-mapcal-summary" style="margin-top:auto;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:#065F46; margin-bottom:3px;">
+                    {cal_svg_14}<span>Review Schedule</span>
+                </div>
+                <div style="font-size:12px; font-weight:700; color:#047857;">{escape(human_dates_str)}</div>
+            </div>
+        </div>
+
+        <div class="lg-cal-shell">
+            <div class="lg-cal-header">
+                <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['prev_year']}, \"month\": {cal_grid['prev_month']}}}')" title="Previous Month" aria-label="Previous Month">{get_icon("chevron_left", 14)}</button>
+                <div class="lg-mapcal-nav-group">
+                    <div class="liquid-select-wrapper lg-mapcal-select-wrap">
+                        <select id="mapping-cal-month-select" class="liquid-glass-control liquid-glass-select" aria-label="Calendar Month" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: {calendar_year}, month: Number(this.value)}}))">
+                            {"".join([f'<option value="{m_idx}"{" selected" if m_idx == calendar_month else ""}>{m_lbl}</option>' for m_idx, m_lbl in enumerate(["January","February","March","April","May","June","July","August","September","October","November","December"], 1)])}
+                        </select>
+                    </div>
+                    <div class="liquid-select-wrapper lg-mapcal-select-wrap">
+                        <select id="mapping-cal-year-select" class="liquid-glass-control liquid-glass-select" aria-label="Calendar Year" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: Number(this.value), month: {calendar_month}}}))">
+                            {"".join([f'<option value="{y_opt}"{" selected" if y_opt == calendar_year else ""}>{y_opt}</option>' for y_opt in range(max(2024, calendar_year - 2), max(2031, calendar_year + 4))])}
+                        </select>
+                    </div>
+                    <button type="button" id="mapping-cal-today-btn" class="lg-mapcal-today-btn" onclick="window.StarAppBridge.dispatchAction('jump_mapping_calendar_today', '{{}}')" title="Jump to Today">Today</button>
+                </div>
+                <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['next_year']}, \"month\": {cal_grid['next_month']}}}')" title="Next Month" aria-label="Next Month">{get_icon("chevron_right", 14)}</button>
+            </div>
+
+            <div class="lg-cal-weekdays cal-weekdays-row">
+                <div>Mon</div>
+                <div>Tue</div>
+                <div>Wed</div>
+                <div>Thu</div>
+                <div>Fri</div>
+                <div class="weekend-header" title="Weekend">Sat</div>
+                <div class="weekend-header" title="Weekend">Sun</div>
+            </div>
+
+            <div class="lg-cal-grid cal-days-grid">
+                {"".join(cal_days_cells)}
+            </div>
+
+            <div class="lg-cal-footer" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--icy-steel-25); display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <span class="lg-cal-month-label" style="font-size:12px;">{cal_grid['month_name']} {cal_grid['year']}</span>
+                <button type="button" class="btn-metal btn-sm" style="font-weight:800; padding:7px 18px;" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Apply Schedule</button>
+            </div>
+        </div>
+    </div>
+    """
+
+
 def render_guardian_mapping(
     selected_band: str = "B1",
     selected_roles: Optional[List[str]] = None,
@@ -3580,9 +3747,15 @@ def render_guardian_mapping(
     if selected_badge == "AIOS" and clean_badges and all(b["name"] != "AIOS" and b["code"] != "AIOS" for b in clean_badges):
         selected_badge = ""
 
-    cal_grid = generate_calendar_month_grid(calendar_year, calendar_month, review_dates, review_anchor)
     check_svg_11 = get_icon("check", 11)
     cal_svg_14 = get_icon("calendar", 14)
+    active_days_total = len(review_dates)
+    if active_days_total > 1:
+        compact_sched_lbl = f"{review_dates[0]} \u2192 {review_dates[-1]}"
+    elif active_days_total == 1:
+        compact_sched_lbl = review_dates[0]
+    else:
+        compact_sched_lbl = "Select Dates"
 
     selected_cosmonauts_set = set(selected_cosmonauts)
     selected_reviewers_set = set(selected_reviewers)
@@ -3733,66 +3906,6 @@ def render_guardian_mapping(
         """)
 
     # --------------------------------------------------------------------------
-    # CALENDAR GRID & FLEXIBLE DURATION / RANGE CONTROLS
-    # --------------------------------------------------------------------------
-    cal_days_cells = []
-    for week in cal_grid["weeks"]:
-        for d in week:
-            if not d["is_current_month"]:
-                cal_days_cells.append(f'<div class="cal-day-cell other-month"><span class="cal-day-num">{d["day"]}</span></div>')
-            elif d["is_weekend"]:
-                cal_days_cells.append(f"""
-                <div class="cal-day-cell weekend" title="Weekend — Non-Review Day">
-                    <span class="cal-day-num">{d['day']}</span>
-                    <span style="font-size:8.5px; font-weight:700;">Off</span>
-                </div>
-                """)
-            elif d["is_selected"]:
-                order_tag = f"Day {d['order_idx']}" if d["order_idx"] else "Selected"
-                cal_days_cells.append(f"""
-                <div class="cal-day-cell selected-review-day" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Selected Review Day ({d['date']})">
-                    <span class="cal-day-num">{d['day']}</span>
-                    <span class="cal-day-order-badge">{order_tag}</span>
-                </div>
-                """)
-            else:
-                cal_days_cells.append(f"""
-                <div class="cal-day-cell" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Select {d['date']}">
-                    <span class="cal-day-num">{d['day']}</span>
-                </div>
-                """)
-
-    active_days_total = len(review_dates)
-    if active_days_total > 3:
-        human_dates_str = f"{format_review_date_human(review_dates[0])} → {format_review_date_human(review_dates[-1])} ({active_days_total} Working Days)"
-    elif active_days_total >= 1:
-        human_dates_str = " ➔ ".join([format_review_date_human(d) for d in review_dates])
-    else:
-        human_dates_str = "None selected"
-
-    gap_pills_html = []
-    for preset_d in (1, 2, 3, 5, 7, 10):
-        is_preset_active = (review_mode == "gap" and review_days_count == preset_d)
-        gap_pills_html.append(f"""
-        <button type="button" class="cal-gap-pill {'active' if is_preset_active else ''}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_duration', {preset_d})">
-            {preset_d}d
-        </button>
-        """)
-
-    dir_after_active = "active" if (review_mode == "gap" and review_direction == "after") else ""
-    dir_before_active = "active" if (review_mode == "gap" and review_direction == "before") else ""
-    range_mode_active = "active" if review_mode == "range" else ""
-
-    if review_mode == "range":
-        range_hint_html = (
-            f'<span style="font-size:12px; font-weight:700; color:#047857;">Start: {escape(format_review_date_human(range_start))} — Click End Date on Calendar</span>'
-            if range_start else
-            '<span style="font-size:12px; font-weight:700; color:var(--frost-navy);">Range Mode: Click Start Date, then End Date</span>'
-        )
-    else:
-        range_hint_html = ""
-
-    # --------------------------------------------------------------------------
     # SECTION 4: RECTANGULAR CLICKABLE BADGE CARDS (OPEN DEDICATED DETAIL PAGE)
     # --------------------------------------------------------------------------
     band_reqs_all = [r for r in all_requests if r.get("band") == selected_band]
@@ -3899,8 +4012,13 @@ def render_guardian_mapping(
                     </h3>
                     {edit_mode_badge}
                 </div>
-                <div style="display:flex; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     {f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="font-size:12px; padding:6px 14px; font-weight:700;">Cancel Edit</button>' if editing_mapping_id else ''}
+                    <button type="button" id="mapping-open-calendar-btn" class="cal-trigger-pill" onclick="window.StarAppBridge.dispatchAction('open_mapping_calendar_modal', '{{}}')" title="Open Liquid-Glass Review Schedule Calendar ({escape(compact_sched_lbl)})">
+                        {cal_svg_14}
+                        <span>{escape(compact_sched_lbl)}</span>
+                        <span class="cal-trigger-badge">{active_days_total}d</span>
+                    </button>
                     <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reset_mapping_selection', '{{}}')" style="font-size:12px; padding:6px 14px; font-weight:700; color:var(--frost-navy);">
                         Reset
                     </button>
@@ -3989,78 +4107,6 @@ def render_guardian_mapping(
                     <div id="mapping-reviewer-scroll" class="mapping-scroll-list">
                         {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12.5px; font-weight:600; color:var(--frost-navy);'>No higher-band reviewers match active filters.</div>"}
                     </div>
-                </div>
-            </div>
-
-            <!-- 5. FLEXIBLE ESTIMATED REVIEW WINDOW CALENDAR -->
-            <div class="mapping-calendar-box">
-                <div class="cal-header-bar">
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <h4 style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                            Select Estimated Review Date
-                        </h4>
-                        <span class="status-pill status-active" style="font-size:11px; font-weight:800;">{active_days_total} Working Days</span>
-                        <span class="status-pill" style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy);">Weekdays Only</span>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <button type="button" class="cal-month-nav-btn" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['prev_year']}, \"month\": {cal_grid['prev_month']}}}')" title="Previous Month">&lt;</button>
-                        <span style="font-size:13.5px; font-weight:800; color:var(--frost-navy); min-width:130px; text-align:center;">
-                            {cal_grid['month_name']} {cal_grid['year']}
-                        </span>
-                        <button type="button" class="cal-month-nav-btn" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['next_year']}, \"month\": {cal_grid['next_month']}}}')" title="Next Month">&gt;</button>
-                    </div>
-                </div>
-
-                <!-- Flexible Duration Gap & Custom Range Bar -->
-                <div class="cal-mode-bar">
-                    <div class="cal-gap-pills">
-                        <span style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-right:4px;">Review Window:</span>
-                        {"".join(gap_pills_html)}
-                        <input type="number" min="1" max="30" class="cal-days-input" value="{active_days_total if review_mode == 'range' else review_days_count}" onchange="window.StarAppBridge.dispatchAction('set_mapping_review_duration', this.value)" title="Custom number of working days">
-                        <span style="font-size:12px; font-weight:700; color:var(--frost-navy);">Days</span>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <button type="button" class="cal-direction-btn {dir_after_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'after')">
-                            Forward from Date
-                        </button>
-                        <button type="button" class="cal-direction-btn {dir_before_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'before')">
-                            Backward to Date
-                        </button>
-                        <button type="button" class="cal-direction-btn {range_mode_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_mode', '{'gap' if review_mode == 'range' else 'range'}')">
-                            Range Pick (Start &rarr; End)
-                        </button>
-                    </div>
-                </div>
-                {f'<div style="margin-bottom:10px; padding:6px 12px; border-radius:var(--radius-xs); background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25);">{range_hint_html}</div>' if range_hint_html else ''}
-
-                <!-- Weekdays Header Row -->
-                <div class="cal-weekdays-row">
-                    <div>Mon</div>
-                    <div>Tue</div>
-                    <div>Wed</div>
-                    <div>Thu</div>
-                    <div>Fri</div>
-                    <div class="weekend-header" title="Weekend non-review day">Sat ✕</div>
-                    <div class="weekend-header" title="Weekend non-review day">Sun ✕</div>
-                </div>
-
-                <!-- Calendar Days Grid -->
-                <div class="cal-days-grid">
-                    {"".join(cal_days_cells)}
-                </div>
-
-                <!-- Selected Review Window Display -->
-                <div style="margin-top:14px; padding:10px 14px; border-radius:var(--radius-sm); background:rgba(5,150,105,0.09); border:1px solid rgba(5,150,105,0.25); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span style="color:#047857;">{cal_svg_14}</span>
-                        <span style="font-size:13px; font-weight:800; color:#065F46;">
-                            Review Schedule:
-                        </span>
-                        <span style="font-size:13px; font-weight:700; color:#047857;">
-                            {escape(human_dates_str)}
-                        </span>
-                    </div>
-                    <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">{active_days_total} Business Days</span>
                 </div>
             </div>
 
@@ -5022,7 +5068,7 @@ def render_guardian_create_badge(
                 </div>
             </div>
             """)
-        saved_badges_html = "".join(saved_cards)
+        saved_badges_html = f'<div class="lg-allot-grid">{"".join(saved_cards)}</div>'
     else:
         saved_badges_html = f"""
         <div style="padding:20px; text-align:center; background:rgba(255,255,255,0.72); border:1.5px dashed var(--icy-steel); border-radius:var(--radius-sm); font-size:14px; font-weight:600; color:var(--frost-navy);">

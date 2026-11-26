@@ -65,7 +65,12 @@ def apply_migrations():
                     'admin', 'admin', 'admin@starapp.io', 'Guardian Admin', 'Administrator',
                     'Leadership', 'EXEC', 'B6', ?, 'guardian', 'active', 0, ?
                 );
-            """, (hash_password("12345678"), now_iso))
+            """, (hash_password("123456789"), now_iso))
+
+        # Standardize any empty or legacy default user passwords to the shared platform password
+        cur.execute(
+            "UPDATE users SET password = '123456789' WHERE password IS NULL OR password = '' OR password = '12345678';"
+        )
 
         # 3. Safe Column Migrations for Complete Assessment, Mapping & Cycle Workflow
         safe_columns = [

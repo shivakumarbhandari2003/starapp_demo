@@ -155,15 +155,29 @@ class TestGuardianMappingFlow(unittest.TestCase):
         and enforces 3 consecutive working days (skipping Sat & Sun) for both 'after' and 'before'.
         """
         self.ctrl.handle_event("nav_guardian", "g_mapping")
+        base_html = self.ctrl.render()
+        self.assertIn('id="mapping-open-calendar-btn"', base_html)
+        self.assertIn("Reset", base_html)
+        self.assertNotIn("cal-days-grid", base_html)
+
+        # Click calendar icon beside Reset -> opens Glass Calendar modal
+        self.ctrl.handle_event("open_mapping_calendar_modal", "{}")
         html = self.ctrl.render()
 
-        # Check calendar structure
+        # Check real calendar structure & controls inside Liquid-Glass modal
+        self.assertIn("mapping-calendar-modal-glass", html)
         self.assertIn("Select Estimated Review Date", html)
         self.assertIn("cal-weekdays-row", html)
         self.assertIn("weekend-header", html)
-        self.assertIn("Sat ✕", html)
-        self.assertIn("Sun ✕", html)
-        self.assertIn('class="cal-day-cell weekend"', html)
+        self.assertIn("Sat", html)
+        self.assertIn("Sun", html)
+        self.assertNotIn("Sat ✕", html)
+        self.assertIn('id="mapping-cal-month-select"', html)
+        self.assertIn('id="mapping-cal-year-select"', html)
+        self.assertIn('id="mapping-cal-today-btn"', html)
+        self.assertIn('id="mapping-date-from"', html)
+        self.assertIn('id="mapping-date-to"', html)
+        self.assertIn('class="cal-day-cell weekend', html)
 
         # 1. Anchor on Friday 2026-11-20 with direction 'after':
         # Should select Friday 2026-11-20, skip Sat (21) & Sun (22), select Monday 2026-11-23 & Tuesday 2026-11-24.
@@ -184,12 +198,19 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.ctrl.handle_event("set_mapping_review_direction", "before")
         self.assertEqual(self.ctrl.mapping_review_dates, ["2026-11-19", "2026-11-20", "2026-11-23"])
 
-        # 3. Calendar month navigation
+        # 3. Calendar month navigation, Today jump & direct From/To date range input
         self.ctrl.handle_event("change_mapping_calendar_month", json.dumps({"year": 2026, "month": 12}))
         self.assertEqual(self.ctrl.mapping_calendar_year, 2026)
         self.assertEqual(self.ctrl.mapping_calendar_month, 12)
         html_dec = self.ctrl.render()
         self.assertIn("December 2026", html_dec)
+
+        self.ctrl.handle_event("set_mapping_date_range", json.dumps({"start": "2026-12-07", "end": "2026-12-10"}))
+        self.assertEqual(self.ctrl.mapping_review_dates, ["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10"])
+        self.ctrl.handle_event("jump_mapping_calendar_today", "{}")
+        import datetime as _dt
+        self.assertEqual(self.ctrl.mapping_calendar_year, _dt.date.today().year)
+        self.assertEqual(self.ctrl.mapping_calendar_month, _dt.date.today().month)
 
     def test_visual_who_is_mapped_to_whom_and_edit_mapping_lifecycle(self):
         """

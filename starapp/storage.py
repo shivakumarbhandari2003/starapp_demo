@@ -269,7 +269,7 @@ class DataStore:
                 roles=roles if roles else [user_role],
                 band=user_band,
                 learning_track=user_track,
-                password=row["password"] if "password" in row.keys() and row["password"] else "12345678"
+                password=row["password"] if "password" in row.keys() and row["password"] else "123456789"
             )
             self.users[row["id"]] = user
             if user_id != row["id"]:
@@ -282,11 +282,19 @@ class DataStore:
         for u in self.users.values():
             if u.username.lower() == u_clean or u.email.lower() == u_clean:
                 return u
-        # Query SQLite directly
+        # Query SQLite directly (supporting optional .b1-.b6 band suffix alias e.g. name.b3@starapp.io)
         row = self.db.conn.execute(
             "SELECT * FROM users WHERE lower(username) = ? OR lower(email) = ?",
             (u_clean, u_clean)
         ).fetchone()
+        if not row:
+            alias_match = re.match(r"^([a-z0-9._-]+)\.b[1-6]@([a-z0-9.-]+\.[a-z]{2,})$", u_clean)
+            if alias_match:
+                canonical_email = f"{alias_match.group(1)}@{alias_match.group(2)}"
+                row = self.db.conn.execute(
+                    "SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ?",
+                    (canonical_email, alias_match.group(1))
+                ).fetchone()
         if row:
             return self.get_user_by_id(row["id"])
         return None
@@ -326,9 +334,17 @@ class DataStore:
                 return None, "Password must be at least 6 characters long."
 
             row = self.db.conn.execute(
-                "SELECT * FROM users WHERE lower(email) = ?",
-                (ident,)
+                "SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ?",
+                (ident, ident)
             ).fetchone()
+            if not row:
+                alias_match = re.match(r"^([a-z0-9._-]+)\.b[1-6]@([a-z0-9.-]+\.[a-z]{2,})$", ident)
+                if alias_match:
+                    canonical_email = f"{alias_match.group(1)}@{alias_match.group(2)}"
+                    row = self.db.conn.execute(
+                        "SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ?",
+                        (canonical_email, alias_match.group(1))
+                    ).fetchone()
             if not row:
                 return None, "Invalid email or password. Account not found."
 
@@ -470,7 +486,7 @@ class DataStore:
                     user.email,
                     user.name,
                     getattr(user, "band", "") or "B1",
-                    getattr(user, "password", "12345678") or "12345678",
+                    getattr(user, "password", "123456789") or "123456789",
                     user.role,
                     user.avatar,
                     current_iso_timestamp()

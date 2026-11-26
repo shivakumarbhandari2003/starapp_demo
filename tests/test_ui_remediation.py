@@ -269,6 +269,38 @@ class TestUIRemediation(unittest.TestCase):
         self.assertIn("starapp-runtime-cache-v16", sw_js)
         self.assertIn("./css/liquid_glass.css?v=23", sw_js)
 
+    def test_fastapi_ssr_login_and_no_eager_bundle(self):
+        """Verify FastAPI index serves SSR login HTML without eager 1MB Pyodide bundle scripts."""
+        from backend.app.main import _build_index_response
+
+        resp = _build_index_response()
+        body = resp.body.decode("utf-8")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("lg-login-shell", body)
+        self.assertIn("FASTAPI_ACTIVE = true", body)
+        self.assertIn("SSR_LOGIN = true", body)
+        self.assertNotIn('<script src="https://cdn.jsdelivr.net/pyodide', body)
+        self.assertNotIn('<script src="js/starapp_bundle.js', body)
+
+    def test_collapsible_skill_hierarchy_and_compact_allotment(self):
+        """Taxonomy hierarchy initially displays Skill pill in <summary> and expands in-place into a connected lineage tree."""
+        from starapp.views_common import render_taxonomy_hierarchy_tree
+
+        hier_html = render_taxonomy_hierarchy_tree("Tech", "Systems", "Hardware", compact=True)
+        self.assertIn('<details class="lg-hier-disclosure is-compact"', hier_html)
+        self.assertIn('<summary class="lg-hier-summary"', hier_html)
+        self.assertIn('class="lg-hier-summary-closed"', hier_html)
+        self.assertIn('class="lg-hier-summary-open"', hier_html)
+        self.assertIn("Taxonomy Lineage", hier_html)
+        self.assertIn('class="lg-hier-chev-pill"', hier_html)
+        self.assertIn("Skill :", hier_html)
+        self.assertIn("Hardware", hier_html)
+        self.assertIn("Power :", hier_html)
+        self.assertIn("Capability :", hier_html)
+        self.assertIn("lg-hier-branch is-cap-node", hier_html)
+        self.assertIn("lg-hier-branch is-skill-node", hier_html)
+        self.assertNotIn("<details open", hier_html)
+
 
 if __name__ == "__main__":
     unittest.main()
