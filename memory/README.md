@@ -3,7 +3,7 @@
 > **Audience:** any developer or AI assistant (Claude Code, Cursor, Copilot, ChatGPT, Gemini …) opening this repository on a new machine.
 > **Purpose:** give you the *entire* project context — what it is, how it is built, the business rules, the logic, what was already done,
 > what is left — without having to re-read 35,000 lines of code.
-> **Last verified:** 2026-11-26 · branch `main` · **190 automated tests passing** · DB integrity `ok`, 38 tables + 1 view.
+> **Last verified:** 2026-11-26 · branch `main` · **195 automated tests passing** · DB integrity `ok`, 38 tables + 1 view.
 
 ## 0. 60-second summary
 
@@ -31,9 +31,10 @@ offline **Pyodide** bundle. One authoritative database: `data/starapp.db`.
 | 8 | [WORK_DONE_AND_STATUS.md](WORK_DONE_AND_STATUS.md) | You want history, measured results, known limits and the backlog |
 | 9 | [RUNBOOK.md](RUNBOOK.md) | Setting up a new machine, running, testing, env vars, troubleshooting |
 
-Deeper, change-by-change detail (previous logic → new logic → reason) lives in
-[`../STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md`](../STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md). Older repo docs: [`../AGENTS.md`](../AGENTS.md),
-[`../README.md`](../README.md), [`../docs/`](../docs/) (some content there predates Stage 1/2 — **this `memory/` folder wins on conflict**).
+The change-by-change history (previous logic → new logic → reason) is kept in
+[WORK_DONE_AND_STATUS.md §6](WORK_DONE_AND_STATUS.md#6-change-log-append-here). The long Stage 1/2 write-up and the old `docs/` / `AGENTS.md`
+files were removed from the repo (still in git history, e.g. commit `d7706a9`). The product README is [`../README.md`](../README.md); it
+predates Stage 1/2 — **this `memory/` folder wins on conflict**.
 
 ## 2. The five things that will bite you if you skip this file
 

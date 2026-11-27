@@ -93,7 +93,7 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | `js/api.js` | REST client `window.StarAppAPI` |
 | `js/starapp_bundle.js` | **generated** offline Pyodide bundle (`scripts/pack_py.py`) — don't hand-edit |
 | `css/` | design tokens + liquid-glass styles |
-| `tests/` | 190 tests; always via `tests/run_tests.py` |
+| `tests/` | 195 tests; always via `tests/run_tests.py` |
 | `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py` |
 | `ER diagram/`, `Star Registry Schema.html` | standalone schema viewers |
 | `data/starapp.db` | **the** database (tracked) |

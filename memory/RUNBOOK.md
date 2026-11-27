@@ -14,7 +14,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env            # Windows: copy .env.example .env   (then edit; .env is gitignored)
-python tests/run_tests.py       # expect: Ran 190 tests ... OK   (~18 s)
+python tests/run_tests.py       # expect: Ran 195 tests ... OK   (~22 s)
 python serve.py                 # http://127.0.0.1:8000   (docs: /docs, health: /api/health)
 ```
 
@@ -54,12 +54,12 @@ Open `http://127.0.0.1:8000`. With `STARAPP_DEMO_MODE=true` (default) the login 
 ## 5. Testing
 
 ```bash
-python tests/run_tests.py                      # full suite (190 tests, isolated DB copy)  ← the only supported entry point
+python tests/run_tests.py                      # full suite (195 tests, isolated DB copy)  ← the only supported entry point
 python tests/test_backend_fullstack.py         # fast backend smoke (only on a throw-away DB copy!)
 ```
 
 * Single module on an isolated DB: copy `data/starapp.db` to a temp dir, set `STARAPP_DB_PATH` and `DATABASE_URL` to it, then run that module.
-* Regression home for Stage 1/2: `tests/test_scale_and_security_regressions.py` (41 tests: cascade safety, indexes/memo, lazy payloads, pagination, dispatch security, REST RBAC, workflow rules, UI polish).
+* Regression home for Stage 1/2: `tests/test_scale_and_security_regressions.py` (46 tests: cascade safety, indexes/memo, lazy payloads, pagination, dispatch security, REST RBAC, workflow rules, UI polish).
 * After the run: `git status data/` must be empty.
 
 ## 6. After changing code

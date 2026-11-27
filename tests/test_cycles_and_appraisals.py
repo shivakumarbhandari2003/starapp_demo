@@ -235,11 +235,13 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.assertIn("Cycle 2 Hardware Fresh Badge", c2_view_html)
         self.assertNotIn("Cycle 1 Hardware Architecture", c2_view_html)
 
-        # 12. Cosmonaut Past Cycles & Appraisals view shows Cycle 1 & Cycle 2 performance
+        # 12. Choose Cycle (which now also holds the past cycles & appraisals) shows Cycle 1 & Cycle 2 performance;
+        #     the legacy `c_cycles` route resolves to the same page.
         self.ctrl.handle_event("select_demo_account", "m_b2_1")
         self.ctrl.handle_event("nav_cosmonaut", "c_cycles")
+        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
         cosmo_cycles_html = self.ctrl.render()
-        self.assertIn("My 6-Month Performance Cycles", cosmo_cycles_html)
+        self.assertIn("Performance &amp; Appraisals", cosmo_cycles_html)
         self.assertIn("Cycle 1", cosmo_cycles_html)
         self.assertIn("Cycle 2 (Jan-Jun 2027)", cosmo_cycles_html)
 
@@ -299,11 +301,12 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.assertNotIn("starapp-cycle-topbar", c_html)
         ids = [
             "c_choose_cycle", "c_badge_reviews", "c_requests", "c_assessments",
-            "c_submission", "c_results", "c_profile", "c_extensions", "c_cycles"
+            "c_submission", "c_results", "c_profile", "c_extensions"
         ]
         positions = [c_html.find(f'data-nav-id="{nid}"') for nid in ids]
         self.assertTrue(all(p > 0 for p in positions), f"Missing cosmonaut nav ids: {positions}")
         self.assertEqual(positions, sorted(positions), "Cosmonaut/Reviewer sidebar order mismatch")
+        self.assertNotIn('data-nav-id="c_cycles"', c_html)  # merged into Choose Cycle
         self.assertNotIn('data-nav-id="c_roadmap"', c_html)
         self.assertNotIn('data-nav-id="c_materials"', c_html)
 
@@ -313,7 +316,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.assertNotIn('data-nav-id="c_badge_reviews"', b1_html)
         self.assertNotIn('data-nav-id="c_requests"', b1_html)
         self.assertNotIn('data-nav-id="c_assessments"', b1_html)
-        b1_ids = ["c_choose_cycle", "c_submission", "c_results", "c_profile", "c_extensions", "c_cycles"]
+        b1_ids = ["c_choose_cycle", "c_submission", "c_results", "c_profile", "c_extensions"]
         b1_pos = [b1_html.find(f'data-nav-id="{nid}"') for nid in b1_ids]
         self.assertEqual(b1_pos, sorted(b1_pos))
 

@@ -1,7 +1,7 @@
 # Logics — how the important mechanisms work (and why)
 
 Each entry: **what / how / why / where**. Use it to avoid re-inventing (or accidentally undoing) the optimisations from Stage 1 and 2.
-Full "previous → new → reason" history: [`../STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md`](../STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md).
+Short "previous → new → reason" history: [WORK_DONE_AND_STATUS.md](WORK_DONE_AND_STATUS.md) (the long Stage 1/2 log was deleted from the working tree; recover it with `git show d7706a9:STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md`).
 
 ## A. Data layer & caching
 
@@ -38,6 +38,7 @@ Full "previous → new → reason" history: [`../STARAPP_STAGE1_LOGIC_OPTIMIZATI
 | **`humanize_internal_ids(text)`** | Replaces `m_b1_1`-style user ids with names and `badge_…` ids with badge codes; unknown ids are left untouched. |
 | **Pagination** | `starapp/pagination.py`: `page_slice(items, key)` returns the page; `render_pager` draws it; `bind_page_state` binds page numbers to the request via a contextvar; action `set_list_page`. Used for cycles table, activity feeds (25/50 per page), dashboard roster/leaderboard. Mapping list capped (`MAPPING_LIST_DISPLAY_CAP = 60`). |
 | **Bounded widgets** | Selector lists and the velocity chart are capped so page size doesn't grow with the cohort (Guardian dashboard 34 MB → 227 KB at 3k users). |
+| **`cosmonaut_terms(html)`** | Final pass on sidebar / main / modal / page title / flash of every non-Guardian view: `cadet(s)` → `cosmonaut(s)` keeping case. Tokenised like `iconize_html` (text nodes + 4 text attributes only; skips `<script>/<style>`), so identifiers such as `rev_proj_cadet_ids` or `uncoupled_cadets` are never touched. Also rewrites stored activity/notification text. |
 | **Rail cycle pill** | Short label (`C1`) in the 72 px rail; full code when expanded. |
 
 ## D. Server runtime & sessions (`backend/app/main.py`)
@@ -69,7 +70,7 @@ Synthetic DB with **3,038 users** (scratch tooling, not in repo), real server, P
 | `c_dashboard` | 68 s (9.8 MB) | ~200 ms (92 KB) |
 | Avg cadet page | 48 ms | 8.7 ms |
 | Throughput (60 concurrent users) | 18 req/s | 66–74 req/s, p50 ≈ 0.6 s, 0 errors |
-| Test suite | 149 tests ≈ 32 s | 190 tests ≈ 18 s |
+| Test suite | 149 tests ≈ 32 s | 195 tests ≈ 22 s |
 
 Reproduce the idea (scratch scripts were not committed): build a DB by cloning users/enrollments to ~3,000, start `uvicorn` against it via
 `DATABASE_URL`/`STARAPP_DB_PATH`, time each view with `StarAppController().handle_event("select_demo_account", uid)` + `ctrl.current_view = …; ctrl.render()`.

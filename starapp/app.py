@@ -36,7 +36,7 @@ from starapp.analytics import (
 from starapp.views_common import (
     get_icon, render_global_back_bar,
     render_cycle_context_bar, render_topbar, render_liquid_card, render_metal_button, escape,
-    render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html
+    render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html, cosmonaut_terms
 )
 from starapp.views_guardian import (
     render_guardian_sidebar, render_guardian_dashboard,
@@ -1883,6 +1883,8 @@ class StarAppController:
             view_id = str(view_id or "").strip().strip('"')
             if view_id not in self._COSMONAUT_VIEWS:
                 raise ActionDenied("That page does not exist.")
+            if view_id == "c_cycles":
+                view_id = "c_choose_cycle"  # past cycles & appraisals live on the Choose Cycle page
             self._push_history()
             self.current_view = view_id
             if view_id == "c_submission":
@@ -5407,6 +5409,9 @@ if __name__ == "__main__":
             reset_page_state(page_token)
 
     def _render_workspace_scoped(self, render_source: str, effective_cid: str) -> str:
+        # "Past Cycle & Performance" is part of the Choose Cycle page now; old links / saved sessions still resolve.
+        if self.current_view == "c_cycles":
+            self.current_view = "c_choose_cycle"
         # Common data calculations (scoped to effective_cid)
         badges = store.get_all_badges()
         cosmonauts = store.get_all_cosmonauts()
@@ -5920,32 +5925,21 @@ if __name__ == "__main__":
                 else:
                     main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'>Deliverable not found. <button onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')\" class='btn-secondary'>Back to Assessment Queue</button></div>"
 
-            elif self.current_view == "c_cycles":
-                page_title = "My 6-Month Performance Cycles & Appraisals"
-                all_cycles = store.get_all_cycles()
-                sel_cyc = store.get_cycle(effective_cid)
-                perf_list = []
-                for cyc in all_cycles:
-                    with store.cycle_scope(cyc.id):
-                        u_rows = compute_cycle_candidate_performance(cyc.id, store, users_override=[self.current_user])
-                        if u_rows:
-                            perf_list.append({"cycle": cyc, "row": u_rows[0]})
-                main_content_html = render_cosmonaut_cycles_view(
-                    current_user=self.current_user,
-                    cycles=all_cycles,
-                    selected_cycle=sel_cyc,
-                    user_perf_per_cycle=perf_list
-                )
-
         modal_html = iconize_html(self.render_active_modal())
         main_content_html = iconize_html(main_content_html)
+        if not is_guardian_view:
+            # Cosmonaut portal terminology: the people we call "cadets" elsewhere are "Cosmonauts" here.
+            sidebar_html = cosmonaut_terms(sidebar_html)
+            main_content_html = cosmonaut_terms(main_content_html)
+            modal_html = cosmonaut_terms(modal_html)
+            page_title = cosmonaut_terms(page_title)
 
         flash_html = ""
         if self.flash_message:
             flash_border = "var(--deep-frozen-midnight)" if self.flash_type == "success" else "var(--frost-navy)"
             flash_html = f"""
             <div style="margin-bottom:16px; padding:12px 18px; border-radius:var(--radius-md); background:rgba(234,244,255,0.9); border:1px solid {flash_border}; border-left:5px solid {flash_border}; font-size:13.5px; font-weight:600; color:var(--frost-navy); display:flex; justify-content:space-between; align-items:center;">
-                <span>{escape(self.flash_message)}</span>
+                <span>{escape(cosmonaut_terms(self.flash_message) if not is_guardian_view else self.flash_message)}</span>
                 <span style="cursor:pointer; font-size:18px;" onclick="this.parentElement.remove();">&times;</span>
             </div>
             """

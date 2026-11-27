@@ -638,8 +638,10 @@ class DatabaseManager:
                     installed_at TEXT NOT NULL
                 );
             """)
+            # IGNORE (not REPLACE): record the version once. Re-stamping `installed_at` on every start made the
+            # tracked data/starapp.db look modified after every launch of the app, the tests or the bundle packer.
             self.conn.execute(
-                "INSERT OR REPLACE INTO schema_version (version, installed_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_version (version, installed_at) VALUES (?, ?)",
                 (SCHEMA_VERSION, current_iso_timestamp())
             )
         except Exception:

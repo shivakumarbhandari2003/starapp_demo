@@ -505,8 +505,8 @@ def render_cycle_context_bar(
         )
 
     nav_action = "nav_guardian" if is_guardian else "nav_cosmonaut"
-    cycles_view = "g_cycles" if is_guardian else "c_cycles"
-    cycles_btn_label = "Cycles & Performance" if is_guardian else "Past Cycles & Appraisals"
+    cycles_view = "g_cycles" if is_guardian else "c_choose_cycle"
+    cycles_btn_label = "Cycles & Performance" if is_guardian else "Cycles & Appraisals"
 
     guardian_create_btn = ""
     if is_guardian:
@@ -1013,6 +1013,52 @@ def iconize_html(markup: str) -> str:
             out.append(text)
         else:
             out.append(_GLYPH_RE.sub(_glyph_to_icon, text))
+    return "".join(out)
+
+
+# ==============================================================================
+# COSMONAUT PORTAL TERMINOLOGY: "Cadet" -> "Cosmonaut"
+# ==============================================================================
+_CADET_WORD_RE = _re.compile(r"\bcadet(s?)\b", _re.I)
+_TEXT_ATTR_RE = _re.compile(r'(\s(?:placeholder|title|aria-label|alt)\s*=\s*)("[^"]*"|\'[^\']*\')', _re.I)
+_SCRIPT_STYLE_TAG_RE = _re.compile(r"<(/?)(script|style)\b", _re.I)
+
+
+def _cadet_to_cosmonaut(match) -> str:
+    word = match.group(0)
+    plural = match.group(1)
+    if len(word) > 1 and word.isupper():
+        return "COSMONAUTS" if plural else "COSMONAUT"
+    base = "Cosmonaut" if word[0].isupper() else "cosmonaut"
+    return base + ("s" if plural else "")
+
+
+def cosmonaut_terms(markup: str) -> str:
+    """
+    The Cosmonaut portal calls its learners "Cosmonauts". Stored text (activity feeds, notifications, flash
+    messages) and view literals may still say "Cadet", so the finished markup is normalised in one place:
+    only visible TEXT NODES and the text attributes placeholder / title / aria-label / alt are rewritten
+    (never ids, class names, onclick handlers, scripts or styles) and the original capitalisation is kept.
+    """
+    if not markup or not _CADET_WORD_RE.search(markup):
+        return markup
+    if "<" not in markup:
+        return _CADET_WORD_RE.sub(_cadet_to_cosmonaut, markup)
+    out = []
+    raw_depth = 0
+    for tok in _MARKUP_TOKEN_RE.finditer(markup):
+        tag, text = tok.group(1), tok.group(2)
+        if tag is not None:
+            m = _SCRIPT_STYLE_TAG_RE.match(tag)
+            if m:
+                raw_depth = max(0, raw_depth + (-1 if m.group(1) else 1))
+            if not tag.startswith("<!--") and _CADET_WORD_RE.search(tag):
+                tag = _TEXT_ATTR_RE.sub(lambda a: a.group(1) + _CADET_WORD_RE.sub(_cadet_to_cosmonaut, a.group(2)), tag)
+            out.append(tag)
+        elif raw_depth > 0:
+            out.append(text)
+        else:
+            out.append(_CADET_WORD_RE.sub(_cadet_to_cosmonaut, text))
     return "".join(out)
 
 

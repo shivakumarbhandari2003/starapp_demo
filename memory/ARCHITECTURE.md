@@ -78,6 +78,8 @@ Guardian: `g_dashboard g_cycles g_learning g_earning g_contribution g_create_bad
 
 Cosmonaut/Reviewer: `c_choose_cycle c_dashboard c_roadmap c_submission c_badge_detail c_results c_materials c_profile c_announcements c_extensions c_activity c_requests c_badge_reviews c_assessments c_assessment_detail c_cycles`.
 
+> `c_cycles` ("Past Cycle & Performance") no longer has a sidebar item or its own page: `nav_cosmonaut`/`render()` resolve it to `c_choose_cycle`, which now also shows the per-cycle appraisal cards (`render_cosmonaut_appraisal_cards`). The id stays valid so old notifications/bookmarks work.
+
 ## 5. DataStore (`starapp/storage.py`)
 
 * Process-wide singleton `store`. Loads from SQLite once (`load_from_json` is idempotent via `_loaded_data_version`), then serves reads from memory.

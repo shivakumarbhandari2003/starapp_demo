@@ -555,5 +555,80 @@ class TestStage2UiPolish(unittest.TestCase):
         self.assertNotIn("renderState.sidebarHtml !== payload.sidebarHtml", js)
 
 
+class TestCosmonautPortalCycleMergeAndTerminology(unittest.TestCase):
+    """Past cycles & appraisals live inside Choose Cycle; the Cosmonaut portal never says "Cadet"."""
+
+    def setUp(self):
+        store.reset_to_seed()
+
+    def test_cosmonaut_terms_rewrites_visible_text_only_and_keeps_case(self):
+        from starapp.views_common import cosmonaut_terms
+        src = ('<h1>Cadet Assessments</h1><p>2 cadets and a CADET; cadet\'s work</p>'
+               '<input placeholder="Search cadets" id="rev_proj_cadet_ids" class="cadet-chip">'
+               '<button onclick="go(\'cadet_x\', \'Cadet\')" title="Cadet profile">Open</button>'
+               '<script>var Cadet = "Cadet";</script><p>uncoupled_cadets</p>')
+        out = cosmonaut_terms(src)
+        self.assertIn("<h1>Cosmonaut Assessments</h1>", out)
+        self.assertIn("2 cosmonauts and a COSMONAUT; cosmonaut's work", out)
+        self.assertIn('placeholder="Search cosmonauts"', out)
+        self.assertIn('title="Cosmonaut profile"', out)
+        self.assertIn('id="rev_proj_cadet_ids"', out)                 # identifiers untouched
+        self.assertIn('class="cadet-chip"', out)
+        self.assertIn("go('cadet_x', 'Cadet')", out)                  # inline handlers untouched
+        self.assertIn('<script>var Cadet = "Cadet";</script>', out)   # scripts untouched
+        self.assertIn("<p>uncoupled_cadets</p>", out)                 # word boundary: identifiers inside text
+        self.assertEqual(cosmonaut_terms("Cadet profile"), "Cosmonaut profile")
+        self.assertEqual(cosmonaut_terms(""), "")
+
+    def test_sidebar_has_no_past_cycle_item_for_cosmonaut_or_reviewer(self):
+        for uid in ("m_b1_1", "m_b2_1"):
+            c = StarAppController()
+            c.initialize()
+            c.handle_event("select_demo_account", uid)
+            html = c.render()
+            self.assertNotIn('data-nav-id="c_cycles"', html, uid)
+            self.assertNotIn("Past Cycle", html, uid)
+            self.assertIn('data-nav-id="c_choose_cycle"', html, uid)
+
+    def test_choose_cycle_page_contains_the_appraisal_section_and_legacy_route_resolves(self):
+        c = StarAppController()
+        c.initialize()
+        c.handle_event("select_demo_account", "m_b2_1")
+        c.handle_event("nav_cosmonaut", "c_cycles")                   # old bookmarks / notification links
+        self.assertEqual(c.current_view, "c_choose_cycle")
+        html = c.render()
+        self.assertIn("Performance &amp; Appraisals", html)
+        self.assertIn("My Reviewer Performance", html)
+        self.assertNotIn("Past Performance", html)
+        # a session saved on the removed page must still render
+        c.current_view = "c_cycles"
+        self.assertIn("Performance &amp; Appraisals", c.render())
+        self.assertEqual(c.current_view, "c_choose_cycle")
+
+    def test_no_cadet_wording_on_any_cosmonaut_or_reviewer_page(self):
+        import re
+        problems = []
+        for uid, views in (("m_b1_1", sorted(StarAppController._COSMONAUT_VIEWS)),
+                           ("m_b2_1", ["c_badge_reviews", "c_requests", "c_assessments", "c_choose_cycle", "c_activity"])):
+            ctrl = StarAppController()
+            ctrl.initialize()
+            ctrl.handle_event("select_demo_account", uid)
+            for view in views:
+                ctrl.current_view = view
+                html = ctrl.render()
+                text = re.sub(r"<(script|style)\b.*?</\1>", " ", html, flags=re.S | re.I)
+                text = re.sub(r"<[^>]*>", " ", text)
+                if re.search(r"\bcadets?\b", text, re.I):
+                    problems.append((uid, view, re.search(r"\bcadets?\b", text, re.I).group(0)))
+        self.assertEqual(problems, [])
+
+    def test_guardian_pages_are_not_affected_by_the_cosmonaut_terminology(self):
+        c = StarAppController()
+        c.initialize()
+        c.handle_event("select_demo_account", "guardian_1")
+        c.current_view = "g_dashboard"
+        self.assertRegex(c.render(), r"(?i)cadet")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@
 
 1. **Implement everything requested, leave nothing out**; efficient, optimised, fully functional.
 2. **Keep the UI identical** unless a UI task is requested; when polishing UI, match the **Guardian portal** standard: clean, professional, readable, SVG icons, minimal text.
-3. **Log every meaningful change**: stage/area · previous logic · new logic · reason → append to `memory/WORK_DONE_AND_STATUS.md §6` (and the long-form `STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md` for big changes).
+3. **Log every meaningful change**: stage/area · previous logic · new logic · reason → append to `memory/WORK_DONE_AND_STATUS.md §6`.
 4. The platform must work for **thousands of users** — no unbounded lists, no per-request cohort recomputation, no N+1 queries.
 5. Surface *causes*, not symptoms; report test failures honestly (with output); never claim "done" without running the suite.
 6. Don't commit/push unless asked. Don't touch `data/starapp.db` unless the task is about the DB.
@@ -79,4 +79,4 @@ Match Guardian styling; check contrast (≥ 4.5:1), min font 10 px, no overflow 
 * Reviewer must be in a strictly higher band; B6 badges have no peer reviewers (Guardian oversees).
 * Flow: create → approve → map → reviewer accepts → allot → publish → brief → submit → reviewer grades → guardian finalises → badge earned / retake.
 * Cycle score: cosmo (marks 70 % + completion 30 %) and reviewer execution blended 80/20; tiers 90/80/70/1; promotion at ≥ 85 with ≥ 1 badge.
-* 190 tests; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
+* 195 tests; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).

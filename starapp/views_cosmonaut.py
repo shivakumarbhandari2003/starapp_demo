@@ -136,7 +136,6 @@ def render_cosmonaut_sidebar(
         {"id": "c_results", "label": "Assessment Marksheet", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', "badge": 0},
         {"id": "c_profile", "label": "Profile", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', "badge": 0},
         {"id": "c_extensions", "label": "Deadline Extension", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "badge": 0},
-        {"id": "c_cycles", "label": "Past Cycle & Performance", "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>', "badge": 0}
     ])
 
     links_html = []
@@ -5676,13 +5675,11 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
     """
 
 
-def render_cosmonaut_cycles_view(
-    current_user: User,
-    cycles: List[Any],
+def render_cosmonaut_appraisal_cards(
     selected_cycle: Any,
     user_perf_per_cycle: List[Dict[str, Any]]
 ) -> str:
-    """Renders Cosmonaut & Reviewer Performance Cycles History & Appraisals view."""
+    """Per-cycle appraisal cards (dual-role performance, tier, compensation) shown on the Choose Cycle page."""
     cards = []
     for entry in user_perf_per_cycle:
         cyc = entry["cycle"]
@@ -5719,10 +5716,6 @@ def render_cosmonaut_cycles_view(
                         <div style="font-family:var(--font-family-mono); font-size:1.35rem; font-weight:900; color:var(--deep-frozen-midnight);">{row["composite_score"]:.1f} / 100</div>
                         <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy-50);">{escape(row["performance_tier"])}</div>
                     </div>
-                    <button type="button" class="btn-secondary btn-sm" style="font-weight:800; padding:7px 14px;"
-                            onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')">
-                        {"Currently Viewing" if is_sel else "Inspect Cycle Workspace →"}
-                    </button>
                 </div>
             </div>
 
@@ -5756,15 +5749,20 @@ def render_cosmonaut_cycles_view(
         </div>
         """)
 
+    return "".join(cards) if cards else '<div class="liquid-glass-card" style="padding:36px; text-align:center; color:var(--frost-navy-50);">No cycles recorded yet.</div>'
+
+
+def render_cosmonaut_cycles_view(
+    current_user: User,
+    cycles: List[Any],
+    selected_cycle: Any,
+    user_perf_per_cycle: List[Dict[str, Any]]
+) -> str:
+    """Compatibility wrapper: the old 'Past Cycle & Performance' page is now part of Choose Cycle."""
     return f"""
     <div>
-        <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
-            <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">My 6-Month Performance Cycles &amp; Appraisals</h2>
-            <p style="font-size:12.5px; color:var(--frost-navy-50); margin:0;">
-                Review your historical and active 6-month cycles, including your dual-role performance as both Cosmonaut and Reviewer, finalized rating tiers, and hike recommendations.
-            </p>
-        </div>
-        {"".join(cards) if cards else '<div class="liquid-glass-card" style="padding:36px; text-align:center; color:var(--frost-navy-50);">No cycles recorded yet.</div>'}
+        <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 16px 0;">Performance &amp; Appraisals</h2>
+        {render_cosmonaut_appraisal_cards(selected_cycle, user_perf_per_cycle)}
     </div>
     """
 
@@ -5877,6 +5875,17 @@ def render_cosmonaut_choose_cycle_view(
         </div>
         """)
 
+    # Past cycles & appraisals now live on this page (the separate sidebar item was removed).
+    appraisal_rows = [{"cycle": c, "row": stats_map[c.id]} for c in cycles if c.id in stats_map]
+    appraisal_section = ""
+    if appraisal_rows:
+        appraisal_section = f"""
+        <h3 style="display:flex; align-items:center; gap:8px; font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:26px 0 14px 0;">
+            {get_icon("analytics", 18)}<span>Performance &amp; Appraisals</span>
+        </h3>
+        {render_cosmonaut_appraisal_cards(selected_cycle, appraisal_rows)}
+        """
+
     rev_quick_btn = (
         """
         <button type="button" class="btn-secondary btn-sm" style="font-weight:700; padding:0 12px;"
@@ -5900,10 +5909,6 @@ def render_cosmonaut_choose_cycle_view(
             </div>
             <div class="cosmo-cycle-hero-actions">
                 {rev_quick_btn}
-                <button type="button" class="btn-secondary btn-sm" style="font-weight:700; padding:0 12px;"
-                        onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_cycles')">
-                    Past Performance &rarr;
-                </button>
                 <button type="button" class="btn-metal btn-sm" style="font-weight:800; padding:0 14px;"
                         onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">
                     Open Badges &rarr;
@@ -5914,6 +5919,7 @@ def render_cosmonaut_choose_cycle_view(
         <div class="cosmo-cycle-grid">
             {"".join(cycle_cards) if cycle_cards else '<div class="liquid-glass-card" style="padding:28px; text-align:center;">No performance cycles available yet.</div>'}
         </div>
+        {appraisal_section}
     </div>
     """
 

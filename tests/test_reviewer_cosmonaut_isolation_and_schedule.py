@@ -100,7 +100,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         self.assertIn("B4-AI--01", html_collapsed)
         self.assertIn("BAND B4", html_collapsed)
         self.assertIn("AI-OS Architecture", html_collapsed)
-        self.assertIn("4 Mapped Cadets", html_collapsed)
+        self.assertIn("4 Mapped Cosmonauts", html_collapsed)
 
         # 2. Toggle expand Level 1 card
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
@@ -123,7 +123,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         self.assertNotIn("Reviewer creates project, Cadet learns concepts", html_expanded)  # removed boilerplate
         self.assertIn("View Timeline", html_expanded)
         self.assertIn("Create Project (AI)", html_expanded)
-        self.assertIn("Cadet Assessments", html_expanded)
+        self.assertIn("Cosmonaut Assessments", html_expanded)
 
         # 3. Reviewer B logs in: must see strictly 3 cadets, none from cadets_a
         self.app.handle_event("select_demo_account", self.rev_b.id)
@@ -131,7 +131,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
         html_b = self.app.render()
 
-        self.assertIn("2 Mapped Cadets", html_b)
+        self.assertIn("2 Mapped Cosmonauts", html_b)
         for cid in self.cadets_b:
             c_user = store.users.get(cid)
             self.assertIn(c_user.name, html_b, f"Cadet {c_user.name} must appear in Reviewer B schedule")

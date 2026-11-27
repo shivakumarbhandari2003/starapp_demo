@@ -103,6 +103,7 @@ composite      = ((cosmo × cw) + (reviewer × rw)) / (cw + rw)   with cw = 0.55
 4. New long list ⇒ paginate with `starapp/pagination.py` (`page_slice`/`render_pager`), never render unbounded rows.
 5. New aggregate used on many pages ⇒ memoise with `store._memoized(key, builder, extra, scope)`; never recompute cohort-wide data per request.
 6. UI: show names/badge codes, **not internal ids** (`humanize_internal_ids`); icons are SVG (no emoji glyphs in new code); text contrast ≥ WCAG AA; no font < 10 px; reuse `btn-metal` / `btn-secondary`; no sub-title boilerplate under headings.
-7. Don't regress flicker fixes: keep `_sidebarSignature()` ignoring the active class; keep one render per action; keep `full_html` omitted when `regions` exist.
+7. Terminology: the Cosmonaut portal (any `c_*` view, incl. reviewer pages, modals, flash messages, page titles) says **"Cosmonaut", never "Cadet"**. It is enforced centrally by `views_common.cosmonaut_terms()` (text nodes + `placeholder/title/aria-label/alt` only; ids, classes, handlers, scripts untouched) applied in `_render_workspace_scoped`; Guardian pages keep their wording. New text may be written either way, but test `test_no_cadet_wording_on_any_cosmonaut_or_reviewer_page` must pass.
+7b. Don't regress flicker fixes: keep `_sidebarSignature()` ignoring the active class; keep one render per action; keep `full_html` omitted when `regions` exist.
 8. After touching `starapp/*.py`: `python scripts/pack_py.py`.
 9. Keep `data/starapp.db` untouched unless the task is a DB change; record schema changes in `memory/DATABASE.md` and the change log.

@@ -540,8 +540,8 @@ def finalize_and_close_cycle(cycle_id: str, store: Any, actor_id: str = "guardia
             store.add_notification(
                 recipient_id=app_obj.cosmonaut_id,
                 title=f"Cycle Finalized: {cyc.name}",
-                message=f"Your 6-month cycle performance appraisal is finalized (Overall Score: {app_obj.composite_score}/100, Tier: {app_obj.performance_tier}.{hike_note}). View it in Past Cycles & Appraisals.",
-                link_section="c_cycles",
+                message=f"Your 6-month cycle performance appraisal is finalized (Overall Score: {app_obj.composite_score}/100, Tier: {app_obj.performance_tier}.{hike_note}). View it under Choose Cycle.",
+                link_section="c_choose_cycle",
                 event_type="cycle_finalized",
                 related_badge_id="",
                 cycle_id=cycle_id

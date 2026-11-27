@@ -69,7 +69,8 @@ Most workflow tables carry **`cycle_id`**; views filter by the selected cycle.
 3. **JSON columns** (`*_json`, `data_json`) are parsed in `models.py`/`storage.py`; keep them valid JSON.
 4. **Passwords** in the seed are plaintext `123456789` — demo only. REST login uses `bcrypt` when hashes are present (`core/security.py`).
 5. **Tests wipe the DB they point at** (`reset_to_seed()`); use `tests/run_tests.py` (temp copy).
-6. `PRAGMA data_version` fingerprinting means *any* external writer (another tool, a script) is picked up automatically on the next read — but never edit the DB while tests/servers are mid-write.
+6. `schema_version.installed_at` is written once (`INSERT OR IGNORE`); startup no longer re-stamps it, so launching the app/tests/packer leaves the tracked DB byte-identical.
+7. `PRAGMA data_version` fingerprinting means *any* external writer (another tool, a script) is picked up automatically on the next read — but never edit the DB while tests/servers are mid-write.
 7. Tracked binary: coordinate who commits `data/starapp.db` (see README §2). Backups/other files in `data/`: `Chemistry Syllabus.pdf`, `chemistry_syllabus.pdf` (placeholder PDF used by demo mode).
 
 ## 3. Useful queries
