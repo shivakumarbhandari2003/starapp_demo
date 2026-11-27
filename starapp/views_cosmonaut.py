@@ -16,7 +16,8 @@ from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
-    render_learning_materials_view, render_back_button, render_taxonomy_hierarchy_tree
+    render_learning_materials_view, render_back_button, render_taxonomy_hierarchy_tree,
+    render_request_timer
 )
 from starapp.roadmap import generate_roadmap_graph
 from starapp.assessment import RUBRIC_CRITERIA
@@ -253,23 +254,23 @@ def render_cosmonaut_dashboard(
             break
 
     if rank == 1:
-        rank_medal = '<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129351; Rank #1 &bull; Batch Top Standing</span>'
+        rank_medal = '<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129351; Rank #1 &bull; Batch Top Standing</span>'
     elif rank == 2:
-        rank_medal = '<span style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129352; Rank #2 &bull; High Honors</span>'
+        rank_medal = '<span style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129352; Rank #2 &bull; High Honors</span>'
     elif rank == 3:
-        rank_medal = '<span style="background:#FFEDD5; color:#C2410C; border:1px solid #FDBA74; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129353; Rank #3 &bull; Honors</span>'
+        rank_medal = '<span style="background:#FFEDD5; color:#C2410C; border:1px solid #FDBA74; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129353; Rank #3 &bull; Honors</span>'
     else:
-        rank_medal = f'<span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel); font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">Rank #{rank} of {total_cohort}</span>'
+        rank_medal = f'<span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel); font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">Rank #{rank} of {total_cohort}</span>'
 
     # Risk Status Pill
     if r_status == "On Track":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10003; On Track</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10003; On Track</span>'
     elif r_status == "Monitor":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9203; Monitor</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9203; Monitor</span>'
     elif r_status == "Needs Attention":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9888; Needs Attention</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9888; Needs Attention</span>'
     else:
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10005; At Risk</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10005; At Risk</span>'
 
     # Active milestone identification
     approved_badge_ids = {a.badge_id for a in assessments if a.decision == "approve"}
@@ -283,27 +284,27 @@ def render_cosmonaut_dashboard(
     if pending_sub:
         next_action_title = f"{active_b.code if active_b else 'Milestone'} Deliverable (Attempt #{pending_sub.attempt_number}) In Evaluation"
         next_action_desc = f"Your latest project package for <strong>{escape(active_b.title if active_b else '')}</strong> is currently undergoing technical review. While awaiting marksheet publication, begin reviewing study materials for subsequent milestones."
-        next_action_pill = '<span class="status-pill status-pending" style="font-size:11px; font-weight:800; padding:4px 10px;">&#9203; Under Guardian Review</span>'
-        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Track Submission Status &rarr;</button>"""
-        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Browse Study Materials &rarr;</button>"""
+        next_action_pill = '<span class="status-pill status-pending" style="font-size:0.6875rem; font-weight:800; padding:4px 10px;">&#9203; Under Guardian Review</span>'
+        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Track Submission Status &rarr;</button>"""
+        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Browse Study Materials &rarr;</button>"""
     elif latest_sub and latest_sub.status == "resubmission_requested":
         next_action_title = f"Resubmission Required: {active_b.code if active_b else 'Milestone'}"
         next_action_desc = f"Evaluator requested a revised Attempt #{latest_sub.attempt_number + 1} deliverable. Address the architectural feedback and resubmit your implementation package."
-        next_action_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:800; padding:4px 10px;">&#9888; Resubmission Requested</span>'
-        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Revised Deliverable &rarr;</button>"""
-        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Evaluator Feedback &rarr;</button>"""
+        next_action_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:800; padding:4px 10px;">&#9888; Resubmission Requested</span>'
+        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Revised Deliverable &rarr;</button>"""
+        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Evaluator Feedback &rarr;</button>"""
     elif active_b:
         next_action_title = f"Active Sprint: Complete {active_b.code} Deliverables"
         next_action_desc = f"You are currently fulfilling <strong>{escape(active_b.title)}</strong>. Prepare your PDF system architecture charter and executable code package for upload."
-        next_action_pill = '<span class="status-pill status-active" style="font-size:11px; font-weight:800; padding:4px 10px;">&#9654; Sprint In Progress</span>'
-        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Project Deliverable &rarr;</button>"""
-        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Review Study Materials &rarr;</button>"""
+        next_action_pill = '<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:800; padding:4px 10px;">&#9654; Sprint In Progress</span>'
+        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">Submit Project Deliverable &rarr;</button>"""
+        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_materials')">Review Study Materials &rarr;</button>"""
     else:
         next_action_title = "Curriculum Roadmap Completed"
         next_action_desc = "All assigned enterprise milestones have been certified. Review your official marksheet transcript."
-        next_action_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; padding:4px 10px;">&#10003; Certified</span>'
-        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Marksheets &rarr;</button>"""
-        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_roadmap')">Explore Career Pathways &rarr;</button>"""
+        next_action_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:800; padding:4px 10px;">&#10003; Certified</span>'
+        primary_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 16px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')">View Marksheets &rarr;</button>"""
+        secondary_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_roadmap')">Explore Career Pathways &rarr;</button>"""
 
     # --------------------------------------------------------------------------
     # SECTION D: Cohort Academic Leaderboard
@@ -316,13 +317,13 @@ def render_cosmonaut_dashboard(
         _leaderboard_view.append((rank, sorted_cohort[rank - 1]))
     for idx, c in _leaderboard_view:
         if idx == 1:
-            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:12px; border:1px solid #FCD34D;">1</span>'
+            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:0.75rem; border:1px solid #FCD34D;">1</span>'
         elif idx == 2:
-            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#F1F5F9; color:#475569; font-weight:800; font-size:12px; border:1px solid #CBD5E1;">2</span>'
+            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#F1F5F9; color:#475569; font-weight:800; font-size:0.75rem; border:1px solid #CBD5E1;">2</span>'
         elif idx == 3:
-            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FFEDD5; color:#C2410C; font-weight:800; font-size:12px; border:1px solid #FDBA74;">3</span>'
+            r_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FFEDD5; color:#C2410C; font-weight:800; font-size:0.75rem; border:1px solid #FDBA74;">3</span>'
         else:
-            r_badge = f'<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:rgba(23,52,92,0.06); color:var(--frost-navy); font-weight:700; font-size:11.5px;">{idx}</span>'
+            r_badge = f'<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:rgba(23,52,92,0.06); color:var(--frost-navy); font-weight:700; font-size:0.71875rem;">{idx}</span>'
 
         c_marks = c.get("average_marks", 0.0)
         c_pct = c.get("average_percentage", 0.0)
@@ -335,7 +336,7 @@ def render_cosmonaut_dashboard(
         is_current_cadet = (c.get("id") == current_user.id)
         if is_current_cadet:
             row_style = "background:linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(234,244,255,0.6) 100%); border-left:4px solid #10B981; border-bottom:1px solid rgba(16,185,129,0.3);"
-            you_tag = '<span style="font-size:10px; font-weight:800; background:#047857; color:#FFFFFF; padding:2px 7px; border-radius:999px; margin-left:6px; letter-spacing:0.5px;">YOU</span>'
+            you_tag = '<span style="font-size:0.625rem; font-weight:800; background:#047857; color:#FFFFFF; padding:2px 7px; border-radius:999px; margin-left:6px; letter-spacing:0.5px;">YOU</span>'
         else:
             row_style = "border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;"
             you_tag = ""
@@ -347,38 +348,38 @@ def render_cosmonaut_dashboard(
             </td>
             <td style="padding:10px 14px; vertical-align:middle;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="user-avatar" style="width:32px; height:32px; font-size:11px; font-weight:800; border:1px solid var(--icy-steel);">{escape(c.get("avatar", "CO"))}</div>
+                    <div class="user-avatar" style="width:32px; height:32px; font-size:0.6875rem; font-weight:800; border:1px solid var(--icy-steel);">{escape(c.get("avatar", "CO"))}</div>
                     <div>
                         <div style="display:flex; align-items:center;">
-                            <strong style="font-size:13px; color:var(--frost-navy);">{escape(c.get("name", "Cadet"))}</strong>
+                            <strong style="font-size:0.8125rem; color:var(--frost-navy);">{escape(c.get("name", "Cadet"))}</strong>
                             {you_tag}
                         </div>
-                        <div style="font-size:11px; color:var(--frost-navy-50);">{escape(c.get("band", "") or "")}{" &bull; " if c.get("band") else ""}{escape(c.get("track", "") or c.get("role", "") or "Cadet")}</div>
+                        <div style="font-size:0.6875rem; color:var(--frost-navy-50);">{escape(c.get("band", "") or "")}{" &bull; " if c.get("band") else ""}{escape(c.get("track", "") or c.get("role", "") or "Cadet")}</div>
                     </div>
                 </div>
             </td>
             <td style="padding:10px 14px; text-align:center; vertical-align:middle;">
-                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:11px; opacity:0.6;">/ {c.get("total_assigned", 0)} Badge{'s' if c.get('total_assigned', 0) != 1 else ''}</span>
+                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:0.6875rem; opacity:0.6;">/ {c.get("total_assigned", 0)} Badge{'s' if c.get('total_assigned', 0) != 1 else ''}</span>
                 <div style="width:50px; height:4px; border-radius:2px; background:rgba(157,183,213,0.3); margin:3px auto 0 auto; overflow:hidden;">
                     <div style="width:{c_prog_pct}%; height:100%; background:#10B981;"></div>
                 </div>
             </td>
             <td style="padding:10px 14px; vertical-align:middle;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
-                    <span style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight);">{c_marks:.1f} <span style="font-size:10.5px; opacity:0.6;">/ 50</span></span>
-                    <span style="font-size:11px; font-weight:700; color:{tier_color};">{c_pct:.1f}%</span>
+                    <span style="font-size:0.78125rem; font-weight:800; color:var(--deep-frozen-midnight);">{c_marks:.1f} <span style="font-size:0.65625rem; opacity:0.6;">/ 50</span></span>
+                    <span style="font-size:0.6875rem; font-weight:700; color:{tier_color};">{c_pct:.1f}%</span>
                 </div>
                 <div style="height:5px; border-radius:3px; background:rgba(157,183,213,0.25); overflow:hidden;">
                     <div style="height:100%; width:{c_pct}%; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
                 </div>
             </td>
             <td style="padding:10px 14px; text-align:center; vertical-align:middle;">
-                <span style="font-size:11px; font-weight:700; color:{tier_color}; background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:999px;">
+                <span style="font-size:0.6875rem; font-weight:700; color:{tier_color}; background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:999px;">
                     {tier_label}
                 </span>
             </td>
             <td style="padding:10px 14px; text-align:right; vertical-align:middle; white-space:nowrap;">
-                <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.05); padding:3px 8px; border-radius:4px;">
+                <span style="font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.05); padding:3px 8px; border-radius:4px;">
                     {escape(c.get("active_badge_code", "Active"))} Sprint
                 </span>
             </td>
@@ -390,9 +391,9 @@ def render_cosmonaut_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Cohort Academic Leaderboard</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Ranked by average assessment score and certified milestones.</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Ranked by average assessment score and certified milestones.</div>
             </div>
-            <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+            <span style="font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                 {total_cohort} Enrolled Cadets &bull; Your Rank: #{rank}
             </span>
         </div>
@@ -400,7 +401,7 @@ def render_cosmonaut_dashboard(
         <div style="overflow-x:auto;">
             <table style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
-                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:10.5px; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
+                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:0.65625rem; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
                         <th style="padding:8px 14px; text-align:center;">Rank</th>
                         <th style="padding:8px 14px;">Cadet Profile</th>
                         <th style="padding:8px 14px; text-align:center;">Milestones</th>
@@ -441,13 +442,13 @@ def render_cosmonaut_dashboard(
             pct = float(a.get("percentage", 0.0))
             att = a.get("attempt_number", 1)
             rev_dt = a.get("reviewed_at", "2026-11-01")
-            status_pill = '<span style="font-size:10.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:999px;">&#10003; Certified</span>'
+            status_pill = '<span style="font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:999px;">&#10003; Certified</span>'
         else:
             score = 0.0
             pct = 0.0
             att = 0
             rev_dt = "Pending"
-            status_pill = '<span style="font-size:10.5px; font-weight:800; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 8px; border-radius:999px;">In Progress</span>'
+            status_pill = '<span style="font-size:0.65625rem; font-weight:800; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 8px; border-radius:999px;">In Progress</span>'
 
         height_pct = min(100.0, max(8.0, (score / 50.0) * 100.0))
 
@@ -463,19 +464,19 @@ def render_cosmonaut_dashboard(
 
         score_label = f"{score:.1f}" if score > 0.0 else "—"
         popover_body = f"""
-        <div style="font-weight:800; font-size:12px; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
-        <div style="font-size:11px; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
-        <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:11.5px; color:#FFFFFF;">
+        <div style="font-weight:800; font-size:0.75rem; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
+        <div style="font-size:0.6875rem; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
+        <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:0.71875rem; color:#FFFFFF;">
             Rubric Score: <strong style="color:#047857;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
         </div>
-        <div style="font-size:11px; color:var(--pure-ice); margin-top:2px;">Attempt #{att if att > 0 else '—'} &bull; {"Certified Assessment" if att > 0 else "Pending Deliverable"}</div>
-        <div style="font-size:10.5px; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
+        <div style="font-size:0.6875rem; color:var(--pure-ice); margin-top:2px;">Attempt #{att if att > 0 else '—'} &bull; {"Certified Assessment" if att > 0 else "Pending Deliverable"}</div>
+        <div style="font-size:0.65625rem; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
         """
 
         bargraph_cols.append(f"""
         <div class="has-glass-tooltip velocity-bar-col {pop_align}" style="display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; position:relative; cursor:pointer;">
             <!-- Top Score Label -->
-            <div style="font-size:12px; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
+            <div style="font-size:0.75rem; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
 
             <!-- Vertical Bar Fill -->
             <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:height 0.2s ease, opacity 0.2s ease;"></div>
@@ -487,8 +488,8 @@ def render_cosmonaut_dashboard(
 
             <!-- Column Legend / Subtext -->
             <div style="margin-top:10px; text-align:center; width:100%;">
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(bcode)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-75); margin:2px 0 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{escape(b['title'])}">{escape(b['title'])}</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight);">{escape(bcode)}</div>
+                <div style="font-size:0.6875rem; color:var(--frost-navy-75); margin:2px 0 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{escape(b['title'])}">{escape(b['title'])}</div>
                 {status_pill}
             </div>
         </div>
@@ -512,9 +513,9 @@ def render_cosmonaut_dashboard(
         <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Milestone Performance & Rubric Marks Comparison</h3>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">Your verified 50-mark standard assessment rubric scores across curriculum roadmap badges.</div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Your verified 50-mark standard assessment rubric scores across curriculum roadmap badges.</div>
             </div>
-            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:11.5px;">
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:0.71875rem;">
                 <span style="display:inline-flex; align-items:center; gap:5px; color:var(--frost-navy); font-weight:700;">
                     <span style="width:10px; height:10px; border-radius:2px; background:#10B981;"></span> Honors Distinction (&ge; 45/50)
                 </span>
@@ -527,7 +528,7 @@ def render_cosmonaut_dashboard(
         <div style="background:rgba(234,244,255,0.35); border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); padding:32px 24px 20px 24px; position:relative; overflow:visible;">
             {"<!-- Passing Threshold Guide Line (35.0 / 50.0 = 70% from baseline) -->" if bargraph_cols else ""}
             {f'''<div style="position:absolute; top:32%; left:24px; right:24px; height:1px; border-top:1.5px dashed rgba(16,185,129,0.6); z-index:1; pointer-events:none;">
-                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                <span style="position:absolute; right:0; top:-20px; font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                     Passing Threshold: 35.0 / 50.0 (70%)
                 </span>
             </div>''' if bargraph_cols else ''}
@@ -557,17 +558,17 @@ def render_cosmonaut_dashboard(
         <div style="padding:14px 18px; margin-bottom:12px; background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:2px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
-                    <strong style="font-size:13.5px; color:var(--frost-navy);">{escape(b_title)}</strong>
-                    <span style="font-size:11.5px; color:var(--frost-navy-50);">(Attempt #{att})</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                    <strong style="font-size:0.84375rem; color:var(--frost-navy);">{escape(b_title)}</strong>
+                    <span style="font-size:0.71875rem; color:var(--frost-navy-50);">(Attempt #{att})</span>
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-75);">
+                <div style="font-size:0.75rem; color:var(--frost-navy-75);">
                     Score: <strong style="color:var(--deep-frozen-midnight);">{tot:.1f} / 50.0</strong> ({pct:.1f}%) &bull; Certified on {escape(dt)}
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span class="status-pill status-approved" style="font-size:10.5px;">&#10003; Certified</span>
-                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:700; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_marksheet', '{escape(asm_id)}')">
+                <span class="status-pill status-approved" style="font-size:0.65625rem;">&#10003; Certified</span>
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:700; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_marksheet', '{escape(asm_id)}')">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                     <span>View Review Marksheet &nearr;</span>
                 </button>
@@ -595,15 +596,15 @@ def render_cosmonaut_dashboard(
         <div style="background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:14px 16px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
                 <div>
-                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px;">{escape(sk_cat)}</div>
-                    <strong style="font-size:13.5px; color:var(--frost-navy); display:block; margin-top:2px;">{escape(sk_name)}</strong>
+                    <div style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px;">{escape(sk_cat)}</div>
+                    <strong style="font-size:0.84375rem; color:var(--frost-navy); display:block; margin-top:2px;">{escape(sk_name)}</strong>
                 </div>
-                <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(sk_badge)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(sk_badge)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11.5px; gap:8px; flex-wrap:wrap;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.71875rem; gap:8px; flex-wrap:wrap;">
                 <span style="font-weight:800; color:{sk_col}; background:rgba(37,99,235,0.08); padding:2px 8px; border-radius:4px;">{escape(sk_prof)}</span>
-                <span style="font-weight:800; font-size:11.5px; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
-                    &#9733; Rating: <strong style="color:#047857; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
+                <span style="font-weight:800; font-size:0.71875rem; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
+                    &#9733; Rating: <strong style="color:#047857; font-size:0.75rem;">{sk_rating:.1f}</strong> / 10.0
                 </span>
             </div>
             <div style="width:100%; height:6px; background:rgba(157,183,213,0.25); border-radius:3px; overflow:hidden;">
@@ -634,13 +635,13 @@ def render_cosmonaut_dashboard(
         cert_cards.append(f"""
         <div style="background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:3px 8px; border-radius:4px;">{escape(cred_id)}</span>
-                <span style="font-size:10.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:999px;">&#10003; {escape(honors)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:3px 8px; border-radius:4px;">{escape(cred_id)}</span>
+                <span style="font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:999px;">&#10003; {escape(honors)}</span>
             </div>
-            <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
+            <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
                 <span style="font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); font-weight:800;">{escape(c_code)}:</span> {escape(c_title)}
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:11.5px; color:var(--frost-navy-75);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:0.71875rem; color:var(--frost-navy-75);">
                 <span>Score: <strong style="color:var(--deep-frozen-midnight);">{escape(score_str)}</strong></span>
                 <span>Issued: <strong>{escape(issued)}</strong></span>
             </div>
@@ -661,15 +662,15 @@ def render_cosmonaut_dashboard(
     mentoring_plan = astraea_rec.get("mentoring_plan", "Maintain current pacing and deliverable quality.")
 
     str_items = "".join([f"""
-    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#047857; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
+    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:0.78125rem; color:var(--frost-navy); line-height:1.5;">
+        <span style="color:#047857; font-weight:800; font-size:0.8125rem; line-height:1.4;">&#10003;</span>
         <span>{escape(s)}</span>
     </li>
     """ for s in strengths_data])
 
     imp_items = "".join([f"""
-    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#B45309; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
+    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:0.78125rem; color:var(--frost-navy); line-height:1.5;">
+        <span style="color:#B45309; font-weight:800; font-size:0.8125rem; line-height:1.4;">&#9678;</span>
         <span>{escape(im)}</span>
     </li>
     """ for im in improvements_data])
@@ -678,8 +679,8 @@ def render_cosmonaut_dashboard(
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap:18px; margin-bottom:18px;">
         <!-- Column 1: Strengths -->
         <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.22); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px 18px;">
-            <div style="font-size:13px; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
+            <div style="font-size:0.8125rem; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem;">&#10003;</span>
                 Demonstrated Engineering Strengths
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -689,8 +690,8 @@ def render_cosmonaut_dashboard(
 
         <!-- Column 2: Improvement Areas -->
         <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.22); border-left:4px solid #F59E0B; border-radius:var(--radius-sm); padding:16px 18px;">
-            <div style="font-size:13px; font-weight:800; color:#92400E; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#F59E0B; color:#451A03; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#9678;</span>
+            <div style="font-size:0.8125rem; font-weight:800; color:#92400E; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#F59E0B; color:#451A03; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem;">&#9678;</span>
                 Targeted Improvement & Growth Areas
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -702,12 +703,12 @@ def render_cosmonaut_dashboard(
     <!-- Mentoring Action Plan -->
     <div style="background:linear-gradient(135deg, rgba(23,52,92,0.05) 0%, rgba(37,99,235,0.08) 100%); border:1px solid rgba(37,99,235,0.22); border-left:4px solid var(--frost-navy); border-radius:var(--radius-sm); padding:16px 20px;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">GM</div>
-            <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
+            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:0.6875rem; font-weight:800;">GM</div>
+            <div style="font-size:0.78125rem; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
                 Faculty Mentoring Guidance &bull; Mentorship Committee
             </div>
         </div>
-        <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
+        <div style="font-size:0.8125rem; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
             {escape(mentoring_plan)}
         </div>
     </div>
@@ -722,12 +723,12 @@ def render_cosmonaut_dashboard(
             review_alert_banner = f"""
             <div class="liquid-glass-card" style="padding:16px 20px; border-left:4px solid #F59E0B; margin-bottom:20px; background:linear-gradient(135deg, rgba(254,243,199,0.95) 0%, rgba(255,255,255,0.98) 100%); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-radius:var(--radius-md); box-shadow:0 4px 14px rgba(245,158,11,0.12);">
                 <div>
-                    <div style="font-size:11.5px; font-weight:800; color:#B45309; text-transform:uppercase; letter-spacing:0.5px;">Institutional Peer Review Assignment</div>
-                    <div style="font-size:13.5px; color:var(--frost-navy); font-weight:700; margin-top:2px;">
+                    <div style="font-size:0.71875rem; font-weight:800; color:#B45309; text-transform:uppercase; letter-spacing:0.5px;">Institutional Peer Review Assignment</div>
+                    <div style="font-size:0.84375rem; color:var(--frost-navy); font-weight:700; margin-top:2px;">
                         You have <strong>{pending_review_cnt} badge review request(s)</strong> awaiting your inspection and authorization.
                     </div>
                 </div>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_requests')" style="font-weight:700; font-size:12px; padding:6px 16px;">
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_requests')" style="font-weight:700; font-size:0.75rem; padding:6px 16px;">
                     Review Requests ({pending_review_cnt}) &rarr;
                 </button>
             </div>
@@ -742,13 +743,13 @@ def render_cosmonaut_dashboard(
         <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                 <div style="display:flex; align-items:center; gap:16px;">
-                    <div class="user-avatar" style="width:52px; height:52px; font-size:18px; font-weight:800; border:2px solid var(--icy-steel);">{escape(current_user.avatar)}</div>
+                    <div class="user-avatar" style="width:52px; height:52px; font-size:1.125rem; font-weight:800; border:2px solid var(--icy-steel);">{escape(current_user.avatar)}</div>
                     <div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Welcome back, {escape(current_user.name)}</h2>
-                            <span style="font-size:11px; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">FLIGHT OFFICER</span>
+                            <span style="font-size:0.6875rem; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">FLIGHT OFFICER</span>
                         </div>
-                        <div style="font-size:12.5px; color:var(--frost-navy-75); margin-top:3px;">
+                        <div style="font-size:0.78125rem; color:var(--frost-navy-75); margin-top:3px;">
                             Band <strong>{escape(getattr(current_user, "band", "") or "B1")}</strong> &bull; <strong>{escape(getattr(current_user, "learning_track", "") or "Cosmonaut")}</strong>{(" &bull; Batch: <strong>" + escape(profile.batch_name) + "</strong>") if getattr(profile, "batch_name", "") else ""}{(" &bull; Mentor: <strong>" + escape(_mentor_name) + "</strong>") if _mentor_name else ""}
                         </div>
                     </div>
@@ -757,12 +758,12 @@ def render_cosmonaut_dashboard(
                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         {rank_medal}
-                        <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
+                        <span style="font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
                             Standing: <strong>{escape(tier)}</strong>
                         </span>
                         {r_pill}
                     </div>
-                    <div style="font-size:11px; color:var(--frost-navy-50);">
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50);">
                         Last Active: <strong style="color:var(--frost-navy);">{escape(last_act)}</strong> &bull; {escape(last_act_desc)}
                     </div>
                 </div>
@@ -773,7 +774,7 @@ def render_cosmonaut_dashboard(
         <div class="kpi-grid guardian-kpi-row" style="margin-bottom:24px;">
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
                 <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
                         Certified Milestones
                     </span>
                     {render_cosmo_metric_info_popover('individual_badges', astraea_rec, 'individual')}
@@ -782,53 +783,53 @@ def render_cosmonaut_dashboard(
                 <div style="height:5px; border-radius:3px; background:rgba(157,183,213,0.3); overflow:hidden; margin:4px 0;">
                     <div style="height:100%; width:{progress_pct}%; background:#10B981;"></div>
                 </div>
-                <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:11px;">▲ {progress_pct}% Roadmap Certified</div>
+                <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:0.6875rem;">▲ {progress_pct}% Roadmap Certified</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
                 <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
                         Average Score
                     </span>
                     {render_cosmo_metric_info_popover('individual_score', astraea_rec, 'individual')}
                 </div>
-                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{avg_marks:.1f} <span style="font-size:12.5px; opacity:0.65; font-weight:600;">/ 50.0</span></div>
-                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">{avg_pct:.1f}% Average Across Milestones</div>
+                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{avg_marks:.1f} <span style="font-size:0.78125rem; opacity:0.65; font-weight:600;">/ 50.0</span></div>
+                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem;">{avg_pct:.1f}% Average Across Milestones</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
                 <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
                         Leaderboard Rank
                     </span>
                     <div class="kpi-icon-bubble" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:var(--radius-xs);">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                     </div>
                 </div>
-                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:#047857;">#{rank} <span style="font-size:12.5px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
-                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">Top {round((rank/max(1, total_cohort))*100)}% of Cohort</div>
+                <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:#047857;">#{rank} <span style="font-size:0.78125rem; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
+                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem;">Top {round((rank/max(1, total_cohort))*100)}% of Cohort</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
                 <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
                         First-Attempt Pass Rate
                     </span>
                     {render_cosmo_metric_info_popover('individual_first_attempt', astraea_rec, 'individual', 'right')}
                 </div>
                 <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{first_pass_rate}%</div>
-                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px;">{astraea_rec.get("first_attempt_passes", 0)} Cleared on Attempt #1</div>
+                <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem;">{astraea_rec.get("first_attempt_passes", 0)} Cleared on Attempt #1</div>
             </div>
 
             <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0;">
                 <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px;">
                         Active Milestone
                     </span>
                     {render_cosmo_metric_info_popover('individual_active_milestone', astraea_rec, 'individual', 'right')}
                 </div>
                 <div class="kpi-value" style="font-size:1.35rem; font-weight:800; color:var(--deep-frozen-midnight); line-height:1.2; margin:2px 0 6px 0;">{escape(active_b.code if active_b else "Completed")}</div>
-                <div class="kpi-subtext" style="color:var(--frost-navy-50); font-size:11px; font-weight:600;">{escape(astraea_rec.get("deadline_status", "On Schedule"))}</div>
+                <div class="kpi-subtext" style="color:var(--frost-navy-50); font-size:0.6875rem; font-weight:600;">{escape(astraea_rec.get("deadline_status", "On Schedule"))}</div>
             </div>
         </div>
 
@@ -836,13 +837,13 @@ def render_cosmonaut_dashboard(
         <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.06);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs);">YOUR NEXT ACTION</span>
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs);">YOUR NEXT ACTION</span>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{next_action_title}</h3>
                 </div>
                 {next_action_pill}
             </div>
 
-            <p style="font-size:13.5px; color:var(--frost-navy); line-height:1.55; margin:0 0 16px 0;">
+            <p style="font-size:0.84375rem; color:var(--frost-navy); line-height:1.55; margin:0 0 16px 0;">
                 {next_action_desc}
             </p>
 
@@ -863,9 +864,9 @@ def render_cosmonaut_dashboard(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Official Evaluated Marksheets (Standard 50-Mark Rubric)</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Audited submission evaluations across the 5 rubric criteria. Click 'View Review Marksheet' to inspect your full evaluation rubric.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Audited submission evaluations across the 5 rubric criteria. Click 'View Review Marksheet' to inspect your full evaluation rubric.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(asms)} Evaluated Milestone{"s" if len(asms) != 1 else ""}
                 </span>
             </div>
@@ -880,9 +881,9 @@ def render_cosmonaut_dashboard(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Verified Skills & Competency Matrix</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Evaluated engineering capabilities demonstrated through accredited milestone submissions, with ratings scored out of 10.0.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Evaluated engineering capabilities demonstrated through accredited milestone submissions, with ratings scored out of 10.0.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(skills_data)} Verified Skill{"s" if len(skills_data) != 1 else ""}
                 </span>
             </div>
@@ -894,9 +895,9 @@ def render_cosmonaut_dashboard(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Official Certifications & Verified Credentials</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Standard-issue micro-credentials awarded upon successful 50-mark rubric evaluation.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Standard-issue micro-credentials awarded upon successful 50-mark rubric evaluation.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(certs_data)} Verified Credential{"s" if len(certs_data) != 1 else ""}
                 </span>
             </div>
@@ -908,9 +909,9 @@ def render_cosmonaut_dashboard(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Pedagogical Diagnostics & Mentoring Pathway</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Guardian observational analysis, demonstrated competencies, and targeted improvement roadmaps.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Guardian observational analysis, demonstrated competencies, and targeted improvement roadmaps.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     Pedagogical Diagnostic
                 </span>
             </div>
@@ -937,9 +938,9 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
     skills_tags = []
     for s in profile.skills:
         skills_tags.append(f"""
-        <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:linear-gradient(135deg, rgba(23, 52, 92, 0.92) 0%, rgba(7, 22, 41, 0.96) 100%); border:1px solid var(--icy-steel); border-radius:var(--radius-full); font-size:12.5px; font-weight:700; color:var(--snow-white); box-shadow:0 2px 6px rgba(7,22,41,0.12); transition:transform 150ms ease;">
+        <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:linear-gradient(135deg, rgba(23, 52, 92, 0.92) 0%, rgba(7, 22, 41, 0.96) 100%); border:1px solid var(--icy-steel); border-radius:var(--radius-full); font-size:0.78125rem; font-weight:700; color:var(--snow-white); box-shadow:0 2px 6px rgba(7,22,41,0.12); transition:transform 150ms ease;">
             <span style="font-family:var(--font-family-mono);">{escape(s)}</span>
-            <span style="cursor:pointer; font-weight:900; font-size:14px; color:var(--icy-steel); line-height:1; padding-left:2px;" title="Remove skill" onclick="window.StarAppBridge.dispatchAction('remove_skill', '{escape(s)}')">&times;</span>
+            <span style="cursor:pointer; font-weight:900; font-size:0.875rem; color:var(--icy-steel); line-height:1; padding-left:2px;" title="Remove skill" onclick="window.StarAppBridge.dispatchAction('remove_skill', '{escape(s)}')">&times;</span>
         </div>
         """)
 
@@ -952,18 +953,18 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
         certs_items.append(f"""
         <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:rgba(255, 255, 255, 0.85); border-radius:var(--radius-md); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03); margin-bottom:10px;">
             <div style="display:flex; align-items:center; gap:14px;">
-                <div style="width:40px; height:40px; border-radius:var(--radius-sm); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); font-size:20px;">
+                <div style="width:40px; height:40px; border-radius:var(--radius-sm); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); font-size:1.25rem;">
                     {get_icon("file_text", 20)}
                 </div>
                 <div>
-                    <div style="font-weight:800; color:var(--frost-navy); font-size:14px;">{escape(c_name)}</div>
-                    <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">
+                    <div style="font-weight:800; color:var(--frost-navy); font-size:0.875rem;">{escape(c_name)}</div>
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50); margin-top:2px;">
                         Issuing Authority: <strong style="color:var(--deep-frozen-midnight);">{escape(c_issuer)}</strong> &bull; Year: <strong style="color:var(--deep-frozen-midnight);">{escape(c_year)}</strong>
                     </div>
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span class="status-pill status-approved" style="font-size:11px; padding:3px 10px;">Verified</span>
+                <span class="status-pill status-approved" style="font-size:0.6875rem; padding:3px 10px;">Verified</span>
                 <button type="button" class="btn-secondary btn-sm" style="color:var(--frost-navy-50); padding:4px 10px;" onclick="window.StarAppBridge.dispatchAction('remove_certification', '{idx}')">Remove</button>
             </div>
         </div>
@@ -978,18 +979,18 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
         <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:20px;">
-                    <div class="user-avatar" style="width:72px; height:72px; font-size:26px; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white); border:2.5px solid var(--icy-steel); box-shadow:0 4px 16px rgba(7,22,41,0.18);">
+                    <div class="user-avatar" style="width:72px; height:72px; font-size:1.625rem; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white); border:2.5px solid var(--icy-steel); box-shadow:0 4px 16px rgba(7,22,41,0.18);">
                         {escape(current_user.avatar)}
                     </div>
                     <div>
                         <div style="display:flex; align-items:center; gap:10px;">
                             <h2 style="font-size:1.75rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.4px;">{escape(current_user.name)}</h2>
-                            <span class="status-pill status-approved" style="font-size:11px; padding:3px 10px;">Active Cosmonaut</span>
+                            <span class="status-pill status-approved" style="font-size:0.6875rem; padding:3px 10px;">Active Cosmonaut</span>
                         </div>
-                        <div style="font-size:13px; color:var(--deep-frozen-midnight); font-weight:700; margin-top:3px;">
+                        <div style="font-size:0.8125rem; color:var(--deep-frozen-midnight); font-weight:700; margin-top:3px;">
                             Cadre Orion-24 &bull; Trainee Identifier: <span style="font-family:var(--font-family-mono);">{escape(current_user.id)}</span>
                         </div>
-                        <div style="font-size:12.5px; color:var(--frost-navy-50); margin-top:2px;">
+                        <div style="font-size:0.78125rem; color:var(--frost-navy-50); margin-top:2px;">
                             Official Email: <strong style="color:var(--frost-navy);">{escape(current_user.email)}</strong>
                         </div>
                     </div>
@@ -1006,10 +1007,10 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
 
             <!-- Professional Bio Narrative -->
             <div style="background:rgba(234,244,255,0.45); padding:16px 20px; border-radius:var(--radius-md); border:1px solid var(--icy-steel-30); margin-bottom:20px;">
-                <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:5px;">
+                <div style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:5px;">
                     Professional Summary & Academy Dossier
                 </div>
-                <p style="font-size:13.5px; color:var(--frost-navy); line-height:1.6; margin:0;">
+                <p style="font-size:0.84375rem; color:var(--frost-navy); line-height:1.6; margin:0;">
                     {escape(bio_text)}
                 </p>
             </div>
@@ -1017,27 +1018,27 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
             <!-- Core Credentials Metadata Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap:14px;">
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                    <div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Reporting Manager / Guardian</div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(guardian_name)}</div>
-                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">{escape(guardian_title)}</div>
+                    <div style="font-size:0.6875rem; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Reporting Manager / Guardian</div>
+                    <div style="font-size:0.84375rem; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(guardian_name)}</div>
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:1px;">{escape(guardian_title)}</div>
                 </div>
 
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                    <div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Training Cohort</div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(profile.batch_name or f"Band {getattr(current_user, 'band', 'B1')} Cohort")}</div>
-                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">Enterprise Cadets</div>
+                    <div style="font-size:0.6875rem; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Training Cohort</div>
+                    <div style="font-size:0.84375rem; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(profile.batch_name or f"Band {getattr(current_user, 'band', 'B1')} Cohort")}</div>
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:1px;">Enterprise Cadets</div>
                 </div>
 
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                    <div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Academy Standing</div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">Tier-1 Certified</div>
-                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">Good Standing &bull; Compliant</div>
+                    <div style="font-size:0.6875rem; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Academy Standing</div>
+                    <div style="font-size:0.84375rem; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">Tier-1 Certified</div>
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:1px;">Good Standing &bull; Compliant</div>
                 </div>
 
                 <div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                    <div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Current Milestone</div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">ING-104</div>
-                    <div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">Ingestion Foundations</div>
+                    <div style="font-size:0.6875rem; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">Current Milestone</div>
+                    <div style="font-size:0.84375rem; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">ING-104</div>
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:1px;">Ingestion Foundations</div>
                 </div>
             </div>
         </div>
@@ -1047,7 +1048,7 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <div>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 3px 0;">Technical Competencies & Skills</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Validated domain proficiencies and framework competencies.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Validated domain proficiencies and framework competencies.</div>
                 </div>
                 <button type="button" class="btn-metal btn-sm" onclick="const box=document.getElementById('add-skill-form-box'); box.style.display=(box.style.display==='none'?'block':'none'); if(box.style.display==='block'){{document.getElementById('new-skill-input').focus();}}">
                     + Add Skill
@@ -1067,7 +1068,7 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
 
             <!-- Skills Tag Cloud -->
             <div style="display:flex; flex-wrap:wrap; gap:10px;">
-                {"".join(skills_tags) if skills_tags else "<span style='font-size:13px; color:var(--frost-navy-50); font-style:italic;'>No skills registered yet. Click '+ Add Skill' to add your technical proficiencies.</span>"}
+                {"".join(skills_tags) if skills_tags else "<span style='font-size:0.8125rem; color:var(--frost-navy-50); font-style:italic;'>No skills registered yet. Click '+ Add Skill' to add your technical proficiencies.</span>"}
             </div>
         </div>
 
@@ -1076,7 +1077,7 @@ def render_cosmonaut_profile(current_user: User, profile: CosmonautProfile) -> s
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <div>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 3px 0;">Verified Industry Certifications</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Recognized accreditations and professional engineering credentials.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Recognized accreditations and professional engineering credentials.</div>
                 </div>
                 <button type="button" class="btn-metal btn-sm" onclick="const box=document.getElementById('add-cert-form-box'); box.style.display=(box.style.display==='none'?'block':'none'); if(box.style.display==='block'){{document.getElementById('cert-name-input').focus();}}">
                     + Add Certificate
@@ -1187,10 +1188,10 @@ def render_gamified_roadmap(
                 "box-shadow: 0 0 20px rgba(245, 158, 11, 0.45), 0 8px 24px rgba(180, 83, 9, 0.2); "
                 "color: #78350F;"
             )
-            code_style = "color: #92400E; font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
-            title_style = "color: #78350F; font-weight: 800; font-size: 14px; margin: 3px 0 2px;"
-            desc_style = "color: #92400E; font-size: 11px; font-weight: 600;"
-            status_html = '<span class="status-pill status-approved" style="font-size:10.5px; padding:2px 8px; border-radius:12px; font-weight:800; background:#F59E0B; color:#451A03; border:1px solid #D97706; box-shadow:0 2px 6px rgba(245,158,11,0.4); display:inline-flex; align-items:center; gap:3px;">★ Completed</span>'
+            code_style = "color: #92400E; font-weight: 800; font-family: var(--font-family-mono); font-size: 0.71875rem;"
+            title_style = "color: #78350F; font-weight: 800; font-size: 0.875rem; margin: 3px 0 2px;"
+            desc_style = "color: #92400E; font-size: 0.6875rem; font-weight: 600;"
+            status_html = '<span class="status-pill status-approved" style="font-size:0.65625rem; padding:2px 8px; border-radius:12px; font-weight:800; background:#F59E0B; color:#451A03; border:1px solid #D97706; box-shadow:0 2px 6px rgba(245,158,11,0.4); display:inline-flex; align-items:center; gap:3px;">★ Completed</span>'
         elif state == "active":
             card_style = (
                 "background: linear-gradient(135deg, rgba(234, 244, 255, 0.96) 0%, rgba(255, 255, 255, 0.98) 100%); "
@@ -1198,13 +1199,13 @@ def render_gamified_roadmap(
                 "box-shadow: 0 0 0 4px rgba(23, 52, 92, 0.18), 0 10px 24px rgba(7, 22, 41, 0.12); "
                 "color: var(--frost-navy);"
             )
-            code_style = "color: var(--deep-frozen-midnight); font-weight: 800; font-family: var(--font-family-mono); font-size: 11.5px;"
-            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px;"
-            desc_style = "color: var(--frost-navy-50); font-size: 11px;"
+            code_style = "color: var(--deep-frozen-midnight); font-weight: 800; font-family: var(--font-family-mono); font-size: 0.71875rem;"
+            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 0.875rem; margin: 3px 0 2px;"
+            desc_style = "color: var(--frost-navy-50); font-size: 0.6875rem;"
             if node.get("is_current_active"):
-                status_html = '<span class="status-pill status-active" style="font-size:10.5px; padding:2px 8px;">Active • Current</span>'
+                status_html = '<span class="status-pill status-active" style="font-size:0.65625rem; padding:2px 8px;">Active • Current</span>'
             else:
-                status_html = '<span class="status-pill status-active" style="font-size:10.5px; padding:2px 8px;">Available</span>'
+                status_html = '<span class="status-pill status-active" style="font-size:0.65625rem; padding:2px 8px;">Available</span>'
         else:  # locked
             card_style = (
                 "background: rgba(234, 244, 255, 0.45); "
@@ -1216,10 +1217,10 @@ def render_gamified_roadmap(
             code = f"{lock_ic_12} LEVEL {idx + 1:02d}"
             title = "Milestone locked"
             category = "Unlocks on Guardian Publish"
-            code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 11.5px;"
-            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 14px; margin: 3px 0 2px; opacity: 0.85;"
-            desc_style = "color: var(--frost-navy-50); font-size: 11px;"
-            status_html = '<span class="status-pill status-locked" style="font-size:10.5px; padding:2px 8px;">Locked</span>'
+            code_style = "color: var(--frost-navy-50); font-weight: 700; font-family: var(--font-family-mono); font-size: 0.71875rem;"
+            title_style = "color: var(--frost-navy); font-weight: 700; font-size: 0.875rem; margin: 3px 0 2px; opacity: 0.85;"
+            desc_style = "color: var(--frost-navy-50); font-size: 0.6875rem;"
+            status_html = '<span class="status-pill status-locked" style="font-size:0.65625rem; padding:2px 8px;">Locked</span>'
             onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
         if state != "locked":
             onclick = f"window.StarAppBridge.dispatchAction('open_badge_detail_modal', '{badge_id}');"
@@ -1265,9 +1266,9 @@ def render_gamified_roadmap(
     <div>
         <div style="text-align:center;margin-bottom:28px;">
             <h2 style="font-size:1.6rem;font-weight:800;color:var(--frost-navy);">{heading_title}</h2>
-            <p style="font-size:13.5px;color:var(--frost-navy-50);margin-bottom:14px;">{heading_desc}</p>
+            <p style="font-size:0.84375rem;color:var(--frost-navy-50);margin-bottom:14px;">{heading_desc}</p>
             <div class="liquid-glass-card" style="display:inline-flex;flex-direction:column;gap:8px;padding:12px 20px;border-radius:var(--radius-md);min-width:300px;max-width:560px;width:100%;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;font-weight:700;color:var(--frost-navy);flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.75rem;font-weight:700;color:var(--frost-navy);flex-wrap:wrap;">
                     <span>Level Progress: <strong>{unlocked_count} / {total_nodes} Unlocked</strong> ({unlock_pct}%)</span>
                     <span style="color:var(--frost-navy-50);font-weight:600;">{completed_count} Cleared &bull; {active_count} Active &bull; {locked_count} Locked</span>
                 </div>
@@ -1437,11 +1438,11 @@ def render_badge_detail_modal_content(
         <!-- Clean Subheader with Badge Code, Title and Status -->
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(display_code)}</span>
-                <span style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(display_title)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50);">{escape(display_code)}</span>
+                <span style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy);">{escape(display_title)}</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:11.5px; font-weight:600; color:var(--frost-navy-50);">Decided by Assigned Reviewer</span>
+                <span style="font-size:0.71875rem; font-weight:600; color:var(--frost-navy-50);">Decided by Assigned Reviewer</span>
                 {render_status_pill(state)}
             </div>
         </div>
@@ -1507,25 +1508,25 @@ def _render_assigned_project_spec_inner(
         ])
         outcomes_html = f"""
         <div style="margin-bottom:12px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.22); border-radius:var(--radius-xs); padding:10px 14px;">
-            <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:5px;">Expected Project Outcomes:</div>
-            <ul style="margin:0; padding:0; list-style:none; font-size:12px; color:var(--frost-navy); line-height:1.45;">
+            <div style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; color:#047857; letter-spacing:0.5px; margin-bottom:5px;">Expected Project Outcomes:</div>
+            <ul style="margin:0; padding:0; list-style:none; font-size:0.75rem; color:var(--frost-navy); line-height:1.45;">
                 {outcomes_pills}
             </ul>
         </div>
         """
 
     if is_earned:
-        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border-color:#D97706;">{get_icon("award", 12)} Completed</span>'
+        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:0.65625rem; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border-color:#D97706;">{get_icon("award", 12)} Completed</span>'
     elif existing_sub:
-        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800;">{get_icon("check", 12)} Submitted</span>'
+        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:0.65625rem; font-weight:800;">{get_icon("check", 12)} Submitted</span>'
     else:
-        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800;">{get_icon("check", 12)} Ready for Submission</span>'
+        status_pill = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:0.65625rem; font-weight:800;">{get_icon("check", 12)} Ready for Submission</span>'
 
     rev_display = f"{rev_name_str} (Band {rev_band_str})" if rev_band_str else rev_name_str
     schedule_chips = ""
     if window_str or sub_deadline_str:
         schedule_chips = f"""
-        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px; padding:8px 12px; background:rgba(23,52,92,0.04); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-size:11.5px; color:var(--frost-navy-75);">
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px; padding:8px 12px; background:rgba(23,52,92,0.04); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-size:0.71875rem; color:var(--frost-navy-75);">
             {f'<span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("calendar", 13)} <strong>Review Window:</strong> <span style="font-family:var(--font-family-mono); font-weight:700; color:var(--deep-frozen-midnight);">{escape(window_str)}</span></span>' if window_str else ''}
             {f'<span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("clock", 13, "color:#DC2626;")} <strong>Submission Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700; color:#DC2626;">{escape(sub_deadline_str)}</span></span>' if sub_deadline_str else ''}
         </div>
@@ -1535,32 +1536,32 @@ def _render_assigned_project_spec_inner(
     <div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:8px; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:10.5px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
-                <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight);">Allocated by Reviewer: {escape(rev_display)}</span>
+                <span style="font-size:0.65625rem; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">ASSIGNED PROJECT SPECIFICATION</span>
+                <span style="font-size:0.71875rem; font-weight:700; color:var(--deep-frozen-midnight);">Allocated by Reviewer: {escape(rev_display)}</span>
             </div>
             {status_pill}
         </div>
         <h4 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">{escape(getattr(assigned_proj, 'title', 'Milestone Project'))}</h4>
-        <p style="font-size:12.8px; color:var(--frost-navy-75); line-height:1.5; margin:0 0 12px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
+        <p style="font-size:0.8rem; color:var(--frost-navy-75); line-height:1.5; margin:0 0 12px 0;">{escape(getattr(assigned_proj, 'description', ''))}</p>
         {schedule_chips}
         {outcomes_html}
-        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:5px;">Detailed Project Requirements:</div>
-        <ul style="margin:0 0 14px 18px; padding:0; font-size:12px; color:var(--frost-navy-75); line-height:1.45;">
+        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:5px;">Detailed Project Requirements:</div>
+        <ul style="margin:0 0 14px 18px; padding:0; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.45;">
             {req_items_html}
         </ul>
-        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Mandatory Deliverable Files (Mapped to 50-Mark Rubric):</div>
+        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Mandatory Deliverable Files (Mapped to 50-Mark Rubric):</div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
-                <div style="display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:800; color:#047857;">{get_icon("code", 13)}<span>{escape(code_name)}</span></div>
-                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(code_info)}</div>
+                <div style="display:flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:800; color:#047857;">{get_icon("code", 13)}<span>{escape(code_name)}</span></div>
+                <div style="font-size:0.65625rem; color:var(--frost-navy-50); margin-top:3px;">{escape(code_info)}</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
-                <div style="display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:800; color:#DC2626;">{get_icon("file_text", 13)}<span>{escape(pdf_name)}</span></div>
-                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(pdf_info)}</div>
+                <div style="display:flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:800; color:#DC2626;">{get_icon("file_text", 13)}<span>{escape(pdf_name)}</span></div>
+                <div style="font-size:0.65625rem; color:var(--frost-navy-50); margin-top:3px;">{escape(pdf_info)}</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:8px 10px;">
-                <div style="display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:800; color:var(--deep-frozen-midnight);">{get_icon("github", 13)}<span>{escape(gh_name)}</span></div>
-                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:3px;">{escape(gh_info)}</div>
+                <div style="display:flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:800; color:var(--deep-frozen-midnight);">{get_icon("github", 13)}<span>{escape(gh_name)}</span></div>
+                <div style="font-size:0.65625rem; color:var(--frost-navy-50); margin-top:3px;">{escape(gh_info)}</div>
             </div>
         </div>
     </div>
@@ -1596,9 +1597,9 @@ def _render_allocated_project_detail_section(
                 <span style="width:28px; height:28px; border-radius:6px; background:rgba(2,132,199,0.14); color:#0284C7; display:flex; align-items:center; justify-content:center;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6"/><path d="M9 16h6"/><path d="M9 8h6"/></svg>
                 </span>
-                <span style="font-size:15px; font-weight:800; color:#0369A1;">Project Allocated ({escape(getattr(assigned_proj, 'title', 'Milestone Project'))})</span>
+                <span style="font-size:0.9375rem; font-weight:800; color:#0369A1;">Project Allocated ({escape(getattr(assigned_proj, 'title', 'Milestone Project'))})</span>
             </div>
-            <span id="chevron-allocated-project" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+            <span id="chevron-allocated-project" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
         </div>
         <div id="content-allocated-project" style="padding:0 20px 20px 20px; display:block;">
             {spec_html}
@@ -1678,8 +1679,8 @@ def render_cosmonaut_badge_card_expanded_content(
 
     # Section 1: Outcomes HTML
     outcomes_list_items = "".join([
-        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
-            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:0.8125rem; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
             <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
         </div>'''
         for o in outcomes
@@ -1715,17 +1716,17 @@ def render_cosmonaut_badge_card_expanded_content(
         <div id="topic-card-{idx}" class="topic-row-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
             <div style="flex:1;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
-                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
-                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
+                    <span style="font-size:0.6875rem; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:0.6875rem; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                    <span style="font-size:0.6875rem; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
                 </div>
-                <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
-                <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
+                <div style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
             </div>
             <div style="flex-shrink:0;">
                 <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
                     onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
-                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:12px; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:0.75rem; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
                     {btn_content}
                 </button>
             </div>
@@ -1818,7 +1819,7 @@ def render_cosmonaut_badge_card_expanded_content(
         project_allocated_btn_html = f"""
         <button type="button" id="btn-project-allocated-{escape(badge.id)}" class="btn-secondary btn-sm"
             onclick="window.StarAppBridge.dispatchAction('open_allocated_project_modal', '{escape(badge.id)}')"
-            style="font-weight:800; font-size:12px; padding:6px 14px; background:rgba(2,132,199,0.1); color:#0369A1; border:1.5px solid #0284C7; border-radius:var(--radius-sm); display:inline-flex; align-items:center; gap:5px;">
+            style="font-weight:800; font-size:0.75rem; padding:6px 14px; background:rgba(2,132,199,0.1); color:#0369A1; border:1.5px solid #0284C7; border-radius:var(--radius-sm); display:inline-flex; align-items:center; gap:5px;">
             <span>📋</span>
             <span>Project allocated</span>
         </button>
@@ -1828,7 +1829,7 @@ def render_cosmonaut_badge_card_expanded_content(
         top_card_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%); box-shadow:0 12px 36px rgba(245,158,11,0.25);"
         top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#B45309;"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
-        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
 
         tot_m = earned_asm.total_marks if earned_asm else 45.0
         pct_m = earned_asm.percentage if earned_asm else 90.0
@@ -1844,15 +1845,15 @@ def render_cosmonaut_badge_card_expanded_content(
         eval_chain_chips = []
         if awarded_on_str:
             eval_chain_chips.append(
-                f'<span style="font-size:11.5px; font-weight:700; color:#78350F; background:rgba(255,255,255,0.85); border:1px solid rgba(245,158,11,0.45); padding:3px 10px; border-radius:999px;">📅 Awarded: <strong>{escape(awarded_on_str)}</strong></span>'
+                f'<span style="font-size:0.71875rem; font-weight:700; color:#78350F; background:rgba(255,255,255,0.85); border:1px solid rgba(245,158,11,0.45); padding:3px 10px; border-radius:999px;">📅 Awarded: <strong>{escape(awarded_on_str)}</strong></span>'
             )
         if rev_earned_asm:
             eval_chain_chips.append(
-                f'<span style="font-size:11.5px; font-weight:700; color:#0369A1; background:rgba(224,242,254,0.9); border:1px solid rgba(2,132,199,0.3); padding:3px 10px; border-radius:999px;">Peer Reviewer ({escape(rev_earned_asm.reviewer_name)}): <strong>{rev_earned_asm.total_marks:.1f}/50 ({rev_earned_asm.percentage:.1f}%)</strong></span>'
+                f'<span style="font-size:0.71875rem; font-weight:700; color:#0369A1; background:rgba(224,242,254,0.9); border:1px solid rgba(2,132,199,0.3); padding:3px 10px; border-radius:999px;">Peer Reviewer ({escape(rev_earned_asm.reviewer_name)}): <strong>{rev_earned_asm.total_marks:.1f}/50 ({rev_earned_asm.percentage:.1f}%)</strong></span>'
             )
         if grd_earned_asm:
             eval_chain_chips.append(
-                f'<span style="font-size:11.5px; font-weight:700; color:#047857; background:rgba(209,250,229,0.9); border:1px solid rgba(16,185,129,0.35); padding:3px 10px; border-radius:999px;">Guardian Final ({escape(grd_earned_asm.reviewer_name)}): <strong>{grd_earned_asm.total_marks:.1f}/50 ({grd_earned_asm.percentage:.1f}%)</strong></span>'
+                f'<span style="font-size:0.71875rem; font-weight:700; color:#047857; background:rgba(209,250,229,0.9); border:1px solid rgba(16,185,129,0.35); padding:3px 10px; border-radius:999px;">Guardian Final ({escape(grd_earned_asm.reviewer_name)}): <strong>{grd_earned_asm.total_marks:.1f}/50 ({grd_earned_asm.percentage:.1f}%)</strong></span>'
             )
         eval_chain_html = (
             f'<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">{"".join(eval_chain_chips)}</div>'
@@ -1866,17 +1867,17 @@ def render_cosmonaut_badge_card_expanded_content(
             g_url = getattr(existing_sub, "github_url", "") or (existing_sub.payload if getattr(existing_sub, "submission_type", "") == "github" else "") or ""
             s_dt = (getattr(existing_sub, "submitted_at", "") or "")[:16].replace("T", " ")
             g_chip = (
-                f'<span style="font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("github", 12)} {escape(g_url.split("/")[-1] if "/" in g_url else g_url)}</span>'
+                f'<span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("github", 12)} {escape(g_url.split("/")[-1] if "/" in g_url else g_url)}</span>'
                 if g_url else ""
             )
             sub_rec_html = f"""
             <div style="background:rgba(255,255,255,0.92); border:1px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:12px;">
-                <div style="font-size:10.5px; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+                <div style="font-size:0.65625rem; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
                     Certified Submission Artifacts &bull; Attempt #{getattr(existing_sub, 'attempt_number', 1)} {f'({escape(s_dt)} UTC)' if s_dt else ''}
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("file_text", 12)} {escape(p_name)}</span>
-                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("code", 12)} {escape(c_name)}</span>
+                    <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("file_text", 12)} {escape(p_name)}</span>
+                    <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("code", 12)} {escape(c_name)}</span>
                     {g_chip}
                 </div>
             </div>
@@ -1887,17 +1888,17 @@ def render_cosmonaut_badge_card_expanded_content(
         <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1.125rem; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
                         🏆
                     </span>
                     <div>
-                        <div style="font-size:16px; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
-                        <div style="font-size:12.5px; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
+                        <div style="font-size:1rem; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
+                        <div style="font-size:0.78125rem; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     {project_allocated_btn_html}
-                    <span style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
+                    <span style="font-family:var(--font-family-mono); font-size:0.90625rem; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
                         Allocated Marks: {tot_m:.1f} / 50.0 ({pct_m:.1f}%)
                     </span>
                 </div>
@@ -1909,35 +1910,35 @@ def render_cosmonaut_badge_card_expanded_content(
             <!-- Rubric Criteria Scores Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px;">
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
                 </div>
             </div>
 
             <!-- Evaluator Feedback Section -->
             <div style="background:#FFFFFF; border:1.5px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:14px 16px;">
-                <div style="font-size:11px; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
-                <div style="font-size:13px; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
+                <div style="font-size:0.6875rem; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
+                <div style="font-size:0.8125rem; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
                     "{escape(fb_txt)}"
                 </div>
-                {f'<div style=\"font-size:12px; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
-                {f'<div style=\"font-size:12px; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
+                {f'<div style=\"font-size:0.75rem; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
+                {f'<div style=\"font-size:0.75rem; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
             </div>
         </div>
         """
@@ -1946,9 +1947,9 @@ def render_cosmonaut_badge_card_expanded_content(
         top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
         if has_allocated_project:
-            meta_chip = '<span style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project Allocated</span>'
+            meta_chip = '<span style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:0.6875rem; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🚀 Project Allocated</span>'
         else:
-            meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+            meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
             earn_section_html = f"""
@@ -1959,13 +1960,13 @@ def render_cosmonaut_badge_card_expanded_content(
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     {project_allocated_btn_html}
-                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
+                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
                         Awaiting Guardian Award
                     </span>
                 </div>
@@ -1980,16 +1981,16 @@ def render_cosmonaut_badge_card_expanded_content(
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     {project_allocated_btn_html}
-                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
                         Pending Reviewer Evaluation
                     </span>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:700; font-size:12px;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:700; font-size:0.75rem;">
                         Edit Deliverables
                     </button>
                 </div>
@@ -2004,16 +2005,16 @@ def render_cosmonaut_badge_card_expanded_content(
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
                         Allocated Milestone
                     </span>
                     {project_allocated_btn_html}
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:0.78125rem; padding:6px 18px;">
                         Submit Deliverables &rarr;
                     </button>
                 </div>
@@ -2042,15 +2043,15 @@ def render_cosmonaut_badge_card_expanded_content(
         <div style="background:linear-gradient(135deg, rgba(254,242,242,0.95) 0%, rgba(254,226,226,0.9) 100%); border:1.5px solid #EF4444; border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:20px; box-shadow:0 4px 14px rgba(239,68,68,0.12);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:#EF4444; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">RETAKE REQUIRED</span>
-                    <span style="font-weight:800; font-size:13.5px; color:#991B1B;">Attempt #{existing_sub.attempt_number} Did Not Meet Passing Threshold</span>
+                    <span style="background:#EF4444; color:#fff; font-size:0.65625rem; font-weight:800; padding:2px 8px; border-radius:10px;">RETAKE REQUIRED</span>
+                    <span style="font-weight:800; font-size:0.84375rem; color:#991B1B;">Attempt #{existing_sub.attempt_number} Did Not Meet Passing Threshold</span>
                 </div>
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626;">Previous Score: {score_txt}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#DC2626;">Previous Score: {score_txt}</span>
             </div>
-            <p style="font-size:12.5px; color:#7F1D1D; margin:0 0 8px 0; line-height:1.4;">
+            <p style="font-size:0.78125rem; color:#7F1D1D; margin:0 0 8px 0; line-height:1.4;">
                 <strong>Guardian Feedback:</strong> {escape(feedback_txt)}
             </p>
-            <div style="font-size:11.5px; color:#B91C1C;">
+            <div style="font-size:0.71875rem; color:#B91C1C;">
                 Please review the feedback above, improve your technical deliverable, and submit revised materials for <strong>Attempt #{next_attempt}</strong>. Your Attempt #{existing_sub.attempt_number} history is preserved in your permanent record.
             </div>
         </div>
@@ -2061,9 +2062,9 @@ def render_cosmonaut_badge_card_expanded_content(
         rev_full = f"{rev_name_str} (Band {rev_band_str})" if rev_band_str else rev_name_str
         mapping_info_banner = f"""
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 14px; background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); margin-bottom:18px;">
-            {f'<div style="font-size:12px; color:var(--frost-navy);"><strong>Assigned Peer Reviewer:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_full)}</span></div>' if rev_id_str else ''}
-            {f'<div style="font-size:12px; color:var(--frost-navy-75);"><strong>Review Window:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(window_str)}</span></div>' if window_str else ''}
-            {f'<div style="font-size:12px; color:#DC2626;"><strong>Submission Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(sub_deadline_str)}</span></div>' if sub_deadline_str else ''}
+            {f'<div style="font-size:0.75rem; color:var(--frost-navy);"><strong>Assigned Peer Reviewer:</strong> <span style="font-weight:700; color:var(--deep-frozen-midnight);">{escape(rev_full)}</span></div>' if rev_id_str else ''}
+            {f'<div style="font-size:0.75rem; color:var(--frost-navy-75);"><strong>Review Window:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(window_str)}</span></div>' if window_str else ''}
+            {f'<div style="font-size:0.75rem; color:#DC2626;"><strong>Submission Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:700;">{escape(sub_deadline_str)}</span></div>' if sub_deadline_str else ''}
         </div>
         """
 
@@ -2075,13 +2076,13 @@ def render_cosmonaut_badge_card_expanded_content(
                 <span>&larr;</span>
                 <span>Back to Badges</span>
             </button>
-            <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">
+            <span style="font-size:0.75rem; font-weight:700; color:var(--frost-navy-50);">
                 Badge Workspace &bull; Band {escape(selected_band)} &bull; {escape(badge_code)}
             </span>
         </div>
         """
         location_right_btn = f"""
-        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')" style="font-size:0.75rem; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
             <span>&larr;</span>
             <span>All Badges</span>
         </button>
@@ -2096,7 +2097,7 @@ def render_cosmonaut_badge_card_expanded_content(
         wrapper_classes = "liquid-glass-card badge-detail-page-card"
     else:
         location_right_btn = f"""
-        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
+        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_cosmonaut_badge_card', '{badge.id}')" style="font-size:0.75rem; font-weight:700; display:inline-flex; align-items:center; gap:5px; background:rgba(23,52,92,0.08); border-color:var(--icy-steel);">
             <span>Collapse Badge</span>
             <span>▲</span>
         </button>
@@ -2132,23 +2133,23 @@ def render_cosmonaut_badge_card_expanded_content(
             <!-- LOCATION BAR & ACTIONS -->
             <div style="padding:14px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); border:1.5px solid var(--deep-frozen-midnight); margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
                 <div>
-                    <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                    <span style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
                         Badge Location
                     </span>
-                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-                        <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
-                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                        <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
+                    <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <span style="color:var(--deep-frozen-midnight); font-size:0.90625rem; font-weight:800;">{escape(badge_title)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                        <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                        <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:800;">Band {selected_band}</span>
                     </div>
                 </div>
                 <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:0.75rem; font-weight:700;">
                         Toggle All
                     </button>
                     {location_right_btn}
@@ -2162,12 +2163,12 @@ def render_cosmonaut_badge_card_expanded_content(
                 </div>
                 <div style="flex:1;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
-                        {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {selected_band}</span>
+                        {f'<span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
                         {meta_chip}
                         <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 0 4px;">{escape(badge_title)}</h2>
                     </div>
-                    <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
+                    <p style="font-size:0.84375rem; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
                 </div>
             </div>
 
@@ -2181,9 +2182,9 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#047857; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
+                        <span style="font-size:0.9375rem; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
                     </div>
-                    <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                    <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
                     {outcomes_html}
@@ -2200,17 +2201,17 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
+                        <span style="font-size:0.9375rem; font-weight:800; color:#EA580C;">Practice Project</span>
                     </div>
-                    <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                    <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
-                    <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
+                    <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
                     <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                        <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
+                        <div id="practice-prompt-text" style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                            <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
-                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <span style="font-size:0.71875rem; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
+                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 Copy
                             </button>
@@ -2226,18 +2227,18 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0E7490; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
-                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
+                        <span style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Learning Topics</span>
+                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:0.6875rem; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
                             {completed_topics_count}/{total_topics} Completed
                         </span>
                         <div style="display:flex; align-items:center; gap:8px;">
                             <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
                                 <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
                             </div>
-                            <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
+                            <span id="topics-progress-text" style="font-size:0.75rem; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
                         </div>
                     </div>
-                    <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                    <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
                     {topics_html}
@@ -2251,17 +2252,17 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#1D4ED8;">Learning Resources</span>
+                        <span style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Learning Resources</span>
                     </div>
-                    <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                    <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
-                    <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
+                    <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
                     <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                        <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
+                        <div id="resources-prompt-text" style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                            <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
-                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                            <span style="font-size:0.71875rem; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
+                            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 Copy
                             </button>
@@ -2277,23 +2278,23 @@ def render_cosmonaut_badge_card_expanded_content(
                         <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
                         </span>
-                        <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+                        <span style="font-size:0.9375rem; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
                     </div>
-                    <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                    <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
                 </div>
                 <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
                         <div>
-                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
-                            <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                            <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
+                            <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
                         </div>
                         <div>
-                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                            <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                            <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
+                            <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                         </div>
                         <div>
-                            <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
-                            <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                            <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
+                            <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
                         </div>
                     </div>
                 </div>
@@ -2320,7 +2321,7 @@ def render_cosmonaut_badge_detail_page(
         return """
         <div class="liquid-glass-card" style="padding:40px; text-align:center;">
             <h3 style="color:var(--frost-navy); margin:0 0 8px 0;">Badge Not Found</h3>
-            <p style="font-size:13px; color:var(--frost-navy-50); margin:0 0 16px 0;">The selected milestone badge could not be loaded.</p>
+            <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0 0 16px 0;">The selected milestone badge could not be loaded.</p>
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">&larr; Back to Badges</button>
         </div>
         """
@@ -2376,9 +2377,9 @@ def render_cosmonaut_allocated_project_modal(badge: Badge, current_user: User, s
     if not assigned_proj or getattr(assigned_proj, "status", "") not in ("released", "sent"):
         return f"""
         <div style="padding:24px; text-align:center;">
-            <div style="font-size:28px; margin-bottom:10px;">⏳</div>
+            <div style="font-size:1.75rem; margin-bottom:10px;">⏳</div>
             <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">Project Not Allocated Yet</h4>
-            <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 18px 0;">
+            <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 18px 0;">
                 Your mapped reviewer <strong>{escape(rev_name)}</strong> has not released the milestone project specification yet.
             </p>
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close</button>
@@ -2418,11 +2419,11 @@ def render_cosmonaut_allocated_project_modal(badge: Badge, current_user: User, s
     <div style="padding:6px 4px;">
         <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#0284C7; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
-                <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:#0284C7; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
+                <span style="font-size:0.78125rem; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
             </div>
-            <span style="font-size:11.5px; color:var(--frost-navy-50);">
+            <span style="font-size:0.71875rem; color:var(--frost-navy-50);">
                 Mapped Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong>
             </span>
         </div>
@@ -2495,7 +2496,7 @@ def render_cosmonaut_submission_workspace(
 
             earned_meta_html = ""
             if is_earned:
-                sub_chip = f'<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">{get_icon("award", 12)} Badge Earned • Completed</span>'
+                sub_chip = f'<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">{get_icon("award", 12)} Badge Earned • Completed</span>'
                 action_btn_txt = "View Feedback & Marks"
                 btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#451A03; border-color:#D97706;"
                 card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
@@ -2503,34 +2504,34 @@ def render_cosmonaut_submission_workspace(
                 aw_str = (getattr(tl, "actual_award_date", "") if tl else "") or (earned_card_asm.reviewed_at[:10] if earned_card_asm and getattr(earned_card_asm, "reviewed_at", "") else "Awarded")
                 att_str = f"Attempt #{getattr(cadet_sub, 'attempt_number', getattr(earned_card_asm, 'attempt_number', 1))}" if (cadet_sub or earned_card_asm) else ""
                 earned_meta_html = f"""
-                <div style="margin-top:10px; padding:7px 10px; border-radius:8px; background:rgba(255,255,255,0.85); border:1px solid rgba(245,158,11,0.4); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:11.5px; color:#78350F; font-weight:700;">
+                <div style="margin-top:10px; padding:7px 10px; border-radius:8px; background:rgba(255,255,255,0.85); border:1px solid rgba(245,158,11,0.4); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:0.71875rem; color:#78350F; font-weight:700;">
                     <span style="font-family:var(--font-family-mono); font-weight:800;">Score: {escape(sc_str)}</span>
                     <span>&bull; Awarded: {escape(aw_str)}</span>
                     {f'<span>&bull; {escape(att_str)}</span>' if att_str else ''}
                 </div>
                 """
             elif cadet_sub and getattr(cadet_sub, "status", "") == "reviewer_assessed":
-                sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
+                sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
                 action_btn_txt = "View Assessment Status"
                 btn_color_style = "background:linear-gradient(135deg, #0891B2 0%, #0e7490 100%); color:#fff; border-color:#0891B2;"
                 card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
             elif cadet_sub and getattr(cadet_sub, "status", "") in ("retake_required", "resubmission_requested"):
-                sub_chip = f'<span style="background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3); font-size:11px; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("alert_triangle", 12)} Retake Required</span>'
+                sub_chip = f'<span style="background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3); font-size:0.6875rem; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("alert_triangle", 12)} Retake Required</span>'
                 action_btn_txt = "Open Badge & Resubmit"
                 btn_color_style = "background:linear-gradient(135deg, #DC2626 0%, #B91C1C 100%); color:#fff; border-color:#DC2626;"
                 card_border_style = "border:1.5px solid rgba(239,68,68,0.45); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(254,242,242,0.85) 100%); box-shadow:0 6px 24px rgba(239,68,68,0.08);"
             elif cadet_sub:
-                sub_chip = f'<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("check", 12)} Submitted</span>'
+                sub_chip = f'<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("check", 12)} Submitted</span>'
                 action_btn_txt = "View Badge & Submission"
                 btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
                 card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
             elif has_proj:
-                sub_chip = f'<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("rocket", 12)} Project Allocated</span>'
+                sub_chip = f'<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("rocket", 12)} Project Allocated</span>'
                 action_btn_txt = "View Badge & Project"
                 btn_color_style = "background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#fff; border-color:#0284C7;"
                 card_border_style = "border:1.5px solid rgba(2,132,199,0.4); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 6px 24px rgba(2,132,199,0.08);"
             else:
-                sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
+                sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
                 action_btn_txt = "Open Badge Details"
                 btn_color_style = ""
                 card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
@@ -2545,8 +2546,8 @@ def render_cosmonaut_submission_workspace(
                     <!-- Meta Row -->
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                         <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
-                            {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
+                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
+                            {f'<span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
                         </div>
                         {sub_chip}
                     </div>
@@ -2565,11 +2566,11 @@ def render_cosmonaut_submission_workspace(
 
                 <!-- Navigation to Dedicated Badge Detail Page -->
                 <div style="margin-top:20px; padding-top:12px; border-top:1px dashed var(--icy-steel-30); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <button type="button" class="btn-metal btn-sm" onclick="{open_btn_onclick}" style="font-weight:800; font-size:11.5px; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
+                    <button type="button" class="btn-metal btn-sm" onclick="{open_btn_onclick}" style="font-weight:800; font-size:0.71875rem; padding:5px 14px; display:inline-flex; align-items:center; gap:5px; {btn_color_style}">
                         <span>{action_btn_txt}</span>
                         <span>&rarr;</span>
                     </button>
-                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:4px 8px; border-radius:10px;">Open Page &rarr;</span>
+                    <span style="font-size:0.6875rem; color:var(--frost-navy-50); font-weight:700; background:rgba(23,52,92,0.06); padding:4px 8px; border-radius:10px;">Open Page &rarr;</span>
                 </div>
             </div>
             """)
@@ -2587,8 +2588,8 @@ def render_cosmonaut_submission_workspace(
                     <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
                 </svg>
             </div>
-            <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">No Badges Allocated Yet</h3>
-            <p style="font-size:13px; color:var(--frost-navy-75); max-width:540px; margin:0 auto 16px auto; line-height:1.5;">
+            <h3 style="font-size:1rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">No Badges Allocated Yet</h3>
+            <p style="font-size:0.8125rem; color:var(--frost-navy-75); max-width:540px; margin:0 auto 16px auto; line-height:1.5;">
                 Your Guardian has not yet allocated curriculum badges to your profile. Once mapped and published, your assigned badges with learning outcomes and deliverables will appear here.
             </p>
         </div>
@@ -2607,8 +2608,8 @@ def render_cosmonaut_submission_workspace(
                     <h2 style="font-size:1.6rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0; letter-spacing:-0.3px;">Allocated Badges &amp; Milestone Projects</h2>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:12px; font-weight:700; color:var(--frost-navy-50);">Allocated Badges:</span>
-                    <span style="font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 12px; border-radius:12px;">{len(badges)}</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--frost-navy-50);">Allocated Badges:</span>
+                    <span style="font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 12px; border-radius:12px;">{len(badges)}</span>
                 </div>
             </div>
         </div>
@@ -2674,19 +2675,19 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
         <div style="background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.3); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:#047857; color:#fff; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
-                    <span style="font-size:12.5px; font-weight:700; color:#047857;">Submitted on {escape(submitted_at_fmt)}</span>
+                    <span style="background:#047857; color:#fff; font-size:0.65625rem; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
+                    <span style="font-size:0.78125rem; font-weight:700; color:#047857;">Submitted on {escape(submitted_at_fmt)}</span>
                 </div>
-                <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Status: {escape(getattr(existing_sub, 'status', 'pending').upper())}</span>
+                <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy-50);">Status: {escape(getattr(existing_sub, 'status', 'pending').upper())}</span>
             </div>
-            <div style="font-size:11.5px; color:#065F46; margin-top:4px;">
+            <div style="font-size:0.71875rem; color:#065F46; margin-top:4px;">
                 You can edit your deliverables below. Updating will replace your active deliverable files for formal evaluation.
             </div>
         </div>
         """
 
-    current_pdf_hint = f'<div style="font-size:11px; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
-    current_code_hint = f'<div style="font-size:11px; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
+    current_pdf_hint = f'<div style="font-size:0.6875rem; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
+    current_code_hint = f'<div style="font-size:0.6875rem; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
     gh_val = getattr(existing_sub, "github_url", "") if existing_sub else ""
 
     submit_btn_txt = (
@@ -2700,11 +2701,11 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
         <!-- Hierarchy & Context Bar -->
         <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
-                <span style="font-size:12.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
+                <span style="font-size:0.78125rem; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
             </div>
-            <div style="font-size:11.5px; color:var(--frost-navy-50);">
+            <div style="font-size:0.71875rem; color:var(--frost-navy-50);">
                 <span>Assigned Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong></span>
             </div>
         </div>
@@ -2717,31 +2718,31 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
 
             <!-- 1. PDF Document Deliverable Field -->
             <div class="liquid-form-group" style="margin-bottom:18px;">
-                <label class="liquid-form-label" for="submission-pdf-file" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <label class="liquid-form-label" for="submission-pdf-file" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     {get_icon("file_text", 14)}<span>PDF Document Deliverable</span>
                 </label>
                 <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
                 {current_pdf_hint}
-                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload design charter, architecture report, or technical documentation (.pdf)</span>
+                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload design charter, architecture report, or technical documentation (.pdf)</span>
             </div>
 
             <!-- 2. Code / Script File Deliverable Field -->
             <div class="liquid-form-group" style="margin-bottom:18px;">
-                <label class="liquid-form-label" for="submission-code-file" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <label class="liquid-form-label" for="submission-code-file" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     {get_icon("code", 14)}<span>Code / Script File Deliverable</span>
                 </label>
                 <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
                 {current_code_hint}
-                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload executable script, pipeline package, queries, or zip archive (.py, .sql, .zip)</span>
+                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload executable script, pipeline package, queries, or zip archive (.py, .sql, .zip)</span>
             </div>
 
             <!-- 3. GitHub Repository Link Field -->
             <div class="liquid-form-group" style="margin-bottom:22px;">
-                <label class="liquid-form-label" for="submission-github-url" style="font-size:12px; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <label class="liquid-form-label" for="submission-github-url" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
                     {get_icon("github", 14)}<span>GitHub Repository Link</span>
                 </label>
-                <input type="url" id="submission-github-url" class="liquid-glass-control" value="{escape(gh_val)}" placeholder="https://github.com/username/project-repo" style="width:100%; font-size:12.5px;">
-                <span class="liquid-form-hint" style="font-size:11px; color:var(--frost-navy-50); display:block; margin-top:2px;">Direct URL to version-controlled repository or pull request</span>
+                <input type="url" id="submission-github-url" class="liquid-glass-control" value="{escape(gh_val)}" placeholder="https://github.com/username/project-repo" style="width:100%; font-size:0.78125rem;">
+                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Direct URL to version-controlled repository or pull request</span>
             </div>
 
             <!-- Actions Row -->
@@ -2749,7 +2750,7 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
                 <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
                     Cancel
                 </button>
-                <button type="submit" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;">
+                <button type="submit" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:0.8125rem;">
                     {submit_btn_txt}
                 </button>
             </div>
@@ -2828,8 +2829,8 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
 
     # Section 1: Outcomes HTML
     outcomes_list_items = "".join([
-        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:13px; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
-            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
+        f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:0.8125rem; color:var(--frost-navy); line-height:1.55; padding:10px 14px; background:rgba(234,244,255,0.45); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:8px;">
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(16,185,129,0.15); color:#047857; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">✓</span>
             <span style="font-weight:600; flex:1;">{escape(str(o))}</span>
         </div>'''
         for o in outcomes
@@ -2865,17 +2866,17 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="topic-card-{idx}" class="topic-row-card" style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
             <div style="flex:1;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <span style="font-size:11px; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
-                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
-                    <span style="font-size:11px; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
+                    <span style="font-size:0.6875rem; font-weight:800; background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:12px; border:1px solid rgba(6,182,212,0.25);">Topic {idx+1}</span>
+                    <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 10px; border-radius:12px; font-size:0.6875rem; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                    <span style="font-size:0.6875rem; color:var(--frost-navy-50); font-weight:600;">Curriculum Module</span>
                 </div>
-                <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
-                <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
+                <div style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(t_title)}</div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5;">{escape(t_desc)}</div>
             </div>
             <div style="flex-shrink:0;">
                 <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
                     onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
-                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:12px; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                    style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:0.75rem; font-weight:800; padding:8px 16px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
                     {btn_content}
                 </button>
             </div>
@@ -2914,7 +2915,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         modal_top_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%);"
         top_icon_style = "background:linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border:2px solid #F59E0B; color:#B45309;"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'
-        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:11px; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
+        meta_chip = '<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">🏆 Badge Earned • Completed</span>'
 
         tot_m = earned_asm.total_marks if earned_asm else 45.0
         pct_m = earned_asm.percentage if earned_asm else 90.0
@@ -2932,16 +2933,16 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:2px solid #F59E0B; padding:20px 24px; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.7) 100%); box-shadow:0 6px 20px rgba(245,158,11,0.25);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:14px; border-bottom:1.5px solid rgba(245,158,11,0.3); padding-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:12px;">
-                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
+                    <span style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1.125rem; box-shadow:0 2px 8px rgba(245,158,11,0.4);">
                         🏆
                     </span>
                     <div>
-                        <div style="font-size:16px; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
-                        <div style="font-size:12.5px; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
+                        <div style="font-size:1rem; font-weight:900; color:#78350F; letter-spacing:-0.2px;">Badge Earned &amp; Certified!</div>
+                        <div style="font-size:0.78125rem; color:#92400E; margin-top:2px;">Congratulations! Your milestone project has been officially evaluated, approved, and certified.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-family:var(--font-family-mono); font-size:14.5px; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
+                    <span style="font-family:var(--font-family-mono); font-size:0.90625rem; font-weight:900; color:#78350F; background:#FFFFFF; border:2px solid #F59E0B; padding:6px 16px; border-radius:20px; box-shadow:0 2px 8px rgba(245,158,11,0.2);">
                         Allocated Marks: {tot_m:.1f} / 50.0 ({pct_m:.1f}%)
                     </span>
                 </div>
@@ -2950,35 +2951,35 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             <!-- Rubric Criteria Scores Grid -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:14px;">
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Business Underst.</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{bu_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Architecture</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{ar_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Technical Knowl.</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{tk_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Presentation</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{pr_m:.1f} / 10</div>
                 </div>
                 <div style="background:#FFFFFF; border:1px solid rgba(245,158,11,0.4); border-radius:var(--radius-xs); padding:8px 10px; text-align:center;">
-                    <div style="font-size:10.5px; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
-                    <div style="font-size:14px; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
+                    <div style="font-size:0.65625rem; font-weight:700; color:#92400E; text-transform:uppercase;">Q&amp;A Defense</div>
+                    <div style="font-size:0.875rem; font-weight:900; color:#78350F; font-family:var(--font-family-mono); margin-top:2px;">{qa_m:.1f} / 10</div>
                 </div>
             </div>
 
             <!-- Evaluator Feedback Section -->
             <div style="background:#FFFFFF; border:1.5px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:14px 16px;">
-                <div style="font-size:11px; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
-                <div style="font-size:13px; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
+                <div style="font-size:0.6875rem; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Evaluator Feedback &amp; Certification Remarks:</div>
+                <div style="font-size:0.8125rem; color:#78350F; line-height:1.55; font-style:italic; margin-bottom:10px;">
                     "{escape(fb_txt)}"
                 </div>
-                {f'<div style=\"font-size:12px; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
-                {f'<div style=\"font-size:12px; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
+                {f'<div style=\"font-size:0.75rem; color:#92400E; margin-bottom:4px;\"><strong>Key Strengths:</strong> {escape(str_txt)}</div>' if str_txt else ''}
+                {f'<div style=\"font-size:0.75rem; color:#92400E;\"><strong>Recommendations:</strong> {escape(imp_txt)}</div>' if imp_txt else ''}
             </div>
         </div>
         """
@@ -2986,7 +2987,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         modal_top_style = "border:1.5px solid var(--deep-frozen-midnight);"
         top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
-        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:11px; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
+        meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Project</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
             earn_section_html = f"""
@@ -2997,12 +2998,12 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
                     </div>
                 </div>
                 <div>
-                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
+                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
                         Awaiting Guardian Award
                     </span>
                 </div>
@@ -3017,12 +3018,12 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
+                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
                         Pending Reviewer Evaluation
                     </span>
                 </div>
@@ -3037,15 +3038,15 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
                     </span>
                     <div>
-                        <div style="font-size:15px; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:13px; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
+                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
+                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Submit your project deliverables (Source Code, PDF Report, and GitHub URL) to earn this badge.</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
+                    <span style="background:rgba(16,185,129,0.15); color:#047857; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(16,185,129,0.3);">
                         Allocated Milestone
                     </span>
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:12.5px; padding:6px 18px;">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; font-size:0.78125rem; padding:6px 18px;">
                         Submit Deliverables &rarr;
                     </button>
                 </div>
@@ -3057,23 +3058,23 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         <!-- LOCATION BAR -->
         <div style="padding:16px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.18) 100%); {modal_top_style} margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; transition:border-color 0.3s ease;">
             <div>
-                <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
+                <span style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight);">
                     Badge Location
                 </span>
-                <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-                    <span style="color:var(--deep-frozen-midnight); font-size:14.5px; font-weight:800;">{escape(badge_title)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
-                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:13px;">&rarr;</span>
-                    <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:12px; font-weight:800;">Band {selected_band}</span>
+                <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy); margin-top:5px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <span style="color:var(--deep-frozen-midnight); font-size:0.90625rem; font-weight:800;">{escape(badge_title)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                    <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                    <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                    <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:700; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                    <span style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem;">&rarr;</span>
+                    <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:14px; font-size:0.75rem; font-weight:800;">Band {selected_band}</span>
                 </div>
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:12px; font-weight:700;">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:0.75rem; font-weight:700;">
                     Toggle All
                 </button>
             </div>
@@ -3086,11 +3087,11 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             </div>
             <div style="flex:1;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
-                    {f'<span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
+                    {f'<span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{escape(badge_code)}</span>' if badge_code else ''}
                     {meta_chip}
                     <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(badge_title)}</h2>
                 </div>
-                <p style="font-size:13.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
+                <p style="font-size:0.84375rem; color:var(--frost-navy-75); line-height:1.5; margin:0;">{escape(badge_desc)}</p>
             </div>
         </div>
 
@@ -3101,9 +3102,9 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(16,185,129,0.12); color:#047857; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
+                    <span style="font-size:0.9375rem; font-weight:800; color:#047857;">Outcomes ({len(outcomes)})</span>
                 </div>
-                <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                <span id="chevron-outcomes" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
             </div>
             <div id="content-outcomes" style="padding:0 20px 18px 20px; display:block;">
                 {outcomes_html}
@@ -3119,17 +3120,17 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(249,115,22,0.12); color:#F97316; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#EA580C;">Practice Project</span>
+                    <span style="font-size:0.9375rem; font-weight:800; color:#EA580C;">Practice Project</span>
                 </div>
-                <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                <span id="chevron-practice" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
             </div>
             <div id="content-practice" style="padding:0 20px 20px 20px; display:block;">
-                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
+                <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 14px 0;">Want some hands-on practice? Use this prompt to generate a practice project.</p>
                 <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                    <div id="practice-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
+                    <div id="practice-prompt-text" style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(practice_prompt)}</div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                        <span style="font-size:0.71875rem; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             Copy
                         </button>
@@ -3145,18 +3146,18 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0E7490; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#0891B2;">Learning Topics</span>
-                    <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
+                    <span style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Learning Topics</span>
+                    <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.15)' if progress_pct > 0 else 'rgba(157,183,213,0.18)'}; color:{'#10B981' if progress_pct > 0 else 'var(--frost-navy-50)'}; padding:2px 10px; border-radius:12px; font-size:0.6875rem; font-weight:700; border:1px solid {'rgba(16,185,129,0.3)' if progress_pct > 0 else 'rgba(157,183,213,0.3)'};">
                         {completed_topics_count}/{total_topics} Completed
                     </span>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.3); overflow:hidden;">
                             <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #06B6D4, #10B981); border-radius:4px; transition:width 0.4s ease;"></div>
                         </div>
-                        <span id="topics-progress-text" style="font-size:12px; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
+                        <span id="topics-progress-text" style="font-size:0.75rem; font-weight:800; color:#0891B2; min-width:36px;">{progress_pct}%</span>
                     </div>
                 </div>
-                <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                <span id="chevron-topics" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
             </div>
             <div id="content-topics" style="padding:0 20px 20px 20px; display:block;">
                 {topics_html}
@@ -3170,17 +3171,17 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#1D4ED8;">Learning Resources</span>
+                    <span style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Learning Resources</span>
                 </div>
-                <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                <span id="chevron-resources" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
             </div>
             <div id="content-resources" style="padding:0 20px 20px 20px; display:block;">
-                <p style="font-size:13px; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
+                <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 14px 0;">Not sure where to start learning? Use this prompt to find free resources tailored to this badge.</p>
                 <div style="background:rgba(241,245,249,0.85); border:1px solid var(--icy-steel-40); border-radius:var(--radius-md); padding:16px; position:relative;">
-                    <div id="resources-prompt-text" style="font-size:12.5px; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
+                    <div id="resources-prompt-text" style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.65; white-space:pre-wrap; font-family:var(--font-family-sans);">{escape(resources_prompt)}</div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.3); flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:11.5px; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                        <span style="font-size:0.71875rem; color:var(--frost-navy-50);">This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             Copy
                         </button>
@@ -3196,23 +3197,23 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                     <span style="width:28px; height:28px; border-radius:6px; background:rgba(139,92,246,0.12); color:#8B5CF6; display:flex; align-items:center; justify-content:center;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
                     </span>
-                    <span style="font-size:15px; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
+                    <span style="font-size:0.9375rem; font-weight:800; color:#7C3AED;">Related Skills, Capabilities &amp; Powers</span>
                 </div>
-                <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:13px; transition:transform 0.2s ease;">▲</span>
+                <span id="chevron-related" style="color:var(--frost-navy-50); font-weight:800; font-size:0.8125rem; transition:transform 0.2s ease;">▲</span>
             </div>
             <div id="content-related" style="padding:0 20px 20px 20px; display:block;">
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
                     <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
-                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
+                        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Skills</div>
+                        <span style="background:rgba(6,182,212,0.12); color:#0891B2; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(6,182,212,0.25);">{escape(active_skill)}</span>
                     </div>
                     <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
-                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
+                        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Capabilities</div>
+                        <span style="background:rgba(59,130,246,0.12); color:#1D4ED8; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(59,130,246,0.25);">{escape(active_cap)}</span>
                     </div>
                     <div>
-                        <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
-                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
+                        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px; margin-bottom:6px;">Powers</div>
+                        <span style="background:rgba(139,92,246,0.12); color:#7C3AED; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:700; display:inline-block; border:1px solid rgba(139,92,246,0.25);">{escape(active_power)}</span>
                     </div>
                 </div>
             </div>
@@ -3284,7 +3285,7 @@ def render_cosmonaut_results(
                     {get_icon("clipboard", 22)}
                 </div>
                 <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">No Badges Allocated in This Cycle</h3>
-                <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:520px; margin:0 auto; line-height:1.5;">
+                <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:520px; margin:0 auto; line-height:1.5;">
                     You do not have any published milestone badges or evaluation marksheets in the active performance cycle yet.
                 </p>
             </div>
@@ -3324,12 +3325,12 @@ def render_cosmonaut_results(
                 ext_banner = f"""
                 <div style="margin-bottom:20px; padding:12px 18px; background:linear-gradient(135deg, rgba(16,185,129,0.09) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #10B981; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#047857; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
-                        <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
+                        <span style="background:#047857; color:#FFFFFF; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
+                        <span style="font-size:0.8125rem; font-weight:700; color:var(--deep-frozen-midnight);">
                             Official Submission Deadline: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> (Approved by Guardian)
                         </span>
                     </div>
-                    <div style="font-size:12px; color:var(--frost-navy-50); font-style:italic;">
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50); font-style:italic;">
                         {escape(latest_ext.guardian_response or "Schedule adjustment approved by mentor.")}
                     </div>
                 </div>
@@ -3338,24 +3339,24 @@ def render_cosmonaut_results(
                 ext_banner = f"""
                 <div style="margin-bottom:20px; padding:12px 18px; background:rgba(245,158,11,0.08); border:1.5px solid #F59E0B; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#F59E0B; color:#451A03; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
-                        <span style="font-size:13px; font-weight:700; color:var(--deep-frozen-midnight);">
+                        <span style="background:#F59E0B; color:#451A03; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
+                        <span style="font-size:0.8125rem; font-weight:700; color:var(--deep-frozen-midnight);">
                             Requested Extension to <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> &bull; Awaiting Guardian Review
                         </span>
                     </div>
-                    <span style="font-size:12px; color:var(--frost-navy-50);">Current Cutoff: {escape(latest_ext.current_deadline)}</span>
+                    <span style="font-size:0.75rem; color:var(--frost-navy-50);">Current Cutoff: {escape(latest_ext.current_deadline)}</span>
                 </div>
                 """
             elif latest_ext.status == "rejected":
                 ext_banner = f"""
                 <div style="margin-bottom:20px; padding:12px 18px; background:rgba(239,68,68,0.06); border:1px solid #EF4444; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#EF4444; color:#FFFFFF; font-size:11px; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Rejected</span>
-                        <span style="font-size:13px; font-weight:700; color:var(--frost-navy);">
+                        <span style="background:#EF4444; color:#FFFFFF; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Rejected</span>
+                        <span style="font-size:0.8125rem; font-weight:700; color:var(--frost-navy);">
                             Original Cutoff Maintained: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.current_deadline)}</span>
                         </span>
                     </div>
-                    <div style="font-size:12px; color:var(--frost-navy-50); font-style:italic;">{escape(latest_ext.guardian_response or "Extension rejected by mentor.")}</div>
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50); font-style:italic;">{escape(latest_ext.guardian_response or "Extension rejected by mentor.")}</div>
                 </div>
                 """
 
@@ -3369,7 +3370,7 @@ def render_cosmonaut_results(
             </div>
         </div>
         <div style="min-width:320px;">
-            <label style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; display:block; margin-bottom:6px;">Select Milestone Badge</label>
+            <label style="font-size:0.71875rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; display:block; margin-bottom:6px;">Select Milestone Badge</label>
             <div class="liquid-select-wrapper">
                 <select id="results-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_results_badge', this.value)">
                     {"".join(badge_options)}
@@ -3386,10 +3387,10 @@ def render_cosmonaut_results(
         sheet_content = f"""
         <div class="liquid-glass-card" style="padding:48px 32px; text-align:center; border:1.5px dashed var(--icy-steel); background:rgba(255,255,255,0.7);">
             <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:rgba(23,52,92,0.08); margin-bottom:16px;">
-                <span style="font-size:24px;">{get_icon("clipboard", 20)}</span>
+                <span style="font-size:1.5rem;">{get_icon("clipboard", 20)}</span>
             </div>
             <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Evaluation Pending for {escape(badge_code)}</h3>
-            <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:540px; margin:0 auto 20px auto; line-height:1.5;">
+            <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:540px; margin:0 auto 20px auto; line-height:1.5;">
                 <strong>{escape(badge_title)}</strong> has been allocated by your Guardian. Once you submit project deliverables, your Guardian will publish your marksheet across the 50-mark universal rubric.
             </p>
             <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{selected_badge_id}')">
@@ -3454,27 +3455,27 @@ def render_cosmonaut_extensions(
         b_title = badge.title if badge else "Milestone Deliverable"
 
         if ext.status == "approved":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
             action_btn = f"""
-            <button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+            <button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
                 Submit Deliverable &rarr;
             </button>
             """
         elif ext.status == "rejected":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
             action_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
+            <button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px; white-space:nowrap;" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{ext.badge_id}')">
                 Submit Deliverable
             </button>
             """
         else:
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#451A03; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
-            action_btn = '<span style="font-size:12px; color:var(--frost-navy-50); font-weight:600; font-style:italic;">Awaiting Mentor</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#F59E0B; color:#451A03; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
+            action_btn = '<span style="font-size:0.75rem; color:var(--frost-navy-50); font-weight:600; font-style:italic;">Awaiting Mentor</span>'
 
         feedback_html = ""
         if ext.guardian_response:
             feedback_html = f"""
-            <div style="margin-top:6px; font-size:12px; padding:6px 10px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); color:var(--frost-navy);">
+            <div style="margin-top:6px; font-size:0.75rem; padding:6px 10px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); color:var(--frost-navy);">
                 <strong>Guardian Note:</strong> {escape(ext.guardian_response)}
             </div>
             """
@@ -3483,18 +3484,18 @@ def render_cosmonaut_extensions(
         <tr style="border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;">
             <td style="padding:14px 16px; vertical-align:top;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
-                    <strong style="font-size:13.5px; color:var(--frost-navy);">{escape(b_title)}</strong>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                    <strong style="font-size:0.84375rem; color:var(--frost-navy);">{escape(b_title)}</strong>
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-75); line-height:1.4; max-width:420px;">
+                <div style="font-size:0.75rem; color:var(--frost-navy-75); line-height:1.4; max-width:420px;">
                     <span style="color:var(--frost-navy-50);">Reason:</span> {escape(ext.reason)}
                 </div>
                 {feedback_html}
             </td>
-            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:12.5px; color:var(--frost-navy-75); white-space:nowrap;">
+            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:0.78125rem; color:var(--frost-navy-75); white-space:nowrap;">
                 {escape(ext.current_deadline)}
             </td>
-            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:13px; font-weight:800; color:var(--deep-frozen-midnight); white-space:nowrap;">
+            <td style="padding:14px 16px; vertical-align:middle; font-family:var(--font-family-mono); font-size:0.8125rem; font-weight:800; color:var(--deep-frozen-midnight); white-space:nowrap;">
                 {escape(ext.proposed_deadline)}
             </td>
             <td style="padding:14px 16px; vertical-align:middle; text-align:center; white-space:nowrap;">
@@ -3521,7 +3522,7 @@ def render_cosmonaut_extensions(
                 {render_back_button()}
                 <div>
                     <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Milestone Deadline Extension Portal</h2>
-                    <p style="font-size:13.5px; color:var(--frost-navy-50); margin:0;">Request scheduling adjustments for active milestones and track evaluations in real-time.</p>
+                    <p style="font-size:0.84375rem; color:var(--frost-navy-50); margin:0;">Request scheduling adjustments for active milestones and track evaluations in real-time.</p>
                 </div>
             </div>
         </div>
@@ -3532,7 +3533,7 @@ def render_cosmonaut_extensions(
             <div class="liquid-submission-portal" style="padding:28px 32px;">
                 <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px;">
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Request Deadline Extension</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Choose an in-progress milestone and specify a realistic engineering rationale for mentor review.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Choose an in-progress milestone and specify a realistic engineering rationale for mentor review.</div>
                 </div>
 
                 <form id="deadline-extension-form" onsubmit="event.preventDefault(); const b=document.getElementById('ext-badge'); const d=document.getElementById('ext-date'); const r=document.getElementById('ext-reason'); window.StarAppBridge.dispatchAction('submit_deadline_extension_request', JSON.stringify({{badge_id:b.value, proposed_deadline:d.value, reason:r.value}}));">
@@ -3577,7 +3578,7 @@ def render_cosmonaut_extensions(
                     <div style="display:flex; justify-content:flex-end;">
                         <div class="btn-metal-wrapper">
                             <div class="btn-metal-inner"></div>
-                            <button type="submit" class="btn-metal" style="height:44px; padding:0 24px; font-size:13.5px; font-weight:700;">
+                            <button type="submit" class="btn-metal" style="height:44px; padding:0 24px; font-size:0.84375rem; font-weight:700;">
                                 Submit Extension Request for Guardian Review &rarr;
                             </button>
                         </div>
@@ -3590,9 +3591,9 @@ def render_cosmonaut_extensions(
                 <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div>
                         <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Submitted Requests & Actions</h3>
-                        <div style="font-size:12.5px; color:var(--frost-navy-50);">Requested milestone extensions, live status, and necessary actions.</div>
+                        <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Requested milestone extensions, live status, and necessary actions.</div>
                     </div>
-                    <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                         {len(extensions)} Total Request{"s" if len(extensions) != 1 else ""}
                     </span>
                 </div>
@@ -3601,11 +3602,11 @@ def render_cosmonaut_extensions(
                     <table style="width:100%; border-collapse:collapse; text-align:left;">
                         <thead>
                             <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.4);">
-                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Milestone & Details</th>
-                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Current Cutoff</th>
-                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Proposed Cutoff</th>
-                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:center;">Status</th>
-                                <th style="padding:10px 16px; font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:right;">Action</th>
+                                <th style="padding:10px 16px; font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Milestone & Details</th>
+                                <th style="padding:10px 16px; font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Current Cutoff</th>
+                                <th style="padding:10px 16px; font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Proposed Cutoff</th>
+                                <th style="padding:10px 16px; font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:center;">Status</th>
+                                <th style="padding:10px 16px; font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; text-align:right;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3650,7 +3651,7 @@ def render_cosmonaut_announcements(
                     <span>•</span>
                     <span>Date: {escape(ann.published_at[:10])}</span>
                 </div>
-                <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy); margin-top:8px;">{escape(ann.message)}</p>
+                <p style="font-size:0.84375rem; line-height:1.5; color:var(--frost-navy); margin-top:8px;">{escape(ann.message)}</p>
             </div>
         </div>
         """)
@@ -3662,7 +3663,7 @@ def render_cosmonaut_announcements(
                 {render_back_button()}
                 <div>
                     <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0;">Academy Announcement Center</h2>
-                    <p style="font-size:13px; color:var(--frost-navy-50); margin:2px 0 0 0;">Notices and schedule updates broadcasted by Academy Leadership.</p>
+                    <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:2px 0 0 0;">Notices and schedule updates broadcasted by Academy Leadership.</p>
                 </div>
             </div>
         </div>
@@ -3685,11 +3686,11 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
         _badge = _store_ref.get_badge(act.badge_id) if act.badge_id else None
         rows.append(f"""
         <tr>
-            <td style="font-family:var(--font-family-mono); font-size:12px; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
+            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
                 <div style="font-weight:700;">{escape(humanize_internal_ids(act.summary))}</div>
-                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
             </td>
             <td>{escape(_badge.code if _badge else (act.badge_id or "Academy"))}</td>
         </tr>
@@ -3802,37 +3803,37 @@ def render_cosmonaut_review_requests(
         for h in history_records:
             ev_type = h.get("event_type", "")
             if ev_type == "approved":
-                ev_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Authorized & Approved</span>'
+                ev_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Authorized & Approved</span>'
             elif ev_type == "returned":
-                ev_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:700;">Returned with Feedback</span>'
+                ev_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:700;">Returned with Feedback</span>'
             elif ev_type == "edited":
-                ev_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Badge Edited</span>'
+                ev_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:700;">Badge Edited</span>'
             else:
-                ev_pill = '<span class="status-pill status-active" style="font-size:11px; font-weight:700;">Review Dispatched</span>'
+                ev_pill = '<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">Review Dispatched</span>'
 
             history_rows.append(f"""
             <tr style="border-bottom:1px solid var(--icy-steel-25);">
                 <td style="padding:14px 16px;">
-                    <div style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(h.get('badge_title', ''))}</div>
-                    <div style="font-family:var(--font-family-mono); font-size:11.5px; color:var(--deep-frozen-midnight);">{escape(h.get('badge_code', ''))}</div>
+                    <div style="font-weight:700; color:var(--frost-navy); font-size:0.8125rem;">{escape(h.get('badge_title', ''))}</div>
+                    <div style="font-family:var(--font-family-mono); font-size:0.71875rem; color:var(--deep-frozen-midnight);">{escape(h.get('badge_code', ''))}</div>
                 </td>
                 <td style="padding:14px 16px;">
-                    <span style="font-family:var(--font-family-mono); font-weight:800; font-size:11px; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(h.get('target_band', 'B1'))}</span>
+                    <span style="font-family:var(--font-family-mono); font-weight:800; font-size:0.6875rem; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(h.get('target_band', 'B1'))}</span>
                 </td>
-                <td style="padding:14px 16px; font-size:11.5px; color:var(--frost-navy-75); max-width:240px; line-height:1.4;">
+                <td style="padding:14px 16px; font-size:0.71875rem; color:var(--frost-navy-75); max-width:240px; line-height:1.4;">
                     {escape(h.get('taxonomy_tree', ''))}
                 </td>
                 <td style="padding:14px 16px; text-align:center;">
                     {ev_pill}
                 </td>
-                <td style="padding:14px 16px; font-size:12px; font-weight:600; color:var(--frost-navy);">
+                <td style="padding:14px 16px; font-size:0.75rem; font-weight:600; color:var(--frost-navy);">
                     {escape(h.get('formatted_timestamp', ''))}
                 </td>
-                <td style="padding:14px 16px; font-size:11.5px; color:var(--frost-navy-75); max-width:220px;">
+                <td style="padding:14px 16px; font-size:0.71875rem; color:var(--frost-navy-75); max-width:220px;">
                     {escape(h.get('notes') or 'Action recorded.')}
                 </td>
                 <td style="padding:14px 16px; text-align:right;">
-                    <button type="button" class="btn-secondary btn-sm" style="font-size:11px; font-weight:700;"
+                    <button type="button" class="btn-secondary btn-sm" style="font-size:0.6875rem; font-weight:700;"
                             onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{h.get('badge_id', '')}')">
                         Inspect
                     </button>
@@ -3845,7 +3846,7 @@ def render_cosmonaut_review_requests(
             <div style="overflow-x:auto;">
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead>
-                        <tr style="background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.12) 100%); border-bottom:1.5px solid var(--icy-steel-30); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-75);">
+                        <tr style="background:linear-gradient(135deg, rgba(23,52,92,0.06) 0%, rgba(157,183,213,0.12) 100%); border-bottom:1.5px solid var(--icy-steel-30); font-size:0.6875rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-75);">
                             <th style="padding:12px 16px;">Badge Title & Code</th>
                             <th style="padding:12px 16px;">Band</th>
                             <th style="padding:12px 16px;">Taxonomy Hierarchy Tree</th>
@@ -3880,33 +3881,33 @@ def render_cosmonaut_review_requests(
             dec_notes = escape(r.get("decision_notes") or "")
 
             if wf_status == "pending_review":
-                status_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:700;">Pending Review</span>'
+                status_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:700;">Pending Review</span>'
             elif wf_status == "approved":
-                status_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Approved</span>'
+                status_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Approved</span>'
             elif wf_status == "returned":
-                status_pill = '<span class="status-pill status-rejected" style="font-size:11px; font-weight:700;">Returned for Changes</span>'
+                status_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:700;">Returned for Changes</span>'
             else:
-                status_pill = f'<span class="status-pill status-active" style="font-size:11px; font-weight:700;">{escape(wf_status.title())}</span>'
+                status_pill = f'<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">{escape(wf_status.title())}</span>'
 
             # Outcomes preview
             outcomes = r.get("learning_outcomes", [])
             outcomes_list = []
             for oc in outcomes[:3]:
-                outcomes_list.append(f'<li style="margin-bottom:4px; font-size:12px; color:var(--frost-navy);">{escape(str(oc))}</li>')
-            outcomes_html = f'<ul style="margin:6px 0 0 16px; padding:0; list-style-type:disc;">{"".join(outcomes_list)}</ul>' if outcomes_list else '<span style="font-size:12px; color:var(--frost-navy-50);">No outcomes specified.</span>'
+                outcomes_list.append(f'<li style="margin-bottom:4px; font-size:0.75rem; color:var(--frost-navy);">{escape(str(oc))}</li>')
+            outcomes_html = f'<ul style="margin:6px 0 0 16px; padding:0; list-style-type:disc;">{"".join(outcomes_list)}</ul>' if outcomes_list else '<span style="font-size:0.75rem; color:var(--frost-navy-50);">No outcomes specified.</span>'
 
             # Topics pills
             topics = r.get("learning_topics", [])
             topic_pills = []
             for t in topics[:6]:
                 t_title = t.get("title") if isinstance(t, dict) else str(t)
-                topic_pills.append(f'<span style="font-size:11px; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-weight:600;">{escape(t_title)}</span>')
+                topic_pills.append(f'<span style="font-size:0.6875rem; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-weight:600;">{escape(t_title)}</span>')
             topics_html = f'<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">{"".join(topic_pills)}</div>' if topic_pills else ""
 
             # Practice Project requirements preview
             reqs = r.get("project_requirements", "")
             reqs_html = f"""
-            <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.7); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:12px; color:var(--frost-navy-75);">
+            <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.7); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:0.75rem; color:var(--frost-navy-75);">
                 <strong style="color:var(--frost-navy);">Practice Project Specification:</strong> {escape(reqs[:180])}{"..." if len(reqs) > 180 else ""}
             </div>
             """ if reqs else ""
@@ -3915,21 +3916,21 @@ def render_cosmonaut_review_requests(
             notes_box = ""
             if dec_notes:
                 notes_box = f"""
-                <div style="margin-top:10px; padding:8px 12px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:12px; color:var(--frost-navy);">
+                <div style="margin-top:10px; padding:8px 12px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:0.75rem; color:var(--frost-navy);">
                     <strong style="color:#DC2626;">Reviewer Feedback Notes:</strong> {dec_notes}
                 </div>
                 """
 
             # Action Buttons
             inspect_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700;"
+            <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700;"
                     onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b_id}')">
                 Inspect Badge
             </button>
             """
 
             edit_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700;"
+            <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700;"
                     onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b_id}')">
                 Edit Badge
             </button>
@@ -3939,20 +3940,20 @@ def render_cosmonaut_review_requests(
             return_btn = ""
             if wf_status == "pending_review":
                 approve_btn = f"""
-                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:800; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;"
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:800; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;"
                         onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
                     Accept & Approve &rarr;
                 </button>
                 """
                 return_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
                         onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b_id}')">
                     Return with Feedback
                 </button>
                 """
             elif wf_status == "returned":
                 approve_btn = f"""
-                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:800;"
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:800;"
                         onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
                     Re-evaluate & Approve &rarr;
                 </button>
@@ -3963,30 +3964,30 @@ def render_cosmonaut_review_requests(
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
                     <div>
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
-                            <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{b_code}</span>
-                            <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">TARGET: BAND {target_band}</span>
+                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{b_code}</span>
+                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">TARGET: BAND {target_band}</span>
                             {status_pill}
                         </div>
-                        <h3 style="font-size:15.5px; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">{b_title}</h3>
-                        <div style="font-size:12px; color:var(--frost-navy-75); font-weight:600;">{b_loc}</div>
+                        <h3 style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">{b_title}</h3>
+                        <div style="font-size:0.75rem; color:var(--frost-navy-75); font-weight:600;">{b_loc}</div>
                     </div>
 
-                    <div style="text-align:right; font-size:11.5px; color:var(--frost-navy-50);">
+                    <div style="text-align:right; font-size:0.71875rem; color:var(--frost-navy-50);">
                         <div>Assigned by: <strong style="color:var(--frost-navy);">{creator_name}</strong></div>
                         <div>Assigned: <strong>{assigned_at}</strong> &bull; Due: <strong style="color:#B45309;">{due_date}</strong></div>
                     </div>
                 </div>
 
-                <p style="font-size:12.5px; color:var(--frost-navy-75); margin:0 0 10px 0; line-height:1.5;">{b_desc}</p>
+                <p style="font-size:0.78125rem; color:var(--frost-navy-75); margin:0 0 10px 0; line-height:1.5;">{b_desc}</p>
 
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:14px; margin-bottom:14px;">
                     <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Key Learning Outcomes</div>
+                        <div style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Key Learning Outcomes</div>
                         {outcomes_html}
                     </div>
 
                     <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        <div style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Curriculum Topics</div>
+                        <div style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Curriculum Topics</div>
                         {topics_html}
                     </div>
                 </div>
@@ -3995,7 +3996,7 @@ def render_cosmonaut_review_requests(
                 {notes_box}
 
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid var(--icy-steel-25);">
-                    <div style="font-size:11.5px; color:var(--frost-navy-50);">
+                    <div style="font-size:0.71875rem; color:var(--frost-navy-50);">
                         Institutional Reviewer: <strong style="color:var(--deep-frozen-midnight);">{escape(current_user.name)} (Band {user_band})</strong>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -4013,8 +4014,8 @@ def render_cosmonaut_review_requests(
         <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:rgba(23,52,92,0.06); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight);">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         </div>
-        <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Review Requests in this Queue</h3>
-        <p style="font-size:13px; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
+        <h3 style="font-size:1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Review Requests in this Queue</h3>
+        <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
             When Guardians author badges for lower bands and request your oversight, they will appear here for review and authorization.
         </p>
     </div>
@@ -4050,31 +4051,36 @@ def render_cosmonaut_review_requests(
         sent_at = sent_ts[:10] if sent_ts else ""
 
         if r_status == "accepted":
-            status_badge = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">{get_icon("check", 12)} Request Accepted</span>'
-            action_btns = f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'reject_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline / Revoke</button>'
+            status_badge = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">{get_icon("check", 12)} Request Accepted</span>'
+            action_btns = f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'reject_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline / Revoke</button>'
             card_border = "border:1.5px solid #059669; background:rgba(5,150,105,0.03);"
+        elif r_status == "rejected" and req.get("expired"):
+            status_badge = f'<span class="status-pill status-rejected" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">{get_icon("clock", 12)} Request Expired</span>'
+            action_btns = '<span class="rq-resp is-bad">No reply within 24 hours &mdash; ask the Guardian to resend this request.</span>'
+            card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
         elif r_status == "rejected":
-            status_badge = f'<span class="status-pill status-rejected" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">{get_icon("x", 12)} Request Declined</span>'
-            action_btns = f'<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'accept_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;">{get_icon("check", 12)} Accept Request</button>'
+            status_badge = f'<span class="status-pill status-rejected" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">{get_icon("x", 12)} Request Declined</span>'
+            action_btns = f'<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'accept_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:700;">{get_icon("check", 12)} Accept Request</button>'
             card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
         else:
-            status_badge = f'<span class="status-pill status-pending" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">{get_icon("clock", 12)} Awaiting Your Decision</span>'
-            action_btns = f'''<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:6px 14px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">{get_icon("check", 12)} Accept & Confirm</button>
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:6px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline</button>'''
+            status_badge = f'<span class="status-pill status-pending" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">{get_icon("clock", 12)} Awaiting Your Decision</span>'
+            action_btns = f'''<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.71875rem; padding:6px 14px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">{get_icon("check", 12)} Accept & Confirm</button>
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.71875rem; padding:6px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline</button>'''
             card_border = "border:1.5px solid var(--icy-steel-50); background:rgba(255,255,255,0.95);"
 
         m_req_cards.append(f"""
         <div class="liquid-glass-card" style="padding:16px 20px; {card_border} display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
             <div style="display:flex; flex-direction:column; gap:6px;">
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span style="font-size:14.5px; font-weight:800; color:var(--frost-navy);">{escape(badge_name)}</span>
-                    <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 7px; border-radius:3px;">BAND {escape(band)}</span>
+                    <span style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy);">{escape(badge_name)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 7px; border-radius:3px;">BAND {escape(band)}</span>
                     {status_badge}
+                    {render_request_timer(req, "Respond within")}
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-75);">
+                <div style="font-size:0.75rem; color:var(--frost-navy-75);">
                     <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("users", 13)} <strong>{cosmo_count}</strong> Assigned Cosmonaut(s): <span style="color:var(--deep-frozen-midnight); font-weight:600;">{escape(cosmo_names_str)}</span></span>
                 </div>
-                <div style="font-size:11.5px; color:var(--frost-navy-50); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <div style="font-size:0.71875rem; color:var(--frost-navy-50); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                     <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("calendar", 13)} Review Window: <strong style="color:#047857;">{escape(dates_str)}</strong></span>
                     {f'<span>&bull; Sent: {escape(sent_at)}</span>' if sent_at else ''}
                 </div>
@@ -4096,12 +4102,12 @@ def render_cosmonaut_review_requests(
                     </h3>
                 </div>
             </div>
-            <span class="status-pill status-active" style="font-weight:700; font-size:11px;">
+            <span class="status-pill status-active" style="font-weight:700; font-size:0.6875rem;">
                 {len(mapping_reqs)} Review Assignment(s)
             </span>
         </div>
         <div>
-            {''.join(m_req_cards) if m_req_cards else "<div style='text-align:center; padding:32px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No pending reviewer mapping requests. When a Guardian selects you in the Mapping Matrix, assignments will appear here.</div>"}
+            {''.join(m_req_cards) if m_req_cards else "<div style='text-align:center; padding:32px 20px; color:var(--frost-navy-50); font-size:0.8125rem; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No pending reviewer mapping requests. When a Guardian selects you in the Mapping Matrix, assignments will appear here.</div>"}
         </div>
     </div>
     """
@@ -4112,8 +4118,8 @@ def render_cosmonaut_review_requests(
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {user_band}</span>
-                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">{user_track}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {user_band}</span>
+                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">{user_track}</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Review Requests</h1>
             </div>
@@ -4139,7 +4145,7 @@ def render_cosmonaut_review_requests(
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
                 {tabs_html}
                 <div style="min-width:240px; max-width:320px; width:100%;">
-                    <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:12px; padding:7px 12px;"
+                    <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:0.75rem; padding:7px 12px;"
                            oninput="window.StarAppBridge.dispatchAction('search_cosmo_requests', this.value)">
                 </div>
             </div>
@@ -4192,18 +4198,18 @@ def _render_review_deliverables_tray(sub: ProjectSubmission) -> str:
     gh_ic = get_icon("github", 12, "margin-right:4px; color:var(--frost-navy);")
 
     gh_pill = (
-        f'<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{gh_ic}{escape(repo_lbl)}</span>'
+        f'<span style="display:inline-flex; align-items:center; font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{gh_ic}{escape(repo_lbl)}</span>'
         if github_url else ""
     )
     return f"""
     <div style="background:rgba(241,245,249,0.75); border:1px solid var(--icy-steel-30); border-radius:8px; padding:8px 12px; margin-bottom:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:5px;">
-            <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.45px; color:var(--frost-navy-50);">Submitted Deliverables &bull; Attempt #{getattr(sub, 'attempt_number', 1)}</span>
-            {f'<span style="font-size:10.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(sub_dt)} UTC</span>' if sub_dt else ''}
+            <span style="font-size:0.625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.45px; color:var(--frost-navy-50);">Submitted Deliverables &bull; Attempt #{getattr(sub, 'attempt_number', 1)}</span>
+            {f'<span style="font-size:0.65625rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(sub_dt)} UTC</span>' if sub_dt else ''}
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700; color:var(--frost-navy); background:#FFFFFF; border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{pdf_ic}{escape(pdf_name)}</span>
-            <span style="display:inline-flex; align-items:center; font-size:11px; font-weight:700; color:var(--frost-navy); background:#FFFFFF; border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{code_ic}{escape(code_name)}</span>
+            <span style="display:inline-flex; align-items:center; font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:#FFFFFF; border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{pdf_ic}{escape(pdf_name)}</span>
+            <span style="display:inline-flex; align-items:center; font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:#FFFFFF; border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{code_ic}{escape(code_name)}</span>
             {gh_pill}
         </div>
     </div>
@@ -4561,13 +4567,13 @@ def render_reviewer_badge_schedule(
         badge_prompt_status = getattr(b_prompt[0], "status", "none") if b_prompt else "none"
 
         if badge_prompt_status in ("released", "sent"):
-            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
+            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
             badge_btn_text = "✏️ Edit Project"
         elif badge_prompt_status == "draft":
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
             badge_btn_text = "📝 Continue Project Draft"
         else:
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:11px; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
+            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">⏳ 3-Day Project Preparation</span>'
             badge_btn_text = "✨ Create Project (AI)"
 
         chevron = "▲" if is_expanded else "▼"
@@ -4591,7 +4597,7 @@ def render_reviewer_badge_schedule(
             g_asm = ctx["g_asm"]
 
             if sub and getattr(sub, "status", "") in ("retake_required", "resubmission_requested"):
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:2px 10px; border-radius:999px;"><span>&bull;</span> Retake Required (Awaiting Cadet)</span>'
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:2px 10px; border-radius:999px;"><span>&bull;</span> Retake Required (Awaiting Cadet)</span>'
                 short_status = "Retake Required"
                 card_action_btn = f"""
                 <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4599,7 +4605,7 @@ def render_reviewer_badge_schedule(
                 </button>
                 """
             elif rev_asm:
-                card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#EEF2FF; border:1px solid #C7D2FE; color:#4338CA; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ✓ Evaluated: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
+                card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#EEF2FF; border:1px solid #C7D2FE; color:#4338CA; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> ✓ Evaluated: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
                 short_status = f"Evaluated {rev_asm.total_marks:.1f}/50"
                 card_action_btn = f"""
                 <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id if sub else rev_asm.submission_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4607,7 +4613,7 @@ def render_reviewer_badge_schedule(
                 </button>
                 """
             elif sub:
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📥 Deliverables Submitted</span>'
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 📥 Deliverables Submitted</span>'
                 short_status = f"Attempt #{getattr(sub, 'attempt_number', 1)} Submitted"
                 card_action_btn = f"""
                 <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4615,7 +4621,7 @@ def render_reviewer_badge_schedule(
                 </button>
                 """
             elif assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#E0F2FE; border:1px solid #BAE6FD; color:#0284C7; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 🚀 Project Given</span>'
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#E0F2FE; border:1px solid #BAE6FD; color:#0284C7; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 🚀 Project Given</span>'
                 short_status = "Project Given"
                 card_action_btn = f"""
                 <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4623,7 +4629,7 @@ def render_reviewer_badge_schedule(
                 </button>
                 """
             elif assigned_proj and getattr(assigned_proj, "status", "") == "draft":
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> 📝 Draft Project Saved</span>'
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 📝 Draft Project Saved</span>'
                 short_status = "Draft Saved"
                 card_action_btn = f"""
                 <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4631,7 +4637,7 @@ def render_reviewer_badge_schedule(
                 </button>
                 """
             else:
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:13px; line-height:1;">&bull;</span> ⏳ 3-Day Project Preparation</span>'
+                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> ⏳ 3-Day Project Preparation</span>'
                 short_status = "3-Day Prep"
                 card_action_btn = f"""
                 <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
@@ -4640,14 +4646,14 @@ def render_reviewer_badge_schedule(
                 """
 
             roster_summary_chips.append(
-                f'<span style="font-size:11px; font-weight:700; color:var(--frost-navy); background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-40); padding:2px 8px; border-radius:999px;">{escape(c_name)} &bull; <span style="color:#0284C7;">{escape(short_status)}</span></span>'
+                f'<span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-40); padding:2px 8px; border-radius:999px;">{escape(c_name)} &bull; <span style="color:#0284C7;">{escape(short_status)}</span></span>'
             )
 
             proj_banner_html = ""
             if assigned_proj and getattr(assigned_proj, "title", ""):
                 proj_st_lbl = "Released Brief" if getattr(assigned_proj, "status", "") in ("released", "sent") else "Draft Brief"
                 proj_banner_html = f"""
-                <div style="font-size:12px; color:#0369A1; background:rgba(224,242,254,0.6); border:1px solid rgba(2,132,199,0.25); border-radius:7px; padding:6px 10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                <div style="font-size:0.75rem; color:#0369A1; background:rgba(224,242,254,0.6); border:1px solid rgba(2,132,199,0.25); border-radius:7px; padding:6px 10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
                     <span><strong>Assigned Project ({escape(proj_st_lbl)}):</strong> {escape(assigned_proj.title)}</span>
                 </div>
                 """
@@ -4663,21 +4669,21 @@ def render_reviewer_badge_schedule(
                 if g_asm:
                     g_fb = (getattr(g_asm, "overall_feedback", "") or getattr(g_asm, "remarks", "") or "").strip()
                     bits.append(f'<strong>Guardian Review ({escape(g_asm.decision.replace("_", " ").title())}):</strong> {g_asm.total_marks:.1f}/50{f" — {escape(g_fb)}" if g_fb else ""}')
-                eval_note_html = f'<div style="font-size:11.5px; color:#1E293B; background:rgba(238,242,255,0.75); border:1px solid #C7D2FE; border-radius:7px; padding:7px 11px; margin-bottom:10px; line-height:1.45;">{"<br>".join(bits)}</div>'
+                eval_note_html = f'<div style="font-size:0.71875rem; color:#1E293B; background:rgba(238,242,255,0.75); border:1px solid #C7D2FE; border-radius:7px; padding:7px 11px; margin-bottom:10px; line-height:1.45;">{"<br>".join(bits)}</div>'
 
             cadet_cards_html.append(f"""
             <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid var(--icy-steel); background:#FFFFFF; border-radius:12px; box-shadow:0 4px 14px rgba(7,22,41,0.05); margin-bottom:12px;">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
                     <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                        <div class="user-avatar" style="width:34px; height:34px; font-size:11.5px; font-weight:800; border:1px solid var(--icy-steel); flex-shrink:0;">{escape(c_avatar)}</div>
+                        <div class="user-avatar" style="width:34px; height:34px; font-size:0.71875rem; font-weight:800; border:1px solid var(--icy-steel); flex-shrink:0;">{escape(c_avatar)}</div>
                         <div style="min-width:0;">
-                            <div style="font-size:15px; font-weight:800; color:var(--frost-navy); line-height:1.25;">{escape(c_name)}</div>
-                            <div style="font-size:12.5px; color:var(--frost-navy-75);">Band {escape(c_band)} &bull; {escape(c_track)}</div>
+                            <div style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy); line-height:1.25;">{escape(c_name)}</div>
+                            <div style="font-size:0.78125rem; color:var(--frost-navy-75);">Band {escape(c_band)} &bull; {escape(c_track)}</div>
                         </div>
                     </div>
                     {card_status_pill}
                 </div>
-                <div style="display:flex; gap:22px; flex-wrap:wrap; font-size:12.5px; color:var(--frost-navy); margin-bottom:12px;">
+                <div style="display:flex; gap:22px; flex-wrap:wrap; font-size:0.78125rem; color:var(--frost-navy); margin-bottom:12px;">
                     <span>📅 Review Window: <strong style="color:#047857;">{escape(r_date)}</strong></span>
                     <span>⏰ Submission Deadline: <strong style="color:#B91C1C;">{escape(deadline)}</strong></span>
                 </div>
@@ -4709,16 +4715,16 @@ def render_reviewer_badge_schedule(
                  style="padding:16px 22px; cursor:pointer; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%); border-bottom:{'1.5px solid var(--icy-steel-30)' if is_expanded else 'none'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div style="flex:1; min-width:240px;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
-                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
-                        {f'<span style="font-size:12px; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
-                        <span class="status-pill status-active" style="font-size:11px; font-weight:700;">Upcoming Review</span>
+                        {f'<span style="font-family:var(--font-family-mono); font-size:0.71875rem; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
+                        {f'<span style="font-size:0.75rem; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
+                        <span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">Upcoming Review</span>
                         {badge_proj_pill}
                     </div>
                     <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0; letter-spacing:-0.3px;">
                         {escape(bg["badge_title"])}
                     </h3>
-                    <div style="font-size:12px; color:var(--frost-navy-50); margin-bottom:8px;">
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50); margin-bottom:8px;">
                         📅 Review Window: <strong style="color:#047857;">{escape(bg["review_date"])}</strong> &bull; ⏰ Deadline: <strong style="color:#DC2626;">{escape(bg["deadline"])}</strong>
                     </div>
                     <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
@@ -4727,10 +4733,10 @@ def render_reviewer_badge_schedule(
                 </div>
 
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;" onclick="event.stopPropagation();">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="font-size:11.5px; padding:6px 14px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="font-size:0.71875rem; padding:6px 14px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
                         {badge_btn_text}
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')" style="font-size:11.5px; padding:6px 14px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')" style="font-size:0.71875rem; padding:6px 14px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
                         👥 {num_cadets} Mapped Cadet{'s' if num_cadets != 1 else ''} {chevron}
                     </button>
                 </div>
@@ -4769,15 +4775,15 @@ def render_reviewer_badge_schedule(
         score_pills = []
         if rev_asm_c:
             score_pills.append(
-                f'<span style="font-size:11.5px; font-weight:800; color:#0369A1; background:rgba(224,242,254,0.9); border:1px solid rgba(2,132,199,0.3); padding:3px 10px; border-radius:999px;">Reviewer Score: <strong>{rev_asm_c.total_marks:.1f} / 50 ({rev_asm_c.percentage:.1f}%)</strong></span>'
+                f'<span style="font-size:0.71875rem; font-weight:800; color:#0369A1; background:rgba(224,242,254,0.9); border:1px solid rgba(2,132,199,0.3); padding:3px 10px; border-radius:999px;">Reviewer Score: <strong>{rev_asm_c.total_marks:.1f} / 50 ({rev_asm_c.percentage:.1f}%)</strong></span>'
             )
         if g_asm_c:
             score_pills.append(
-                f'<span style="font-size:11.5px; font-weight:800; color:#047857; background:rgba(209,250,229,0.9); border:1px solid rgba(16,185,129,0.35); padding:3px 10px; border-radius:999px;">Guardian Final: <strong>{g_asm_c.total_marks:.1f} / 50 ({g_asm_c.percentage:.1f}%)</strong></span>'
+                f'<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(209,250,229,0.9); border:1px solid rgba(16,185,129,0.35); padding:3px 10px; border-radius:999px;">Guardian Final: <strong>{g_asm_c.total_marks:.1f} / 50 ({g_asm_c.percentage:.1f}%)</strong></span>'
             )
         if not score_pills:
             score_pills.append(
-                '<span style="font-size:11.5px; font-weight:700; color:#047857; background:rgba(209,250,229,0.75); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:999px;">Certified Cohort Record</span>'
+                '<span style="font-size:0.71875rem; font-weight:700; color:#047857; background:rgba(209,250,229,0.75); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:999px;">Certified Cohort Record</span>'
             )
 
         feedback_preview = ""
@@ -4785,23 +4791,23 @@ def render_reviewer_badge_schedule(
         if best_asm:
             fb_str = (getattr(best_asm, "overall_feedback", "") or getattr(best_asm, "remarks", "") or "").strip()
             if fb_str:
-                feedback_preview = f'<div style="font-size:12px; color:#334155; background:rgba(248,250,252,0.9); border-left:3px solid #10B981; padding:6px 10px; border-radius:4px; margin-bottom:10px;"><strong>Evaluation Remarks:</strong> {escape(fb_str)}</div>'
+                feedback_preview = f'<div style="font-size:0.75rem; color:#334155; background:rgba(248,250,252,0.9); border-left:3px solid #10B981; padding:6px 10px; border-radius:4px; margin-bottom:10px;"><strong>Evaluation Remarks:</strong> {escape(fb_str)}</div>'
 
         proj_line_c = (
-            f'<div style="font-size:12px; color:#0369A1; margin-bottom:8px;"><strong>Allocated Project:</strong> {escape(proj_c.title)}</div>'
+            f'<div style="font-size:0.75rem; color:#0369A1; margin-bottom:8px;"><strong>Allocated Project:</strong> {escape(proj_c.title)}</div>'
             if proj_c and getattr(proj_c, "title", "") else ""
         )
         deliverables_tray_c = _render_review_deliverables_tray(sub_c) if sub_c else ""
 
         if sub_c:
             view_btn_html = f"""
-            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub_c.id)}')" style="font-size:11.5px; font-weight:800; padding:7px 14px;">
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub_c.id)}')" style="font-size:0.71875rem; font-weight:800; padding:7px 14px;">
                 📊 Inspect Deliverables &amp; Marksheet &rarr;
             </button>
             """
         else:
             view_btn_html = """
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:11.5px; font-weight:700;">
+            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:0.71875rem; font-weight:700;">
                 View Assessment Record &rarr;
             </button>
             """
@@ -4811,14 +4817,14 @@ def render_reviewer_badge_schedule(
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:#0F172A; color:#FFFFFF; padding:2px 7px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
-                        <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(b_band)}</span>
-                        {f'<span style="font-size:11.5px; font-weight:600; color:#64748B;">{escape(b_cat)}</span>' if b_cat else ''}
-                        <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">✓ Completed &amp; Certified</span>
+                        {f'<span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:#0F172A; color:#FFFFFF; padding:2px 7px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
+                        <span style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(b_band)}</span>
+                        {f'<span style="font-size:0.71875rem; font-weight:600; color:#64748B;">{escape(b_cat)}</span>' if b_cat else ''}
+                        <span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">✓ Completed &amp; Certified</span>
                     </div>
                     <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(b_title)}</div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:var(--frost-navy-75);">
-                        <span style="width:22px; height:22px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_avatar)}</span>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.75rem; color:var(--frost-navy-75);">
+                        <span style="width:22px; height:22px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:0.625rem; font-weight:800;">{escape(c_avatar)}</span>
                         <span>Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)} &bull; {escape(c_track)}{f' &bull; {escape(c_email)}' if c_email else ''})</span>
                         <span style="color:#94A3B8;">&bull;</span>
                         <span>📅 Window: <strong>{escape(r_win_c)}</strong></span>
@@ -4827,7 +4833,7 @@ def render_reviewer_badge_schedule(
                     </div>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id_c)}')" style="font-size:11.5px; font-weight:700;">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id_c)}')" style="font-size:0.71875rem; font-weight:700;">
                         📅 Timeline
                     </button>
                     {view_btn_html}
@@ -4848,8 +4854,8 @@ def render_reviewer_badge_schedule(
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(user_band)}</span>
-                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Project Reviewer</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(user_band)}</span>
+                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">Project Reviewer</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review Schedule</h1>
             </div>
@@ -4874,7 +4880,7 @@ def render_reviewer_badge_schedule(
                 </div>
             </div>
             <div>
-                {"".join(upcoming_cards_html) if upcoming_cards_html else "<div style='text-align:center; padding:36px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No upcoming badge reviews scheduled. When a Guardian allocates badges to cadets and designates you as reviewer, they will appear here.</div>"}
+                {"".join(upcoming_cards_html) if upcoming_cards_html else "<div style='text-align:center; padding:36px 20px; color:var(--frost-navy-50); font-size:0.8125rem; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No upcoming badge reviews scheduled. When a Guardian allocates badges to cadets and designates you as reviewer, they will appear here.</div>"}
             </div>
         </div>
 
@@ -4889,7 +4895,7 @@ def render_reviewer_badge_schedule(
                 </div>
             </div>
             <div>
-                {"".join(completed_cards_html) if completed_cards_html else "<div style='text-align:center; padding:30px 20px; color:var(--frost-navy-50); font-size:13px; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No completed badge evaluations on record yet.</div>"}
+                {"".join(completed_cards_html) if completed_cards_html else "<div style='text-align:center; padding:30px 20px; color:var(--frost-navy-50); font-size:0.8125rem; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No completed badge evaluations on record yet.</div>"}
             </div>
         </div>
     </div>
@@ -5030,25 +5036,25 @@ def render_reviewer_assessment_queue(
 
         # Assessment status badges
         if rev_asm:
-            rev_badge = f'<span style="font-size:11.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
+            rev_badge = f'<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
         else:
-            rev_badge = '<span style="font-size:11.5px; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
+            rev_badge = '<span style="font-size:0.71875rem; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
 
         cards.append(f"""
         <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
             <!-- Top Row: Cadet & Status -->
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:34px; height:34px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; box-shadow:0 2px 6px rgba(7,22,41,0.25);">
+                    <div style="width:34px; height:34px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.75rem; box-shadow:0 2px 6px rgba(7,22,41,0.25);">
                         {escape(cosmo_avatar)}
                     </div>
                     <div>
-                        <div style="font-size:14.5px; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:#0E7490;">(Band {escape(cosmo_band)})</span></div>
-                        <div style="font-size:11px; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned to You as Peer Reviewer</div>
+                        <div style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; color:#0E7490;">(Band {escape(cosmo_band)})</span></div>
+                        <div style="font-size:0.6875rem; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned to You as Peer Reviewer</div>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:3px 8px; border-radius:var(--radius-xs);">Attempt #{sub.attempt_number}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:3px 8px; border-radius:var(--radius-xs);">Attempt #{sub.attempt_number}</span>
                     {render_status_pill(sub.status)}
                 </div>
             </div>
@@ -5057,19 +5063,19 @@ def render_reviewer_assessment_queue(
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                        <span style="font-size:11px; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_category)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
+                        <span style="font-size:0.6875rem; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_category)}</span>
                     </div>
                     <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); line-height:1.3;">{escape(badge_title)}</div>
                 </div>
-                <div style="font-size:11.5px; color:var(--frost-navy-50); font-family:var(--font-family-mono); display:flex; align-items:center;">
+                <div style="font-size:0.71875rem; color:var(--frost-navy-50); font-family:var(--font-family-mono); display:flex; align-items:center;">
                     {clock_ic} Submitted: {submitted_date_str}
                 </div>
             </div>
 
             <!-- Window & Score Row -->
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding:8px 12px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
-                <div style="font-size:11px; color:var(--frost-navy-75);">
+                <div style="font-size:0.6875rem; color:var(--frost-navy-75);">
                     <strong>Assigned Review Window:</strong> <span style="font-family:var(--font-family-mono);">{escape(window_str)}</span>
                 </div>
                 <div>
@@ -5079,15 +5085,15 @@ def render_reviewer_assessment_queue(
 
             <!-- Deliverables Files Tray -->
             <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:14px;">
-                <div style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Submitted Deliverables:</div>
+                <div style="font-size:0.625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Submitted Deliverables:</div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
                         {pdf_ic} {escape(pdf_name)}
                     </span>
-                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
                         {code_ic} {escape(code_name)}
                     </span>
-                    <span style="display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
+                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
                         {gh_ic} {escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Repo')}
                     </span>
                 </div>
@@ -5095,8 +5101,8 @@ def render_reviewer_assessment_queue(
 
             <!-- Footer Action Row -->
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <span style="font-size:11px; font-weight:600; color:var(--frost-navy-50);">Click to inspect PDF, Code &amp; evaluate against 5-criterion 50-mark rubric</span>
-                <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:12px; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
+                <span style="font-size:0.6875rem; font-weight:600; color:var(--frost-navy-50);">Click to inspect PDF, Code &amp; evaluate against 5-criterion 50-mark rubric</span>
+                <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:0.75rem; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
                     Inspect Deliverables &amp; Evaluate (50 Marks) {arrow_ic}
                 </button>
             </div>
@@ -5109,8 +5115,8 @@ def render_reviewer_assessment_queue(
         <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:rgba(6,182,212,0.1); display:flex; align-items:center; justify-content:center; color:#0891B2;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         </div>
-        <h3 style="font-size:16px; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Cadet Deliverables in this Queue</h3>
-        <p style="font-size:13px; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
+        <h3 style="font-size:1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Cadet Deliverables in this Queue</h3>
+        <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
             When cadets mapped to you submit project deliverables, they will appear here for your formal technical inspection and 50-mark rubric scoring.
         </p>
     </div>
@@ -5122,11 +5128,11 @@ def render_reviewer_assessment_queue(
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {getattr(current_user, 'band', 'B2')}</span>
-                    <span style="font-size:11px; font-weight:700; color:var(--frost-navy-50);">Authorized Peer Reviewer Workspace</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {getattr(current_user, 'band', 'B2')}</span>
+                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">Authorized Peer Reviewer Workspace</span>
                 </div>
                 <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Cadet Project Assessments</h1>
-                <p style="font-size:13.5px; color:var(--frost-navy-75); margin:0;">
+                <p style="font-size:0.84375rem; color:var(--frost-navy-75); margin:0;">
                     Review incoming project deliverables submitted by mapped cadets. Grade the 5-criterion 50-mark rubric and submit your assessment.
                 </p>
             </div>
@@ -5203,7 +5209,7 @@ def render_reviewer_assessment_detail(
         """
         toolbar_extra = f"""
         <div style="display:flex; align-items:center; gap:8px;">
-            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:0.71875rem; text-decoration:none; padding:5px 12px;">
                 {download_ic} Download PDF
             </a>
         </div>
@@ -5213,8 +5219,8 @@ def render_reviewer_assessment_detail(
         code_lines_html = []
         for l_num, line in enumerate(lines, 1):
             code_lines_html.append(
-                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:12px; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
-                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:12.5px; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
+                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:0.75rem; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
+                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:0.78125rem; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
             )
         code_table = "".join(code_lines_html)
         viewer_body = f"""
@@ -5229,8 +5235,8 @@ def render_reviewer_assessment_detail(
         """
         toolbar_extra = f"""
         <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
-            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
+            <span style="font-size:0.71875rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
+            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:0.71875rem; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
                 {copy_ic} Copy Code
             </button>
         </div>
@@ -5243,24 +5249,24 @@ def render_reviewer_assessment_detail(
                     {get_icon("github", 20)}
                 </div>
                 <div>
-                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
+                    <div style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
                 </div>
             </div>
             <div style="margin-bottom:16px;">
-                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
-                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
+                <label style="font-size:0.6875rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:0.75rem; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
                     {escape(github_url)}
                 </div>
             </div>
-            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; text-decoration:none; padding:8px 18px;">
+            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.78125rem; text-decoration:none; padding:8px 18px;">
                 {expand_ic} Open Repository in New Tab
             </a>
         </div>
         """
         toolbar_extra = f"""
         <div>
-            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; text-decoration:none; padding:5px 12px;">
                 {expand_ic} Open Repo
             </a>
         </div>
@@ -5279,7 +5285,7 @@ def render_reviewer_assessment_detail(
             <div class="review-left-column" style="background:#FFFFFF; border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 18px rgba(7,22,41,0.06); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(234,244,255,0.7); border-bottom:1px solid var(--icy-steel-50); flex-shrink:0; height:42px; box-sizing:border-box;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')">
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:0.71875rem; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')">
                             {get_icon("chevron_left", 14)} Back to Cadet Assessments
                         </button>
                         <div class="asm-deliverable-toolbar-group">
@@ -5302,7 +5308,7 @@ def render_reviewer_assessment_detail(
             <div class="review-right-column" style="background:#FFFFFF; border:1.5px solid var(--deep-frozen-midnight); border-radius:var(--radius-md); box-shadow:0 4px 20px rgba(23,52,92,0.1); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
                 <div style="padding:8px 14px; border-bottom:1.5px solid var(--icy-steel-30); background:linear-gradient(135deg, rgba(234,244,255,0.9) 0%, #FFFFFF 100%); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; height:42px; box-sizing:border-box;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <div style="font-size:11px; font-weight:800; background:#06B6D4; color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">REVIEWER RUBRIC</div>
+                        <div style="font-size:0.6875rem; font-weight:800; background:#06B6D4; color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">REVIEWER RUBRIC</div>
                         <h3 style="font-size:1.05rem; font-weight:800; color:var(--frost-navy); margin:0;">Technical Assessment</h3>
                     </div>
                     <span id="rubric-total-display" style="display:none;"></span>
@@ -5361,8 +5367,8 @@ def render_reviewer_assessment_detail(
 
                         <!-- Real-time Sum -->
                         <div class="lg-rubric-total-bar">
-                            <span style="font-size:12px; font-weight:800; color:var(--frost-navy);">Sum of Rubric Marks:</span>
-                            <span id="rubric-sum-display" style="font-size:14px; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
+                            <span style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Sum of Rubric Marks:</span>
+                            <span id="rubric-sum-display" style="font-size:0.875rem; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
                         </div>
 
                         <!-- Qualitative Feedback -->
@@ -5384,7 +5390,7 @@ def render_reviewer_assessment_detail(
                     </div>
 
                     <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
-                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:13px; font-weight:800; letter-spacing:0.2px;">
+                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.8125rem; font-weight:800; letter-spacing:0.2px;">
                             Submit Reviewer Assessment &rarr;
                         </button>
                     </div>
@@ -5430,23 +5436,23 @@ def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: U
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(badge.code)}</span>
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
-                    <span class="status-pill status-approved" style="font-size:11px; font-weight:700;">Milestone Timeline</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.71875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(badge.code)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
+                    <span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Milestone Timeline</span>
                 </div>
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:6px 0 0 0;">{escape(badge.title)}</h3>
             </div>
-            <span style="font-size:12px; font-weight:700; color:#047857; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
+            <span style="font-size:0.75rem; font-weight:700; color:#047857; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
                 Reviewer: {escape(current_user.name)}
             </span>
         </div>
 
         <!-- 3-Day Allocation Window Notice -->
         <div style="background:linear-gradient(135deg, rgba(2,132,199,0.08) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:20px;">
-            <div style="font-size:13px; font-weight:800; color:#0369A1; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <div style="font-size:0.8125rem; font-weight:800; color:#0369A1; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
                 <span>⏱️ 3-Day Milestone Preparation Window Active</span>
             </div>
-            <div style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5;">
+            <div style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5;">
                 Both Reviewer and Cadets have an allocated 3-day window:
                 <br>&bull; <strong>Cadets:</strong> Dedicated time for foundational self-study and learning concepts.
                 <br>&bull; <strong>Reviewer ({escape(current_user.name)}):</strong> Dedicated window to author and dispatch the milestone project prompt via Gemini AI.
@@ -5456,34 +5462,34 @@ def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: U
         <!-- Milestone Steppers Deck -->
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px;">
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">1. Allocation &amp; Publish</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(alloc_date)}</div>
-                <div style="font-size:11px; color:#047857; margin-top:2px;">Guardian Approved</div>
+                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">1. Allocation &amp; Publish</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(alloc_date)}</div>
+                <div style="font-size:0.6875rem; color:#047857; margin-top:2px;">Guardian Approved</div>
             </div>
             <div style="background:#fff; border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:#0284C7; text-transform:uppercase;">2. 3-Day Prep &amp; Learning</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#0369A1; margin-top:4px;">{escape(learn_start)} &rarr; {escape(learn_end)}</div>
-                <div style="font-size:11px; color:#0284C7; margin-top:2px;">Project Draft &amp; Study</div>
+                <div style="font-size:0.625rem; font-weight:800; color:#0284C7; text-transform:uppercase;">2. 3-Day Prep &amp; Learning</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#0369A1; margin-top:4px;">{escape(learn_start)} &rarr; {escape(learn_end)}</div>
+                <div style="font-size:0.6875rem; color:#0284C7; margin-top:2px;">Project Draft &amp; Study</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">3. Project Sprint</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(proj_start)} &rarr; {escape(proj_end)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Code &amp; PDF Implementation</div>
+                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">3. Project Sprint</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(proj_start)} &rarr; {escape(proj_end)}</div>
+                <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:2px;">Code &amp; PDF Implementation</div>
             </div>
             <div style="background:rgba(239,68,68,0.05); border:1.5px solid rgba(239,68,68,0.3); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:#DC2626; text-transform:uppercase;">4. Submission Cutoff</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#DC2626; margin-top:4px;">{escape(sub_deadline)}</div>
-                <div style="font-size:11px; color:#DC2626; margin-top:2px;">Strict Deliverables Due</div>
+                <div style="font-size:0.625rem; font-weight:800; color:#DC2626; text-transform:uppercase;">4. Submission Cutoff</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#DC2626; margin-top:4px;">{escape(sub_deadline)}</div>
+                <div style="font-size:0.6875rem; color:#DC2626; margin-top:2px;">Strict Deliverables Due</div>
             </div>
             <div style="background:rgba(5,150,105,0.05); border:1.5px solid rgba(5,150,105,0.3); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:#047857; text-transform:uppercase;">5. 3-Day Review Window</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:#047857; margin-top:4px;">{escape(review_date)}</div>
-                <div style="font-size:11px; color:#047857; margin-top:2px;">50-Mark Rubric Assessment</div>
+                <div style="font-size:0.625rem; font-weight:800; color:#047857; text-transform:uppercase;">5. 3-Day Review Window</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#047857; margin-top:4px;">{escape(review_date)}</div>
+                <div style="font-size:0.6875rem; color:#047857; margin-top:2px;">50-Mark Rubric Assessment</div>
             </div>
             <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:10px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">6. Certification Award</div>
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(award_date)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-50); margin-top:2px;">Guardian Final Publication</div>
+                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">6. Certification Award</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(award_date)}</div>
+                <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:2px;">Guardian Final Publication</div>
             </div>
         </div>
 
@@ -5536,12 +5542,12 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
         cadet_ids.append(c.id)
         c_av = getattr(c, "avatar", c.name[:2].upper())
         cadet_chips.append(f"""
-        <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); border-radius:var(--radius-xs); font-size:11.5px; font-weight:700; color:var(--frost-navy);">
-            <span style="width:16px; height:16px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_av)}</span>
+        <span style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); border-radius:var(--radius-xs); font-size:0.71875rem; font-weight:700; color:var(--frost-navy);">
+            <span style="width:16px; height:16px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:0.625rem; font-weight:800;">{escape(c_av)}</span>
             {escape(c.name)}
         </span>
         """)
-    cadet_chips_html = "".join(cadet_chips) if cadet_chips else '<span style="font-size:12px; color:var(--frost-navy-50);">All Assigned Cohort Cadets</span>'
+    cadet_chips_html = "".join(cadet_chips) if cadet_chips else '<span style="font-size:0.75rem; color:var(--frost-navy-50);">All Assigned Cohort Cadets</span>'
 
     from starapp.badge_generator import generate_reviewer_project_spec
     existing_proj = None
@@ -5587,14 +5593,14 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">REVIEWER PROJECT CREATOR</span>
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); color:#fff; padding:2px 8px; border-radius:3px;">REVIEWER PROJECT CREATOR</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
                 </div>
                 <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:4px 0 0 0;">Create Milestone Project for Mapped Cadets</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50); margin-top:2px;">Reviewer-guided project specification with details, outcomes &amp; deliverables tailored to '{escape(badge.title)}'.</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50); margin-top:2px;">Reviewer-guided project specification with details, outcomes &amp; deliverables tailored to '{escape(badge.title)}'.</div>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
-                <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">
+                <span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:800;">
                     {status_pill_text}
                 </span>
             </div>
@@ -5602,13 +5608,13 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
 
         <!-- Recipient Mapped Cadets Box -->
         <div style="background:rgba(234,244,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
-            <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:6px;">
+            <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--deep-frozen-midnight); margin-bottom:6px;">
                 👥 Target Recipient Cadets (Mapped to You as Reviewer):
             </div>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
                 {cadet_chips_html}
             </div>
-            <div style="font-size:11px; color:var(--frost-navy-50); margin-top:6px;">
+            <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:6px;">
                 When submitted, this exact project with outcomes and deliverable targets will be dispatched to each of these mapped cadets' submission portals.
             </div>
         </div>
@@ -5616,39 +5622,39 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
         <!-- Project Form -->
         <form id="reviewer-project-spec-form" onsubmit="event.preventDefault();">
             <div style="margin-bottom:14px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Title</label>
-                <input type="text" id="rev_proj_title" class="form-input" value="{escape(proj_title)}" style="font-size:13px; font-weight:700; width:100%;">
+                <label style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Title</label>
+                <input type="text" id="rev_proj_title" class="form-input" value="{escape(proj_title)}" style="font-size:0.8125rem; font-weight:700; width:100%;">
             </div>
 
             <div style="margin-bottom:14px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Details &amp; Problem Scenario</label>
-                <textarea id="rev_proj_scenario" rows="3" class="form-input" style="font-size:12.5px; line-height:1.45; width:100%;">{escape(scenario)}</textarea>
+                <label style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Project Details &amp; Problem Scenario</label>
+                <textarea id="rev_proj_scenario" rows="3" class="form-input" style="font-size:0.78125rem; line-height:1.45; width:100%;">{escape(scenario)}</textarea>
             </div>
 
             <div style="margin-bottom:14px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Expected Project Outcomes (1 per line)</label>
-                <textarea id="rev_proj_outcomes" rows="3" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(outcomes_text)}</textarea>
+                <label style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Expected Project Outcomes (1 per line)</label>
+                <textarea id="rev_proj_outcomes" rows="3" class="form-input" style="font-size:0.75rem; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(outcomes_text)}</textarea>
             </div>
 
             <div style="margin-bottom:14px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Detailed Project Requirements (1 per line)</label>
-                <textarea id="rev_proj_reqs" rows="3" class="form-input" style="font-size:12px; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(reqs_text)}</textarea>
+                <label style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:4px;">Detailed Project Requirements (1 per line)</label>
+                <textarea id="rev_proj_reqs" rows="3" class="form-input" style="font-size:0.75rem; line-height:1.45; width:100%; font-family:var(--font-family-mono);">{escape(reqs_text)}</textarea>
             </div>
 
             <div style="margin-bottom:16px;">
-                <label style="font-size:11.5px; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:6px;">Mandatory Deliverables Checklist (Mapped to 50-Mark Rubric)</label>
+                <label style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy); display:block; margin-bottom:6px;">Mandatory Deliverables Checklist (Mapped to 50-Mark Rubric)</label>
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:10px;">
                     <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
-                        <div style="font-size:11px; font-weight:800; color:#047857; display:flex; align-items:center; gap:5px;">💻 1. Source Code File (.py)</div>
-                        <input type="text" id="rev_proj_code_desc" class="form-input" value="{escape(code_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                        <div style="font-size:0.6875rem; font-weight:800; color:#047857; display:flex; align-items:center; gap:5px;">💻 1. Source Code File (.py)</div>
+                        <input type="text" id="rev_proj_code_desc" class="form-input" value="{escape(code_desc)}" style="font-size:0.6875rem; margin-top:4px; padding:4px 6px;">
                     </div>
                     <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
-                        <div style="font-size:11px; font-weight:800; color:#DC2626; display:flex; align-items:center; gap:5px;">📄 2. Architecture PDF Report</div>
-                        <input type="text" id="rev_proj_pdf_desc" class="form-input" value="{escape(pdf_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                        <div style="font-size:0.6875rem; font-weight:800; color:#DC2626; display:flex; align-items:center; gap:5px;">📄 2. Architecture PDF Report</div>
+                        <input type="text" id="rev_proj_pdf_desc" class="form-input" value="{escape(pdf_desc)}" style="font-size:0.6875rem; margin-top:4px; padding:4px 6px;">
                     </div>
                     <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); padding:10px;">
-                        <div style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); display:flex; align-items:center; gap:5px;">🔗 3. GitHub Repository URL</div>
-                        <input type="text" id="rev_proj_gh_desc" class="form-input" value="{escape(gh_desc)}" style="font-size:11px; margin-top:4px; padding:4px 6px;">
+                        <div style="font-size:0.6875rem; font-weight:800; color:var(--deep-frozen-midnight); display:flex; align-items:center; gap:5px;">🔗 3. GitHub Repository URL</div>
+                        <input type="text" id="rev_proj_gh_desc" class="form-input" value="{escape(gh_desc)}" style="font-size:0.6875rem; margin-top:4px; padding:4px 6px;">
                     </div>
                 </div>
                 <input type="hidden" id="rev_proj_cadet_ids" value="{escape(json.dumps(cadet_ids))}">
@@ -5661,11 +5667,11 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                     Cancel
                 </button>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary" style="padding:9px 18px; font-weight:700; font-size:12.5px;"
+                    <button type="button" class="btn-secondary" style="padding:9px 18px; font-weight:700; font-size:0.78125rem;"
                         onclick="(function(s){{var g=function(i){{var e=document.getElementById(i);return e?e.value:'';}};var o=g('rev_proj_outcomes').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var r=g('rev_proj_reqs').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var c=[];try{{c=JSON.parse(g('rev_proj_cadet_ids')||'[]');}}catch(e){{}}var p={{badge_id:'{escape(badge.id)}',reviewer_id:'{escape(current_user.id)}',title:g('rev_proj_title').trim()||'Milestone Implementation Project',objective:g('rev_proj_scenario').trim(),description:g('rev_proj_scenario').trim(),outcomes:o,requirements:r,technical_requirements:r,deliverables:{{code:{{name:g('rev_proj_code_name')||'script.py',description:g('rev_proj_code_desc').trim()}},pdf:{{name:g('rev_proj_pdf_name')||'report.pdf',description:g('rev_proj_pdf_desc').trim()}},github:{{name:'GitHub Repository',description:g('rev_proj_gh_desc').trim()}}}},cosmonaut_ids:c,status:s}};if(window.StarAppBridge&&typeof window.StarAppBridge.dispatchAction==='function'){{window.StarAppBridge.dispatchAction('send_reviewer_project',JSON.stringify(p));}}else if(window.starAppController&&typeof window.starAppController.handle_event==='function'){{window.starAppController.handle_event('send_reviewer_project',JSON.stringify(p));}}else{{var sid=(window.StarAppBridge&&typeof window.StarAppBridge.getWindowSessionId==='function')?window.StarAppBridge.getWindowSessionId():(sessionStorage.getItem('starapp_window_session_id')||'default');fetch('/api/v1/dispatch',{{method:'POST',headers:{{'Content-Type':'application/json','X-Session-Id':sid}},body:JSON.stringify({{action:'send_reviewer_project',payload:JSON.stringify(p),session_id:sid}})}}).then(function(res){{return res.json();}}).then(function(data){{if(data&&data.regions&&window.StarAppBridge){{window.StarAppBridge.updateRegions(JSON.stringify(data.regions));}}else if(data&&data.full_html&&window.StarAppBridge){{window.StarAppBridge.updateAppRoot(data.full_html);}}else{{window.location.reload();}}}});}}}})('draft');">
                         💾 Save Draft
                     </button>
-                    <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:13px;"
+                    <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:0.8125rem;"
                         onclick="(function(s){{var g=function(i){{var e=document.getElementById(i);return e?e.value:'';}};var o=g('rev_proj_outcomes').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var r=g('rev_proj_reqs').split(/\\r?\\n/).map(function(x){{return x.trim();}}).filter(Boolean);var c=[];try{{c=JSON.parse(g('rev_proj_cadet_ids')||'[]');}}catch(e){{}}var p={{badge_id:'{escape(badge.id)}',reviewer_id:'{escape(current_user.id)}',title:g('rev_proj_title').trim()||'Milestone Implementation Project',objective:g('rev_proj_scenario').trim(),description:g('rev_proj_scenario').trim(),outcomes:o,requirements:r,technical_requirements:r,deliverables:{{code:{{name:g('rev_proj_code_name')||'script.py',description:g('rev_proj_code_desc').trim()}},pdf:{{name:g('rev_proj_pdf_name')||'report.pdf',description:g('rev_proj_pdf_desc').trim()}},github:{{name:'GitHub Repository',description:g('rev_proj_gh_desc').trim()}}}},cosmonaut_ids:c,status:s}};if(window.StarAppBridge&&typeof window.StarAppBridge.dispatchAction==='function'){{window.StarAppBridge.dispatchAction('send_reviewer_project',JSON.stringify(p));}}else if(window.starAppController&&typeof window.starAppController.handle_event==='function'){{window.starAppController.handle_event('send_reviewer_project',JSON.stringify(p));}}else{{var sid=(window.StarAppBridge&&typeof window.StarAppBridge.getWindowSessionId==='function')?window.StarAppBridge.getWindowSessionId():(sessionStorage.getItem('starapp_window_session_id')||'default');fetch('/api/v1/dispatch',{{method:'POST',headers:{{'Content-Type':'application/json','X-Session-Id':sid}},body:JSON.stringify({{action:'send_reviewer_project',payload:JSON.stringify(p),session_id:sid}})}}).then(function(res){{return res.json();}}).then(function(data){{if(data&&data.regions&&window.StarAppBridge){{window.StarAppBridge.updateRegions(JSON.stringify(data.regions));}}else if(data&&data.full_html&&window.StarAppBridge){{window.StarAppBridge.updateAppRoot(data.full_html);}}else{{window.location.reload();}}}});}}}})('released');">
                         🚀 Submit & Send Project to Mapped Cadets &rarr;
                     </button>
@@ -5691,25 +5697,25 @@ def render_cosmonaut_cycles_view(
         border_style = "border:2px solid var(--deep-frozen-midnight);" if is_sel else "border:1px solid var(--icy-steel-50);"
         st_lbl = (cyc.status or "active").upper()
         st_pill = (
-            '<span style="background:rgba(16,185,129,0.14); color:#047857; padding:3px 9px; border-radius:999px; font-size:10.5px; font-weight:800;">ACTIVE CYCLE</span>'
+            '<span style="background:rgba(16,185,129,0.14); color:#047857; padding:3px 9px; border-radius:999px; font-size:0.65625rem; font-weight:800;">ACTIVE CYCLE</span>'
             if cyc.status == "active" else
-            f'<span style="background:rgba(100,116,139,0.14); color:#334155; padding:3px 9px; border-radius:999px; font-size:10.5px; font-weight:800;">{escape(st_lbl)}</span>'
+            f'<span style="background:rgba(100,116,139,0.14); color:#334155; padding:3px 9px; border-radius:999px; font-size:0.65625rem; font-weight:800;">{escape(st_lbl)}</span>'
         )
         sal_html = ""
         if row.get("base_salary", 0) > 0:
-            sal_html = f'<div style="font-size:12px; color:#047857; margin-top:4px;">Compensation Update: {row["base_salary"]:,.0f} &rarr; <strong>{row["new_salary"]:,.0f}</strong> (+{row["approved_hike_pct"]:.1f}%)</div>'
+            sal_html = f'<div style="font-size:0.75rem; color:#047857; margin-top:4px;">Compensation Update: {row["base_salary"]:,.0f} &rarr; <strong>{row["new_salary"]:,.0f}</strong> (+{row["approved_hike_pct"]:.1f}%)</div>'
         elif row.get("approved_hike_pct", 0) > 0:
-            sal_html = f'<div style="font-size:12px; color:#047857; margin-top:4px;">Recommended Hike: <strong>+{row["approved_hike_pct"]:.1f}%</strong></div>'
+            sal_html = f'<div style="font-size:0.75rem; color:#047857; margin-top:4px;">Recommended Hike: <strong>+{row["approved_hike_pct"]:.1f}%</strong></div>'
 
-        promo_html = f'<span style="background:rgba(79,70,229,0.12); color:#4F46E5; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:800;">Promotion Rec: Band {escape(row["recommended_promotion_band"])}</span>' if row.get("recommended_promotion_band") else ""
+        promo_html = f'<span style="background:rgba(79,70,229,0.12); color:#4F46E5; padding:2px 8px; border-radius:4px; font-size:0.6875rem; font-weight:800;">Promotion Rec: Band {escape(row["recommended_promotion_band"])}</span>' if row.get("recommended_promotion_band") else ""
 
         cards.append(f"""
         <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:16px; {border_style}">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); margin-bottom:14px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(cyc.code)}</span>
-                        <span style="font-size:12px; color:var(--frost-navy-50); font-weight:700;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(cyc.code)}</span>
+                        <span style="font-size:0.75rem; color:var(--frost-navy-50); font-weight:700;">{escape(cyc.start_date)} &rarr; {escape(cyc.end_date)}</span>
                         {st_pill}
                     </div>
                     <h3 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">{escape(cyc.name)}</h3>
@@ -5717,7 +5723,7 @@ def render_cosmonaut_cycles_view(
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     <div style="text-align:right;">
                         <div style="font-family:var(--font-family-mono); font-size:1.35rem; font-weight:900; color:var(--deep-frozen-midnight);">{row["composite_score"]:.1f} / 100</div>
-                        <div style="font-size:11.5px; font-weight:800; color:var(--frost-navy-50);">{escape(row["performance_tier"])}</div>
+                        <div style="font-size:0.71875rem; font-weight:800; color:var(--frost-navy-50);">{escape(row["performance_tier"])}</div>
                     </div>
                     <button type="button" class="btn-secondary btn-sm" style="font-weight:800; padding:7px 14px;"
                             onclick="window.StarAppBridge.dispatchAction('select_cycle', '{escape(cyc.id)}')">
@@ -5728,16 +5734,16 @@ def render_cosmonaut_cycles_view(
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap:14px;">
                 <div style="padding:12px 14px; border-radius:var(--radius-sm); background:rgba(234,244,255,0.6); border:1px solid var(--icy-steel-30);">
-                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">🎓 My Cosmonaut Performance</div>
-                    <div style="font-size:12.5px; color:var(--frost-navy); line-height:1.6;">
+                    <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">🎓 My Cosmonaut Performance</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.6;">
                         <div>Badges Earned: <strong>{row["badges_earned"]} / {row["badges_assigned"]}</strong> ({row["cosmo_completion_pct"]}%)</div>
                         <div>Average Score: <strong>{row["avg_marks"]} / 50</strong> ({row["avg_percentage"]}%)</div>
                         <div>First-Attempt Passes: <strong>{row["first_attempt_passes"]}</strong> &bull; Cosmonaut Index: <strong>{row["cosmo_score"]}%</strong></div>
                     </div>
                 </div>
                 <div style="padding:12px 14px; border-radius:var(--radius-sm); background:rgba(240,253,250,0.75); border:1px solid rgba(13,148,136,0.28);">
-                    <div style="font-size:11px; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:6px;">⚖️ My Reviewer Performance</div>
-                    <div style="font-size:12.5px; color:var(--frost-navy); line-height:1.6;">
+                    <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:6px;">⚖️ My Reviewer Performance</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy); line-height:1.6;">
                         <div>Badge Proposals Reviewed: <strong>{row["badge_reviews_completed"]} / {row["badge_reviews_assigned"]}</strong></div>
                         <div>Projects Released: <strong>{row["projects_released"]}</strong> &bull; Cadet Grades Submitted: <strong>{row["submissions_graded"]} / {row["submissions_assigned_to_review"]}</strong></div>
                         <div>Reviewer Index: <strong>{row["reviewer_score"]}%</strong></div>
@@ -5749,9 +5755,9 @@ def render_cosmonaut_cycles_view(
                 <div>
                     {promo_html}
                     {sal_html}
-                    {f'<div style="font-size:12px; color:var(--frost-navy-75); margin-top:4px;"><strong>Guardian Remarks:</strong> {escape(row["guardian_remarks"])}</div>' if row.get("guardian_remarks") else ""}
+                    {f'<div style="font-size:0.75rem; color:var(--frost-navy-75); margin-top:4px;"><strong>Guardian Remarks:</strong> {escape(row["guardian_remarks"])}</div>' if row.get("guardian_remarks") else ""}
                 </div>
-                <span style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Appraisal Status: {escape(row["status"])}</span>
+                <span style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">Appraisal Status: {escape(row["status"])}</span>
             </div>
         </div>
         """)
@@ -5760,7 +5766,7 @@ def render_cosmonaut_cycles_view(
     <div>
         <div class="liquid-glass-card" style="padding:18px 22px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
             <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">My 6-Month Performance Cycles &amp; Appraisals</h2>
-            <p style="font-size:12.5px; color:var(--frost-navy-50); margin:0;">
+            <p style="font-size:0.78125rem; color:var(--frost-navy-50); margin:0;">
                 Review your historical and active 6-month cycles, including your dual-role performance as both Cosmonaut and Reviewer, finalized rating tiers, and hike recommendations.
             </p>
         </div>
@@ -5850,7 +5856,7 @@ def render_cosmonaut_choose_cycle_view(
                     </div>
                     <h3 class="cosmo-cycle-card-title">{escape(cyc.name)}</h3>
                 </div>
-                <span class="status-pill {st_pill_cls}" style="font-size:11px; flex-shrink:0;">{st_label}</span>
+                <span class="status-pill {st_pill_cls}" style="font-size:0.6875rem; flex-shrink:0;">{st_label}</span>
             </div>
 
             <div class="cosmo-cycle-metrics">
@@ -5871,7 +5877,7 @@ def render_cosmonaut_choose_cycle_view(
             </div>
 
             <div class="cosmo-cycle-foot">
-                <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">{escape(st_label)} Cycle</span>
+                <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy-50);">{escape(st_label)} Cycle</span>
                 {action_chip}
             </div>
         </div>

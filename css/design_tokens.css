@@ -65,6 +65,14 @@
   --font-size-xl: 1.5rem;     /* 24px */
   --font-size-2xl: 1.875rem;  /* 30px */
 
+  /* Type scale: the fixed sizes for titles / sub-titles / text (rem; 1rem = 16px) */
+  --type-page-title: 1.75rem;     /* 28px  page / hero titles   (h1, h2) */
+  --type-section-title: 1.25rem;  /* 20px  section titles       (h3)     */
+  --type-subtitle: 1rem;          /* 16px  sub-titles / panels  (h4)     */
+  --type-body: 0.875rem;          /* 14px  inside text                   */
+  --type-small: 0.8125rem;        /* 13px  secondary text, buttons       */
+  --type-caption: 0.75rem;        /* 12px  captions, chips, labels       */
+
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;

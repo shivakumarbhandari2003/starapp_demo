@@ -4,7 +4,7 @@ SQLite 3 · WAL · `foreign_keys=ON` · `busy_timeout=5000`. **38 tables + 1 vie
 `schema_version` table tracks migrations (`backend/app/database/migrations.py`). The authoritative DDL lives in `starapp/database.py`
 (creation + `PERFORMANCE_INDEXES`). A visual ER diagram is in `ER diagram/` and `Star Registry Schema.html`.
 
-> No tables or columns were added/removed in Stage 1/2. The only physical change is **30 indexes** added in place on first start (idempotent).
+> No tables or columns were added/removed in Stage 1/2/3. The only physical change is **30 indexes** added in place on first start (idempotent). Stage 3 only added **JSON keys** (below).
 > If you do change the schema: update DDL + migrations + seed + this file + the change log, and rebuild the offline bundle.
 
 ## 1. Tables by domain (rows in the committed DB)
@@ -38,9 +38,9 @@ SQLite 3 · WAL · `foreign_keys=ON` · `busy_timeout=5000`. **38 tables + 1 vie
 ### Mapping, allotment, delivery
 | Table | Purpose | Notes |
 |:---|:---|:---|
-| `band_mappings` (10) | Guardian's cadets+reviewers↔badge pairing | `data_json` holds `cosmonauts[]`, `reviewers[]`, `badge_id`, review window |
-| `mapping_requests` (11) | invitation to reviewers | `status` pending/accepted/rejected |
-| `badge_timelines` (35) | per cadet+badge calendar | PK (`badge_id`,`cosmonaut_id`); `status` active/reviewer_assessed/completed/retake_required; `reviewer_id`, `submission_deadline`, `actual_award_date`, `review_window_json` |
+| `band_mappings` (10) | Guardian's cadets+reviewers↔badge pairing | `data_json` holds `cosmonauts[]`, `reviewers[]` (first = owner), `badge_id`, `review_dates`; Edit Badge rewrites `cosmonauts[]` per reviewer |
+| `mapping_requests` (11) | invitation to reviewers | `status` pending/accepted/rejected; `data_json` keys added in Stage 3: **`expires_at`** (sent_at + 24 h), **`expired`** (true when the window ran out), **`responded_at`**; `cosmonaut_ids` is kept in sync by Edit Badge |
+| `badge_timelines` (35) | per cadet+badge calendar | PK (`badge_id`,`cosmonaut_id`); `status` active/reviewer_assessed/completed/retake_required; `reviewer_id`, `submission_deadline`, `actual_award_date`, `review_window_json`; Edit Badge creates/updates these (reviewer + window) and deletes the row of a removed cosmonaut (`store.delete_timeline`) |
 | `reviewer_project_prompts` (8) | project brief released to cadets | `cosmonaut_ids_json`, `deliverables_json`, `outcomes_json`, `status` |
 | `project_submissions` (24) | attempts | `attempt_number`, `status`, `pdf_payload`/`payload`/`code_payload` (**base64 blobs — lazy loaded**), `github_url` |
 | `assessment_marksheets` (43) | graded attempts | 5 criteria columns, `total_marks`, `percentage`, `assessor_role`, `decision` |

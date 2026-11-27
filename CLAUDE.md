@@ -10,4 +10,5 @@ Non-negotiables (details in `memory/RULES_AND_CRITERIA.md`):
 - Reviewer_Band > Badge_Band · 50-mark rubric · pass = badge `passing_percentage` (default 70) · attempts append-only · finalised attempts immutable.
 - After changing `starapp/*.py` run `python scripts/pack_py.py` (rebuilds the offline bundle).
 - Don't commit unintended changes to the tracked binary `data/starapp.db` (`git status data/` must be clean).
+- After changing anything in `css/` or `js/`, bump the `?v=` query string in `index.html` + `sw.js` (the server caches versioned assets for 24 h, so browsers otherwise keep showing old styles) and the matching asserts in the tests.
 - Log every meaningful change in `memory/WORK_DONE_AND_STATUS.md` §6 (date · area · previous logic · new logic · reason) and update the affected `memory/` file.

@@ -1,3 +1,4 @@
+import os
 import unittest, sys, os
 sys.path.insert(0, os.path.abspath("."))
 from starapp.app import store, StarAppController
@@ -54,7 +55,15 @@ class TestGuardianReviewFlow(unittest.TestCase):
         # Level 2: Open Badge Card -> Mapped Reviewers & Cosmonauts (Hierarchical Tree)
         self.app.handle_event("open_assessment_badge", "b1_int_01")
         html_l2 = self.app.render()
-        self.assertIn("Mapped Reviewer", html_l2)
+        self.assertNotIn("Level 1", html_l2)                     # level tags, badge code / band, reviewer band, windows and skill lineage are gone
+        self.assertNotIn("Level 2", html_l2)
+        self.assertNotIn("asm-window-pill", html_l2)
+        self.assertNotIn("lg-hier-disclosure", html_l2)
+        # blue connector: the elbow is its own element on the branch <div> (a pseudo-element on the card <button> anchors differently per browser)
+        self.assertIn('<span class="asm-elbow" aria-hidden="true"></span>', html_l2)
+        css = open(os.path.join(os.path.dirname(__file__), "..", "css", "components.css"), encoding="utf-8").read()
+        self.assertNotIn(".asm-cosmonaut-card::before", css)
+        self.assertIn(".asm-elbow {", css)
         self.assertIn("asm-tree-reviewer-branch", html_l2)
         self.assertIn("asm-tree-cosmo-list", html_l2)
         self.assertIn("asm-cosmo-chip-row", html_l2)
@@ -77,7 +86,10 @@ class TestGuardianReviewFlow(unittest.TestCase):
         self.assertEqual(self.app.current_view, "g_review_detail")
         html_detail = self.app.render()
 
-        self.assertIn("Back to Project Reviews", html_detail)
+        self.assertNotIn("Back to Project Reviews", html_detail)        # removed: the global Back button is enough
+        for fid in ("rubric-strengths", "rubric-improvements", "rubric-feedback", "rubric-decision"):
+            self.assertIn('id="' + fid + '"', html_detail)             # the submit handler still reads these ids
+        self.assertIn("lg-dec-list", html_detail)                       # decision is a choice list driving the hidden select
         self.assertIn("deliverable-type-select", html_detail)
         self.assertIn("asm-deliverable-select-wrap", html_detail)
         for emoji_char in ("📄", "💻", "🔗"):

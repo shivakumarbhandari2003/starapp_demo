@@ -262,12 +262,12 @@ class TestUIRemediation(unittest.TestCase):
 
         index_html = (ROOT_DIR / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("glass-svg-defs", index_html)
-        self.assertIn("js/bridge.js?v=23", index_html)
-        self.assertIn("js/starapp_bundle.js?v=23", index_html)
+        self.assertIn("js/bridge.js?v=56", index_html)
+        self.assertIn("js/starapp_bundle.js?v=56", index_html)
 
         sw_js = (ROOT_DIR / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("starapp-runtime-cache-v16", sw_js)
-        self.assertIn("./css/liquid_glass.css?v=23", sw_js)
+        self.assertIn("starapp-runtime-cache-v18", sw_js)
+        self.assertIn("./css/liquid_glass.css?v=56", sw_js)
 
     def test_fastapi_ssr_login_and_no_eager_bundle(self):
         """Verify FastAPI index serves SSR login HTML without eager 1MB Pyodide bundle scripts."""

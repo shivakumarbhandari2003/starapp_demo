@@ -37,6 +37,32 @@ except ImportError:
     UserRepository = BadgeRepository = TimelineRepository = AssessmentRepository = None
     MappingRepository = MaterialRepository = ExtensionRepository = AnnouncementRepository = None
 
+# A reviewer must answer a mapping (review-allocation) request within this many hours, else it counts as declined.
+MAPPING_REQUEST_TTL_HOURS = 24
+
+
+def _parse_utc(iso_value: Any) -> Optional[datetime.datetime]:
+    """Parses an ISO timestamp to an aware UTC datetime (None when empty / malformed)."""
+    try:
+        dt = datetime.datetime.fromisoformat(str(iso_value or "").replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
+
+def mapping_request_seconds_left(req: Dict[str, Any], now: Optional[datetime.datetime] = None) -> Optional[int]:
+    """Seconds left to answer a PENDING mapping request (never negative); None when it has no deadline."""
+    if (req.get("status") or "pending") != "pending":
+        return None
+    due = _parse_utc(req.get("expires_at"))
+    if due is None:
+        return None
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return max(0, int((due - now).total_seconds()))
+
+
 class StorageWriteError(RuntimeError):
     """Raised when a database write fails; the in-memory cache has been invalidated."""
 
@@ -1283,6 +1309,23 @@ class DataStore:
                     result.append(sub)
         return result
 
+    def delete_timeline(self, badge_id: str, cosmo_id: str) -> bool:
+        """Removes one cosmonaut's timeline for a badge (used when the Guardian removes them from the badge's allotment)."""
+        key = f"{badge_id}_{cosmo_id}"
+        existed = self.timelines.pop(key, None) is not None
+        self._invalidate_indexes()
+        try:
+            with self.db.conn:
+                cur = self.db.conn.execute("DELETE FROM badge_timelines WHERE badge_id = ? AND cosmonaut_id = ?", (badge_id, cosmo_id))
+            existed = existed or bool(getattr(cur, "rowcount", 0))
+            if self.db and self.db.conn:
+                self.db.conn.commit()
+        except Exception as e:
+            self._write_failed("deleting timeline", e)
+        if existed:
+            self.mark_dirty()
+        return existed
+
     def get_timeline(self, badge_id: str, cosmo_id: str) -> Optional[BadgeTimeline]:
         key = f"{badge_id}_{cosmo_id}"
         if key in self.timelines:
@@ -1920,6 +1963,10 @@ class DataStore:
         b_obj = self.get_badge(b_id) if b_id else None
         r_cid = req.get("cycle_id") or (getattr(b_obj, "cycle_id", "") if b_obj else "") or self.get_active_cycle_id()
         req["cycle_id"] = r_cid
+        if (req.get("status") or "pending") == "pending" and not req.get("expires_at"):
+            # 24-hour window to respond, counted from the moment the request was sent
+            base = _parse_utc(req.get("sent_at")) or datetime.datetime.now(datetime.timezone.utc)
+            req["expires_at"] = (base + datetime.timedelta(hours=MAPPING_REQUEST_TTL_HOURS)).isoformat()
         replaced = False
         for idx, r in enumerate(self.mapping_requests):
             if r.get("id") == req_id:
@@ -1954,6 +2001,9 @@ class DataStore:
             )
         if target_r:
             target_r["status"] = status
+            if status in ("accepted", "rejected"):
+                target_r["responded_at"] = current_iso_timestamp()
+                target_r.pop("expired", None)   # an explicit answer replaces an earlier auto-expiry
             actual_id = target_r.get("id")
             try:
                 with self.db.conn:
@@ -1963,6 +2013,61 @@ class DataStore:
             except Exception as e:
                 self._write_failed("updating mapping request status", e)
             self.mark_dirty()
+
+    def expire_overdue_mapping_requests(self, now: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
+        """
+        Any PENDING request whose 24-hour window has passed is automatically treated as declined
+        (status 'rejected' + expired=True so the UI can say "Expired"). Requests without a deadline
+        (legacy rows) are left alone. Returns the requests that were just expired.
+        """
+        if not getattr(self, "mapping_requests", None):
+            self.get_mapping_requests()
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        expired: List[Dict[str, Any]] = []
+        for r in list(getattr(self, "mapping_requests", None) or []):
+            if (r.get("status") or "pending") != "pending":
+                continue
+            due = _parse_utc(r.get("expires_at"))
+            if due is None or due > now:
+                continue
+            r["status"] = "rejected"
+            r["expired"] = True
+            r["responded_at"] = due.isoformat()
+            expired.append(r)
+            try:
+                with self.db.conn:
+                    self.db.conn.execute(
+                        "UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?",
+                        ("rejected", json.dumps(r), r.get("id")),
+                    )
+            except Exception as e:
+                self._write_failed("expiring mapping request", e)
+        if expired:
+            self.mark_dirty()
+        return expired
+
+    def resend_mapping_request(self, req_id: str, cycle_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Re-opens a declined / expired request with a fresh 24-hour window. Returns the request (or None)."""
+        target_cid = self.get_effective_read_cycle_id(cycle_id)
+        target_r = next((r for r in self.get_mapping_requests(cycle_id=target_cid) if r.get("id") == req_id), None)
+        if not target_r:
+            return None
+        now = datetime.datetime.now(datetime.timezone.utc)
+        target_r["status"] = "pending"
+        target_r["sent_at"] = now.isoformat()
+        target_r["expires_at"] = (now + datetime.timedelta(hours=MAPPING_REQUEST_TTL_HOURS)).isoformat()
+        target_r.pop("expired", None)
+        target_r.pop("responded_at", None)
+        try:
+            with self.db.conn:
+                self.db.conn.execute(
+                    "UPDATE mapping_requests SET status = ?, data_json = ? WHERE id = ?",
+                    ("pending", json.dumps(target_r), req_id),
+                )
+        except Exception as e:
+            self._write_failed("re-sending mapping request", e)
+        self.mark_dirty()
+        return target_r
 
     def delete_mapping_request(self, req_id: str, cycle_id: Optional[str] = None):
         target_cid = self.get_effective_read_cycle_id(cycle_id)
@@ -2333,6 +2438,17 @@ class DataStore:
             if b:
                 b.workflow_status = "pending_review"
                 b.assigned_reviewer_id = reviewer_id
+            self._sync_feed_tables()
+            self.mark_dirty()
+        return ok, msg
+
+    def cancel_badge_review_request(self, badge_id: str, actor_id: str) -> Tuple[bool, str]:
+        ok, msg = self.db.cancel_badge_review_request(badge_id, actor_id)
+        if ok:
+            b = self.get_badge(badge_id)
+            if b:
+                b.workflow_status = "ready_for_review"
+                b.assigned_reviewer_id = None
             self._sync_feed_tables()
             self.mark_dirty()
         return ok, msg

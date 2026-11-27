@@ -35,12 +35,15 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         # Navigate to badge approval
         self.ctrl.handle_event("nav_guardian", "g_badge_approval")
         self.assertEqual(self.ctrl.current_view, "g_badge_approval")
-        self.assertEqual(self.ctrl.badge_approval_band_filter, "B2")
+        self.assertEqual(self.ctrl.create_badge_band, "B2")
 
         # Render HTML
         html = self.ctrl.render()
         self.assertIn("Reviewer Badge Approval", html)
-        self.assertIn("Taxonomy Hierarchy", html)
+        self.assertIn("ba-toolbar-card", html)
+        # Queue is rendered as one compact row per badge under a "Taxonomy Hierarchy" header,
+        # or the empty-state card when the selected band has no badge.
+        self.assertTrue('class="ba-row"' in html or "No Badges Found" in html)
 
     def test_02_mapping_request_dispatch_and_reviewer_decision(self):
         """Verify Guardian sending requests in Mapping populates reviewer's c_requests where they can Accept."""
@@ -129,7 +132,10 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         self.ctrl.handle_event("open_badge_timeline_mapping_modal", "badge_b1_signals")
         modal_html = self.ctrl.render_active_modal()
         self.assertIn("Milestone Timeline Schedule", modal_html)
-        self.assertIn("Configure Milestone Timeline Dates", modal_html)
+        self.assertNotIn('type="date"', modal_html)                  # the timeline view is READ-ONLY ...
+        self.assertNotIn("Save Timeline", modal_html)
+        self.assertIn("Read-only view", modal_html)
+        self.assertIn("Edit Badge", modal_html)                      # ... dates and cosmonauts are changed from Edit Badge
         self.ctrl.handle_event("close_modal", "{}")
 
         # Test save_allotment_timeline action on existing badge

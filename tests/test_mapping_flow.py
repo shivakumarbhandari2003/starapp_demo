@@ -89,8 +89,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("Systems Engineer", html)
 
         # Verify badges list includes real approved B1 badge from SQLite
-        self.assertIn("B1-INT-01", html)
         self.assertIn("Intelligent Apps Foundations", html)
+        self.assertNotIn("B1-INT-01", html)          # badge codes are not shown in the selection card any more
 
         # Verify search inputs in dropdowns
         self.assertIn('id="mapping-badge-search-input"', html)
@@ -166,7 +166,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
 
         # Check real calendar structure & controls inside Liquid-Glass modal
         self.assertIn("mapping-calendar-modal-glass", html)
-        self.assertIn("Select Estimated Review Date", html)
+        for gone in ("Select Estimated Review Date", "Selection Mode", "Range Pick", "Apply Schedule", "mapping-date-from", "mapping-cal-today-btn", "lg-mapcal-side"):
+            self.assertNotIn(gone, html)                               # the window is ONLY a calendar + one row of dropdowns
         self.assertIn("cal-weekdays-row", html)
         self.assertIn("weekend-header", html)
         self.assertIn("Sat", html)
@@ -174,9 +175,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertNotIn("Sat ✕", html)
         self.assertIn('id="mapping-cal-month-select"', html)
         self.assertIn('id="mapping-cal-year-select"', html)
-        self.assertIn('id="mapping-cal-today-btn"', html)
-        self.assertIn('id="mapping-date-from"', html)
-        self.assertIn('id="mapping-date-to"', html)
+        self.assertIn('id="mapping-cal-days-select"', html)
+        self.assertIn('<option value="manual"', html)
         self.assertIn('class="cal-day-cell weekend', html)
 
         # 1. Anchor on Friday 2026-11-20 with direction 'after':
@@ -185,9 +185,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.ctrl.handle_event("set_mapping_review_direction", "after")
         self.assertEqual(self.ctrl.mapping_review_dates, ["2026-11-20", "2026-11-23", "2026-11-24"])
         html = self.ctrl.render()
-        self.assertIn("Day 1", html)
-        self.assertIn("Day 2", html)
-        self.assertIn("Day 3", html)
+        self.assertEqual(html.count("selected-review-day"), 3)          # three highlighted working days
         self.assertIn("2026-11-20", html)
         self.assertIn("2026-11-23", html)
         self.assertIn("2026-11-24", html)
@@ -203,7 +201,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertEqual(self.ctrl.mapping_calendar_year, 2026)
         self.assertEqual(self.ctrl.mapping_calendar_month, 12)
         html_dec = self.ctrl.render()
-        self.assertIn("December 2026", html_dec)
+        self.assertIn('<option value="12" selected>December</option>', html_dec)
+        self.assertIn('<option value="2026" selected>2026</option>', html_dec)
 
         self.ctrl.handle_event("set_mapping_date_range", json.dumps({"start": "2026-12-07", "end": "2026-12-10"}))
         self.assertEqual(self.ctrl.mapping_review_dates, ["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10"])
@@ -211,6 +210,37 @@ class TestGuardianMappingFlow(unittest.TestCase):
         import datetime as _dt
         self.assertEqual(self.ctrl.mapping_calendar_year, _dt.date.today().year)
         self.assertEqual(self.ctrl.mapping_calendar_month, _dt.date.today().month)
+
+    def test_calendar_days_dropdown_3_5_7_and_manual(self):
+        self.ctrl.handle_event("nav_guardian", "g_mapping")
+        self.ctrl.handle_event("open_mapping_calendar_modal", "{}")
+        # 5 working days from Fri 20 Nov skip the weekend
+        self.ctrl.handle_event("set_mapping_review_duration", "5")
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-20")
+        self.assertEqual(self.ctrl.mapping_review_dates, ["2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26"])
+        html = self.ctrl.render()
+        self.assertIn('<option value="5" selected>5 Days</option>', html)
+        # 7 days
+        self.ctrl.handle_event("set_mapping_review_duration", "7")
+        self.assertEqual(len(self.ctrl.mapping_review_dates), 7)
+        # Manual: keeps the current days, then every click toggles one working day; weekends are ignored; one day always stays
+        self.ctrl.handle_event("set_mapping_review_mode", "manual")
+        self.assertEqual(self.ctrl.mapping_review_mode, "manual")
+        before = list(self.ctrl.mapping_review_dates)
+        self.assertEqual(before[0], "2026-11-20")
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-23")            # off
+        self.assertNotIn("2026-11-23", self.ctrl.mapping_review_dates)
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-12-01")            # on (a non-consecutive day)
+        self.assertIn("2026-12-01", self.ctrl.mapping_review_dates)
+        self.ctrl.handle_event("select_mapping_review_anchor", "2026-11-21")            # Saturday: ignored
+        self.assertNotIn("2026-11-21", self.ctrl.mapping_review_dates)
+        self.assertEqual(self.ctrl.mapping_review_dates, sorted(self.ctrl.mapping_review_dates))
+        self.assertIn('<option value="manual" selected>Manual</option>', self.ctrl.render())
+        for d in list(self.ctrl.mapping_review_dates)[1:]:
+            self.ctrl.handle_event("select_mapping_review_anchor", d)
+        self.assertEqual(len(self.ctrl.mapping_review_dates), 1)                         # the last day can't be switched off
+        self.ctrl.handle_event("select_mapping_review_anchor", self.ctrl.mapping_review_dates[0])
+        self.assertEqual(len(self.ctrl.mapping_review_dates), 1)
 
     def test_visual_who_is_mapped_to_whom_and_edit_mapping_lifecycle(self):
         """
@@ -438,14 +468,15 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertNotIn("Reset Workspace", main_html)
         self.ctrl.handle_event("open_mapping_badge_detail", "badge_b1_signals")
         html = self.ctrl.render()
-        self.assertIn("Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers", html)
+        self.assertIn("Final Review Cohort", html)
+        self.assertNotIn("Candidate Cosmonauts &amp; Accepted Reviewers", html)   # sub-title removed
 
         # Execute map
         self.ctrl.handle_event("execute_cosmonaut_mapping", json.dumps({"band": "B1", "badge_id": "badge_b1_signals", "badge": "Signals Foundations"}))
         mapped_html = self.ctrl.render()
         self.assertIn("Live Mapped Review Allocations", mapped_html)
-        self.assertIn("Guardian Reviewer", mapped_html)
-        self.assertIn("Mapped Cosmonauts", mapped_html)
+        self.assertIn("md-alloc-name", mapped_html)      # one allocation card per mapped reviewer
+        self.assertIn("md-chip", mapped_html)            # ... listing the cosmonauts mapped to them
 
         # Test Reset
         self.ctrl.handle_event("reset_all_mapping_state", "{}")
@@ -515,7 +546,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.assertIn("Signals Foundations", collapsed_html)
         self.assertIn("mapping-badge-rect-card", collapsed_html)
         self.assertIn("Open Requests, Cohort &amp; Mapping", collapsed_html)
-        self.assertNotIn("1. Reviewer Requests History", collapsed_html)
+        self.assertNotIn("Reviewer Requests History", collapsed_html)
 
         reqs = [r for r in store.get_mapping_requests() if r.get("band") == "B1"]
         self.assertTrue(len(reqs) >= 1)
@@ -528,8 +559,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         self.ctrl.handle_event("open_mapping_badge_detail", json.dumps({"band": "B1", "badge_key": card_key}))
         self.assertEqual(self.ctrl.current_view, "g_mapping_badge_detail")
         expanded_html = self.ctrl.render()
-        self.assertIn("1. Reviewer Requests History", expanded_html)
-        self.assertIn("2. Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers", expanded_html)
+        self.assertIn("Reviewer Requests History", expanded_html)
+        self.assertIn("Final Review Cohort", expanded_html)
         self.assertIn("Selected Cosmonauts", expanded_html)
         self.assertIn("Accepted Reviewers", expanded_html)
 
@@ -555,8 +586,8 @@ class TestGuardianMappingFlow(unittest.TestCase):
         # Verify Liquid-Glass Timeline & Mapping modal in Badge Allotment
         self.ctrl.handle_event("open_badge_timeline_mapping_modal", card_key)
         modal_html = self.ctrl.render_active_modal()
-        self.assertIn("lg-tl-track", modal_html)
-        self.assertIn("lg-tl-hero", modal_html)
+        self.assertIn("tm-steps", modal_html)        # numbered, editable timeline
+        self.assertIn("tm-head", modal_html)
         self.assertIn("lg-mapping-glass-card", modal_html)
         self.ctrl.handle_event("close_modal", "{}")
 

@@ -327,7 +327,7 @@ class TestStarAppFullStackBackend(unittest.TestCase):
             self.assertNotIn('<script src="https://cdn.jsdelivr.net/pyodide', idx_res.text)
             self.assertNotIn('<script src="js/starapp_bundle.js', idx_res.text)
 
-            css_res = client.get("/css/components.css?v=23")
+            css_res = client.get("/css/components.css?v=56")
             self.assertEqual(css_res.status_code, 200)
             self.assertIn("max-age=86400", css_res.headers.get("cache-control", ""))
 

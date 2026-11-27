@@ -521,8 +521,8 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         # Inspect modal
         self.ctrl.handle_event("open_badge_for_review", sb["id"])
         modal_html = self.ctrl.render()
-        self.assertIn("Practice Project Prompt:", modal_html)
-        self.assertIn("Learning Resources Prompt:", modal_html)
+        self.assertIn("Practice Project Prompt", modal_html)
+        self.assertIn("Learning Resources Prompt", modal_html)
 
     def test_inside_band_create_badge_ui_and_edit_flow(self):
         """Verify streamlined Create Badge workspace, inside-dropdown taxonomy adds, Liquid-Glass output, auto-grow textareas, and top-right Back."""
@@ -627,7 +627,6 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
             "ba-toolbar-card",
             'id="ba-status-filter-select"',
             'id="ba-history-toggle-btn"',
-            'id="ba-band-filter-select"',
             'id="ba-search-input"',
             "All Submissions (",
             "Ready for Review (",
@@ -642,6 +641,7 @@ class TestBadgeCreationAndApproval(unittest.TestCase):
         ):
             self.assertIn(required, ba_html)
 
+        self.assertNotIn("ba-band-filter-select", ba_html)      # the queue is already scoped to the active band
         self.assertIn("ba-toolbar-card", ba_html)
         self.assertIn("lg-hier-tree", ba_html)
         self.assertIn("Power :", ba_html)
