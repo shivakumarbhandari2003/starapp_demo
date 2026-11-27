@@ -14,7 +14,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env            # Windows: copy .env.example .env   (then edit; .env is gitignored)
-python tests/run_tests.py       # expect: Ran 215 tests ... OK   (~22 s)
+python tests/run_tests.py       # expect: Ran 264 tests ... OK   (~29 s)
 python serve.py                 # http://127.0.0.1:8000   (docs: /docs, health: /api/health)
 ```
 
@@ -54,20 +54,23 @@ Open `http://127.0.0.1:8000`. With `STARAPP_DEMO_MODE=true` (default) the login 
 ## 5. Testing
 
 ```bash
-python tests/run_tests.py                      # full suite (215 tests, isolated DB copy)  ← the only supported entry point
+python tests/run_tests.py                      # full suite (264 tests, isolated DB copy)  ← the only supported entry point
 python tests/test_backend_fullstack.py         # fast backend smoke (only on a throw-away DB copy!)
 ```
 
 * Single module on an isolated DB: copy `data/starapp.db` to a temp dir, set `STARAPP_DB_PATH` and `DATABASE_URL` to it, then run that module.
-* Regression home for Stage 1/2: `tests/test_scale_and_security_regressions.py` (66 tests: cascade safety, indexes/memo, lazy payloads, pagination, dispatch security, REST RBAC, workflow rules, UI polish).
-* After the run: `git status data/` must be empty.
+* Regression home for Stage 1/2: `tests/test_scale_and_security_regressions.py` (114 tests: cascade safety, indexes/memo, lazy payloads, pagination, dispatch security, REST RBAC, workflow rules, UI polish).
+* After the run: `git status data/` must be empty (`pack_py.py` and the runner can dirty it: restore with `git checkout data/starapp.db`).
+* The two `scripts/e2e_guardian_*.py` scripts copy the DB to a temp folder themselves; the browser one starts uvicorn on port 8133 and Chrome on 9371.
 
 ## 6. After changing code
 
 1. `python tests/run_tests.py`
 2. `python scripts/pack_py.py` (if you touched `starapp/`) → regenerates `js/starapp_bundle.js`
-3. Update `memory/` docs + change log (README §3)
-4. `git status` — make sure `data/starapp.db` is not modified unintentionally
+3. If you touched `css/` or `js/`: bump `?v=N` in `index.html` + `sw.js` (+ asserts in `tests/test_backend_fullstack.py`, `tests/test_ui_remediation.py`, `Report.md`) — otherwise browsers keep the old files for up to 24 h
+4. UI / workflow change: `python scripts/e2e_guardian_logic.py` and `python scripts/e2e_guardian_browser.py` (Chrome needed; `CHROME_PATH` if not in the default location) → expect `0 failed`
+5. Update `memory/` docs + change log (README §3)
+6. `git status` — make sure `data/starapp.db` is not modified unintentionally (`git checkout data/starapp.db` after tests/pack runs)
 
 ## 7. Useful scripts (`scripts/`)
 

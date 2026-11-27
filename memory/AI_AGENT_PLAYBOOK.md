@@ -26,6 +26,10 @@
 * Reviewer_Band > Badge_Band; 50-mark rubric; pass = badge `passing_percentage` (default 70); attempts append, never overwrite; finalised attempts are immutable.
 * Never leak or commit secrets (`.env`, API keys). `GEMINI_API_KEY` stays server-side.
 * Don't hand-edit `js/starapp_bundle.js`; rebuild via `scripts/pack_py.py`.
+* **Asset cache-bust:** any change under `css/` or `js/` ⇒ bump `?v=N` in `index.html` + `sw.js` (and the tests/`Report.md` that assert it). The server caches versioned assets for 24 h.
+* **Type scale:** font sizes are rem tokens (`--type-page-title 1.75`, `--type-section-title 1.25`, `--type-subtitle 1`, `--type-body .875`, `--type-small .8125`, `--type-caption .75`); no `px` font sizes; headings inside `.app-main` are pinned to the scale.
+* **Edit Badge** may change only the assigned cosmonauts (+ which reviewer each belongs to) and the timeline; the Timeline & Mapping modal is read-only; never rebuild a whole `Badge` from a form payload (that reset band/taxonomy/state and force-published it).
+* Positioning inside a `<button>` is browser-dependent: attach decorative pseudo-elements/connectors to a `<div>` wrapper, not to the button.
 * Don't reintroduce emoji icons, raw ids in UI, fake/hard-coded analytics, unbounded tables, or sidebar rebuilds.
 * The Bash tool on Windows collapses backslash escapes in heredocs and chokes on long quoted text: write helper scripts/text with the **Write** tool, then run them. Set `PYTHONUTF8=1` for Python on Windows consoles.
 
@@ -56,11 +60,16 @@ Measure first (3k-user synthetic DB, time `ctrl.render()` per view), then prefer
 
 ### UI polish
 Match Guardian styling; check contrast (≥ 4.5:1), min font 10 px, no overflow at 420 px, no layout shift on navigation, DOM churn low. Keep `_sidebarSignature`.
+Use the type tokens, container queries (`container-type: inline-size`) for components that live in resizable panels/modals, and whole-pixel geometry for connectors/lines (fractional heights blur and misalign).
+Verify visually: render the controller on a temp DB, build static HTML with the css files, screenshot with headless Chrome (device scale 1 **and** 2); for pixel questions scan the PNG.
+Then run `python scripts/e2e_guardian_logic.py` and `python scripts/e2e_guardian_browser.py`.
 
 ## 4. Pre-commit checklist
 
 - [ ] `python tests/run_tests.py` → OK (note the count)
 - [ ] `python scripts/pack_py.py` if `starapp/` changed
+- [ ] `?v=` bumped if `css/` or `js/` changed
+- [ ] `python scripts/e2e_guardian_logic.py` and `python scripts/e2e_guardian_browser.py` → 0 failed (after UI/workflow changes)
 - [ ] `git status data/` empty (unless intentional)
 - [ ] `memory/` docs + change log updated
 - [ ] no secrets, no scratch files, no `__pycache__`
@@ -77,6 +86,7 @@ Match Guardian styling; check contrast (≥ 4.5:1), min font 10 px, no overflow 
 
 * Pass mark: badge `passing_percentage` (default 70 % = 35/50). Rubric: 5 × 10.
 * Reviewer must be in a strictly higher band; B6 badges have no peer reviewers (Guardian oversees).
-* Flow: create → approve → map → reviewer accepts → allot → publish → brief → submit → reviewer grades → guardian finalises → badge earned / retake.
+* Flow: create → approve → map → **reviewer accepts within 24 h (else the request expires and counts as declined; Guardian can resend)** → allot (Edit Badge: cosmonauts + reviewer + dates) → publish → brief → submit → reviewer grades → guardian finalises → badge earned / retake.
 * Cycle score: cosmo (marks 70 % + completion 30 %) and reviewer execution blended 80/20; tiers 90/80/70/1; promotion at ≥ 85 with ≥ 1 badge.
-* 215 tests; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
+* 264 tests + 135 end-to-end checks; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
+* `g_cosmonauts` is a legacy view id with no renderer and no sidebar link (empty page if routed to) - not a regression; ignore or remove.

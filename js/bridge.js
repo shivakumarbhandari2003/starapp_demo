@@ -30,6 +30,7 @@
   const currentWindowId = "win_" + Math.random().toString(36).substring(2, 10);
   let lastSyncTimestamp = 0;
   let localActionSeq = 0;
+  const debounceTimers = {};
   let lastKnownDataJson = null;
   let pendingSyncTimer = null;
   let pendingDeferredReload = false;
@@ -622,12 +623,12 @@
         return;
       }
       container.innerHTML = window.StarAppBridge.bulkPdfs.map((item, idx) => `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#FFFFFF; padding:6px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel); font-size:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#FFFFFF; padding:6px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel); font-size:0.75rem;">
           <div style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
             <span style="font-weight:800; color:var(--deep-frozen-midnight);">📄 ${item.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
-            <span style="color:var(--frost-navy-50); font-size:11px;">(${item.size} KB)</span>
+            <span style="color:var(--frost-navy-50); font-size:0.6875rem;">(${item.size} KB)</span>
           </div>
-          <button type="button" onclick="window.StarAppBridge.removeBulkPdf(${idx})" style="background:transparent; border:none; color:#d9534f; cursor:pointer; font-weight:800; font-size:16px; padding:0 4px;" title="Remove this PDF">&times;</button>
+          <button type="button" onclick="window.StarAppBridge.removeBulkPdf(${idx})" style="background:transparent; border:none; color:#d9534f; cursor:pointer; font-weight:800; font-size:1rem; padding:0 4px;" title="Remove this PDF">&times;</button>
         </div>
       `).join("");
     },
@@ -779,22 +780,22 @@
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px;">
           <div>
             <h3 id="lg-taxonomy-modal-title" style="margin:0 0 4px 0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">${titleText}</h3>
-            <p id="lg-taxonomy-modal-sub" style="margin:0; font-size:13.5px; font-weight:500; color:var(--frost-navy); line-height:1.45;"></p>
+            <p id="lg-taxonomy-modal-sub" style="margin:0; font-size:0.84375rem; font-weight:500; color:var(--frost-navy); line-height:1.45;"></p>
           </div>
           <button type="button" id="lg-taxonomy-close-btn" class="btn-secondary btn-sm" aria-label="Close" style="padding:6px 10px; display:inline-flex; align-items:center; justify-content:center;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <form id="lg-taxonomy-form">
-          <label for="lg-taxonomy-name-input" style="display:block; font-size:12.5px; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:7px;">
+          <label for="lg-taxonomy-name-input" style="display:block; font-size:0.78125rem; font-weight:800; color:var(--frost-navy); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:7px;">
             ${isSkill ? "Skill Name" : "Capability Name"}
           </label>
           <input type="text" id="lg-taxonomy-name-input" class="liquid-glass-control" autocomplete="off"
-                 style="width:100%; height:44px; padding:0 14px; font-size:14.5px; font-weight:600; color:var(--frost-navy); box-sizing:border-box;" />
-          <div id="lg-taxonomy-error" style="display:none; margin-top:8px; font-size:12.5px; font-weight:700; color:#DC2626;"></div>
+                 style="width:100%; height:44px; padding:0 14px; font-size:0.90625rem; font-weight:600; color:var(--frost-navy); box-sizing:border-box;" />
+          <div id="lg-taxonomy-error" style="display:none; margin-top:8px; font-size:0.78125rem; font-weight:700; color:#DC2626;"></div>
           <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
-            <button type="button" id="lg-taxonomy-cancel-btn" class="btn-secondary" style="font-size:13.5px; font-weight:700; padding:9px 18px;">Cancel</button>
-            <button type="submit" class="btn-metal" style="font-size:13.5px; font-weight:800; padding:9px 20px;">Save ${isSkill ? "Skill" : "Capability"}</button>
+            <button type="button" id="lg-taxonomy-cancel-btn" class="btn-secondary" style="font-size:0.84375rem; font-weight:700; padding:9px 18px;">Cancel</button>
+            <button type="submit" class="btn-metal" style="font-size:0.84375rem; font-weight:800; padding:9px 20px;">Save ${isSkill ? "Skill" : "Capability"}</button>
           </div>
         </form>
       `;
@@ -1688,10 +1689,23 @@ Return ONLY valid JSON matching this exact schema:
       this.dispatchAction("go_back", "{}");
     },
 
+    // Type-ahead inputs (search boxes): one server round-trip after the user pauses typing, not one per keystroke.
+    debouncedDispatch(action, payload = "", delayMs = 250) {
+      clearTimeout(debounceTimers[action]);
+      debounceTimers[action] = setTimeout(() => {
+        debounceTimers[action] = null;
+        this.dispatchAction(action, payload);
+      }, delayMs);
+    },
+
     // Dispatch UI click/action event to Python controller (Native FastAPI Backend or in-browser Pyodide)
     dispatchAction(action, payloadJson = "{}") {
       localActionSeq += 1;
       pendingDeferredReload = false;
+      const seqAtDispatch = localActionSeq;
+      // Filters / search / paging responses can arrive out of order or while the user is still typing:
+      // only the newest one may repaint (each response renders the full cumulative state, so nothing is lost).
+      const isTypeAheadAction = /^(search_|filter_|set_list_page)/.test(String(action));
 
       // Track active band in tab session storage
       if (action === "select_create_badge_band") {
@@ -1727,6 +1741,9 @@ Return ONLY valid JSON matching this exact schema:
                 sessionStorage.setItem("starapp_fastapi_session", JSON.stringify(data.session_state));
               }
             } catch (e) {}
+          }
+          if (isTypeAheadAction && (localActionSeq !== seqAtDispatch || debounceTimers[action])) {
+            return; // a newer action (or a pending keystroke) supersedes this response
           }
           if (data && data.regions) {
             window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
@@ -2365,7 +2382,7 @@ Return ONLY valid JSON matching this exact schema:
             </button>
             <div style="display:flex; align-items:center; gap:6px;">
               <span class="lg-cal-month-label">${monthNames[st.viewMonth]}</span>
-              <select class="liquid-glass-control liquid-glass-select" style="width:auto; height:30px; padding:0 28px 0 10px; font-size:12.5px;"
+              <select class="liquid-glass-control liquid-glass-select" style="width:auto; height:30px; padding:0 28px 0 10px; font-size:0.78125rem;"
                       onchange="window.StarAppBridge.cycleCalSetYear(this.value)" aria-label="Calendar Year">
                 ${yearOpts}
               </select>
@@ -2389,4 +2406,309 @@ Return ONLY valid JSON matching this exact schema:
       `;
     }
   };
+
+  // Review Schedule Calendar: the "Days" dropdown (3 / 5 / 7 / Manual).
+  Object.assign(window.StarAppBridge, {
+    setMappingReviewDays(value) {
+      if (value === "manual") this.dispatchAction("set_mapping_review_mode", "manual");
+      else this.dispatchAction("set_mapping_review_duration", String(value));
+    }
+  });
+
+  // Marks page: the Assessment Decision choice list drives the (hidden) <select id="rubric-decision"> the submit handler reads.
+  Object.assign(window.StarAppBridge, {
+    setReviewDecision(btn) {
+      const value = btn.getAttribute("data-value");
+      const select = document.getElementById("rubric-decision");
+      if (select) select.value = value;
+      document.querySelectorAll(".lg-dec-opt").forEach((opt) => {
+        const on = opt === btn;
+        opt.classList.toggle("is-on", on);
+        opt.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      const label = document.getElementById("rubric-submit-label");
+      if (label) label.textContent = btn.getAttribute("data-cta") || label.textContent;
+      const desc = document.getElementById("rubric-decision-desc");
+      if (desc) desc.textContent = btn.getAttribute("data-desc") || "";
+    }
+  });
+
+  // Edit Badge modal: cosmonauts grouped under the badge's reviewers.
+  // Display only - the server validates everything that is saved. Every cosmonaut has ONE row (`.eb-person`, with a hidden
+  // `badge-assignee` checkbox and `data-rid` = their reviewer). Rows not on the badge wait in `#eb-pool`; adding / removing /
+  // moving just relocates the row and flips its checkbox. The form submit reads the checked rows + their data-rid.
+  Object.assign(window.StarAppBridge, {
+    _ebRow(id) { return document.querySelector('.eb-person[data-id="' + id + '"]'); },
+    _ebGroup(rid) { return document.querySelector('.eb-group[data-rid="' + (rid || "") + '"]'); },
+    _ebPlace(id, rid, on) {
+      const row = this._ebRow(id);
+      if (!row) return;
+      const box = row.querySelector("input[name=badge-assignee]");
+      if (box) box.checked = !!on;
+      row.classList.toggle("is-on", !!on);
+      row.setAttribute("data-rid", on ? (rid || "") : "");
+      const select = row.querySelector(".eb-move");
+      if (select) select.value = on ? (rid || "") : "";
+      const target = on ? (this._ebGroup(rid) || this._ebGroup("")) : document.getElementById("eb-pool");
+      const holder = on && target ? target.querySelector("[data-people]") : target;
+      if (holder) holder.appendChild(row);
+    },
+    refreshAssigneeCount() {
+      let total = 0;
+      document.querySelectorAll(".eb-group").forEach((group) => {
+        const n = group.querySelectorAll("[data-people] .eb-person.is-on").length;
+        total += n;
+        const badge = group.querySelector("[data-gcount]");
+        if (badge) badge.textContent = String(n);
+        const empty = group.querySelector("[data-gempty]");
+        if (empty) empty.hidden = n > 0;
+        if (group.classList.contains("is-none") && document.querySelectorAll(".eb-group:not(.is-none)").length) {
+          group.hidden = n === 0;     // "No reviewer yet" only shows while somebody is in it
+        }
+      });
+      const counter = document.getElementById("eb-count");
+      if (counter) counter.textContent = String(total);
+      document.querySelectorAll(".eb-opt").forEach((opt) => {
+        const row = this._ebRow(opt.getAttribute("data-id"));
+        opt.classList.toggle("is-hidden", !!(row && row.classList.contains("is-on")));
+      });
+      document.querySelectorAll(".eb-combo").forEach((combo) => {
+        const empty = combo.querySelector(".eb-menu-empty");
+        if (empty) empty.hidden = combo.querySelectorAll(".eb-opt:not(.is-hidden):not(.is-filtered)").length > 0;
+      });
+    },
+    addAssignee(id, rid) { this._ebPlace(id, rid, true); this.refreshAssigneeCount(); },
+    removeAssignee(id) { this._ebPlace(id, "", false); this.refreshAssigneeCount(); },
+    moveAssignee(id, rid) { this._ebPlace(id, rid, true); this.refreshAssigneeCount(); },
+    clearAssignees() {
+      document.querySelectorAll(".eb-person.is-on").forEach((row) => this._ebPlace(row.getAttribute("data-id"), "", false));
+      this.refreshAssigneeCount();
+    },
+    addAllShownAssignees(btn) {
+      // adds only the people this dropdown currently lists, so a search narrows what gets added
+      const combo = btn.closest(".eb-combo");
+      const group = combo && combo.closest(".eb-group");
+      const rid = group ? group.getAttribute("data-rid") : "";
+      combo.querySelectorAll(".eb-opt:not(.is-hidden):not(.is-filtered)").forEach((opt) => this._ebPlace(opt.getAttribute("data-id"), rid, true));
+      this.refreshAssigneeCount();
+      this.toggleAssignMenu(null);
+    },
+    filterAssignMenu(input) {
+      const combo = input.closest(".eb-combo");
+      const q = String(input.value || "").trim().toLowerCase();
+      combo.querySelectorAll(".eb-opt").forEach((opt) => {
+        opt.classList.toggle("is-filtered", !!q && (opt.getAttribute("data-name") || "").indexOf(q) === -1);
+      });
+      this.refreshAssigneeCount();
+    },
+    toggleAssignMenu(btn) {
+      // btn = the "Add cosmonaut" button that was clicked (null closes every menu)
+      const combo = btn ? btn.closest(".eb-combo") : null;
+      const willOpen = !!combo && !combo.classList.contains("is-open");
+      document.querySelectorAll(".eb-combo.is-open").forEach((c) => {
+        c.classList.remove("is-open");
+        const m = c.querySelector(".eb-menu");
+        if (m) m.hidden = true;
+      });
+      if (willOpen) {
+        combo.classList.add("is-open");
+        const menu = combo.querySelector(".eb-menu");
+        menu.hidden = false;
+        const input = menu.querySelector(".eb-search");
+        if (input) { input.value = ""; this.filterAssignMenu(input); input.focus(); }
+      }
+    },
+    collectReviewerAssignments() {
+      const out = {};
+      document.querySelectorAll(".eb-person.is-on").forEach((row) => { out[row.getAttribute("data-id")] = row.getAttribute("data-rid") || ""; });
+      return out;
+    }
+  });
+
+  // close an open dropdown when clicking elsewhere or pressing Escape
+  document.addEventListener("click", (e) => {
+    const open = document.querySelector(".eb-combo.is-open");
+    if (open && !open.contains(e.target)) window.StarAppBridge.toggleAssignMenu(null);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.querySelector(".eb-combo.is-open")) { window.StarAppBridge.toggleAssignMenu(null); e.stopPropagation(); }
+  });
+
+  // ------------------------------------------------------------------
+  // Glass date picker. A visible `.gd-btn` (data-gd-input = id of a hidden ISO input) opens a frosted-glass
+  // calendar popover instead of the browser's native one. The hidden input keeps the ISO value the forms read.
+  //   data-gd-min  = id of another date input; days before it are disabled (an end date can't precede its start)
+  //   data-gd-pair = id of another date input that is pushed forward if this date moves past it
+  // ------------------------------------------------------------------
+  (function glassDatePicker() {
+    const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let pop = null;
+    let state = null;
+
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const parse = (s) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ""));
+      if (!m) return null;
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const pretty = (s) => {
+      const d = parse(s);
+      return d ? `${d.getDate()} ${SHORT[d.getMonth()]} ${d.getFullYear()}` : "Select date";
+    };
+
+    function close() {
+      if (pop) { pop.remove(); pop = null; }
+      if (state && state.btn) state.btn.classList.remove("is-open");
+      state = null;
+    }
+
+    function place() {
+      if (!pop || !state) return;
+      const r = state.btn.getBoundingClientRect();
+      const w = pop.offsetWidth, h = pop.offsetHeight;
+      let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+      let top = r.bottom + 6;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);   // flip above when there is no room below
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+    }
+
+    function render() {
+      if (!pop || !state) return;
+      const cur = parse(state.input.value);
+      const minEl = state.minId ? document.getElementById(state.minId) : null;
+      const minD = minEl ? parse(minEl.value) : null;
+      const first = new Date(state.year, state.month, 1);
+      const gridStart = new Date(state.year, state.month, 1 - first.getDay());
+      const todayIso = iso(new Date());
+      let years = "";
+      for (let y = state.year - 5; y <= state.year + 6; y += 1) years += `<option value="${y}"${y === state.year ? " selected" : ""}>${y}</option>`;
+      let cells = "";
+      for (let i = 0; i < 42; i += 1) {
+        const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+        const v = iso(d);
+        const cls = ["lg-cal-day"];
+        if (d.getMonth() !== state.month) cls.push("is-outside");
+        if (cur && v === iso(cur)) cls.push("is-range-start");
+        if (v === todayIso) cls.push("is-today");
+        if (minD && d < minD) cls.push("is-disabled");
+        cells += `<button type="button" class="${cls.join(" ")}" data-gd-day="${v}" aria-label="${v}">${d.getDate()}</button>`;
+      }
+      pop.innerHTML = `
+        <div class="gd-head">
+          <button type="button" class="lg-cal-nav" data-gd-nav="-1" aria-label="Previous month"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <span class="gd-title">${MONTHS[state.month]} <select class="gd-year" data-gd-year aria-label="Year">${years}</select></span>
+          <button type="button" class="lg-cal-nav" data-gd-nav="1" aria-label="Next month"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+        </div>
+        <div class="lg-cal-weekdays"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+        <div class="lg-cal-grid">${cells}</div>
+        <div class="gd-foot"><span class="gd-chosen">${cur ? pretty(state.input.value) : "No date chosen"}</span><button type="button" class="gd-today" data-gd-today>Today</button></div>`;
+      place();
+    }
+
+    function choose(value) {
+      if (!state) return;
+      const input = state.input;
+      input.value = value;
+      const label = state.btn.querySelector(".gd-label");
+      if (label) label.textContent = pretty(value);
+      // moving a start date past its end date pushes the end date forward with it
+      if (state.pairId) {
+        const endEl = document.getElementById(state.pairId);
+        if (endEl && endEl.value && endEl.value < value) {
+          endEl.value = value;
+          const endBtn = document.querySelector(`.gd-btn[data-gd-input="${state.pairId}"] .gd-label`);
+          if (endBtn) endBtn.textContent = pretty(value);
+        }
+      }
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      close();
+    }
+
+    window.StarAppBridge.openDatePicker = function (btn) {
+      if (state && state.btn === btn) { close(); return; }
+      close();
+      const input = document.getElementById(btn.getAttribute("data-gd-input"));
+      if (!input) return;
+      const base = parse(input.value) || new Date();
+      state = {
+        btn, input,
+        minId: btn.getAttribute("data-gd-min") || "",
+        pairId: btn.getAttribute("data-gd-pair") || "",
+        year: base.getFullYear(), month: base.getMonth()
+      };
+      btn.classList.add("is-open");
+      pop = document.createElement("div");
+      pop.className = "gd-pop";
+      pop.setAttribute("role", "dialog");
+      pop.setAttribute("aria-label", "Choose a date");
+      document.body.appendChild(pop);
+      render();
+    };
+
+    document.addEventListener("click", (e) => {
+      if (!pop) return;
+      const t = e.target;
+      if (pop.contains(t)) {
+        const nav = t.closest("[data-gd-nav]");
+        if (nav) {
+          state.month += Number(nav.getAttribute("data-gd-nav"));
+          if (state.month < 0) { state.month = 11; state.year -= 1; }
+          if (state.month > 11) { state.month = 0; state.year += 1; }
+          render();
+          return;
+        }
+        const day = t.closest("[data-gd-day]");
+        if (day && !day.classList.contains("is-disabled")) { choose(day.getAttribute("data-gd-day")); return; }
+        if (t.closest("[data-gd-today]")) { choose(iso(new Date())); }
+        return;
+      }
+      if (state && state.btn.contains(t)) return;   // the button's own click toggles it
+      close();
+    });
+    document.addEventListener("change", (e) => {
+      if (pop && e.target && e.target.matches && e.target.matches("[data-gd-year]")) { state.year = Number(e.target.value); render(); }
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop) { close(); e.stopPropagation(); } });
+    window.addEventListener("resize", () => place());   // keep it attached to its button (mobile address bars resize the window while scrolling)
+    // the modal can be re-rendered / closed underneath an open picker: drop it when its button is gone
+    setInterval(() => { if (state && !document.body.contains(state.btn)) close(); }, 400);
+  })();
+
+  // ------------------------------------------------------------------
+  // 24-hour review-request countdown (display only - the server owns the deadline).
+  // Every `.rq-timer[data-remaining]` is rendered with the seconds left; we tick them once a second.
+  // When one reaches zero we ask the server to sync, which auto-declines the request and re-renders.
+  // ------------------------------------------------------------------
+  (function startRequestCountdowns() {
+    const pad = (n) => String(n).padStart(2, "0");
+    let lastSyncAt = 0;
+
+    function tick() {
+      const timers = document.querySelectorAll(".rq-timer[data-remaining]");
+      if (!timers.length) return;
+      const now = Date.now();
+      let reachedZero = false;
+      timers.forEach((el) => {
+        // anchor to the moment this element first appeared, so server/browser clock differences never matter
+        if (!el.__deadline) el.__deadline = now + Number(el.getAttribute("data-remaining")) * 1000;
+        const left = Math.max(0, Math.ceil((el.__deadline - now) / 1000));
+        const text = el.querySelector(".rq-timer-text");
+        if (text) text.textContent = `${pad(Math.floor(left / 3600))}:${pad(Math.floor((left % 3600) / 60))}:${pad(left % 60)}`;
+        el.classList.toggle("is-urgent", left < 3600);
+        if (left === 0) {
+          el.classList.add("is-expired");
+          reachedZero = true;
+        }
+      });
+      if (reachedZero && now - lastSyncAt > 5000 && window.StarAppBridge && window.StarAppBridge.dispatchAction) {
+        lastSyncAt = now;
+        window.StarAppBridge.dispatchAction("sync_mapping_requests", "{}");
+      }
+    }
+
+    setInterval(tick, 1000);
+  })();
 })();

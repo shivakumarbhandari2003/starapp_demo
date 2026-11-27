@@ -3,6 +3,7 @@ STARAPP GUARDIAN PORTAL VIEWS
 Implements the 7 core workspaces for training managers and mentors.
 """
 
+import datetime
 import json
 from typing import List, Dict, Any, Optional
 from starapp.pagination import page_slice
@@ -12,7 +13,8 @@ from starapp.views_common import (
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
-    render_learning_materials_view, render_taxonomy_hierarchy_tree
+    render_learning_materials_view, render_taxonomy_hierarchy_tree,
+    render_request_timer, format_utc_stamp
 )
 from starapp.assessment import RUBRIC_CRITERIA
 from starapp.analytics import get_kpi_popover
@@ -177,7 +179,6 @@ def render_guardian_sidebar(
         """)
 
     user_roles = getattr(current_user, "roles", [current_user.role])
-    role_title = "Badge Reviewer" if ("badge_reviewer" in user_roles and "guardian" not in user_roles) else "Training Mentor"
     is_primary_guardian = (
         current_user.id in ("guardian_1", "admin")
         or getattr(current_user, "band", "") == "CEO"
@@ -203,34 +204,22 @@ def render_guardian_sidebar(
         </li>
     """
 
-    band_switcher_html = f"""
-    <div class="sidebar-band-switcher">
-        <div class="band-switcher-mini" title="{escape(active_band)}">
-            <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:4px 10px; border-radius:999px;">{escape(active_band)}</span>
-        </div>
-        <div class="band-switcher-content" title="{escape(active_band)}">
-            <span style="font-family:var(--font-family-mono); font-size:13px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:5px 16px; border-radius:999px; letter-spacing:0.5px;">{escape(active_band)}</span>
-        </div>
-    </div>
-    """ if (active_band and not is_pillar_home and not hidden) else ""
+    # Top-left of the sidebar: only the band this workspace belongs to (no brand, portal name or role pill).
+    show_band = bool(active_band) and not is_pillar_home and not hidden
+    band_chip_html = (
+        f'<span class="sidebar-band-chip" title="Band {escape(active_band)}">{escape(active_band)}</span>'
+        if show_band else ""
+    )
+    header_cls = "sidebar-header" if show_band else "sidebar-header is-empty"
 
     return f"""
     <aside id="starapp-shell-sidebar"{sidebar_hidden_attr} data-portal-role="guardian" data-user-id="{escape(current_user.id)}" data-pillar-mode="{'pillars' if is_pillar_home else 'learning'}">
-        <div class="sidebar-header">
-            <div class="brand-text-wrap">
-                <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
-                <div class="brand-subtitle">GUARDIAN PORTAL</div>
-            </div>
+        <div class="{header_cls}">
+            {band_chip_html}
             <button type="button" class="sidebar-collapse-btn" style="display:none;" onclick="window.StarAppBridge.toggleSidebar()" aria-hidden="true"></button>
         </div>
 
-        <div class="role-badge-pill">
-            <span class="role-badge-label">Role</span>
-            <span class="role-badge-val">{escape(role_title)}</span>
-        </div>
-
         {cycle_pill_html}
-        {band_switcher_html}
 
         <ul class="sidebar-nav">
             {back_to_pillars_html}
@@ -274,19 +263,19 @@ def render_guardian_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
             <div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); letter-spacing:0.5px;">COMMAND CONTROL</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); letter-spacing:0.5px;">COMMAND CONTROL</span>
                     <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">Academy Command Center</h2>
                 </div>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">
+                <div style="font-size:0.78125rem; color:var(--frost-navy-50);">
                     Guardian: <strong>Academy Leadership</strong> &bull; Organization: <strong>StarApp Academy</strong>
                 </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
                 <div style="display:flex; flex-direction:column; align-items:flex-end;">
-                    <label style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Analytics Scope Selector</label>
+                    <label style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; margin-bottom:4px;">Analytics Scope Selector</label>
                     <div class="liquid-select-wrapper" style="min-width:320px;">
-                        <select class="liquid-glass-control liquid-glass-select" style="font-weight:700; height:40px; font-size:13px;" onchange="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', this.value)">
+                        <select class="liquid-glass-control liquid-glass-select" style="font-weight:700; height:40px; font-size:0.8125rem;" onchange="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', this.value)">
                             {"".join(selector_options)}
                         </select>
                     </div>
@@ -323,7 +312,7 @@ def render_guardian_dashboard(
         <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box;">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         Enrolled Cadets
                     </span>
                     {render_metric_info_popover('enrolled_cadets', cohort_analytics, 'cohort')}
@@ -333,14 +322,14 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{total_profiles}</div>
-            <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">● Active Batch Enrollment</div>
+            <div class="kpi-subtext" style="color:#047857; font-weight:700; font-size:0.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">● Active Batch Enrollment</div>
         </div>
 
         <!-- KPI 2: Average Assessment Score -->
         <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box;">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         Average Score
                     </span>
                     {render_metric_info_popover('average_score', cohort_analytics, 'cohort')}
@@ -349,15 +338,15 @@ def render_guardian_dashboard(
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                 </div>
             </div>
-            <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{avg_score:.1f} <span style="font-size:12.5px; opacity:0.65; font-weight:600;">/ 50.0</span></div>
-            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{avg_pct:.1f}% Average Score ({eval_count} Evaluated)</div>
+            <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{avg_score:.1f} <span style="font-size:0.78125rem; opacity:0.65; font-weight:600;">/ 50.0</span></div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{avg_pct:.1f}% Average Score ({eval_count} Evaluated)</div>
         </div>
 
         <!-- KPI 3: Pending Submissions -->
         <div class="liquid-glass-card interactive kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')" title="Click to view Project Review queue">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         Pending Submissions
                     </span>
                     {render_metric_info_popover('pending_evals', cohort_analytics, 'cohort', 'right')}
@@ -367,7 +356,7 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:{'#EF4444' if pending_evals > 0 else 'var(--frost-navy)'};">{pending_evals}</div>
-            <div class="kpi-subtext" style="color:{'#EF4444' if pending_evals > 0 else 'var(--frost-navy-50)'}; font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            <div class="kpi-subtext" style="color:{'#EF4444' if pending_evals > 0 else 'var(--frost-navy-50)'}; font-weight:700; font-size:0.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 {"Requires Evaluation &rarr;" if pending_evals > 0 else "Review queue cleared"}
             </div>
         </div>
@@ -376,7 +365,7 @@ def render_guardian_dashboard(
         <div class="liquid-glass-card interactive kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'attention')" title="Click to filter Cosmonaut monitoring table">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         Cadets For Attention
                     </span>
                     {render_metric_info_popover('cadets_attention', cohort_analytics, 'cohort', 'right')}
@@ -386,14 +375,14 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:{'#F59E0B' if attention_count > 0 else 'var(--frost-navy)'};">{attention_count}</div>
-            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_attention_breakdown}</div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_attention_breakdown}</div>
         </div>
 
         <!-- KPI 5: First-Attempt Pass Rate -->
         <div class="liquid-glass-card kpi-card" style="padding:16px 18px; border-radius:var(--radius-md); display:flex; flex-direction:column; justify-content:space-between; min-width:0; overflow:visible; box-sizing:border-box;">
             <div class="kpi-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
                 <div style="display:flex; align-items:center; gap:5px; min-width:0; flex:1;">
-                    <span style="font-size:11px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                         First-Attempt Pass Rate
                     </span>
                     {render_metric_info_popover('first_attempt', cohort_analytics, 'cohort', 'right')}
@@ -403,7 +392,7 @@ def render_guardian_dashboard(
                 </div>
             </div>
             <div class="kpi-value" style="font-size:1.75rem; font-weight:800; line-height:1.1; margin:2px 0 6px 0; color:var(--frost-navy);">{first_attempt_rate}%</div>
-            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">17 / 19 Cleared Attempt #1</div>
+            <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700; font-size:0.6875rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">17 / 19 Cleared Attempt #1</div>
         </div>
     </div>
     """
@@ -496,10 +485,10 @@ def render_guardian_dashboard(
             <div class="velocity-hover-popover">
                 <div class="vel-pop-header">
                     <span style="display:flex; align-items:center; gap:6px;">
-                        <span style="width:20px; height:20px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center;">{escape(avatar)}</span>
+                        <span style="width:20px; height:20px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:0.625rem; font-weight:800; display:flex; align-items:center; justify-content:center;">{escape(avatar)}</span>
                         {escape(name_full)}
                     </span>
-                    <span style="font-size:10px; font-weight:700; color:{risk_color}; padding:2px 6px; background:rgba(255,255,255,0.12); border-radius:8px;">{escape(risk)}</span>
+                    <span style="font-size:0.625rem; font-weight:700; color:{risk_color}; padding:2px 6px; background:rgba(255,255,255,0.12); border-radius:8px;">{escape(risk)}</span>
                 </div>
                 <div class="vel-pop-row">
                     <span class="vel-pop-label">Completed:</span>
@@ -517,7 +506,7 @@ def render_guardian_dashboard(
                     <span class="vel-pop-label">Average Score:</span>
                     <span class="vel-pop-val" style="color:#34D399;">{avg_marks:.1f} / 50.0 ({avg_pct:.1f}%)</span>
                 </div>
-                <div class="vel-pop-row" style="margin-top:4px; padding-top:4px; border-top:1px dashed rgba(157,183,213,0.3); font-size:10px;">
+                <div class="vel-pop-row" style="margin-top:4px; padding-top:4px; border-top:1px dashed rgba(157,183,213,0.3); font-size:0.625rem;">
                     <span class="vel-pop-label">Active Milestone:</span>
                     <span class="vel-pop-val" style="color:#93c5fd;">{escape(active_code)}</span>
                 </div>
@@ -527,25 +516,25 @@ def render_guardian_dashboard(
             <div style="display:flex; gap:4px; align-items:flex-end; height:{BAR_MAX_H + 26}px; margin-bottom:8px;">
                 <!-- Completed Bar -->
                 <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
-                    <span style="font-size:10.5px; font-weight:800; color:var(--deep-frozen-midnight);">{completed}</span>
+                    <span style="font-size:0.65625rem; font-weight:800; color:var(--deep-frozen-midnight);">{completed}</span>
                     <div style="width:14px; height:{h_comp}px; background:linear-gradient(180deg, #071629 0%, #17345C 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(7,22,41,0.25);" title="Completed: {completed}"></div>
                 </div>
                 <!-- Pending Bar -->
                 <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
-                    <span style="font-size:10.5px; font-weight:800; color:#B45309;">{pending}</span>
+                    <span style="font-size:0.65625rem; font-weight:800; color:#B45309;">{pending}</span>
                     <div style="width:14px; height:{h_pend}px; background:linear-gradient(180deg, #F59E0B 0%, #FCD34D 100%); border-radius:4px 4px 0 0; box-shadow:0 2px 6px rgba(245,158,11,0.25);" title="Pending: {pending}"></div>
                 </div>
                 <!-- Extra Attempts Bar -->
                 <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
-                    <span style="font-size:10.5px; font-weight:800; color:{'#DC2626' if extra > 0 else 'var(--frost-navy-50)'};">{extra}</span>
+                    <span style="font-size:0.65625rem; font-weight:800; color:{'#DC2626' if extra > 0 else 'var(--frost-navy-50)'};">{extra}</span>
                     <div style="width:14px; height:{h_extra if extra > 0 else 4}px; background:{'linear-gradient(180deg, #EF4444 0%, #FCA5A5 100%)' if extra > 0 else 'rgba(157,183,213,0.25)'}; border-radius:4px 4px 0 0; box-shadow:{'0 2px 6px rgba(239,68,68,0.25)' if extra > 0 else 'none'};" title="Extra Attempts: {extra}"></div>
                 </div>
             </div>
 
             <!-- Cadet Identity Pill Below Bars -->
             <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-                <div style="width:24px; height:24px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid {risk_color}; box-shadow:0 1px 4px rgba(7,22,41,0.15);">{escape(avatar)}</div>
-                <span style="font-size:10.5px; font-weight:800; color:var(--frost-navy); white-space:nowrap; max-width:54px; overflow:hidden; text-overflow:ellipsis;" title="{escape(name_full)}">{escape(first_name)}</span>
+                <div style="width:24px; height:24px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); font-size:0.625rem; font-weight:800; display:flex; align-items:center; justify-content:center; border:2px solid {risk_color}; box-shadow:0 1px 4px rgba(7,22,41,0.15);">{escape(avatar)}</div>
+                <span style="font-size:0.65625rem; font-weight:800; color:var(--frost-navy); white-space:nowrap; max-width:54px; overflow:hidden; text-overflow:ellipsis;" title="{escape(name_full)}">{escape(first_name)}</span>
             </div>
         </div>
         """)
@@ -567,9 +556,9 @@ def render_guardian_dashboard(
                         Weekly Curriculum Velocity & Pacing
                         {render_metric_info_popover('weekly_velocity', cohort_analytics, 'cohort', 'right')}
                     </h3>
-                    <div style="font-size:11.5px; color:var(--frost-navy-50);">{_chart_scope_note}</div>
+                    <div style="font-size:0.71875rem; color:var(--frost-navy-50);">{_chart_scope_note}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:12px; font-size:11px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:12px; font-size:0.6875rem; flex-wrap:wrap;">
                     <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #071629 0%, #17345C 100%); border-radius:3px;"></span> <strong style="color:var(--frost-navy);">Completed</strong></span>
                     <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #F59E0B 0%, #FCD34D 100%); border-radius:3px;"></span> <strong style="color:#B45309;">Pending</strong></span>
                     <span style="display:flex; align-items:center; gap:5px;"><span style="width:12px; height:12px; background:linear-gradient(180deg, #EF4444 0%, #FCA5A5 100%); border-radius:3px;"></span> <strong style="color:#B91C1C;">Extra Attempts</strong></span>
@@ -580,7 +569,7 @@ def render_guardian_dashboard(
             <div style="display:flex; gap:0; align-items:stretch; position:relative; min-height:190px;">
                 <!-- Y-Axis Scale (0 to the largest badge count shown) -->
                 <div style="display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; padding-right:8px; height:{BAR_MAX_H + 26 + 48}px; padding-bottom:48px; padding-top:6px;">
-                    {"".join(f'<span style="font-size:10px; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">{i}</span>' for i in range(TOTAL_BADGES, -1, -1))}
+                    {"".join(f'<span style="font-size:0.625rem; color:var(--frost-navy-50); font-weight:700; font-family:var(--font-family-mono);">{i}</span>' for i in range(TOTAL_BADGES, -1, -1))}
                 </div>
                 <!-- Plot Area with Horizontal Grid Lines -->
                 <div style="flex:1; position:relative;">
@@ -595,7 +584,7 @@ def render_guardian_dashboard(
             </div>
 
             <!-- Aggregate Performance Summary Footer -->
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30); font-size:11.5px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--icy-steel-30); font-size:0.71875rem; flex-wrap:wrap; gap:8px;">
                 <span style="color:var(--frost-navy-75);">Batch Completion: <strong style="color:#047857;">{avg_completion_pct:.1f}% ({total_completed_all}/{total_assigned_all} Total Certified)</strong></span>
                 <span style="color:var(--frost-navy-50);">Pending: <strong style="color:#B45309;">{total_pending_all} Milestones</strong> &bull; Resubmissions: <strong style="color:#DC2626;">{total_extra_all} Extra Attempts</strong></span>
             </div>
@@ -607,19 +596,19 @@ def render_guardian_dashboard(
                 <div style="margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <h3 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Guardian Action Command Center</h3>
-                        <div style="font-size:12px; color:var(--frost-navy-50);">Immediate intervention and evaluation operational shortcuts.</div>
+                        <div style="font-size:0.75rem; color:var(--frost-navy-50);">Immediate intervention and evaluation operational shortcuts.</div>
                     </div>
-                    <span class="status-pill status-active" style="font-size:10.5px; font-weight:800;">Command Live</span>
+                    <span class="status-pill status-active" style="font-size:0.65625rem; font-weight:800;">Command Live</span>
                 </div>
 
                 <div style="display:flex; flex-direction:column; gap:10px;">
                     <!-- Pending Review Action -->
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 14px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.22); border-radius:var(--radius-sm);">
                         <div>
-                            <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">Evaluate Pending Deliverable</div>
-                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Aarav Sharma &bull; ING-104 (Attempt #2 Deliverable Package)</div>
+                            <div style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy);">Evaluate Pending Deliverable</div>
+                            <div style="font-size:0.71875rem; color:var(--frost-navy-50);">Aarav Sharma &bull; ING-104 (Attempt #2 Deliverable Package)</div>
                         </div>
-                        <button type="button" class="btn-metal btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')">
+                        <button type="button" class="btn-metal btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')">
                             Review Project &rarr;
                         </button>
                     </div>
@@ -627,10 +616,10 @@ def render_guardian_dashboard(
                     <!-- Extensions Action -->
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 14px; background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.22); border-radius:var(--radius-sm);">
                         <div>
-                            <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">Milestone Deadline Extensions</div>
-                            <div style="font-size:11.5px; color:var(--frost-navy-50);">1 Request Pending Review (Kaelen Frost &bull; CUR-102)</div>
+                            <div style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy);">Milestone Deadline Extensions</div>
+                            <div style="font-size:0.71875rem; color:var(--frost-navy-50);">1 Request Pending Review (Kaelen Frost &bull; CUR-102)</div>
                         </div>
-                        <button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_extensions')">
+                        <button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_extensions')">
                             Manage Extensions
                         </button>
                     </div>
@@ -638,16 +627,16 @@ def render_guardian_dashboard(
                     <!-- Allotment Manager -->
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
                         <div>
-                            <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">Curriculum Allotment Manager</div>
-                            <div style="font-size:11.5px; color:var(--frost-navy-50);">Allot, unlock, or configure badge milestones for Academy Cadets</div>
+                            <div style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy);">Curriculum Allotment Manager</div>
+                            <div style="font-size:0.71875rem; color:var(--frost-navy-50);">Allot, unlock, or configure badge milestones for Academy Cadets</div>
                         </div>
-                        <button type="button" class="btn-secondary btn-sm" style="font-size:12px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')">
+                        <button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')">
                             Open Catalog
                         </button>
                     </div>
                 </div>
             </div>
-            <div style="margin-top:12px; font-size:11px; color:var(--frost-navy-50); text-align:right;">
+            <div style="margin-top:12px; font-size:0.6875rem; color:var(--frost-navy-50); text-align:right;">
                 Role: <strong>Curriculum Authority &bull; Active Session</strong>
             </div>
         </div>
@@ -665,13 +654,13 @@ def render_guardian_dashboard(
     for idx, c in enumerate(_lb_page_items, start=_lb_offset + 1):
         # Rank medal styling
         if idx == 1:
-            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:12px; border:1px solid #FCD34D;">1</span>'
+            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FEF3C7; color:#B45309; font-weight:800; font-size:0.75rem; border:1px solid #FCD34D;">1</span>'
         elif idx == 2:
-            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#F1F5F9; color:#475569; font-weight:800; font-size:12px; border:1px solid #CBD5E1;">2</span>'
+            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#F1F5F9; color:#475569; font-weight:800; font-size:0.75rem; border:1px solid #CBD5E1;">2</span>'
         elif idx == 3:
-            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FFEDD5; color:#C2410C; font-weight:800; font-size:12px; border:1px solid #FDBA74;">3</span>'
+            rank_badge = '<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#FFEDD5; color:#C2410C; font-weight:800; font-size:0.75rem; border:1px solid #FDBA74;">3</span>'
         else:
-            rank_badge = f'<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:rgba(23,52,92,0.06); color:var(--frost-navy); font-weight:700; font-size:11.5px;">{idx}</span>'
+            rank_badge = f'<span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:rgba(23,52,92,0.06); color:var(--frost-navy); font-weight:700; font-size:0.71875rem;">{idx}</span>'
 
         c_marks = c.get("average_marks", 0.0)
         c_pct = c.get("average_percentage", 0.0)
@@ -686,35 +675,35 @@ def render_guardian_dashboard(
             </td>
             <td style="padding:10px 14px; vertical-align:middle;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="user-avatar" style="width:32px; height:32px; font-size:11px; font-weight:800;">{escape(c.get("avatar", "CO"))}</div>
+                    <div class="user-avatar" style="width:32px; height:32px; font-size:0.6875rem; font-weight:800;">{escape(c.get("avatar", "CO"))}</div>
                     <div>
-                        <strong style="font-size:13px; color:var(--frost-navy);">{escape(c.get("name", "Cadet"))}</strong>
-                        <div style="font-size:10.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(c.get("id", ""))}</div>
+                        <strong style="font-size:0.8125rem; color:var(--frost-navy);">{escape(c.get("name", "Cadet"))}</strong>
+                        <div style="font-size:0.65625rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(c.get("id", ""))}</div>
                     </div>
                 </div>
             </td>
             <td style="padding:10px 14px; text-align:center; vertical-align:middle;">
-                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:11px; opacity:0.6;">/ {c.get("total_assigned", 0)} Badge{"s" if c.get("total_assigned", 0) != 1 else ""}</span>
+                <span style="font-weight:800; color:var(--deep-frozen-midnight);">{c_comp}</span> <span style="font-size:0.6875rem; opacity:0.6;">/ {c.get("total_assigned", 0)} Badge{"s" if c.get("total_assigned", 0) != 1 else ""}</span>
                 <div style="width:50px; height:4px; border-radius:2px; background:rgba(157,183,213,0.3); margin:3px auto 0 auto; overflow:hidden;">
                     <div style="width:{min(100, round((c_comp / max(1, c.get("total_assigned", 0))) * 100))}%; height:100%; background:#10B981;"></div>
                 </div>
             </td>
             <td style="padding:10px 14px; vertical-align:middle;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
-                    <span style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight);">{c_marks:.1f} <span style="font-size:10.5px; opacity:0.6;">/ 50</span></span>
-                    <span style="font-size:11px; font-weight:700; color:{tier_color};">{c_pct:.1f}%</span>
+                    <span style="font-size:0.78125rem; font-weight:800; color:var(--deep-frozen-midnight);">{c_marks:.1f} <span style="font-size:0.65625rem; opacity:0.6;">/ 50</span></span>
+                    <span style="font-size:0.6875rem; font-weight:700; color:{tier_color};">{c_pct:.1f}%</span>
                 </div>
                 <div style="height:5px; border-radius:3px; background:rgba(157,183,213,0.25); overflow:hidden;">
                     <div style="height:100%; width:{c_pct}%; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
                 </div>
             </td>
             <td style="padding:10px 14px; text-align:center; vertical-align:middle;">
-                <span style="font-size:11px; font-weight:700; color:{tier_color}; background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:999px;">
+                <span style="font-size:0.6875rem; font-weight:700; color:{tier_color}; background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:999px;">
                     {tier_label}
                 </span>
             </td>
             <td style="padding:10px 14px; text-align:right; vertical-align:middle; white-space:nowrap;">
-                <button type="button" class="btn-metal btn-sm" style="font-size:11px; padding:4px 10px;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{c['id']}')">
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.6875rem; padding:4px 10px;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{c['id']}')">
                     Inspect &rarr;
                 </button>
             </td>
@@ -726,9 +715,9 @@ def render_guardian_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Academy Academic Leaderboard</h3>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress.</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Cohort rank order based on certified Average Assessment Score (/50) and milestone progress.</div>
             </div>
-            <span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:var(--radius-xs);">
+            <span style="font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:3px 9px; border-radius:var(--radius-xs);">
                 Enrolled Engineering Cadets
             </span>
         </div>
@@ -736,7 +725,7 @@ def render_guardian_dashboard(
         <div style="overflow-x:auto;">
             <table class="cadet-risk-table" style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
-                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:10.5px; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
+                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:0.65625rem; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
                         <th style="padding:8px 14px; text-align:center;">Rank</th>
                         <th style="padding:8px 14px;">Cadet Profile</th>
                         <th style="padding:8px 14px; text-align:center;">Milestones</th>
@@ -771,13 +760,13 @@ def render_guardian_dashboard(
     for p in page_profiles:
         r_st = p.get("risk_status", "On Track")
         if r_st == "On Track":
-            r_pill = '<span style="font-size:11px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10003; On Track</span>'
+            r_pill = '<span style="font-size:0.6875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10003; On Track</span>'
         elif r_st == "Monitor":
-            r_pill = '<span style="font-size:11px; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#9203; Monitor</span>'
+            r_pill = '<span style="font-size:0.6875rem; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#9203; Monitor</span>'
         elif r_st == "Needs Attention":
-            r_pill = '<span style="font-size:11px; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#9888; Needs Attention</span>'
+            r_pill = '<span style="font-size:0.6875rem; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#9888; Needs Attention</span>'
         else:
-            r_pill = '<span style="font-size:11px; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10005; At Risk</span>'
+            r_pill = '<span style="font-size:0.6875rem; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:4px;">&#10005; At Risk</span>'
 
         # Relative active time calculation
         days_inact = p.get("days_inactive", None)
@@ -787,40 +776,40 @@ def render_guardian_dashboard(
         <tr style="border-bottom:1px solid var(--icy-steel-30); transition:background 0.15s ease;">
             <td style="padding:14px; vertical-align:middle; width:18%;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="user-avatar" style="width:34px; height:34px; font-size:11.5px; font-weight:800; border:1px solid var(--icy-steel);">{escape(p.get("avatar", "CO"))}</div>
+                    <div class="user-avatar" style="width:34px; height:34px; font-size:0.71875rem; font-weight:800; border:1px solid var(--icy-steel);">{escape(p.get("avatar", "CO"))}</div>
                     <div>
-                        <strong style="font-size:13.5px; color:var(--frost-navy); display:block;">{escape(p["name"])}</strong>
-                        <span style="font-size:11px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(p["id"])}</span>
+                        <strong style="font-size:0.84375rem; color:var(--frost-navy); display:block;">{escape(p["name"])}</strong>
+                        <span style="font-size:0.6875rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(p["id"])}</span>
                     </div>
                 </div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:10%;">
-                <div style="font-weight:800; font-size:14px; color:var(--deep-frozen-midnight);">{p.get("completed_count", 0)} <span style="font-size:11.5px; font-weight:600; opacity:0.6;">/ {p.get("total_assigned", 0)}</span></div>
+                <div style="font-weight:800; font-size:0.875rem; color:var(--deep-frozen-midnight);">{p.get("completed_count", 0)} <span style="font-size:0.71875rem; font-weight:600; opacity:0.6;">/ {p.get("total_assigned", 0)}</span></div>
                 <div style="width:55px; height:4px; border-radius:2px; background:rgba(157,183,213,0.3); margin:4px auto 0 auto; overflow:hidden;">
                     <div style="width:{min(100, round((p.get('completed_count', 0) / max(1, p.get('total_assigned', 0))) * 100))}%; height:100%; background:#10B981;"></div>
                 </div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:14%;">
-                <div style="font-weight:800; font-size:14px; color:var(--deep-frozen-midnight);">{p.get("average_marks", 0.0):.1f} <span style="font-size:11px; opacity:0.6;">/ 50</span></div>
-                <div style="font-size:11px; font-weight:700; color:{'#059669' if p.get('average_marks', 0) >= 40 else '#B45309'}; margin-top:2px;">
+                <div style="font-weight:800; font-size:0.875rem; color:var(--deep-frozen-midnight);">{p.get("average_marks", 0.0):.1f} <span style="font-size:0.6875rem; opacity:0.6;">/ 50</span></div>
+                <div style="font-size:0.6875rem; font-weight:700; color:{'#059669' if p.get('average_marks', 0) >= 40 else '#B45309'}; margin-top:2px;">
                     {p.get("average_percentage", 0.0):.1f}% &bull; {escape(p.get("standing_tier", "Strong Performance").split()[0])}
                 </div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:10%;" title="{escape(p.get('last_activity_summary', 'Activity recorded'))}">
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:700; color:var(--frost-navy);">{escape(p.get("last_active", "N/A"))}</div>
-                <div style="font-size:10.5px; color:var(--frost-navy-50); margin-top:2px;">{rel_act}</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:700; color:var(--frost-navy);">{escape(p.get("last_active", "N/A"))}</div>
+                <div style="font-size:0.65625rem; color:var(--frost-navy-50); margin-top:2px;">{rel_act}</div>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:12%;">
-                <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 9px; border-radius:4px; display:inline-block;">{escape(p.get("deadline_status", "On Schedule"))}</span>
+                <span style="font-size:0.71875rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 9px; border-radius:4px; display:inline-block;">{escape(p.get("deadline_status", "On Schedule"))}</span>
             </td>
             <td style="padding:14px; text-align:center; vertical-align:middle; width:12%;" title="{escape(p.get('risk_reason', 'Progress on schedule.'))}">
                 {r_pill}
             </td>
-            <td style="padding:14px; vertical-align:middle; font-size:12px; color:var(--frost-navy-75); line-height:1.45; width:24%;">
+            <td style="padding:14px; vertical-align:middle; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.45; width:24%;">
                 {escape(p.get("risk_reason", "Progress on schedule."))}
             </td>
             <td style="padding:14px; text-align:right; vertical-align:middle; white-space:nowrap; width:10%;">
-                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{p['id']}')">
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', '{p['id']}')">
                     Inspect Dossier &rarr;
                 </button>
             </td>
@@ -832,17 +821,17 @@ def render_guardian_dashboard(
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:14px;">
             <div>
                 <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">Cadet Risk & Intervention Monitoring Matrix</h3>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">Individual cadet standing across StarApp Academy with transparent pedagogical risk diagnostics.</div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Individual cadet standing across StarApp Academy with transparent pedagogical risk diagnostics.</div>
             </div>
 
             <div style="display:flex; gap:8px;">
-                <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; {'font-weight:800; background:rgba(23,52,92,0.1);' if risk_filter == 'all' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'all')">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; {'font-weight:800; background:rgba(23,52,92,0.1);' if risk_filter == 'all' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'all')">
                     All Cadets ({len(cohort_profiles)})
                 </button>
-                <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; {'font-weight:800; background:rgba(245,158,11,0.15); border-color:#F59E0B;' if risk_filter == 'attention' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'attention')">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; {'font-weight:800; background:rgba(245,158,11,0.15); border-color:#F59E0B;' if risk_filter == 'attention' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'attention')">
                     &#9888; For Attention ({attention_count})
                 </button>
-                <button type="button" class="btn-secondary btn-sm" style="font-size:11.5px; {'font-weight:800; background:rgba(16,185,129,0.15); border-color:#10B981;' if risk_filter == 'track' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'track')">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; {'font-weight:800; background:rgba(16,185,129,0.15); border-color:#10B981;' if risk_filter == 'track' else ''}" onclick="window.StarAppBridge.dispatchAction('filter_guardian_risk', 'track')">
                     &#10003; On Track ({len(cohort_profiles) - attention_count})
                 </button>
             </div>
@@ -851,7 +840,7 @@ def render_guardian_dashboard(
         <div style="overflow-x:auto;">
             <table class="cadet-risk-table" style="width:100%; border-collapse:collapse; text-align:left;">
                 <thead>
-                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:11px; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
+                    <tr style="border-bottom:1.5px solid var(--icy-steel); background:rgba(234,244,255,0.45); font-size:0.6875rem; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">
                         <th style="padding:12px 14px; text-align:left; width:18%;">Cosmonaut Cadet</th>
                         <th style="padding:12px 14px; text-align:center; width:10%;">Milestones</th>
                         <th style="padding:12px 14px; text-align:center; width:14%;">Average Assessment Score (/50)</th>
@@ -905,19 +894,19 @@ def render_individual_cosmo_dossier(
 
     # Profile Badge Tag
     if is_demo:
-        badge_tag = '<span style="font-size:11px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel);">DEMONSTRATION ANALYTICS PROFILE</span>'
+        badge_tag = '<span style="font-size:0.6875rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel);">DEMONSTRATION ANALYTICS PROFILE</span>'
     else:
-        badge_tag = '<span style="font-size:11px; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">ACTUAL APPLICATION COSMONAUT</span>'
+        badge_tag = '<span style="font-size:0.6875rem; font-weight:800; background:#047857; color:#FFFFFF; padding:3px 9px; border-radius:var(--radius-xs);">ACTUAL APPLICATION COSMONAUT</span>'
 
     # Risk Status Pill
     if r_status == "On Track":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10003; On Track</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10003; On Track</span>'
     elif r_status == "Monitor":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9203; Monitor</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#1D4ED8; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9203; Monitor</span>'
     elif r_status == "Needs Attention":
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9888; Needs Attention</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#9888; Needs Attention</span>'
     else:
-        r_pill = '<span style="font-size:11.5px; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10005; At Risk</span>'
+        r_pill = '<span style="font-size:0.71875rem; font-weight:800; color:#B91C1C; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); padding:4px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:5px;">&#10005; At Risk</span>'
 
     # 1. LEADERBOARD POSITION CALCULATION
     rank = 1
@@ -930,13 +919,13 @@ def render_individual_cosmo_dossier(
                 break
 
     if rank == 1:
-        rank_medal = '<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129351; Rank #1 &bull; Batch Top Standing</span>'
+        rank_medal = '<span style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129351; Rank #1 &bull; Batch Top Standing</span>'
     elif rank == 2:
-        rank_medal = '<span style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129352; Rank #2 &bull; High Honors</span>'
+        rank_medal = '<span style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129352; Rank #2 &bull; High Honors</span>'
     elif rank == 3:
-        rank_medal = '<span style="background:#FFEDD5; color:#C2410C; border:1px solid #FDBA74; font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">&#129353; Rank #3 &bull; Honors</span>'
+        rank_medal = '<span style="background:#FFEDD5; color:#C2410C; border:1px solid #FDBA74; font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">&#129353; Rank #3 &bull; Honors</span>'
     else:
-        rank_medal = f'<span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel); font-weight:800; padding:4px 10px; border-radius:999px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">Rank #{rank} of {total_cohort}</span>'
+        rank_medal = f'<span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel); font-weight:800; padding:4px 10px; border-radius:999px; font-size:0.71875rem; display:inline-flex; align-items:center; gap:4px;">Rank #{rank} of {total_cohort}</span>'
 
     # 2. BAR GRAPH: MILESTONE DELIVERABLES & RUBRIC PERFORMANCE
     curriculum_badges = [
@@ -983,20 +972,20 @@ def render_individual_cosmo_dossier(
 
         score_label = f"{score:.1f}"
         popover_body = f"""
-        <div style="font-weight:800; font-size:12px; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
-        <div style="font-size:11px; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
-        <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:11.5px; color:#FFFFFF;">
+        <div style="font-weight:800; font-size:0.75rem; color:#FFFFFF; margin-bottom:4px;">{escape(bcode)}: {escape(b["title"])}</div>
+        <div style="font-size:0.6875rem; color:var(--pure-ice); margin-bottom:6px;">{escape(b["pillar"])}</div>
+        <div style="padding-top:5px; border-top:1px solid rgba(157,183,213,0.25); font-size:0.71875rem; color:#FFFFFF;">
             Rubric Score: <strong style="color:#047857;">{score:.1f} / 50.0</strong> ({pct:.1f}%)
         </div>
-        <div style="font-size:11px; color:var(--pure-ice); margin-top:2px;">Attempt #{att} &bull; Certified Assessment</div>
-        <div style="font-size:10.5px; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
+        <div style="font-size:0.6875rem; color:var(--pure-ice); margin-top:2px;">Attempt #{att} &bull; Certified Assessment</div>
+        <div style="font-size:0.65625rem; color:var(--pure-ice); margin-top:3px; font-style:italic;">Evaluated: {escape(rev_dt)}</div>
         """
-        status_pill = '<span style="font-size:10.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:999px;">&#10003; Certified</span>'
+        status_pill = '<span style="font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:999px;">&#10003; Certified</span>'
 
         bargraph_cols.append(f"""
         <div class="has-glass-tooltip velocity-bar-col {pop_align}" style="display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; position:relative; cursor:pointer;">
             <!-- Top Score Label -->
-            <div style="font-size:12px; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
+            <div style="font-size:0.75rem; font-weight:800; color:{label_color}; margin-bottom:6px; font-family:var(--font-family-mono);">{score_label}</div>
 
             <!-- Vertical Bar Fill -->
             <div style="width:100%; max-width:68px; height:{height_pct}%; {bar_style} border-radius:6px 6px 0 0; transition:height 0.2s ease, opacity 0.2s ease;"></div>
@@ -1008,8 +997,8 @@ def render_individual_cosmo_dossier(
 
             <!-- Column Legend / Subtext -->
             <div style="margin-top:10px; text-align:center; width:100%;">
-                <div style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">{escape(bcode)}</div>
-                <div style="font-size:11px; color:var(--frost-navy-75); margin:2px 0 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{escape(b['title'])}">{escape(b['title'])}</div>
+                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight);">{escape(bcode)}</div>
+                <div style="font-size:0.6875rem; color:var(--frost-navy-75); margin:2px 0 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{escape(b['title'])}">{escape(b['title'])}</div>
                 {status_pill}
             </div>
         </div>
@@ -1020,9 +1009,9 @@ def render_individual_cosmo_dossier(
         <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Milestone Performance & Rubric Marks Comparison</h3>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">Individual 50-mark standard assessment rubric scores across curriculum roadmap badges.</div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Individual 50-mark standard assessment rubric scores across curriculum roadmap badges.</div>
             </div>
-            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:11.5px;">
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:0.71875rem;">
                 <span style="display:inline-flex; align-items:center; gap:5px; color:var(--frost-navy); font-weight:700;">
                     <span style="width:10px; height:10px; border-radius:2px; background:#10B981;"></span> Honors Distinction (&ge; 45/50)
                 </span>
@@ -1035,7 +1024,7 @@ def render_individual_cosmo_dossier(
         <div style="background:rgba(234,244,255,0.35); border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); padding:32px 24px 20px 24px; position:relative; overflow:visible;">
             <!-- Passing Threshold Guide Line (35.0 / 50.0 = 70% from baseline = 30% from top of bar zone) -->
             <div style="position:absolute; top:32%; left:24px; right:24px; height:1px; border-top:1.5px dashed rgba(16,185,129,0.6); z-index:1; pointer-events:none;">
-                <span style="position:absolute; right:0; top:-20px; font-size:10.5px; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                <span style="position:absolute; right:0; top:-20px; font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(255,255,255,0.95); padding:2px 8px; border-radius:4px; border:1px solid rgba(16,185,129,0.3); box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                     Passing Threshold: 35.0 / 50.0 (70%)
                 </span>
             </div>
@@ -1059,24 +1048,24 @@ def render_individual_cosmo_dossier(
         dt = a.get("reviewed_at", "")
         asm_id = a.get("id") or f"asm_{c_id}_{b_code.lower()}"
 
-        demo_tag = '<span style="font-size:10.5px; color:var(--frost-navy-50); font-style:italic; margin-right:4px;">Demonstration Record</span>' if is_demo else ''
+        demo_tag = '<span style="font-size:0.65625rem; color:var(--frost-navy-50); font-style:italic; margin-right:4px;">Demonstration Record</span>' if is_demo else ''
 
         marksheet_items.append(f"""
         <div style="padding:14px 18px; margin-bottom:12px; background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:2px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
-                    <strong style="font-size:13.5px; color:var(--frost-navy);">{escape(b_title)}</strong>
-                    <span style="font-size:11.5px; color:var(--frost-navy-50);">(Attempt #{att})</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                    <strong style="font-size:0.84375rem; color:var(--frost-navy);">{escape(b_title)}</strong>
+                    <span style="font-size:0.71875rem; color:var(--frost-navy-50);">(Attempt #{att})</span>
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-75);">
+                <div style="font-size:0.75rem; color:var(--frost-navy-75);">
                     Score: <strong style="color:var(--deep-frozen-midnight);">{tot:.1f} / 50.0</strong> ({pct:.1f}%) &bull; Certified on {escape(dt)}
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <span class="status-pill status-approved" style="font-size:10.5px;">&#10003; Certified</span>
+                <span class="status-pill status-approved" style="font-size:0.65625rem;">&#10003; Certified</span>
                 {demo_tag}
-                <button type="button" class="btn-metal btn-sm" style="font-size:11.5px; font-weight:700; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_marksheet', '{escape(asm_id)}')">
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:700; padding:6px 14px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_marksheet', '{escape(asm_id)}')">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                     <span>View Review Marksheet &nearr;</span>
                 </button>
@@ -1102,15 +1091,15 @@ def render_individual_cosmo_dossier(
         <div style="background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:14px 16px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
                 <div>
-                    <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px;">{escape(sk_cat)}</div>
-                    <strong style="font-size:13.5px; color:var(--frost-navy); display:block; margin-top:2px;">{escape(sk_name)}</strong>
+                    <div style="font-size:0.65625rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy-50); letter-spacing:0.5px;">{escape(sk_cat)}</div>
+                    <strong style="font-size:0.84375rem; color:var(--frost-navy); display:block; margin-top:2px;">{escape(sk_name)}</strong>
                 </div>
-                <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(sk_badge)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(sk_badge)}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:11.5px; gap:8px; flex-wrap:wrap;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.71875rem; gap:8px; flex-wrap:wrap;">
                 <span style="font-weight:800; color:{sk_col}; background:rgba(37,99,235,0.08); padding:2px 8px; border-radius:4px;">{escape(sk_prof)}</span>
-                <span style="font-weight:800; font-size:11.5px; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
-                    &#9733; Rating: <strong style="color:#047857; font-size:12px;">{sk_rating:.1f}</strong> / 10.0
+                <span style="font-weight:800; font-size:0.71875rem; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:2px 8px; border-radius:4px; border:1px solid var(--icy-steel);">
+                    &#9733; Rating: <strong style="color:#047857; font-size:0.75rem;">{sk_rating:.1f}</strong> / 10.0
                 </span>
             </div>
             <div style="width:100%; height:6px; background:rgba(157,183,213,0.25); border-radius:3px; overflow:hidden;">
@@ -1138,13 +1127,13 @@ def render_individual_cosmo_dossier(
         cert_cards.append(f"""
         <div style="background:rgba(255,255,255,0.92); border:1px solid var(--icy-steel-30); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px; box-shadow:0 2px 6px rgba(7,22,41,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
-                <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:3px 8px; border-radius:4px;">{escape(cred_id)}</span>
-                <span style="font-size:10.5px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:999px;">&#10003; {escape(honors)}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.07); padding:3px 8px; border-radius:4px;">{escape(cred_id)}</span>
+                <span style="font-size:0.65625rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 8px; border-radius:999px;">&#10003; {escape(honors)}</span>
             </div>
-            <div style="font-size:14px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
+            <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
                 <span style="font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); font-weight:800;">{escape(c_code)}:</span> {escape(c_title)}
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:11.5px; color:var(--frost-navy-75);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid var(--icy-steel-30); font-size:0.71875rem; color:var(--frost-navy-75);">
                 <span>Score: <strong style="color:var(--deep-frozen-midnight);">{escape(score_str)}</strong></span>
                 <span>Issued: <strong>{escape(issued)}</strong></span>
             </div>
@@ -1162,15 +1151,15 @@ def render_individual_cosmo_dossier(
     mentoring_plan = data.get("mentoring_plan", "Maintain current pacing and deliverable quality.")
 
     str_items = "".join([f"""
-    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#047857; font-weight:800; font-size:13px; line-height:1.4;">&#10003;</span>
+    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:0.78125rem; color:var(--frost-navy); line-height:1.5;">
+        <span style="color:#047857; font-weight:800; font-size:0.8125rem; line-height:1.4;">&#10003;</span>
         <span>{escape(s)}</span>
     </li>
     """ for s in strengths_data])
 
     imp_items = "".join([f"""
-    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:12.5px; color:var(--frost-navy); line-height:1.5;">
-        <span style="color:#B45309; font-weight:800; font-size:13px; line-height:1.4;">&#9678;</span>
+    <li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px; font-size:0.78125rem; color:var(--frost-navy); line-height:1.5;">
+        <span style="color:#B45309; font-weight:800; font-size:0.8125rem; line-height:1.4;">&#9678;</span>
         <span>{escape(im)}</span>
     </li>
     """ for im in improvements_data])
@@ -1179,8 +1168,8 @@ def render_individual_cosmo_dossier(
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap:18px; margin-bottom:18px;">
         <!-- Column 1: Strengths -->
         <div style="background:rgba(16,185,129,0.03); border:1px solid rgba(16,185,129,0.22); border-left:4px solid #10B981; border-radius:var(--radius-sm); padding:16px 18px;">
-            <div style="font-size:13px; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#10003;</span>
+            <div style="font-size:0.8125rem; font-weight:800; color:#065F46; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#047857; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem;">&#10003;</span>
                 Demonstrated Engineering Strengths
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -1190,8 +1179,8 @@ def render_individual_cosmo_dossier(
 
         <!-- Column 2: Improvement Areas -->
         <div style="background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.22); border-left:4px solid #F59E0B; border-radius:var(--radius-sm); padding:16px 18px;">
-            <div style="font-size:13px; font-weight:800; color:#92400E; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-                <span style="background:#F59E0B; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px;">&#9678;</span>
+            <div style="font-size:0.8125rem; font-weight:800; color:#92400E; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#F59E0B; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem;">&#9678;</span>
                 Targeted Improvement & Growth Areas
             </div>
             <ul style="list-style:none; padding:0; margin:0;">
@@ -1203,12 +1192,12 @@ def render_individual_cosmo_dossier(
     <!-- Guardian Mentoring Action Plan -->
     <div style="background:linear-gradient(135deg, rgba(23,52,92,0.05) 0%, rgba(37,99,235,0.08) 100%); border:1px solid rgba(37,99,235,0.22); border-left:4px solid var(--frost-navy); border-radius:var(--radius-sm); padding:16px 20px;">
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800;">GM</div>
-            <div style="font-size:12.5px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
+            <div style="width:26px; height:26px; border-radius:50%; background:var(--deep-frozen-midnight); color:#fff; display:flex; align-items:center; justify-content:center; font-size:0.6875rem; font-weight:800;">GM</div>
+            <div style="font-size:0.78125rem; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">
                 Guardian Mentoring Guidance
             </div>
         </div>
-        <div style="font-size:13px; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
+        <div style="font-size:0.8125rem; color:var(--frost-navy); line-height:1.55; margin-left:36px;">
             {escape(mentoring_plan)}
         </div>
     </div>
@@ -1218,7 +1207,7 @@ def render_individual_cosmo_dossier(
     <div>
         <!-- Return Button -->
         <div style="margin-bottom:18px;">
-            <button type="button" class="btn-secondary btn-sm" style="font-size:12px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', 'all')">
+            <button type="button" class="btn-secondary btn-sm" style="font-size:0.75rem; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('select_guardian_cosmo_filter', 'all')">
                 &larr; Back to Cohort Aggregate Analytics
             </button>
         </div>
@@ -1227,13 +1216,13 @@ def render_individual_cosmo_dossier(
         <div class="liquid-glass-card" style="padding:22px 26px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                 <div style="display:flex; align-items:center; gap:16px;">
-                    <div class="user-avatar" style="width:52px; height:52px; font-size:18px; font-weight:800; border:2px solid var(--icy-steel);">{escape(avatar)}</div>
+                    <div class="user-avatar" style="width:52px; height:52px; font-size:1.125rem; font-weight:800; border:2px solid var(--icy-steel);">{escape(avatar)}</div>
                     <div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(c_name)}</h2>
                             {badge_tag}
                         </div>
-                        <div style="font-size:12.5px; color:var(--frost-navy-75); margin-top:3px;">
+                        <div style="font-size:0.78125rem; color:var(--frost-navy-75); margin-top:3px;">
                             ID: <strong style="font-family:var(--font-family-mono);">{escape(c_id)}</strong> &bull; Email: <strong>{escape(c_email)}</strong> &bull; Band: <strong>{escape(data.get("band", "B1"))}</strong>
                         </div>
                     </div>
@@ -1241,12 +1230,12 @@ def render_individual_cosmo_dossier(
                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         {rank_medal}
-                        <span style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
+                        <span style="font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.08); padding:5px 12px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
                             Standing: <strong>{escape(tier)}</strong>
                         </span>
                         {r_pill}
                     </div>
-                    <div style="font-size:11px; color:var(--frost-navy-50);">
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50);">
                         Last Active: <strong style="color:var(--frost-navy);">{escape(last_act)}</strong> &bull; {escape(last_act_desc)}
                     </div>
                 </div>
@@ -1272,7 +1261,7 @@ def render_individual_cosmo_dossier(
                         {render_metric_info_popover('individual_score', data, 'individual')}
                     </span>
                 </div>
-                <div class="kpi-value">{avg_marks:.1f} <span style="font-size:14px; opacity:0.6;">/ 50</span></div>
+                <div class="kpi-value">{avg_marks:.1f} <span style="font-size:0.875rem; opacity:0.6;">/ 50</span></div>
                 <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700;">{avg_pct:.1f}% Average Score</div>
             </div>
             <div class="liquid-glass-card kpi-card" style="padding:18px 20px;">
@@ -1281,7 +1270,7 @@ def render_individual_cosmo_dossier(
                         Cohort Leaderboard Rank
                     </span>
                 </div>
-                <div class="kpi-value" style="color:#047857;">#{rank} <span style="font-size:13px; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
+                <div class="kpi-value" style="color:#047857;">#{rank} <span style="font-size:0.8125rem; opacity:0.65; color:var(--frost-navy);">/ {total_cohort}</span></div>
                 <div class="kpi-subtext" style="color:var(--deep-frozen-midnight); font-weight:700;">Top {round((rank/max(1, total_cohort))*100)}% of Batch</div>
             </div>
             <div class="liquid-glass-card kpi-card" style="padding:18px 20px;">
@@ -1314,9 +1303,9 @@ def render_individual_cosmo_dossier(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Official Evaluated Marksheets (Standard 50-Mark Rubric)</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Audited submission evaluations across the 5 rubric criteria. Click 'View Review Marksheet' to inspect the full evaluation rubric.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Audited submission evaluations across the 5 rubric criteria. Click 'View Review Marksheet' to inspect the full evaluation rubric.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(asms)} Evaluated Milestone{"s" if len(asms) != 1 else ""}
                 </span>
             </div>
@@ -1331,9 +1320,9 @@ def render_individual_cosmo_dossier(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Verified Skills & Competency Matrix</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Evaluated engineering capabilities demonstrated through accredited milestone submissions, with ratings scored out of 10.0.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Evaluated engineering capabilities demonstrated through accredited milestone submissions, with ratings scored out of 10.0.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(skills_data)} Verified Skill{"s" if len(skills_data) != 1 else ""}
                 </span>
             </div>
@@ -1345,9 +1334,9 @@ def render_individual_cosmo_dossier(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Official Certifications & Verified Credentials</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Standard-issue micro-credentials awarded upon successful 50-mark rubric evaluation.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Standard-issue micro-credentials awarded upon successful 50-mark rubric evaluation.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     {len(certs_data)} Verified Credential{"s" if len(certs_data) != 1 else ""}
                 </span>
             </div>
@@ -1359,9 +1348,9 @@ def render_individual_cosmo_dossier(
             <div style="margin-bottom:18px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Pedagogical Diagnostics & Mentoring Pathway</h3>
-                    <div style="font-size:12.5px; color:var(--frost-navy-50);">Guardian observational analysis, demonstrated competencies, and targeted improvement roadmaps.</div>
+                    <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Guardian observational analysis, demonstrated competencies, and targeted improvement roadmaps.</div>
                 </div>
-                <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
+                <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:4px 10px; border-radius:var(--radius-xs);">
                     Pedagogical Diagnostic
                 </span>
             </div>
@@ -1391,9 +1380,9 @@ def _render_badge_timeline_stepper(dt: dict, is_allocated: bool) -> str:
 
     return f"""
     <div>
-        <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div style="font-size:0.84375rem; font-weight:800; color:var(--frost-navy); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
             <span style="display:inline-flex; align-items:center; gap:7px;">{get_icon("calendar", 15)} Milestone Timeline Schedule</span>
-            <span class="status-pill {'status-approved' if is_allocated else 'status-locked'}" style="font-size:11px; font-weight:800;">
+            <span class="status-pill {'status-approved' if is_allocated else 'status-locked'}" style="font-size:0.6875rem; font-weight:800;">
                 {"Active Roadmap Sequence" if is_allocated else "Target Schedule"}
             </span>
         </div>
@@ -1478,8 +1467,22 @@ def _extract_badge_mapping_details(b: Badge, cosmo_users_map: Dict[str, Any], al
     return rev_id, rev_name_str, rev_dates, c_ids, matched_mappings
 
 
+def _fmt_nice_date(iso_value: Any, with_year: bool = True) -> str:
+    """'2026-11-18' -> '18 Nov 2026' (or '18 Nov'); anything unparsable is returned as-is."""
+    try:
+        d_ = datetime.date.fromisoformat(str(iso_value)[:10])
+        return d_.strftime("%d %b %Y" if with_year else "%d %b").lstrip("0")
+    except Exception:
+        return str(iso_value or "")
+
+
 def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
-    """Renders the Liquid-Glass Timeline & Mapping modal opened from any Badge Allotment card."""
+    """
+    Timeline & Mapping modal opened from a Badge Allotment card.
+    READ-ONLY. Left: who reviews whom (one compact card per reviewer, plus any cosmonauts assigned but not mapped yet).
+    Right: the milestone timeline as numbered steps. Everything shown is read from the saved badge, so whatever the
+    Edit Badge option saves (cosmonauts, dates) appears here. Two columns when wide, one when narrow.
+    """
     if store is None:
         from starapp.storage import store as global_store
         store = global_store
@@ -1494,6 +1497,7 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
     rev_id, rev_name, rev_dates, assigned_cosmo_ids, matched_mappings = _extract_badge_mapping_details(badge, cosmo_map, all_mappings)
     b_band = getattr(badge, "target_band", "B1") or "B1"
 
+    # ------------------------------------------------------------------ personnel mapping
     pair_cards = []
     for mp in matched_mappings:
         m_revs = mp.get("reviewers") or []
@@ -1503,53 +1507,39 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
         r_u = cosmo_map.get(r_uid) or (store.get_user_by_id(r_uid) if store and r_uid else None)
         r_label = r_u.name if r_u else (r_uid or "Reviewer")
         r_band = getattr(r_u, "band", "") or mp.get("reviewer_band", "B2")
-        r_role = getattr(r_u, "role", "Reviewer")
-        r_avatar = getattr(r_u, "avatar", r_label[:2].upper() if r_label else "REV")
+        r_role = getattr(r_u, "learning_track", "") or "Reviewer"
 
-        cad_chips = []
+        chips = []
         for cid in m_cos:
             cu = cosmo_map.get(cid) or (store.get_user_by_id(cid) if store else None)
-            cname = cu.name if cu else cid
-            c_av = getattr(cu, "avatar", cname[:2].upper() if cname else "CM")
-            cad_chips.append(f"""
-            <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.88); border:1px solid rgba(157,183,213,0.45); color:var(--frost-navy); font-size:12px; font-weight:700;">
-                <span style="width:18px; height:18px; border-radius:50%; background:rgba(23,52,92,0.12); display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;">{escape(c_av)}</span>
-                {escape(cname)}
-            </span>
-            """)
+            chips.append(f'<span class="tm-chip">{escape(cu.name if cu else cid)}</span>')
 
         if len(m_dates) > 1:
-            d_label = f"{format_review_date_human(m_dates[0])} → {format_review_date_human(m_dates[-1])} ({len(m_dates)} Working Days)"
+            same_year = str(m_dates[0])[:4] == str(m_dates[-1])[:4]
+            d_label = f"{_fmt_nice_date(m_dates[0], with_year=not same_year)} → {_fmt_nice_date(m_dates[-1])} · {len(m_dates)} working days"
         elif m_dates:
-            d_label = format_review_date_human(m_dates[0])
+            d_label = _fmt_nice_date(m_dates[0])
         else:
-            d_label = "Schedule Pending"
+            d_label = "Schedule pending"
 
         pair_cards.append(f"""
-        <div class="lg-mapping-glass-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:10px; margin-bottom:10px; border-bottom:1px solid rgba(157,183,213,0.3);">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800;">
-                        {escape(r_avatar)}
-                    </div>
-                    <div>
-                        <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-                            <strong style="font-size:14px; color:var(--frost-navy);">{escape(r_label)}</strong>
-                            <span class="status-pill" style="font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff;">Band {escape(r_band)}</span>
-                        </div>
-                        <div style="font-size:11.5px; font-weight:700; color:#047857;">{escape(r_role)}</div>
-                    </div>
+        <div class="lg-mapping-glass-card tm-rev">
+            <div class="tm-rev-head">
+                <div class="tm-rev-who">
+                    <span class="tm-rev-name">{escape(r_label)}</span>
+                    <span class="md-band">{escape(r_band)}</span>
+                    <span class="md-role" style="color:#047857;">{escape(r_role)}</span>
                 </div>
-                <span class="status-pill status-approved" style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:800;">{escape(d_label)}</span>
+                <span class="tm-window">{escape(d_label)}</span>
             </div>
-            <div style="display:flex; flex-wrap:wrap; gap:7px; align-items:center;">
-                <span style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-right:4px;">Assigned Cosmonauts ({len(m_cos)}):</span>
-                {"".join(cad_chips) if cad_chips else '<span style="font-size:12px; color:var(--frost-navy);">None assigned</span>'}
-            </div>
+            <div class="tm-label">Assigned Cosmonauts ({len(m_cos)})</div>
+            <div class="tm-chips">{"".join(chips) if chips else '<span class="md-empty-inline">None assigned</span>'}</div>
         </div>
         """)
 
-    if not pair_cards:
+    if pair_cards:
+        mapping_body_html = f'<div class="tm-list">{"".join(pair_cards)}</div>'
+    else:
         rel_reqs = [
             r for r in all_requests
             if r.get("band") == b_band and (
@@ -1561,114 +1551,243 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
             acc_cnt = sum(1 for r in rel_reqs if r.get("status") == "accepted")
             pend_cnt = sum(1 for r in rel_reqs if r.get("status") == "pending")
             mapping_body_html = f"""
-            <div class="lg-mapping-glass-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-color:rgba(245,158,11,0.4);">
-                <div style="font-size:13px; font-weight:700; color:var(--frost-navy);">
-                    Mapping in Progress: {acc_cnt} Accepted, {pend_cnt} Pending reviewer request(s) in Mapping Matrix.
-                </div>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_mapping_badge_detail', '{escape(badge.id)}')">
-                    Open Badge Mapping
-                </button>
+            <div class="lg-mapping-glass-card tm-note">
+                <span>Mapping in progress: {acc_cnt} accepted, {pend_cnt} pending reviewer request(s).</span>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_mapping_badge_detail', '{escape(badge.id)}')">Open Badge Mapping</button>
             </div>
             """
         else:
             mapping_body_html = f"""
-            <div class="lg-mapping-glass-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-style:dashed;">
-                <div style="font-size:13px; font-weight:600; color:var(--frost-navy);">
-                    No reviewer-to-cosmonaut mapping finalized for {escape(badge.code)} yet.
-                </div>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')">
-                    Assign in Mapping Matrix
-                </button>
+            <div class="lg-mapping-glass-card tm-note">
+                <span>No reviewer-to-cosmonaut mapping finalized for {escape(badge.code)} yet.</span>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')">Assign in Mapping Matrix</button>
             </div>
             """
-    else:
-        mapping_body_html = "".join(pair_cards)
 
-    rev_date_val = rev_dates[0] if rev_dates else (dt.get("review_date") if dt.get("review_date") not in (None, "", "TBD") else "2026-11-18")
-    stepper_html = _render_badge_timeline_stepper(dt, is_allocated=bool(getattr(badge, "is_published", False)))
+    # ------------------------------------------------------------------ cosmonauts assigned but not (yet) mapped to a reviewer
+    mapped_ids = {cid for mp in matched_mappings for cid in (mp.get("cosmonauts") or [])}
+    unmapped = [cid for cid in assigned_cosmo_ids if cid not in mapped_ids]
+    if unmapped:
+        un_chips = []
+        for cid in unmapped:
+            cu = cosmo_map.get(cid) or (store.get_user_by_id(cid) if store else None)
+            un_chips.append(f'<span class="tm-chip">{escape(cu.name if cu else cid)}</span>')
+        unmapped_html = f"""
+        <div class="tm-rev is-unmapped">
+            <div class="tm-rev-head">
+                <div class="tm-rev-who"><span class="tm-rev-name">Not mapped to a reviewer yet</span></div>
+            </div>
+            <div class="tm-label">Assigned Cosmonauts ({len(unmapped)})</div>
+            <div class="tm-chips">{"".join(un_chips)}</div>
+        </div>
+        """
+        if pair_cards:
+            mapping_body_html = mapping_body_html[:-len("</div>")] + unmapped_html + "</div>"   # inside the scrolling list
+        else:
+            mapping_body_html += f'<div class="tm-list" style="margin-top:10px;">{unmapped_html}</div>'
+
+    # ------------------------------------------------------------------ timeline (READ-ONLY: dates are changed from Edit Badge)
+    def _span(a_key: str, b_key: str = "") -> str:
+        a_val, b_val = dt.get(a_key), dt.get(b_key) if b_key else None
+        if a_val and b_val:
+            return f'{_fmt_nice_date(a_val)} <span class="tm-arrow">&rarr;</span> {_fmt_nice_date(b_val)}'
+        if a_val:
+            return _fmt_nice_date(a_val)
+        return '<span class="tm-unset">Not set</span>'
+
+    review_txt = _span("review_date")
+    if not dt.get("review_date") and rev_dates:
+        review_txt = _fmt_nice_date(rev_dates[0]) if len(rev_dates) == 1 else f'{_fmt_nice_date(rev_dates[0])} <span class="tm-arrow">&rarr;</span> {_fmt_nice_date(rev_dates[-1])}'
+
+    def _step(num: int, label: str, hint: str, value_html: str, tone: str = "") -> str:
+        return (
+            f'<li class="tm-step {tone}"><span class="tm-step-dot">{num}</span>'
+            f'<span class="tm-step-name">{label}<small>{hint}</small></span>'
+            f'<span class="tm-step-inputs"><span class="tm-date-ro">{value_html}</span></span></li>'
+        )
+
+    steps_html = "".join([
+        _step(1, "Allocated", "Badge &amp; project allotted", _span("assignment_date")),
+        _step(2, "Learning", "Study period", _span("learning_start_date", "learning_end_date")),
+        _step(3, "Sprint", "Project work", _span("project_start_date", "project_end_date")),
+        _step(4, "Submission Deadline", "Final deliverable due", _span("submission_deadline"), "is-danger"),
+        _step(5, "Review Date", "Review &amp; defense", review_txt, "is-review"),
+        _step(6, "Award Date", "Target badge date", _span("expected_award_date"), "is-award"),
+    ])
+    is_live = bool(getattr(badge, "is_published", False))
+    lock_ico = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
 
     return f"""
-    <div>
-        <!-- Liquid-Glass Hero Banner -->
-        <div class="lg-tl-hero">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:3px 9px; border-radius:4px;">{escape(badge.code)}</span>
-                    <span class="status-pill" style="font-size:11.5px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--frost-navy);">Band {escape(b_band)}</span>
-                    <span class="status-pill" style="font-size:11.5px; font-weight:700; background:rgba(255,255,255,0.85); color:var(--frost-navy);">{escape(badge.category)}</span>
-                </div>
-                <h4 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(badge.title)}</h4>
+    <div class="tm-wrap">
+        <div class="tm-head">
+            <div class="tm-head-main">
+                <span class="tm-code">{escape(badge.code)}</span>
+                <span class="tm-chip-soft">Band {escape(b_band)}</span>
+                <h4 class="tm-title">{escape(badge.title)}</h4>
             </div>
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,0.9);">
-                {get_icon("target", 13)} Manage in Mapping
-            </button>
+            <div class="tm-head-actions">
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                    {get_icon("target", 13)} Manage in Mapping
+                </button>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{escape(badge.id)}')" style="font-weight:800; display:inline-flex; align-items:center; gap:6px;">
+                    {get_icon("edit", 13)} Edit Badge
+                </button>
+            </div>
         </div>
 
-        <!-- Section 1: Liquid-Glass Personnel Mapping & Review Schedule -->
-        <div class="tl-map-modal-section">
-            <h5 style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin:0 0 12px 0; display:flex; align-items:center; gap:7px;">
-                {get_icon("users", 16)} Personnel Mapping &amp; Assessment Window ({len(assigned_cosmo_ids)} Cosmonauts)
-            </h5>
-            {mapping_body_html}
-        </div>
+        <div class="tm-grid">
+            <section class="tm-card">
+                <div class="tm-card-head">
+                    <h5 class="tm-card-title">{get_icon("users", 17)} Personnel Mapping &amp; Assessment Window</h5>
+                    <span class="md-count">{len(assigned_cosmo_ids)} Cosmonauts</span>
+                </div>
+                {mapping_body_html}
+            </section>
 
-        <!-- Section 2: Liquid-Glass Timeline Rail & Configuration -->
-        <div class="tl-map-modal-section" style="margin-bottom:0;">
-            {stepper_html}
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid rgba(157,183,213,0.35);">
-                <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">
-                    Configure Milestone Timeline Dates
+            <section class="tm-card">
+                <div class="tm-card-head">
+                    <h5 class="tm-card-title">{get_icon("calendar", 17)} Milestone Timeline Schedule</h5>
+                    <span class="status-pill {'status-approved' if is_live else 'status-locked'}">{"Active Roadmap Sequence" if is_live else "Target Schedule"}</span>
                 </div>
-                <div class="lg-tl-editor-grid">
-                    <div class="lg-tl-editor-group">
-                        <div style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:10px;">Phase 1: Curriculum &amp; Sprint</div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:var(--frost-navy);">Learning Start</label>
-                                <input type="date" id="tl_ls_{badge.id}" class="form-input" value="{dt.get('learning_start_date', '2026-11-10')}" style="font-size:12px; padding:6px 8px;">
-                            </div>
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:var(--frost-navy);">Learning End</label>
-                                <input type="date" id="tl_le_{badge.id}" class="form-input" value="{dt.get('learning_end_date', '2026-11-20')}" style="font-size:12px; padding:6px 8px;">
-                            </div>
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:var(--frost-navy);">Sprint Start</label>
-                                <input type="date" id="tl_ps_{badge.id}" class="form-input" value="{dt.get('project_start_date', '2026-11-21')}" style="font-size:12px; padding:6px 8px;">
-                            </div>
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:var(--frost-navy);">Sprint End</label>
-                                <input type="date" id="tl_pe_{badge.id}" class="form-input" value="{dt.get('project_end_date', '2026-12-01')}" style="font-size:12px; padding:6px 8px;">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="lg-tl-editor-group">
-                        <div style="font-size:12px; font-weight:800; color:var(--frost-navy); margin-bottom:10px;">Phase 2: Assessment &amp; Award</div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:#B91C1C;">Submission Deadline</label>
-                                <input type="date" id="tl_dl_{badge.id}" class="form-input" value="{dt.get('submission_deadline', '2026-12-03')}" style="font-size:12px; padding:6px 8px; border-color:rgba(185,28,28,0.4);">
-                            </div>
-                            <div>
-                                <label style="font-size:11px; font-weight:800; color:#047857;">Review Date</label>
-                                <input type="date" id="tl_rd_{badge.id}" class="form-input" value="{rev_date_val}" style="font-size:12px; padding:6px 8px; border-color:rgba(4,120,87,0.4);">
-                            </div>
-                            <div style="grid-column:span 2;">
-                                <label style="font-size:11px; font-weight:800; color:#15803D;">Award Date</label>
-                                <input type="date" id="tl_aw_{badge.id}" class="form-input" value="{dt.get('expected_award_date', '2026-12-08')}" style="font-size:12px; padding:6px 8px; border-color:rgba(21,128,61,0.4);">
-                            </div>
-                        </div>
-                    </div>
+                <ol class="tm-steps">{steps_html}</ol>
+                <div class="tm-foot is-note">
+                    <span class="tm-readonly">{lock_ico} Read-only view &middot; change cosmonauts and dates from <b>Edit Badge</b></span>
                 </div>
-                <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
-                    <button type="button" class="btn-metal btn-sm" style="font-size:12.5px; padding:8px 20px; font-weight:800;"
-                        onclick="const p={{badge_id:'{badge.id}', learning_start_date:document.getElementById('tl_ls_{badge.id}').value, learning_end_date:document.getElementById('tl_le_{badge.id}').value, project_start_date:document.getElementById('tl_ps_{badge.id}').value, project_end_date:document.getElementById('tl_pe_{badge.id}').value, submission_deadline:document.getElementById('tl_dl_{badge.id}').value, review_date:document.getElementById('tl_rd_{badge.id}').value, expected_award_date:document.getElementById('tl_aw_{badge.id}').value}}; window.StarAppBridge.dispatchAction('save_allotment_timeline', JSON.stringify(p));">
-                        Save Timeline
-                    </button>
-                </div>
-            </div>
+            </section>
         </div>
     </div>
     """
+
+
+def render_badge_edit_assignees(badge: Optional[Badge], store: Any, assigned_ids: List[str]) -> str:
+    """
+    Body of the 'Assigned Cosmonauts' card in the Edit Badge modal: one group per reviewer already mapped to the badge
+    (their cosmonauts, a per-reviewer 'Add cosmonaut' dropdown listing the matching, not-yet-assigned cosmonauts, and a
+    selector to move someone to another reviewer) plus a 'No reviewer yet' group for people assigned to the badge but
+    not mapped to a reviewer. Every cosmonaut has ONE row (checkbox `badge-assignee` + `data-rid`); rows not on the badge
+    wait in a hidden pool, so the bridge only ever moves rows around. The form posts `reviewer_assignments` {cosmonaut: reviewer}.
+    """
+    all_cosmo = list(store.get_all_cosmonauts())
+    cosmo_map = {c.id: c for c in all_cosmo}
+    users = getattr(store, "users", None) or {}
+    assigned = list(dict.fromkeys(assigned_ids or []))
+
+    matched = []
+    if badge is not None:
+        lookup = dict(users)
+        lookup.update(cosmo_map)
+        matched = _extract_badge_mapping_details(badge, lookup, store.get_band_mappings())[4]
+
+    # reviewer -> cosmonauts (a cosmonaut belongs to exactly one reviewer)
+    groups: Dict[str, List[str]] = {}
+    owner: Dict[str, str] = {}
+    for m in matched:
+        revs = m.get("reviewers") or []
+        if not revs:
+            continue
+        rid = revs[0]
+        groups.setdefault(rid, [])
+        for cid in m.get("cosmonauts") or []:
+            if cid in assigned and cid not in owner:
+                owner[cid] = rid
+                groups[rid].append(cid)
+    no_reviewer = [cid for cid in assigned if cid not in owner]
+    has_reviewers = bool(groups)
+    badge_band = getattr(badge, "target_band", "") if badge is not None else ""
+    eligible = [c for c in all_cosmo if not badge_band or getattr(c, "band", "") == badge_band]
+
+    def _person(uid: str) -> Any:
+        return cosmo_map.get(uid) or users.get(uid) or (store.get_user_by_id(uid) if store else None)
+
+    rev_options = "".join(
+        f'<option value="{escape(rid)}">{escape(getattr(_person(rid), "name", rid))}</option>' for rid in groups
+    )
+
+    def _row(c: Any, rid: str, on: bool) -> str:
+        move = ""
+        if has_reviewers:
+            opts = rev_options.replace(f'value="{escape(rid)}"', f'value="{escape(rid)}" selected', 1) if rid else rev_options
+            move = (
+                f'<select class="eb-move" aria-label="Reviewer for {escape(c.name)}" '
+                f"onchange=\"window.StarAppBridge.moveAssignee('{escape(c.id)}', this.value)\">"
+                f'{opts}<option value=""{" selected" if not rid else ""}>No reviewer</option></select>'
+            )
+        return f"""
+        <label class="eb-person{' is-on' if on else ''}" data-id="{escape(c.id)}" data-name="{escape(c.name.lower())}" data-rid="{escape(rid)}">
+            <input type="checkbox" name="badge-assignee" value="{escape(c.id)}"{' checked' if on else ''} hidden>
+            <span class="eb-person-name" title="{escape(c.name)}">{escape(c.name)}</span>
+            <span class="eb-person-meta"><span class="md-band">{escape(getattr(c, "band", ""))}</span><span>{escape(getattr(c, "learning_track", ""))}</span></span>
+            {move}
+            <button type="button" class="eb-remove" title="Remove {escape(c.name)}" aria-label="Remove {escape(c.name)}" onclick="window.StarAppBridge.removeAssignee('{escape(c.id)}')">&times;</button>
+        </label>
+        """
+
+    chev = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+    plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+
+    def _combo(rid: str, label: str) -> str:
+        opts = "".join(
+            f'<button type="button" class="eb-opt{" is-hidden" if c.id in assigned else ""}" data-id="{escape(c.id)}" data-name="{escape(c.name.lower())}" '
+            f"onclick=\"window.StarAppBridge.addAssignee('{escape(c.id)}', '{escape(rid)}')\">"
+            f'<span class="eb-opt-name">{escape(c.name)}</span>'
+            f'<span class="eb-person-meta"><span class="md-band">{escape(getattr(c, "band", ""))}</span><span>{escape(getattr(c, "learning_track", ""))}</span></span></button>'
+            for c in eligible
+        )
+        band_note = f"Band {escape(badge_band)} cosmonauts not on this badge yet" if badge_band else "Cosmonauts not on this badge yet"
+        return f"""
+        <div class="eb-combo">
+            <button type="button" class="eb-combo-btn" aria-haspopup="listbox" onclick="window.StarAppBridge.toggleAssignMenu(this)">
+                <span class="eb-combo-label">{plus} {label}</span>{chev}
+            </button>
+            <div class="eb-menu" hidden>
+                <input type="search" class="eb-search" placeholder="Search by name..." aria-label="Search cosmonauts" oninput="window.StarAppBridge.filterAssignMenu(this)">
+                <div class="eb-menu-note">{band_note}</div>
+                <div class="eb-menu-list">
+                    {opts}
+                    <div class="eb-menu-empty" hidden>No matching cosmonauts left to add.</div>
+                </div>
+                <div class="eb-menu-foot"><button type="button" class="eb-mini-btn" onclick="window.StarAppBridge.addAllShownAssignees(this)">Add all shown</button></div>
+            </div>
+        </div>
+        """
+
+    def _group(rid: str, cids: List[str]) -> str:
+        if rid:
+            u = _person(rid)
+            r_name = getattr(u, "name", rid)
+            head = (
+                f'<span class="eb-group-ico">{get_icon("target", 14)}</span>'
+                f'<span class="eb-group-name">{escape(r_name)}</span>'
+                f'<span class="md-band">{escape(getattr(u, "band", ""))}</span>'
+                f'<span class="md-role" style="color:#047857;">Reviewer &middot; {escape(getattr(u, "learning_track", "") or "")}</span>'
+            )
+            add = _combo(rid, f"Add cosmonaut to {escape(r_name.split()[0] if r_name else 'reviewer')}")
+            empty_txt = "No cosmonauts under this reviewer yet."
+            hide = ""
+        else:
+            head = (
+                f'<span class="eb-group-ico is-muted">{get_icon("users", 14)}</span>'
+                f'<span class="eb-group-name">{"No reviewer assigned yet" if has_reviewers else "Assigned cosmonauts"}</span>'
+            )
+            add = "" if has_reviewers else _combo("", "Add cosmonaut")
+            empty_txt = "No cosmonauts assigned yet. Use <b>Add cosmonaut</b> above." if not has_reviewers else "Nobody is waiting for a reviewer."
+            hide = "" if (cids or not has_reviewers) else " hidden"
+        rows = "".join(_row(cosmo_map[cid], rid, True) for cid in cids if cid in cosmo_map)
+        return f"""
+        <div class="eb-group{' is-none' if not rid else ''}" data-rid="{escape(rid)}"{hide}>
+            <div class="eb-group-head">
+                <div class="eb-group-who">{head}</div>
+                <span class="md-count" data-gcount>{len(cids)}</span>
+            </div>
+            {add}
+            <div class="eb-people" data-people>{rows}</div>
+            <div class="eb-empty" data-gempty{' hidden' if cids else ''}>{empty_txt}</div>
+        </div>
+        """
+
+    html_groups = "".join(_group(rid, cids) for rid, cids in groups.items()) + _group("", no_reviewer)
+    pool = "".join(_row(c, "", False) for c in all_cosmo if c.id not in assigned)
+    return f'<div class="eb-groups" id="eb-groups">{html_groups}</div><div class="eb-pool" id="eb-pool" hidden>{pool}</div>'
 
 
 def render_guardian_badge_allotment(
@@ -1711,31 +1830,42 @@ def render_guardian_badge_allotment(
         b_skill = getattr(b, "skill", "Foundations") or "Foundations"
 
         _, rev_name, rev_dates, assigned_cosmo_ids, _ = _extract_badge_mapping_details(b, cosmo_users_map, all_band_mappings)
+        def _nice_date(iso_value: str, with_year: bool = True) -> str:
+            try:
+                d_ = datetime.date.fromisoformat(str(iso_value)[:10])
+                return d_.strftime("%d %b %Y" if with_year else "%d %b").lstrip("0")
+            except Exception:
+                return str(iso_value or "")
+
+        rev_window_note = ""
         if len(rev_dates) > 1:
-            rev_window_disp = f"{rev_dates[0]} → {rev_dates[-1]} ({len(rev_dates)}d)"
+            same_year = str(rev_dates[0])[:4] == str(rev_dates[-1])[:4]
+            rev_window_disp = f"{_nice_date(rev_dates[0], with_year=not same_year)} → {_nice_date(rev_dates[-1])}"
+            rev_window_note = f"{len(rev_dates)} days"
         elif rev_dates:
-            rev_window_disp = rev_dates[0]
+            rev_window_disp = _nice_date(rev_dates[0])
+            rev_window_note = "1 day"
         else:
-            rev_window_disp = dt.get("review_date") or "Pending"
-        sub_deadline = dt.get("submission_deadline") or "TBD"
+            rev_window_disp = _nice_date(dt.get("review_date")) if dt.get("review_date") else "Pending"
+        sub_deadline = _nice_date(dt.get("submission_deadline")) if dt.get("submission_deadline") else "TBD"
 
         if is_pub_section:
             if is_completed:
-                status_pill = f'<span class="status-pill status-approved" style="font-weight:800; font-size:12px; padding:4px 11px;">{check_ic_11} Certified</span>'
+                status_pill = f'<span class="status-pill status-approved" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{check_ic_11} Certified</span>'
                 card_cls = "lg-allot-card"
-                action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:800; color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05); font-size:12.5px; padding:7px 14px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
             elif getattr(b, "is_published", False):
-                status_pill = f'<span class="status-pill status-active" style="font-weight:800; font-size:12px; padding:4px 11px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} Published</span>'
+                status_pill = f'<span class="status-pill status-active" style="font-weight:800; font-size:0.75rem; padding:4px 11px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} Published</span>'
                 card_cls = "lg-allot-card is-published"
-                action_btn = f"""<button type="button" class="btn-secondary btn-sm" style="font-weight:800; color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05); font-size:12.5px; padding:7px 14px;" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
             else:
-                status_pill = f'<span class="status-pill status-warning" style="font-weight:800; font-size:12px; padding:4px 11px;">{get_icon("clock", 11, "margin-right:4px;")} Mapped</span>'
+                status_pill = f'<span class="status-pill status-warning" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{get_icon("clock", 11, "margin-right:4px;")} Mapped</span>'
                 card_cls = "lg-allot-card is-mapped"
-                action_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:12.5px; padding:7px 15px; display:flex; align-items:center; gap:6px; background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} Publish to Roadmap</button>"""
+                action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
         else:
-            status_pill = f'<span class="status-pill status-locked" style="font-weight:800; font-size:12px; padding:4px 11px;">{get_icon("lock", 11, "margin-right:4px;")} Ready to Publish</span>'
+            status_pill = f'<span class="status-pill status-locked" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{get_icon("lock", 11, "margin-right:4px;")} Ready to Publish</span>'
             card_cls = "lg-allot-card"
-            action_btn = f"""<button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:12.5px; padding:7px 15px; display:flex; align-items:center; gap:6px; background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} Publish to Roadmap</button>"""
+            action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
 
         cadets_disp = f"{len(assigned_cosmo_ids)} Mapped Cadets" if assigned_cosmo_ids else "All Cohort Cadets"
         hier_tree_html = render_taxonomy_hierarchy_tree(b_power, b_cap, b_skill, compact=True)
@@ -1743,24 +1873,17 @@ def render_guardian_badge_allotment(
         return f"""
         <div class="{card_cls}">
             <div style="display:flex; flex-direction:column; gap:10px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
-                        <span style="font-size:11.5px; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy); padding:3px 9px; border-radius:var(--radius-full);">Band {escape(b_band)}</span>
-                    </div>
+                <div class="lg-allot-top">
+                    <h3 class="lg-allot-title">{escape(b.title)}</h3>
                     {status_pill}
                 </div>
+                <div>{hier_tree_html}</div>
 
-                <div>
-                    <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0; line-height:1.3;">{escape(b.title)}</h4>
-                    {hier_tree_html}
-                </div>
-
-                <!-- Compact Mapping & Schedule Context -->
+                <!-- Mapping & schedule: four labelled facts in one bordered panel -->
                 <div class="allot-summary-strip">
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Reviewer</div>
-                        <div class="lg-allot-meta-val" style="color:#047857;">{escape(rev_name)}</div>
+                        <div class="lg-allot-meta-val is-reviewer">{escape(rev_name)}</div>
                     </div>
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Cohort Allocation</div>
@@ -1768,25 +1891,24 @@ def render_guardian_badge_allotment(
                     </div>
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Review Window</div>
-                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:12.5px;">{escape(rev_window_disp)}</div>
+                        <div class="lg-allot-meta-val">{escape(rev_window_disp)}</div>
+                        {f'<div class="lg-allot-meta-note">{escape(rev_window_note)}</div>' if rev_window_note else ''}
                     </div>
                     <div class="lg-allot-meta-cell">
                         <div class="lg-allot-meta-label">Submission Deadline</div>
-                        <div class="lg-allot-meta-val" style="font-family:var(--font-family-mono); font-size:12.5px; color:#B91C1C;">{escape(sub_deadline)}</div>
+                        <div class="lg-allot-meta-val is-deadline">{escape(sub_deadline)}</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Action Row -->
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:12px; border-top:1px solid rgba(157,183,213,0.4); flex-wrap:wrap;">
-                <div style="display:flex; gap:7px; flex-wrap:wrap;">
-                    <button type="button" class="btn-metal btn-sm" style="font-weight:800; font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_mapping_modal', '{b.id}')">
-                        {get_icon("calendar", 13)} Timeline &amp; Mapping
-                    </button>
-                    <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:12px; padding:6px 12px; color:var(--frost-navy); display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                        {get_icon("edit", 13)} Edit Badge
-                    </button>
-                </div>
+            <!-- Action row: Timeline, Edit and Revoke / Publish always on ONE line -->
+            <div class="lg-allot-actions">
+                <button type="button" class="btn-metal btn-sm lg-allot-btn" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_mapping_modal', '{b.id}')">
+                    {get_icon("calendar", 13)} <span class="lg-lbl-full">Timeline &amp; Mapping</span><span class="lg-lbl-short">Timeline</span>
+                </button>
+                <button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:var(--frost-navy);" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
+                    {get_icon("edit", 13)} <span class="lg-lbl-full">Edit Badge</span><span class="lg-lbl-short">Edit</span>
+                </button>
                 {action_btn}
             </div>
         </div>
@@ -1801,13 +1923,13 @@ def render_guardian_badge_allotment(
 
     tabs_html = f"""
     <div style="display:flex; gap:10px; margin-bottom:22px; flex-wrap:wrap;">
-        <button type="button" class="btn-secondary btn-sm" style="{st_all} padding:8px 16px; font-size:13px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'all')">
+        <button type="button" class="btn-secondary btn-sm" style="{st_all} padding:8px 16px; font-size:0.8125rem; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'all')">
             {get_icon("globe", 14, "margin-right:5px;")} All Badges ({len(badges)})
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="{st_alloc} padding:8px 16px; font-size:13px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'published')">
+        <button type="button" class="btn-secondary btn-sm" style="{st_alloc} padding:8px 16px; font-size:0.8125rem; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'published')">
             {get_icon("target", 14, "margin-right:5px;")} Published ({len(published)})
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="{st_unalloc} padding:8px 16px; font-size:13px; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'not_published')">
+        <button type="button" class="btn-secondary btn-sm" style="{st_unalloc} padding:8px 16px; font-size:0.8125rem; border-radius:var(--radius-sm);" onclick="window.StarAppBridge.dispatchAction('filter_guardian_allotment', 'not_published')">
             {get_icon("lock", 13, "margin-right:5px;")} Not Published Yet ({len(not_published)})
         </button>
     </div>
@@ -1821,7 +1943,7 @@ def render_guardian_badge_allotment(
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:9px;">
                     <span>{get_icon("clipboard", 18)}</span> Published ({len(published)})
                 </h3>
-                <span class="status-pill status-approved" style="font-weight:800; font-size:12px; padding:4px 12px;">{len(published)} Active on Roadmap</span>
+                <span class="status-pill status-approved" style="font-weight:800; font-size:0.75rem; padding:4px 12px;">{len(published)} Active on Roadmap</span>
             </div>
             <div class="lg-allot-grid">
                 {"".join(published_cards) if published_cards else "<div class='liquid-glass-card' style='padding:24px; color:var(--frost-navy); font-weight:700;'>No published badges in this view.</div>"}
@@ -1836,7 +1958,7 @@ def render_guardian_badge_allotment(
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0; display:flex; align-items:center; gap:9px;">
                     <span>{get_icon("lock", 18)}</span> Not Published Yet ({len(not_published)})
                 </h3>
-                <span class="status-pill status-locked" style="font-weight:800; font-size:12px; padding:4px 12px;">{len(not_published)} In Catalog</span>
+                <span class="status-pill status-locked" style="font-weight:800; font-size:0.75rem; padding:4px 12px;">{len(not_published)} In Catalog</span>
             </div>
             <div class="lg-allot-grid">
                 {"".join(not_published_cards) if not_published_cards else "<div class='liquid-glass-card' style='padding:24px; color:var(--frost-navy); font-weight:700;'>All badges in this view are published.</div>"}
@@ -1849,15 +1971,15 @@ def render_guardian_badge_allotment(
         <!-- Metric Counters Top Row -->
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:14px; margin-bottom:22px;">
             <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel);">
-                <div style="font-size:12px; font-weight:800; color:var(--frost-navy);">Total Catalog Badges</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Total Catalog Badges</div>
                 <div style="font-size:1.75rem; font-weight:900; color:var(--frost-navy); margin-top:2px;">{len(badges)} Badges</div>
             </div>
             <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-sm); border:1.5px solid var(--deep-frozen-midnight); background:rgba(234,244,255,0.6);">
-                <div style="font-size:12px; font-weight:800; color:var(--frost-navy);">Published Badges</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Published Badges</div>
                 <div style="font-size:1.75rem; font-weight:900; color:var(--frost-navy); margin-top:2px;">{len(allocated)} Badges</div>
             </div>
             <div class="liquid-glass-card" style="padding:16px 20px; border-radius:var(--radius-sm); border:1px dashed var(--icy-steel);">
-                <div style="font-size:12px; font-weight:800; color:var(--frost-navy);">Not Published Yet</div>
+                <div style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Not Published Yet</div>
                 <div style="font-size:1.75rem; font-weight:900; color:var(--frost-navy); margin-top:2px;">{len(unallocated)} Badges</div>
             </div>
         </div>
@@ -2063,7 +2185,11 @@ def render_guardian_review_queue(
             rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
             g_asm = store.get_guardian_assessment_for_submission(sub.id)
             pill = render_status_pill(sub.status)
-            submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
+            try:
+                _sub_dt = datetime.datetime.fromisoformat(str(sub.submitted_at).replace("Z", "+00:00"))
+                submitted_date_str = escape(_sub_dt.strftime("%d %b %Y, %H:%M UTC").lstrip("0"))
+            except Exception:
+                submitted_date_str = escape(str(sub.submitted_at)[:16].replace("T", " ")) + " UTC"
 
             pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Deliverable.pdf"
             code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
@@ -2096,60 +2222,64 @@ def render_guardian_review_queue(
             else:
                 action_btn_text = "Inspect Deliverables &amp; Grade"
 
+            def _meter(pct: float, color: str) -> str:
+                width = max(0.0, min(100.0, float(pct)))
+                return (
+                    f'<span class="lg-meter" role="img" aria-label="{pct:.1f} percent, pass mark {badge_thresh:.0f} percent">'
+                    f'<span class="lg-meter-fill" style="width:{width:.1f}%; background:{color};"></span>'
+                    f'<span class="lg-meter-mark" style="left:{badge_thresh:.1f}%;"></span></span>'
+                )
+
+            # one compact score cell per assessor: "45.0 / 50 · 90%" with a thin meter (pass-mark tick on it)
             if rev_asm:
-                rev_score_block = f"""
-                <div class="lg-eval-score-row">
-                    <span class="lg-eval-score" style="color:#047857;">{rev_asm.total_marks:.1f} / 50.0</span>
-                    <span class="lg-eval-pct">{rev_asm.percentage:.1f}%</span>
-                </div>
-                {f'<div class="lg-eval-feedback">{escape(rev_asm.overall_feedback)}</div>' if rev_asm.overall_feedback else ''}
+                rev_cell = f"""
+                <span class="lg-sum-val" style="color:#047857;">{rev_asm.total_marks:.1f} / 50.0</span>
+                <span class="lg-eval-pct">{rev_asm.percentage:.1f}%</span>
+                {_meter(rev_asm.percentage, "#059669")}
                 """
             else:
-                rev_score_block = '<div class="lg-eval-score-row"><span class="lg-eval-score" style="font-size:1rem; color:var(--frost-navy);">Pending Reviewer</span></div>'
+                rev_cell = '<span class="lg-sum-none">Pending</span>'
 
             if g_asm:
                 raw_dec = (g_asm.decision or "").strip().lower()
                 dec_label = decision_labels.get(raw_dec, g_asm.decision.replace("_", " ").title())
-                g_color = "#047857" if g_asm.percentage >= badge_thresh else "#B91C1C"
-                g_pct_bg = "rgba(16,185,129,0.14)" if g_asm.percentage >= badge_thresh else "rgba(239,68,68,0.14)"
-                g_score_block = f"""
-                <div class="lg-eval-score-row">
-                    <span class="lg-eval-score" style="color:{g_color};">{g_asm.total_marks:.1f} / 50.0</span>
-                    <span class="lg-eval-pct" style="background:{g_pct_bg}; color:{g_color};">{g_asm.percentage:.1f}%</span>
-                    <span class="lg-eval-verdict">{escape(dec_label)}</span>
-                </div>
-                {f'<div class="lg-eval-feedback">{escape(g_asm.overall_feedback)}</div>' if g_asm.overall_feedback else ''}
+                passed = g_asm.percentage >= badge_thresh
+                g_color = "#047857" if passed else "#B91C1C"
+                g_pct_bg = "rgba(16,185,129,0.14)" if passed else "rgba(239,68,68,0.14)"
+                g_cell = f"""
+                <span class="lg-sum-val" style="color:{g_color};">{g_asm.total_marks:.1f} / 50.0</span>
+                <span class="lg-eval-pct" style="background:{g_pct_bg}; color:{g_color};">{g_asm.percentage:.1f}%</span>
+                <span class="lg-eval-verdict">{escape(dec_label)}</span>
+                {_meter(g_asm.percentage, "#059669" if passed else "#DC2626")}
                 """
             else:
-                g_score_block = '<div class="lg-eval-score-row"><span class="lg-eval-score" style="font-size:1rem; color:var(--frost-navy);">Awaiting Final Assessment</span></div>'
-
-            results_grid = f"""
-            <div class="lg-eval-grid">
-                <div class="lg-eval-scorecard">
-                    <div class="lg-eval-card-head">{shield_ic}<span>Reviewer Evaluation</span></div>
-                    {rev_score_block}
-                </div>
-                <div class="lg-eval-scorecard">
-                    <div class="lg-eval-card-head">{award_ic}<span>Guardian Final Result</span></div>
-                    {g_score_block}
-                </div>
-            </div>
-            """
+                g_cell = '<span class="lg-sum-none">Awaiting</span>'
 
             attempt_cards.append(f"""
-            <div class="lg-attempt-card">
-                <div class="lg-attempt-header">
-                    <div class="lg-attempt-title-row">
-                        <span class="lg-attempt-num-pill">Attempt #{sub.attempt_number}</span>
+            <details class="lg-attempt-card"{' open' if not attempt_cards else ''}>
+                <summary class="lg-att-summary">
+                    <span class="lg-sum-cell lg-sum-attempt">
+                        <span class="lg-attempt-title">Attempt #{sub.attempt_number}</span>
                         {pill}
-                    </div>
-                    <span class="lg-attempt-time-pill">{clock_ic}<span>Submitted: {submitted_date_str}</span></span>
-                </div>
+                    </span>
+                    <span class="lg-sum-cell">
+                        <span class="lg-sum-label">Submitted</span>
+                        <span class="lg-sum-text">{submitted_date_str}</span>
+                    </span>
+                    <span class="lg-sum-cell">
+                        <span class="lg-sum-label">Reviewer</span>
+                        <span class="lg-sum-line">{rev_cell}</span>
+                    </span>
+                    <span class="lg-sum-cell">
+                        <span class="lg-sum-label">Guardian</span>
+                        <span class="lg-sum-line">{g_cell}</span>
+                    </span>
+                    <span class="lg-sum-chev" aria-hidden="true">{chev_right_ic}</span>
+                </summary>
 
-                {routing_banner}
-
-                <div class="lg-attempt-section">
-                    <div class="lg-attempt-section-title">{folder_ic}<span>Uploaded Deliverables</span></div>
+                <div class="lg-att-body">
+                    {routing_banner}
+                    <div class="lg-att-files-head">{folder_ic}<span>Uploaded Deliverables</span></div>
                     <div class="lg-attempt-files">
                         <div class="lg-deliverable-tile">
                             <span class="lg-deliverable-icon is-pdf">{pdf_ic}</span>
@@ -2173,24 +2303,21 @@ def render_guardian_review_queue(
                             </div>
                         </div>
                     </div>
+                    <div class="lg-attempt-footer">
+                        <span class="lg-attempt-thresh">Passing Threshold: <strong>{badge_thresh:.1f}% ({badge_thresh * 0.5:.1f}/50)</strong></span>
+                        <button type="button" class="btn-metal lg-attempt-cta" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
+                            <span>{action_btn_text}</span>
+                            {arrow_ic}
+                        </button>
+                    </div>
                 </div>
-
-                {results_grid}
-
-                <div class="lg-attempt-footer">
-                    <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">Passing Threshold: <strong>{badge_thresh:.1f}% ({badge_thresh * 0.5:.1f}/50)</strong></span>
-                    <button type="button" class="btn-metal btn-sm" style="display:inline-flex; align-items:center; gap:7px; font-weight:800; font-size:13px; padding:8px 18px;" onclick="window.StarAppBridge.dispatchAction('open_submission_review_page', '{sub.id}')">
-                        <span>{action_btn_text}</span>
-                        {arrow_ic}
-                    </button>
-                </div>
-            </div>
+            </details>
             """)
 
         attempts_body = "".join(attempt_cards) if attempt_cards else f"""
         <div class="liquid-glass-card" style="padding:36px 24px; text-align:center;">
             <div style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Deliverables Submitted Yet</div>
-            <div style="font-size:13.5px; font-weight:600; color:var(--frost-navy);">
+            <div style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy);">
                 {escape(cosmo_name)} has not uploaded project deliverables for {escape(badge_title)} yet. Assigned Reviewer: <strong>{escape(rev_name)}{f' (Band {escape(rev_band)})' if rev_band else ''}</strong>.
             </div>
         </div>
@@ -2203,23 +2330,21 @@ def render_guardian_review_queue(
             <div class="asm-breadcrumb">
                 <div style="display:flex; flex-direction:column; gap:6px;">
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <button type="button" class="btn-secondary btn-sm" style="font-weight:800; font-size:12.5px;" onclick="window.StarAppBridge.dispatchAction('close_assessment_badge', '{{}}')">All Badges</button>
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:800; font-size:0.78125rem;" onclick="window.StarAppBridge.dispatchAction('close_assessment_badge', '{{}}')">All Badges</button>
                         <span style="display:inline-flex; color:var(--frost-navy-50);">{chev_right_ic}</span>
-                        <button type="button" class="btn-secondary btn-sm" style="font-weight:800; font-size:12.5px;" onclick="window.StarAppBridge.dispatchAction('close_assessment_cosmonaut', '{{}}')">{escape(badge_code)} &bull; {escape(badge_title)}</button>
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:800; font-size:0.78125rem;" onclick="window.StarAppBridge.dispatchAction('close_assessment_cosmonaut', '{{}}')">{escape(badge_code)} &bull; {escape(badge_title)}</button>
                         <span style="display:inline-flex; color:var(--frost-navy-50);">{chev_right_ic}</span>
-                        <span style="font-size:14px; font-weight:800; color:var(--frost-navy);">{escape(cosmo_name)} (Band {escape(cosmo_band)})</span>
-                    </div>
-                    <div style="font-size:13px; font-weight:600; color:var(--frost-navy);">
-                        Role: <strong>{escape(cosmo_track)}</strong> &bull; Assigned Reviewer: <strong>{escape(rev_name)}{f' (Band {escape(rev_band)})' if rev_band else ''}</strong>
+                        <span style="font-size:0.875rem; font-weight:800; color:var(--frost-navy);">{escape(cosmo_name)} (Band {escape(cosmo_band)})</span>
                     </div>
                 </div>
-                <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-weight:800; font-size:12.5px;" onclick="window.StarAppBridge.dispatchAction('close_assessment_cosmonaut', '{{}}')">
+                <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-weight:800; font-size:0.78125rem;" onclick="window.StarAppBridge.dispatchAction('close_assessment_cosmonaut', '{{}}')">
                     {chev_left_ic}
                     <span>Reviewers &amp; Cosmonauts</span>
                 </button>
             </div>
 
-            {attempts_body}
+            <div class="lg-att-list-head"><h3>Attempts</h3><span class="md-count">{len(attempt_cards)}</span></div>
+            <div class="lg-att-list">{attempts_body}</div>
         </div>
         """
 
@@ -2259,13 +2384,6 @@ def render_guardian_review_queue(
             r_dates = grp["review_dates"]
             c_ids = grp["cosmonaut_ids"]
 
-            if len(r_dates) > 1:
-                win_html = f'{cal_ic}<span>{escape(r_dates[0])}</span>{get_icon("arrow_right", 12)}<span>{escape(r_dates[-1])} ({len(r_dates)}d)</span>'
-            elif r_dates:
-                win_html = f'{cal_ic}<span>{escape(r_dates[0])}</span>'
-            else:
-                win_html = f'{cal_ic}<span>Scheduled Window</span>'
-
             cosmo_branches = []
             for cid in c_ids:
                 cu = cosmonauts_map.get(cid) or store.get_user_by_id(cid)
@@ -2290,7 +2408,7 @@ def render_guardian_review_queue(
                         score_summary = f'{clock_ic}<span>Submitted &bull; Pending Evaluation</span>'
                         score_color = "#B45309"
                 else:
-                    status_pill = '<span class="status-pill status-locked" style="font-size:11.5px; font-weight:800;">Not Submitted</span>'
+                    status_pill = '<span class="status-pill status-locked" style="font-size:0.71875rem; font-weight:800;">Not Submitted</span>'
                     att_badge = '<span class="asm-cosmo-attempts-pill">0 Attempts</span>'
                     score_summary = f'{clock_ic}<span>Awaiting Cadet Deliverable</span>'
                     score_color = "var(--frost-navy)"
@@ -2298,6 +2416,7 @@ def render_guardian_review_queue(
                 cosmo_payload = escape(json.dumps({"badge_id": badge.id, "cosmonaut_id": cid}))
                 cosmo_branches.append(f"""
                 <div class="asm-tree-cosmo-branch">
+                    <span class="asm-elbow" aria-hidden="true"></span>
                     <button type="button" class="asm-cosmonaut-card" onclick="window.StarAppBridge.dispatchAction('open_assessment_cosmonaut', '{cosmo_payload}')">
                         <div class="asm-cosmo-identity">
                             <span class="asm-cosmo-avatar">{user_ic}</span>
@@ -2325,7 +2444,7 @@ def render_guardian_review_queue(
                 """)
 
             cosmo_tree_body = "".join(cosmo_branches) if cosmo_branches else (
-                '<div style="padding:12px 14px; font-size:13px; font-weight:700; color:var(--frost-navy); '
+                '<div style="padding:12px 14px; font-size:0.8125rem; font-weight:700; color:var(--frost-navy); '
                 'background:rgba(255,255,255,0.75); border-radius:var(--radius-sm); border:1px solid rgba(157,183,213,0.45);">'
                 'No cosmonauts assigned to this reviewer yet.</div>'
             )
@@ -2336,17 +2455,10 @@ def render_guardian_review_queue(
                     <div class="asm-reviewer-header">
                         <div class="asm-reviewer-id-wrap">
                             <span class="asm-reviewer-icon-box">{shield_ic}</span>
-                            <div>
-                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
-                                    <span class="asm-tree-level-tag">Level 2 &bull; Mapped Reviewer</span>
-                                    {f'<span class="status-pill status-active" style="font-size:11px; font-weight:800;">Band {escape(r_band)}</span>' if r_band else ''}
-                                </div>
-                                <h3 style="font-size:1.18rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(r_name)}</h3>
-                            </div>
+                            <h3 class="asm-node-title">{escape(r_name)}</h3>
                         </div>
                         <div class="asm-reviewer-meta-pills">
-                            <span class="asm-window-pill">{win_html}</span>
-                            <span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:800;">
+                            <span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:5px; font-size:0.75rem; font-weight:800;">
                                 {users_ic}<span>{len(c_ids)} Cosmonaut{"s" if len(c_ids) != 1 else ""}</span>
                             </span>
                         </div>
@@ -2364,7 +2476,7 @@ def render_guardian_review_queue(
             else """
             <div class="liquid-glass-card" style="padding:36px 24px; margin-top:16px; text-align:center;">
                 <div style="font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Reviewers or Cosmonauts Mapped Yet</div>
-                <div style="font-size:13.5px; font-weight:600; color:var(--frost-navy);">Map reviewers and cosmonauts to this badge in Mapping to track their deliverables and results here.</div>
+                <div style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy);">Map reviewers and cosmonauts to this badge in Mapping to track their deliverables and results here.</div>
             </div>
             """
         )
@@ -2373,7 +2485,7 @@ def render_guardian_review_queue(
         <div>
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
                 <h2 style="font-size:1.65rem; font-weight:800; color:var(--frost-navy); margin:0;">Assessment Dashboard</h2>
-                <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-weight:800; font-size:12.5px;" onclick="window.StarAppBridge.dispatchAction('close_assessment_badge', '{{}}')">
+                <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-weight:800; font-size:0.78125rem;" onclick="window.StarAppBridge.dispatchAction('close_assessment_badge', '{{}}')">
                     {chev_left_ic}
                     <span>All Badges</span>
                 </button>
@@ -2381,20 +2493,9 @@ def render_guardian_review_queue(
 
             <div class="asm-tree-root">
                 <div class="asm-tree-badge-node">
-                    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-                        <div>
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                                <span class="asm-tree-level-tag">{award_ic}<span>Level 1 &bull; Badge</span></span>
-                                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:3px 9px; border-radius:var(--radius-xs);">{escape(badge.code)}</span>
-                                <span class="status-pill" style="font-size:11.5px; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy);">Band {escape(b_band)}</span>
-                            </div>
-                            <h3 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(badge.title)}</h3>
-                        </div>
-                        {render_taxonomy_hierarchy_tree(b_power, b_cap, b_skill, compact=True)}
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span class="asm-window-pill">{shield_ic}<span>{total_reviewers} Reviewer{"s" if total_reviewers != 1 else ""}</span></span>
-                        <span class="asm-window-pill">{users_ic}<span>{total_cosmonauts} Cosmonaut{"s" if total_cosmonauts != 1 else ""}</span></span>
+                    <div class="asm-reviewer-id-wrap">
+                        <span class="asm-reviewer-icon-box">{award_ic}</span>
+                        <h3 class="asm-node-title is-badge">{escape(badge.title)}</h3>
                     </div>
                 </div>
                 {reviewers_tree}
@@ -2444,7 +2545,7 @@ def render_guardian_review_queue(
         <div class="asm-filter-group">
             <label for="asm-power-filter" class="asm-filter-label">Power</label>
             <div class="liquid-select-wrapper" style="flex:1;">
-                <select id="asm-power-filter" class="liquid-glass-control liquid-glass-select" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_assessment_power', this.value)">
+                <select id="asm-power-filter" class="liquid-glass-control liquid-glass-select" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_assessment_power', this.value)">
                     {"".join(power_opts)}
                 </select>
             </div>
@@ -2452,7 +2553,7 @@ def render_guardian_review_queue(
         <div class="asm-filter-group">
             <label for="asm-capability-filter" class="asm-filter-label">Capability</label>
             <div class="liquid-select-wrapper" style="flex:1;">
-                <select id="asm-capability-filter" class="liquid-glass-control liquid-glass-select" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_assessment_capability', this.value)">
+                <select id="asm-capability-filter" class="liquid-glass-control liquid-glass-select" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_assessment_capability', this.value)">
                     {"".join(cap_opts)}
                 </select>
             </div>
@@ -2460,7 +2561,7 @@ def render_guardian_review_queue(
         <div class="asm-filter-group">
             <label for="asm-status-filter" class="asm-filter-label">Status</label>
             <div class="liquid-select-wrapper" style="flex:1;">
-                <select id="asm-status-filter" class="liquid-glass-control liquid-glass-select" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_guardian_reviews', this.value)">
+                <select id="asm-status-filter" class="liquid-glass-control liquid-glass-select" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); height:40px;" onchange="window.StarAppBridge.dispatchAction('filter_guardian_reviews', this.value)">
                     {status_select_opts}
                 </select>
             </div>
@@ -2496,21 +2597,21 @@ def render_guardian_review_queue(
         pending_cnt = len([s for s in badge_subs if s.status in ("pending", "submitted")])
 
         if rev_assessed_cnt > 0:
-            card_status_pill = f'<span class="status-pill status-warning" style="font-size:12px; font-weight:800;">{rev_assessed_cnt} Ready for Sign-off</span>'
+            card_status_pill = f'<span class="status-pill status-warning" style="font-size:0.75rem; font-weight:800;">{rev_assessed_cnt} Ready for Sign-off</span>'
         elif approved_cnt > 0:
-            card_status_pill = f'<span class="status-pill status-approved" style="font-size:12px; font-weight:800;">{approved_cnt} Certified</span>'
+            card_status_pill = f'<span class="status-pill status-approved" style="font-size:0.75rem; font-weight:800;">{approved_cnt} Certified</span>'
         elif pending_cnt > 0:
-            card_status_pill = f'<span class="status-pill status-active" style="font-size:12px; font-weight:800;">{pending_cnt} Awaiting Review</span>'
+            card_status_pill = f'<span class="status-pill status-active" style="font-size:0.75rem; font-weight:800;">{pending_cnt} Awaiting Review</span>'
         else:
-            card_status_pill = '<span class="status-pill status-locked" style="font-size:12px; font-weight:800;">Mapped</span>'
+            card_status_pill = '<span class="status-pill status-locked" style="font-size:0.75rem; font-weight:800;">Mapped</span>'
 
         badge_cards_html.append(f"""
         <button type="button" class="asm-badge-card" onclick="window.StarAppBridge.dispatchAction('open_assessment_badge', '{b.id}')">
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
                     <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-                        <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:4px 10px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
-                        <span class="status-pill" style="font-size:12px; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy);">Band {escape(b_band)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:0.78125rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:4px 10px; border-radius:var(--radius-xs);">{escape(b.code)}</span>
+                        <span class="status-pill" style="font-size:0.75rem; font-weight:800; background:rgba(23,52,92,0.09); color:var(--frost-navy);">Band {escape(b_band)}</span>
                     </div>
                     {card_status_pill}
                 </div>
@@ -2520,24 +2621,24 @@ def render_guardian_review_queue(
 
             <div class="asm-stats-grid">
                 <div>
-                    <div style="font-size:11px; font-weight:700; color:var(--frost-navy); opacity:0.78;">Reviewers</div>
-                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy);">{mapped_rev_count}</div>
+                    <div style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); opacity:0.78;">Reviewers</div>
+                    <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy);">{mapped_rev_count}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px; font-weight:700; color:var(--frost-navy); opacity:0.78;">Cosmonauts</div>
-                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy);">{len(mapped_cosmo_ids)}</div>
+                    <div style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); opacity:0.78;">Cosmonauts</div>
+                    <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy);">{len(mapped_cosmo_ids)}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px; font-weight:700; color:var(--frost-navy); opacity:0.78;">Submissions</div>
-                    <div style="font-size:14px; font-weight:800; color:var(--frost-navy);">{len(badge_subs)}</div>
+                    <div style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); opacity:0.78;">Submissions</div>
+                    <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy);">{len(badge_subs)}</div>
                 </div>
                 <div>
-                    <div style="font-size:11px; font-weight:700; color:var(--frost-navy); opacity:0.78;">Certified</div>
-                    <div style="font-size:14px; font-weight:800; color:#047857;">{approved_cnt}</div>
+                    <div style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); opacity:0.78;">Certified</div>
+                    <div style="font-size:0.875rem; font-weight:800; color:#047857;">{approved_cnt}</div>
                 </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid rgba(157,183,213,0.38); font-size:13px; font-weight:800; color:var(--deep-frozen-midnight);">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid rgba(157,183,213,0.38); font-size:0.8125rem; font-weight:800; color:var(--deep-frozen-midnight);">
                 <span>Open Mapped Reviewers &amp; Cosmonauts</span>
                 <span>&rarr;</span>
             </div>
@@ -2547,7 +2648,7 @@ def render_guardian_review_queue(
     grid_html = f'<div class="asm-badge-grid">{"".join(badge_cards_html)}</div>' if badge_cards_html else """
     <div class="liquid-glass-card" style="padding:44px 24px; text-align:center;">
         <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Matching Badges</div>
-        <div style="font-size:13.5px; font-weight:600; color:var(--frost-navy);">Adjust the Power, Capability, or Status filter above to view assessment badges.</div>
+        <div style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy);">Adjust the Power, Capability, or Status filter above to view assessment badges.</div>
     </div>
     """
 
@@ -2555,7 +2656,7 @@ def render_guardian_review_queue(
     <div>
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
             <h2 style="font-size:1.65rem; font-weight:800; color:var(--frost-navy); margin:0;">Assessment Dashboard</h2>
-            <span class="status-pill status-active" style="font-size:12.5px; font-weight:800;">{len(badge_cards_html)} Badges</span>
+            <span class="status-pill status-active" style="font-size:0.78125rem; font-weight:800;">{len(badge_cards_html)} Badges</span>
         </div>
 
         {toolbar_html}
@@ -2630,12 +2731,7 @@ def run():
     init_feedback = active_eval.overall_feedback if active_eval else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
     init_decision = active_eval.decision if active_eval else ("approve" if init_pct >= badge_thresh else "resubmission_requested")
 
-    threshold_banner = f"""
-    <div class="lg-rubric-meta-bar">
-        <span>{escape(cosmo_name)} &bull; {escape(badge_code)}</span>
-        <span style="font-family:var(--font-family-mono); font-weight:800;">Pass &ge; {badge_thresh:.0f}% ({badge_thresh * 0.5:.1f}/50)</span>
-    </div>
-    """
+    threshold_banner = ""   # (the "name • code / Pass ≥ 70%" bar was removed from the marks sheet)
 
     # 1. Selector Tab Buttons Styling
     tab_pdf_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "pdf" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
@@ -2651,7 +2747,7 @@ def run():
         """
         toolbar_extra = f"""
         <div style="display:flex; align-items:center; gap:8px;">
-            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+            <a href="{escape(pdf_payload)}" download="{escape(pdf_name)}" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:0.71875rem; text-decoration:none; padding:5px 12px;">
                 {download_ic} Download PDF
             </a>
         </div>
@@ -2662,8 +2758,8 @@ def run():
         code_lines_html = []
         for l_num, line in enumerate(lines, 1):
             code_lines_html.append(
-                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:12px; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
-                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:12.5px; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
+                f'<tr><td style="user-select:none; text-align:right; padding-right:14px; color:#5c7694; font-family:var(--font-family-mono); font-size:0.75rem; width:40px; border-right:1px solid #17345C;">{l_num}</td>'
+                f'<td style="white-space:pre-wrap; word-break:break-all; font-family:var(--font-family-mono); font-size:0.78125rem; color:#EAF4FF; padding-left:14px;">{escape(line)}</td></tr>'
             )
         code_table = "".join(code_lines_html)
 
@@ -2679,8 +2775,8 @@ def run():
         """
         toolbar_extra = f"""
         <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:11.5px; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
-            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:11.5px; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
+            <span style="font-size:0.71875rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(code_name)}</span>
+            <button type="button" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; font-size:0.71875rem; padding:5px 12px;" onclick="window.StarAppBridge.copySourceCode();">
                 {copy_ic} Copy Code
             </button>
         </div>
@@ -2693,33 +2789,33 @@ def run():
                     {get_icon("github", 20)}
                 </div>
                 <div>
-                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
+                    <div style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy);">{escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Project Repository')}</div>
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50);">Version Controlled Delivery Artifact</div>
                 </div>
             </div>
 
             <div style="margin-bottom:16px;">
-                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
-                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
+                <label style="font-size:0.6875rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Repository URL:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:0.75rem; background:rgba(23,52,92,0.06); padding:8px 12px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-50); word-break:break-all;">
                     {escape(github_url)}
                 </div>
             </div>
 
             <div style="margin-bottom:20px;">
-                <label style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Local Clone Specification:</label>
-                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:12px; background:#071629; color:#EAF4FF; padding:10px 14px; border-radius:var(--radius-xs);">
+                <label style="font-size:0.6875rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy-50);">Local Clone Specification:</label>
+                <div style="margin-top:4px; font-family:var(--font-family-mono); font-size:0.75rem; background:#071629; color:#EAF4FF; padding:10px 14px; border-radius:var(--radius-xs);">
                     git clone {escape(github_url)}.git
                 </div>
             </div>
 
-            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; text-decoration:none; padding:8px 18px;">
+            <a href="{escape(github_url)}" target="_blank" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.78125rem; text-decoration:none; padding:8px 18px;">
                 {expand_ic} Open Repository in New Tab
             </a>
         </div>
         """
         toolbar_extra = f"""
         <div>
-            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; text-decoration:none; padding:5px 12px;">
+            <a href="{escape(github_url)}" target="_blank" class="btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; text-decoration:none; padding:5px 12px;">
                 {expand_ic} Open Repo
             </a>
         </div>
@@ -2740,9 +2836,6 @@ def run():
                 <!-- Viewport Toolbar with Back Button & Dropdown -->
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(234,244,255,0.7); border-bottom:1px solid var(--icy-steel-50); flex-shrink:0; height:42px; box-sizing:border-box;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:11.5px; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_reviews')">
-                            {get_icon("chevron_left", 14)} Back to Project Reviews
-                        </button>
                         <div class="asm-deliverable-toolbar-group">
                             <span class="asm-deliverable-icon-badge">{active_tab_icon}</span>
                             <div class="liquid-select-wrapper asm-deliverable-select-wrap">
@@ -2766,7 +2859,6 @@ def run():
                 <!-- Pinned Rubric Header -->
                 <div style="padding:8px 14px; border-bottom:1.5px solid var(--icy-steel-30); background:linear-gradient(135deg, rgba(234,244,255,0.92) 0%, #FFFFFF 100%); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; height:42px; box-sizing:border-box;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <div style="font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">RUBRIC-50</div>
                         <h3 style="font-size:1.05rem; font-weight:800; color:var(--frost-navy); margin:0;">Marks Allotment</h3>
                     </div>
                     <span id="rubric-total-display" style="display:none;"></span>
@@ -2822,41 +2914,55 @@ def run():
 
                         <!-- Real-time Sum of Rubric Marks -->
                         <div class="lg-rubric-total-bar">
-                            <span style="font-size:12px; font-weight:800; color:var(--frost-navy);">Sum of Rubric Marks:</span>
-                            <span id="rubric-sum-display" style="font-size:14px; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
+                            <span style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Sum of Rubric Marks:</span>
+                            <span id="rubric-sum-display" style="font-size:0.875rem; font-weight:900; color:var(--deep-frozen-midnight); font-family:var(--font-family-mono);">{init_total:.1f} / 50.0 ({init_pct:.1f}%)</span>
                         </div>
 
-                        <!-- Compact Feedback Row (2-col) + Overall Remarks + Decision -->
-                        <div class="lg-rubric-fields-pair">
-                            <div>
-                                <label class="lg-rubric-field-label" for="rubric-strengths">Technical Strengths</label>
-                                <textarea id="rubric-strengths" rows="2" class="lg-rubric-textarea">{escape(init_strengths)}</textarea>
+                        <!-- Feedback & decision: three aligned fields, then the decision as a choice list -->
+                        <div class="lg-fb">
+                            <div class="lg-fb-field is-strengths">
+                                <label class="lg-fb-label" for="rubric-strengths">Technical Strengths</label>
+                                <textarea id="rubric-strengths" rows="2" class="lg-fb-textarea" placeholder="What the deliverable did well">{escape(init_strengths)}</textarea>
                             </div>
-                            <div>
-                                <label class="lg-rubric-field-label" for="rubric-improvements">Improvements</label>
-                                <textarea id="rubric-improvements" rows="2" class="lg-rubric-textarea">{escape(init_improvements)}</textarea>
+                            <div class="lg-fb-field is-improve">
+                                <label class="lg-fb-label" for="rubric-improvements">Improvements</label>
+                                <textarea id="rubric-improvements" rows="2" class="lg-fb-textarea" placeholder="What to work on next">{escape(init_improvements)}</textarea>
                             </div>
-                        </div>
+                            <div class="lg-fb-field is-remarks">
+                                <label class="lg-fb-label" for="rubric-feedback">Overall Remarks</label>
+                                <textarea id="rubric-feedback" rows="2" class="lg-fb-textarea" placeholder="Summary for the cosmonaut">{escape(init_feedback)}</textarea>
+                            </div>
 
-                        <div>
-                            <label class="lg-rubric-field-label" for="rubric-feedback">Overall Remarks</label>
-                            <textarea id="rubric-feedback" rows="2" class="lg-rubric-textarea">{escape(init_feedback)}</textarea>
-                        </div>
-
-                        <div>
-                            <label class="lg-rubric-field-label" for="rubric-decision">Assessment Decision</label>
-                            <select id="rubric-decision" class="liquid-glass-control liquid-glass-select" style="font-size:12px; font-weight:700; padding:5px 8px; width:100%; height:34px;">
-                                <option value="approve"{" selected" if init_decision == "approve" else ""}>Earn the Badge (Approve &amp; Certify Milestone)</option>
-                                <option value="resubmission_requested"{" selected" if init_decision == "resubmission_requested" else ""}>Request Resubmission (Preserve Attempt)</option>
-                                <option value="reject"{" selected" if init_decision == "reject" else ""}>Reject Deliverable</option>
-                            </select>
+                            <div class="lg-fb-field">
+                                <span class="lg-fb-label" id="rubric-decision-label">Assessment Decision</span>
+                                <select id="rubric-decision" class="lg-fb-select-hidden" hidden aria-labelledby="rubric-decision-label">
+                                    <option value="approve"{" selected" if init_decision == "approve" else ""}>Earn the Badge (Approve &amp; Certify Milestone)</option>
+                                    <option value="resubmission_requested"{" selected" if init_decision == "resubmission_requested" else ""}>Request Resubmission (Preserve Attempt)</option>
+                                    <option value="reject"{" selected" if init_decision == "reject" else ""}>Reject Deliverable</option>
+                                </select>
+                                <div class="lg-dec-list" role="radiogroup" aria-labelledby="rubric-decision-label">
+                                    <button type="button" role="radio" class="lg-dec-opt is-approve{' is-on' if init_decision == 'approve' else ''}" aria-checked="{'true' if init_decision == 'approve' else 'false'}" data-value="approve" data-cta="Earn the Badge" data-desc="Approve and certify the milestone." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                        <span class="lg-dec-ico">{get_icon("award", 16)}</span>
+                                        <span class="lg-dec-title">Earn Badge</span>
+                                    </button>
+                                    <button type="button" role="radio" class="lg-dec-opt is-resubmit{' is-on' if init_decision == 'resubmission_requested' else ''}" aria-checked="{'true' if init_decision == 'resubmission_requested' else 'false'}" data-value="resubmission_requested" data-cta="Request Resubmission" data-desc="Keep this attempt on record and ask for a new one." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                        <span class="lg-dec-ico">{get_icon("refresh", 16)}</span>
+                                        <span class="lg-dec-title">Resubmit</span>
+                                    </button>
+                                    <button type="button" role="radio" class="lg-dec-opt is-reject{' is-on' if init_decision == 'reject' else ''}" aria-checked="{'true' if init_decision == 'reject' else 'false'}" data-value="reject" data-cta="Reject Deliverable" data-desc="Reject the deliverable." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                        <span class="lg-dec-ico">{get_icon("x", 16)}</span>
+                                        <span class="lg-dec-title">Reject</span>
+                                    </button>
+                                </div>
+                                <div class="lg-dec-desc" id="rubric-decision-desc">{"Approve and certify the milestone." if init_decision == "approve" else ("Keep this attempt on record and ask for a new one." if init_decision == "resubmission_requested" else "Reject the deliverable.")}</div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Pinned Bottom Action Footer -->
                     <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
-                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:13.5px; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
-                            Earn the Badge &rarr;
+                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.84375rem; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
+                            <span id="rubric-submit-label">{"Earn the Badge" if init_decision == "approve" else ("Request Resubmission" if init_decision == "resubmission_requested" else "Reject Deliverable")}</span> &rarr;
                         </button>
                     </div>
                 </form>
@@ -2878,14 +2984,14 @@ def render_assessment_modal_content(
         prev_items = []
         for pa in previous_assessments:
             prev_items.append(f"""
-            <div style="padding:10px; background:rgba(234,244,255,0.6); border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:8px; font-size:12.5px;">
+            <div style="padding:10px; background:rgba(234,244,255,0.6); border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:8px; font-size:0.78125rem;">
                 <strong>Attempt #{pa.attempt_number} Marksheet:</strong> {pa.total_marks}/50 ({pa.percentage}%) — {render_status_pill(pa.decision)}
                 <div style="color:var(--frost-navy-50); margin-top:2px;">Feedback: {escape(pa.overall_feedback)}</div>
             </div>
             """)
         prev_asms_html = f"""
         <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">Previous Attempt Marksheets (Preserved in History):</div>
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:6px;">Previous Attempt Marksheets (Preserved in History):</div>
             {"".join(prev_items)}
         </div>
         """
@@ -2895,24 +3001,24 @@ def render_assessment_modal_content(
     if submission.submission_type == "github":
         preview_box = f"""
         <div style="padding:14px; background:rgba(234,244,255,0.5); border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">GitHub Repository Deliverable:</div>
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">GitHub Repository Deliverable:</div>
             <a href="{escape(submission.payload)}" target="_blank" rel="noopener noreferrer" style="font-weight:700; color:var(--deep-frozen-midnight); word-break:break-all;">
                 {escape(submission.payload)} ↗
             </a>
-            <div style="font-size:11.5px; color:var(--frost-navy-50); margin-top:4px;">(External repository link opens in a secure browser tab for code inspection).</div>
+            <div style="font-size:0.71875rem; color:var(--frost-navy-50); margin-top:4px;">(External repository link opens in a secure browser tab for code inspection).</div>
         </div>
         """
     elif submission.submission_type == "code":
         preview_box = f"""
         <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Submitted Code File: {escape(submission.file_name)}</div>
-            <pre style="background:var(--frost-navy); color:var(--snow-white); padding:14px; border-radius:var(--radius-md); font-size:12px; overflow-x:auto; max-height:220px;"><code>{escape(submission.payload)}</code></pre>
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Submitted Code File: {escape(submission.file_name)}</div>
+            <pre style="background:var(--frost-navy); color:var(--snow-white); padding:14px; border-radius:var(--radius-md); font-size:0.75rem; overflow-x:auto; max-height:220px;"><code>{escape(submission.payload)}</code></pre>
         </div>
         """
     else:  # PDF
         preview_box = f"""
         <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Submitted Document Deliverable: {escape(submission.file_name)}</div>
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:4px;">Submitted Document Deliverable: {escape(submission.file_name)}</div>
             <iframe src="{escape(submission.payload)}" style="width:100%; height:260px; border:1px solid var(--icy-steel-50); border-radius:var(--radius-sm); background:var(--snow-white);"></iframe>
         </div>
         """
@@ -2932,7 +3038,7 @@ def render_assessment_modal_content(
         <div style="display:flex; justify-content:space-between; margin-bottom:16px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
             <div>
                 <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0;">Evaluating: {escape(badge.code)} — {escape(badge.title)}</h3>
-                <div style="font-size:12.5px; color:var(--frost-navy-50);">Cosmonaut: <strong>{escape(cosmonaut.name)}</strong> | Deliverable: <strong>Attempt #{submission.attempt_number}</strong></div>
+                <div style="font-size:0.78125rem; color:var(--frost-navy-50);">Cosmonaut: <strong>{escape(cosmonaut.name)}</strong> | Deliverable: <strong>Attempt #{submission.attempt_number}</strong></div>
             </div>
             <div>{render_status_pill(submission.status)}</div>
         </div>
@@ -2941,7 +3047,7 @@ def render_assessment_modal_content(
         {preview_box}
 
         <form id="evaluation-rubric-form" onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('submit_evaluation_rubric', '{submission.id}');">
-            <div style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:8px;">
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:8px;">
                 Standard 50-Mark Rubric Scoring (0.0 to 10.0 each):
             </div>
 
@@ -2979,8 +3085,8 @@ def render_assessment_modal_content(
 
             <div class="rubric-total-box">
                 <div>
-                    <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.8;">Automated Evaluation Total</div>
-                    <div style="font-size:12px; opacity:0.7;">Universal standard across both portals</div>
+                    <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; opacity:0.8;">Automated Evaluation Total</div>
+                    <div style="font-size:0.75rem; opacity:0.7;">Universal standard across both portals</div>
                 </div>
                 <div class="rubric-total-val" id="rubric-total-display">
                     40.0 / 50.0 (80.0%)
@@ -3073,11 +3179,11 @@ def render_guardian_profile(current_user: User, stats: Dict[str, Any]) -> str:
     mgr_band = getattr(current_user, "reporting_manager_band", "") or ""
 
     def tile(label: str, value: str, sub: str = "") -> str:
-        sub_html = f'<div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">{escape(sub)}</div>' if sub else ""
+        sub_html = f'<div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:1px;">{escape(sub)}</div>' if sub else ""
         return (
             '<div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">'
-            f'<div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">{escape(label)}</div>'
-            f'<div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(value)}</div>'
+            f'<div style="font-size:0.6875rem; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">{escape(label)}</div>'
+            f'<div style="font-size:0.84375rem; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(value)}</div>'
             f'{sub_html}</div>'
         )
 
@@ -3090,7 +3196,7 @@ def render_guardian_profile(current_user: User, stats: Dict[str, Any]) -> str:
             f'<div class="liquid-glass-card"{click} padding:16px 18px; display:flex; align-items:center; gap:14px;">'
             f'<div style="width:40px; height:40px; border-radius:var(--radius-sm); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">{get_icon(icon, 20)}</div>'
             f'<div><div style="font-family:var(--font-family-mono); font-size:1.35rem; font-weight:900; color:var(--deep-frozen-midnight); line-height:1.1;">{escape(str(value))}</div>'
-            f'<div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-top:2px;">{escape(label)}</div></div></div>'
+            f'<div style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy-50); margin-top:2px;">{escape(label)}</div></div></div>'
         )
 
     tiles = "".join([
@@ -3113,16 +3219,16 @@ def render_guardian_profile(current_user: User, stats: Dict[str, Any]) -> str:
         <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:20px;">
-                    <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; width:72px; height:72px; border-radius:50%; font-size:26px; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white);">{escape(current_user.avatar)}</div>
+                    <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; width:72px; height:72px; border-radius:50%; font-size:1.625rem; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white);">{escape(current_user.avatar)}</div>
                     <div>
                         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                             <h2 style="font-size:1.75rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.4px;">{escape(current_user.name)}</h2>
-                            <span class="status-pill status-approved" style="font-size:11px; padding:3px 10px;">{escape(status)}</span>
+                            <span class="status-pill status-approved" style="font-size:0.6875rem; padding:3px 10px;">{escape(status)}</span>
                         </div>
-                        <div style="font-size:13px; color:var(--deep-frozen-midnight); font-weight:700; margin-top:3px;">
+                        <div style="font-size:0.8125rem; color:var(--deep-frozen-midnight); font-weight:700; margin-top:3px;">
                             Academy Guardian Portal &bull; ID: <span style="font-family:var(--font-family-mono);">{escape(current_user.id)}</span>
                         </div>
-                        <div style="font-size:12.5px; color:var(--frost-navy-50); margin-top:2px;">Email: <strong style="color:var(--frost-navy);">{escape(current_user.email)}</strong></div>
+                        <div style="font-size:0.78125rem; color:var(--frost-navy-50); margin-top:2px;">Email: <strong style="color:var(--frost-navy);">{escape(current_user.email)}</strong></div>
                     </div>
                 </div>
                 <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; color:var(--deep-frozen-midnight);">
@@ -3150,12 +3256,12 @@ def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: L
     for act in page_acts:
         rows.append(f"""
         <tr>
-            <td style="font-family:var(--font-family-mono); font-size:12px; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
+            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
             <td><strong style="color:var(--deep-frozen-midnight);">{escape(act.actor_name or act.actor_id)}</strong></td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
                 <div style="font-weight:700;">{escape(humanize_internal_ids(act.summary))}</div>
-                <div style="font-size:12px; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">{escape(humanize_internal_ids(act.details))}</div>
             </td>
             <td>{escape(_feed_badge_label(act.badge_id))}</td>
         </tr>
@@ -3185,7 +3291,7 @@ def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: L
     <div>
         <div style="margin-bottom:20px;">
             <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Batch-Wide Activity & Audit Stream</h2>
-            <p style="font-size:13px; color:var(--frost-navy-50);">Chronological audit trail of all badge assignments, submissions, evaluations, and extensions.</p>
+            <p style="font-size:0.8125rem; color:var(--frost-navy-50);">Chronological audit trail of all badge assignments, submissions, evaluations, and extensions.</p>
         </div>
 
         {table_html}
@@ -3209,10 +3315,10 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
         if ext.status == "pending":
             actions_html = f"""
             <div style="display:flex; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--icy-steel-30); justify-content:flex-end;">
-                <button type="button" class="btn-secondary btn-sm" style="font-size:12.5px; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'rejected'}}))">
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.78125rem; padding:6px 14px;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'rejected'}}))">
                     &#10005; Reject
                 </button>
-                <button type="button" class="btn-metal btn-sm" style="font-size:12.5px; padding:6px 16px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'approved'}}))">
+                <button type="button" class="btn-metal btn-sm" style="font-size:0.78125rem; padding:6px 16px; font-weight:700;" onclick="window.StarAppBridge.dispatchAction('open_extension_decision_modal', JSON.stringify({{'extension_id': '{ext.id}', 'decision': 'approved'}}))">
                     &#10003; Approve Extension &rarr;
                 </button>
             </div>
@@ -3220,37 +3326,37 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
         else:
             note = ext.guardian_response or "No specific mentor note recorded."
             actions_html = f"""
-            <div style="margin-top:12px; padding:10px 14px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:12.5px; color:var(--frost-navy);">
+            <div style="margin-top:12px; padding:10px 14px; background:rgba(23,52,92,0.05); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:0.78125rem; color:var(--frost-navy);">
                 <strong>Decision Response:</strong> {escape(note)}
             </div>
             """
 
         if ext.status == "approved":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#047857; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10003; Approved</span>'
         elif ext.status == "rejected":
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#EF4444; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#10005; Rejected</span>'
         else:
-            status_pill = '<span class="status-pill" style="font-size:11px; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
+            status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
 
         items.append(f"""
         <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 16px rgba(7,22,41,0.05);">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
-                        <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); text-transform:uppercase;">{escape(b_title)}</span>
+                        <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(b_code)}</span>
+                        <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); text-transform:uppercase;">{escape(b_title)}</span>
                     </div>
                     <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Requested by {escape(cosmo_name)}</h3>
                 </div>
                 {status_pill}
             </div>
 
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; background:rgba(234,244,255,0.6); padding:10px 14px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:12px; font-size:13px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; background:rgba(234,244,255,0.6); padding:10px 14px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:12px; font-size:0.8125rem;">
                 <div><strong>Original Deadline:</strong> <span style="font-family:var(--font-family-mono);">{escape(ext.current_deadline)}</span></div>
                 <div><strong>Proposed New Deadline:</strong> <span style="font-family:var(--font-family-mono); font-weight:800; color:var(--deep-frozen-midnight);">{escape(ext.proposed_deadline)}</span></div>
             </div>
 
-            <div style="font-size:13px; line-height:1.5; color:var(--frost-navy);">
+            <div style="font-size:0.8125rem; line-height:1.5; color:var(--frost-navy);">
                 <strong>Cosmonaut Justification:</strong> {escape(ext.reason)}
             </div>
 
@@ -3263,9 +3369,9 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
         <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
             <div>
                 <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Deadline Extension Management</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Review extension requests submitted by cosmonauts. Approving an extension automatically updates the milestone cutoff application-wide.</p>
+                <p style="font-size:0.8125rem; color:var(--frost-navy-50);">Review extension requests submitted by cosmonauts. Approving an extension automatically updates the milestone cutoff application-wide.</p>
             </div>
-            <span style="font-size:12px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:5px 12px; border-radius:var(--radius-xs);">
+            <span style="font-size:0.75rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(23,52,92,0.06); padding:5px 12px; border-radius:var(--radius-xs);">
                 {len(extensions)} Request{"s" if len(extensions) != 1 else ""} Total
             </span>
         </div>
@@ -3299,7 +3405,7 @@ def render_guardian_announcements(announcements: List[Announcement], cosmonauts:
             <div class="card-content">
                 <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                     <h3 style="font-size:1.15rem; font-weight:700; color:var(--frost-navy);">{escape(ann.title)}</h3>
-                    <div style="font-size:12px; font-weight:600; color:var(--deep-frozen-midnight);">
+                    <div style="font-size:0.75rem; font-weight:600; color:var(--deep-frozen-midnight);">
                         Read Receipts: {read_count} / {total_target}
                     </div>
                 </div>
@@ -3308,7 +3414,7 @@ def render_guardian_announcements(announcements: List[Announcement], cosmonauts:
                     <span>•</span>
                     <span>Target: <strong>{escape(recipients_str)}</strong></span>
                 </div>
-                <p style="font-size:13.5px; line-height:1.5; color:var(--frost-navy); margin-top:8px;">{escape(ann.message)}</p>
+                <p style="font-size:0.84375rem; line-height:1.5; color:var(--frost-navy); margin-top:8px;">{escape(ann.message)}</p>
             </div>
         </div>
         """)
@@ -3320,7 +3426,7 @@ def render_guardian_announcements(announcements: List[Announcement], cosmonauts:
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
             <div>
                 <h2 style="font-size:1.4rem; font-weight:800; color:var(--frost-navy);">Academy Announcement Broadcaster</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50);">Publish targeted notices to the entire batch or selected Cosmonauts and inspect read receipts.</p>
+                <p style="font-size:0.8125rem; color:var(--frost-navy-50);">Publish targeted notices to the entire batch or selected Cosmonauts and inspect read receipts.</p>
             </div>
             {create_btn}
         </div>
@@ -3507,18 +3613,15 @@ def render_mapping_calendar_modal(
     calendar_year: int = 2026,
     calendar_month: int = 11,
 ) -> str:
-    """Renders the real Liquid-Glass interactive Review Schedule Calendar modal for Guardian Mapping."""
+    """
+    Review Schedule Calendar: ONLY a real month calendar and one horizontal row of dropdowns
+    (month, year, number of working days: 3 / 5 / 7 / Manual).
+      * 3 / 5 / 7 (or the current count): click a working day -> that many consecutive working days from it.
+      * Manual: click working days one by one to switch each on or off.
+    Weekends can't be picked. Every click is saved immediately, so closing the window keeps the selection.
+    """
     review_dates = list(review_dates or ["2026-11-18", "2026-11-19", "2026-11-20"])
     cal_grid = generate_calendar_month_grid(calendar_year, calendar_month, review_dates, review_anchor)
-    cal_svg_14 = get_icon("calendar", 14)
-    active_days_total = len(review_dates)
-
-    if active_days_total > 3:
-        human_dates_str = f"{format_review_date_human(review_dates[0])} \u2192 {format_review_date_human(review_dates[-1])} ({active_days_total} Working Days)"
-    elif active_days_total >= 1:
-        human_dates_str = " \u2192 ".join([format_review_date_human(d) for d in review_dates])
-    else:
-        human_dates_str = "None selected"
 
     cal_days_cells = []
     for week in cal_grid["weeks"]:
@@ -3531,117 +3634,43 @@ def render_mapping_calendar_modal(
                     <span class="cal-day-num">{d['day']}</span>
                 </div>
                 """)
-            elif d["is_selected"]:
-                order_tag = f"Day {d['order_idx']}" if d["order_idx"] else "Selected"
-                cal_days_cells.append(f"""
-                <div class="cal-day-cell selected-review-day{other_cls}{today_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Selected Review Day ({d['date']})">
-                    <span class="cal-day-num">{d['day']}</span>
-                    <span class="cal-day-order-badge">{order_tag}</span>
-                </div>
-                """)
             else:
-                today_tag = '<span class="cal-today-tag">Today</span>' if d.get("is_today") else ""
+                sel_cls = " selected-review-day" if d["is_selected"] else ""
+                title = f"Selected Review Day ({d['date']})" if d["is_selected"] else f"Select {d['date']}"
                 cal_days_cells.append(f"""
-                <div class="cal-day-cell{other_cls}{today_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="Select {d['date']}">
+                <div class="cal-day-cell{sel_cls}{other_cls}{today_cls}" role="button" tabindex="0" onclick="window.StarAppBridge.dispatchAction('select_mapping_review_anchor', '{d['date']}')" title="{title}">
                     <span class="cal-day-num">{d['day']}</span>
-                    {today_tag}
                 </div>
                 """)
 
-    gap_pills_html = []
-    for preset_d in (1, 2, 3, 5, 7, 10):
-        is_preset_active = (review_mode == "gap" and review_days_count == preset_d)
-        gap_pills_html.append(f"""
-        <button type="button" class="cal-gap-pill {'active' if is_preset_active else ''}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_duration', {preset_d})">
-            {preset_d}d
-        </button>
-        """)
+    manual = review_mode in ("manual", "range")
+    counts = [3, 5, 7]
+    if not manual and review_days_count not in counts:
+        counts = sorted(counts + [review_days_count])
+    day_opts = "".join(
+        f'<option value="{n}"{" selected" if (not manual and review_days_count == n) else ""}>{n} Days</option>' for n in counts
+    ) + f'<option value="manual"{" selected" if manual else ""}>Manual</option>'
 
-    dir_after_active = "active" if (review_mode == "gap" and review_direction == "after") else ""
-    dir_before_active = "active" if (review_mode == "gap" and review_direction == "before") else ""
-    range_mode_active = "active" if review_mode == "range" else ""
-
-    range_hint_html = ""
-    if review_mode == "range":
-        range_hint_html = (
-            f'<div style="padding:6px 10px; border-radius:var(--radius-xs); background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); font-size:11.5px; font-weight:700; color:#047857;">Start: {escape(format_review_date_human(range_start))} \u2014 Click End Date</div>'
-            if range_start else
-            '<div style="padding:6px 10px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.06); border:1px solid var(--icy-steel-30); font-size:11.5px; font-weight:700; color:var(--frost-navy);">Range Mode: Click Start Date, then End Date</div>'
-        )
+    month_opts = "".join(
+        f'<option value="{m_idx}"{" selected" if m_idx == calendar_month else ""}>{m_lbl}</option>'
+        for m_idx, m_lbl in enumerate(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], 1)
+    )
+    year_opts = "".join(
+        f'<option value="{y_opt}"{" selected" if y_opt == calendar_year else ""}>{y_opt}</option>'
+        for y_opt in range(max(2024, calendar_year - 2), max(2031, calendar_year + 4))
+    )
 
     return f"""
-    <div class="mapping-calendar-modal-glass lg-mapcal-modal">
-        <div class="lg-mapcal-side">
-            <div class="lg-mapcal-head-row">
-                <h4 class="lg-mapcal-title">
-                    {cal_svg_14}<span>Select Estimated Review Date</span>
-                </h4>
-                <span class="status-pill status-active" style="font-size:11px; font-weight:800;">{active_days_total} Working Days</span>
-            </div>
-
-            <div class="cal-date-range-inputs" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
-                <label class="cal-date-field" for="mapping-date-from" style="display:flex; flex-direction:column; gap:2px; padding:7px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); margin:0;">
-                    <span class="lg-mapcal-field-label" style="margin:0;">From</span>
-                    <input type="date" id="mapping-date-from" class="lg-mapcal-date-input" value="{escape(review_dates[0] if review_dates else review_anchor)}" onchange="(function(){{var f=document.getElementById('mapping-date-from');var t=document.getElementById('mapping-date-to');window.StarAppBridge.dispatchAction('set_mapping_date_range', JSON.stringify({{start:f?f.value:'', end:t?t.value:''}}));}})()">
-                </label>
-                <label class="cal-date-field" for="mapping-date-to" style="display:flex; flex-direction:column; gap:2px; padding:7px 10px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.88); border:1px solid var(--icy-steel-40); margin:0;">
-                    <span class="lg-mapcal-field-label" style="margin:0;">To</span>
-                    <input type="date" id="mapping-date-to" class="lg-mapcal-date-input" value="{escape(review_dates[-1] if review_dates else review_anchor)}" onchange="(function(){{var f=document.getElementById('mapping-date-from');var t=document.getElementById('mapping-date-to');window.StarAppBridge.dispatchAction('set_mapping_date_range', JSON.stringify({{start:f?f.value:'', end:t?t.value:''}}));}})()">
-                </label>
-            </div>
-
-            <div>
-                <span class="lg-mapcal-field-label">Working Days Window</span>
-                <div class="lg-mapcal-presets">
-                    {"".join(gap_pills_html)}
-                    <input type="number" min="1" max="30" class="cal-days-input" value="{active_days_total if review_mode == 'range' else review_days_count}" onchange="window.StarAppBridge.dispatchAction('set_mapping_review_duration', this.value)" title="Custom number of working days">
-                    <span style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">Days</span>
-                </div>
-            </div>
-
-            <div>
-                <span class="lg-mapcal-field-label">Selection Mode</span>
-                <div class="lg-mapcal-seg">
-                    <button type="button" class="cal-direction-btn {dir_after_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'after')">
-                        Forward
-                    </button>
-                    <button type="button" class="cal-direction-btn {dir_before_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_direction', 'before')">
-                        Backward
-                    </button>
-                    <button type="button" class="cal-direction-btn {range_mode_active}" onclick="window.StarAppBridge.dispatchAction('set_mapping_review_mode', '{'gap' if review_mode == 'range' else 'range'}')">
-                        Range Pick
-                    </button>
-                </div>
-            </div>
-            {range_hint_html}
-
-            <div class="lg-mapcal-summary" style="margin-top:auto;">
-                <div style="display:flex; align-items:center; gap:6px; font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:#065F46; margin-bottom:3px;">
-                    {cal_svg_14}<span>Review Schedule</span>
-                </div>
-                <div style="font-size:12px; font-weight:700; color:#047857;">{escape(human_dates_str)}</div>
-            </div>
+    <div class="mapping-calendar-modal-glass mapcal-only">
+        <div class="mapcal-toolbar">
+            <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: {cal_grid['prev_year']}, month: {cal_grid['prev_month']}}}))" title="Previous Month" aria-label="Previous Month">{get_icon("chevron_left", 14)}</button>
+            <select id="mapping-cal-month-select" class="mapcal-select" aria-label="Month" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: {calendar_year}, month: Number(this.value)}}))">{month_opts}</select>
+            <select id="mapping-cal-year-select" class="mapcal-select" aria-label="Year" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: Number(this.value), month: {calendar_month}}}))">{year_opts}</select>
+            <select id="mapping-cal-days-select" class="mapcal-select is-days" aria-label="Review days" onchange="window.StarAppBridge.setMappingReviewDays(this.value)">{day_opts}</select>
+            <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: {cal_grid['next_year']}, month: {cal_grid['next_month']}}}))" title="Next Month" aria-label="Next Month">{get_icon("chevron_right", 14)}</button>
         </div>
 
-        <div class="lg-cal-shell">
-            <div class="lg-cal-header">
-                <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['prev_year']}, \"month\": {cal_grid['prev_month']}}}')" title="Previous Month" aria-label="Previous Month">{get_icon("chevron_left", 14)}</button>
-                <div class="lg-mapcal-nav-group">
-                    <div class="liquid-select-wrapper lg-mapcal-select-wrap">
-                        <select id="mapping-cal-month-select" class="liquid-glass-control liquid-glass-select" aria-label="Calendar Month" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: {calendar_year}, month: Number(this.value)}}))">
-                            {"".join([f'<option value="{m_idx}"{" selected" if m_idx == calendar_month else ""}>{m_lbl}</option>' for m_idx, m_lbl in enumerate(["January","February","March","April","May","June","July","August","September","October","November","December"], 1)])}
-                        </select>
-                    </div>
-                    <div class="liquid-select-wrapper lg-mapcal-select-wrap">
-                        <select id="mapping-cal-year-select" class="liquid-glass-control liquid-glass-select" aria-label="Calendar Year" onchange="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', JSON.stringify({{year: Number(this.value), month: {calendar_month}}}))">
-                            {"".join([f'<option value="{y_opt}"{" selected" if y_opt == calendar_year else ""}>{y_opt}</option>' for y_opt in range(max(2024, calendar_year - 2), max(2031, calendar_year + 4))])}
-                        </select>
-                    </div>
-                    <button type="button" id="mapping-cal-today-btn" class="lg-mapcal-today-btn" onclick="window.StarAppBridge.dispatchAction('jump_mapping_calendar_today', '{{}}')" title="Jump to Today">Today</button>
-                </div>
-                <button type="button" class="lg-cal-nav" onclick="window.StarAppBridge.dispatchAction('change_mapping_calendar_month', '{{\"year\": {cal_grid['next_year']}, \"month\": {cal_grid['next_month']}}}')" title="Next Month" aria-label="Next Month">{get_icon("chevron_right", 14)}</button>
-            </div>
-
+        <div class="lg-cal-shell mapcal-shell">
             <div class="lg-cal-weekdays cal-weekdays-row">
                 <div>Mon</div>
                 <div>Tue</div>
@@ -3651,14 +3680,8 @@ def render_mapping_calendar_modal(
                 <div class="weekend-header" title="Weekend">Sat</div>
                 <div class="weekend-header" title="Weekend">Sun</div>
             </div>
-
             <div class="lg-cal-grid cal-days-grid">
                 {"".join(cal_days_cells)}
-            </div>
-
-            <div class="lg-cal-footer" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--icy-steel-25); display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                <span class="lg-cal-month-label" style="font-size:12px;">{cal_grid['month_name']} {cal_grid['year']}</span>
-                <button type="button" class="btn-metal btn-sm" style="font-weight:800; padding:7px 18px;" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Apply Schedule</button>
             </div>
         </div>
     </div>
@@ -3685,7 +3708,7 @@ def _cap_member_list(members: List[Dict[str, Any]], selected_ids) -> tuple:
 
 def _member_overflow_note(hidden: int, total: int) -> str:
     return (
-        '<div class="mapping-list-overflow" role="note" style="padding:10px 12px; font-size:12px; font-weight:700; '
+        '<div class="mapping-list-overflow" role="note" style="padding:10px 12px; font-size:0.75rem; font-weight:700; '
         'color:var(--frost-navy); text-align:center; opacity:0.85;">'
         f'+{hidden:,} more of {total:,} &mdash; use the search box or role filters to narrow the list.'
         '</div>'
@@ -3925,14 +3948,9 @@ def render_guardian_mapping(
         role_member_count = role_counts.get(r, 0)
         role_toggles_html.append(f"""
         <div class="{toggle_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_role', '{r}')" title="Toggle {escape(r)}">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:34px; height:34px; border-radius:var(--radius-sm); background:{cfg['bg']}; color:{cfg['color']}; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">
-                    {cfg['short']}
-                </div>
-                <div>
-                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(r)}</div>
-                    <div style="font-size:11.5px; font-weight:600; color:var(--frost-navy); opacity:0.8;">{role_member_count} in Band {selected_band}</div>
-                </div>
+            <div class="mapping-item-main">
+                <div class="mapping-item-name">{escape(r)}</div>
+                <div class="mapping-item-meta">{role_member_count} in Band {selected_band}</div>
             </div>
             {check_box}
         </div>
@@ -3949,14 +3967,8 @@ def render_guardian_mapping(
             b_check = f'<span class="mapping-check-box checked">{check_svg_11}</span>' if is_b_sel else '<span class="mapping-check-box"></span>'
             badges_list_html.append(f"""
             <div class="{b_cls}" onclick="const p = {{badge_id: '{b['id']}', badge: '{escape(b['name'])}'}}; window.StarAppBridge.dispatchAction('select_mapping_badge', JSON.stringify(p))" data-badge-name="{escape(b['name'].lower())}">
-                <div style="display:flex; align-items:center; gap:9px;">
-                    <div style="min-width:58px; padding:3px 7px; border-radius:var(--radius-xs); background:rgba(23,52,92,0.1); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px; color:var(--frost-navy); font-family:var(--font-family-mono);">
-                        {escape(b['code'])}
-                    </div>
-                    <div>
-                        <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">{escape(b['name'])}</div>
-                        <div style="font-size:11px; font-weight:600; color:var(--frost-navy); opacity:0.8;">{escape(b['category'])} &bull; Band {selected_band}</div>
-                    </div>
+                <div class="mapping-item-main">
+                    <div class="mapping-item-name">{escape(b['name'])}</div>
                 </div>
                 {b_check}
             </div>
@@ -3968,9 +3980,9 @@ def render_guardian_mapping(
             <div style="color:var(--frost-navy); margin-bottom:6px;">
                 {get_icon("award", 22)}
             </div>
-            <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">No Approved Badges Yet</div>
-            <div style="font-size:11.5px; font-weight:600; color:var(--frost-navy); opacity:0.82; margin:4px 0 12px 0;">Create and approve a badge for Band {selected_band} first.</div>
-            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_create_badge')" style="font-size:11.5px; padding:5px 14px;">
+            <div style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy);">No Approved Badges Yet</div>
+            <div style="font-size:0.71875rem; font-weight:600; color:var(--frost-navy); opacity:0.82; margin:4px 0 12px 0;">Create and approve a badge for Band {selected_band} first.</div>
+            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_create_badge')" style="font-size:0.71875rem; padding:5px 14px;">
                 Create Badge
             </button>
         </div>
@@ -3992,15 +4004,10 @@ def render_guardian_mapping(
         check_box = f'<span class="mapping-check-box checked">{check_svg_11}</span>' if is_c_sel else '<span class="mapping-check-box"></span>'
         cosmo_list_html.append(f"""
         <div class="{c_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_cosmonaut', '{m_id}')" data-member-name="{escape(m_name.lower())}" data-member-role="{escape(m_role.lower())}">
-            <div style="display:flex; align-items:center; gap:9px;">
-                <div style="width:32px; height:32px; border-radius:999px; background:rgba(23,52,92,0.12); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:var(--frost-navy);">
-                    {escape(m_avatar)}
-                </div>
-                <div>
-                    <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">{escape(m_name)}</div>
-                    <span style="font-size:10.5px; font-weight:700; color:{c_cfg.get('color', '#071629')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 7px; border-radius:3px;">
-                        {escape(m_role)}
-                    </span>
+            <div class="mapping-item-main">
+                <div class="mapping-item-name">{escape(m_name)}</div>
+                <div class="mapping-item-meta">
+                    <span class="mapping-tag" style="color:{c_cfg.get('color', '#071629')}; background:{c_cfg.get('bg', 'rgba(23,52,92,0.08)')};">{escape(m_role)}</span>
                 </div>
             </div>
             {check_box}
@@ -4014,19 +4021,15 @@ def render_guardian_mapping(
     # --------------------------------------------------------------------------
     higher_bands_pills = []
     is_all_active = len(active_reviewer_bands) == len(higher_bands)
-    all_pill_cls = "mapping-higher-band-pill active" if is_all_active else "mapping-higher-band-pill"
+    all_pill_cls = "mapping-higher-band-pill is-all active" if is_all_active else "mapping-higher-band-pill is-all"
     higher_bands_pills.append(f"""
-    <button type="button" class="{all_pill_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_reviewer_band', 'ALL')" title="Toggle all higher bands">
-        All Higher Bands
-    </button>
+    <button type="button" class="{all_pill_cls}" onclick="window.StarAppBridge.dispatchAction('select_mapping_reviewer_band', 'ALL')" title="Toggle all higher bands">All bands</button>
     """)
     for hb in higher_bands:
         is_hb_active = (hb in active_reviewer_bands_set)
         pill_cls = "mapping-higher-band-pill active" if is_hb_active else "mapping-higher-band-pill"
         higher_bands_pills.append(f"""
-        <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer_band', '{hb}')" title="Toggle {hb} Reviewers">
-            {hb}
-        </button>
+        <button type="button" class="{pill_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer_band', '{hb}')" title="Toggle {hb} Reviewers">{hb}</button>
         """)
 
     reviewers_list_html = []
@@ -4043,18 +4046,11 @@ def render_guardian_mapping(
         r_check = f'<span class="mapping-check-box checked">{check_svg_11}</span>' if is_r_sel else '<span class="mapping-check-box"></span>'
         reviewers_list_html.append(f"""
         <div class="{r_cls}" onclick="window.StarAppBridge.dispatchAction('toggle_mapping_reviewer', '{m_id}')" data-member-name="{escape(m_name.lower())}" data-member-role="{escape(m_role.lower())}">
-            <div style="display:flex; align-items:center; gap:9px;">
-                <div style="width:32px; height:32px; border-radius:999px; background:rgba(5,150,105,0.14); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#047857;">
-                    {escape(m_avatar)}
-                </div>
-                <div>
-                    <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">{escape(m_name)}</div>
-                    <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
-                        <span style="font-size:10px; font-weight:800; font-family:var(--font-family-mono); background:var(--deep-frozen-midnight); color:#fff; padding:1px 6px; border-radius:3px;">{escape(m_band)}</span>
-                        <span style="font-size:10.5px; font-weight:700; color:{r_cfg.get('color', '#071629')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 7px; border-radius:3px;">
-                            {escape(m_role)}
-                        </span>
-                    </div>
+            <div class="mapping-item-main">
+                <div class="mapping-item-name">{escape(m_name)}</div>
+                <div class="mapping-item-meta">
+                    <span class="mapping-tag is-band">{escape(m_band)}</span>
+                    <span class="mapping-tag" style="color:{r_cfg.get('color', '#071629')}; background:{r_cfg.get('bg', 'rgba(23,52,92,0.08)')};">{escape(m_role)}</span>
                 </div>
             </div>
             {r_check}
@@ -4095,47 +4091,59 @@ def render_guardian_mapping(
 
         mapped_cadets_count = sum(len(m.get("cosmonauts") or []) for m in grp_mappings)
         if grp_mappings:
-            state_pill = '<span class="status-pill status-approved" style="font-size:11px; font-weight:800;">Mapped</span>'
+            state_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:800;">Mapped</span>'
         elif len(grp_acc) > 0:
-            state_pill = '<span class="status-pill status-active" style="font-size:11px; font-weight:800;">Ready to Map</span>'
+            state_pill = '<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:800;">Ready to Map</span>'
         else:
-            state_pill = '<span class="status-pill status-pending" style="font-size:11px; font-weight:800;">Pending Review</span>'
+            state_pill = '<span class="status-pill status-pending" style="font-size:0.6875rem; font-weight:800;">Pending Review</span>'
 
         detail_payload_json = escape(json.dumps({"band": selected_band, "badge_key": grp_key}))
+        # Plain-sentence checklist: a tick when that step has happened, a dash when it has not
+        n_acc, n_req = len(grp_acc), len(grp_reqs)
+        n_cos = len(grp_cosmo_ids)
+        tick_svg = get_icon("check", 12)
+        dash_svg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="12" x2="18" y2="12"/></svg>'
+
+        def _check_row(done: bool, text_html: str) -> str:
+            return (
+                f'<li class="mbc-check {"is-done" if done else "is-none"}">'
+                f'<span class="mbc-check-ico" aria-hidden="true">{tick_svg if done else dash_svg}</span>'
+                f'<span class="mbc-check-text">{text_html}</span></li>'
+            )
+
+        # soonest 24-hour deadline among the requests still waiting for an answer
+        from starapp.storage import mapping_request_seconds_left
+        _open = [(mapping_request_seconds_left(r_), r_) for r_ in grp_pend]
+        _open = [(sec_, r_) for sec_, r_ in _open if sec_ is not None]
+        timer_row = ""
+        if _open:
+            _sec, _soonest = min(_open, key=lambda t: t[0])
+            timer_row = (
+                f'<div class="mbc-timer-row"><span class="mbc-timer-lbl">{len(_open)} awaiting reply</span>'
+                f'{render_request_timer(_soonest)}</div>'
+            )
+
+        req_row = _check_row(n_acc > 0, f"<strong>{n_acc} of {n_req}</strong> requests accepted" if n_req else "No requests yet")
+        cos_row = _check_row(n_cos > 0, f"<strong>{n_cos}</strong> cosmonaut{'s' if n_cos != 1 else ''} selected" if n_cos else "No cosmonauts selected")
+        map_row = _check_row(
+            bool(grp_mappings),
+            f"<strong>{mapped_cadets_count}</strong> cosmonaut{'s' if mapped_cadets_count != 1 else ''} mapped" if grp_mappings else "Not mapped yet",
+        )
         per_badge_cards_html.append(f"""
         <button type="button" class="mapping-badge-rect-card" onclick="window.StarAppBridge.dispatchAction('open_mapping_badge_detail', '{detail_payload_json}')">
-            <div>
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:4px 10px; border-radius:6px;">{escape(grp_code)}</span>' if grp_code else ''}
-                        <span class="status-pill" style="font-weight:800; font-size:12px; padding:4px 10px; background:rgba(23,52,92,0.09); color:var(--frost-navy);">Band {selected_band}</span>
-                    </div>
-                    {state_pill}
-                </div>
-                <h4 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0 0 10px 0; line-height:1.3;">
-                    {escape(grp_title)}
-                </h4>
-                <div style="display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:800; color:#047857; background:rgba(5,150,105,0.1); border:1px solid rgba(5,150,105,0.24); padding:5px 12px; border-radius:999px;">
-                    {get_icon("calendar", 13)} {escape(grp_dates_disp)}
-                </div>
+            <div class="mbc-head">
+                <h4 class="mbc-title">{escape(grp_title)}</h4>
+                {state_pill}
             </div>
 
-            <div class="mapping-badge-rect-stats">
-                <div>
-                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy); opacity:0.82;">Requests</div>
-                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy); margin-top:2px;">{len(grp_acc)}/{len(grp_reqs)} Accepted</div>
-                </div>
-                <div>
-                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy); opacity:0.82;">Cosmonauts</div>
-                    <div style="font-size:15px; font-weight:800; color:var(--frost-navy); margin-top:2px;">{len(grp_cosmo_ids)} Selected</div>
-                </div>
-                <div>
-                    <div style="font-size:12px; font-weight:700; color:var(--frost-navy); opacity:0.82;">Mapping</div>
-                    <div style="font-size:15px; font-weight:800; color:{'#047857' if grp_mappings else 'var(--frost-navy)'}; margin-top:2px;">{f'{mapped_cadets_count} Mapped' if grp_mappings else 'Not Mapped'}</div>
-                </div>
-            </div>
+            <ul class="mbc-checks">
+                {req_row}
+                {cos_row}
+                {map_row}
+            </ul>
+            {timer_row}
 
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid rgba(157,183,213,0.4); font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight);">
+            <div class="mbc-foot">
                 <span>Open Requests, Cohort &amp; Mapping</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
@@ -4143,7 +4151,7 @@ def render_guardian_mapping(
         """)
 
     edit_mode_badge = (
-        '<span style="background:#F59E0B; color:#fff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:var(--radius-full); margin-left:8px;">Editing Mode</span>'
+        '<span style="background:#F59E0B; color:#fff; font-size:0.6875rem; font-weight:800; padding:2px 8px; border-radius:var(--radius-full); margin-left:8px;">Editing Mode</span>'
         if editing_mapping_id else ""
     )
     box_heading = (
@@ -4171,13 +4179,13 @@ def render_guardian_mapping(
                     {edit_mode_badge}
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    {f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="font-size:12px; padding:6px 14px; font-weight:700;">Cancel Edit</button>' if editing_mapping_id else ''}
+                    {f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'cancel_edit_band_mapping\', \'{{}}\')" style="font-size:0.75rem; padding:6px 14px; font-weight:700;">Cancel Edit</button>' if editing_mapping_id else ''}
                     <button type="button" id="mapping-open-calendar-btn" class="cal-trigger-pill" onclick="window.StarAppBridge.dispatchAction('open_mapping_calendar_modal', '{{}}')" title="Open Liquid-Glass Review Schedule Calendar ({escape(compact_sched_lbl)})">
                         {cal_svg_14}
                         <span>{escape(compact_sched_lbl)}</span>
                         <span class="cal-trigger-badge">{active_days_total}d</span>
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reset_mapping_selection', '{{}}')" style="font-size:12px; padding:6px 14px; font-weight:700; color:var(--frost-navy);">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reset_mapping_selection', '{{}}')" style="font-size:0.75rem; padding:6px 14px; font-weight:700; color:var(--frost-navy);">
                         Reset
                     </button>
                 </div>
@@ -4190,10 +4198,7 @@ def render_guardian_mapping(
                     <div class="mapping-card-header">
                         <div class="mapping-card-title">
                             <span>1. Select Roles</span>
-                            <span style="font-size:11.5px; font-weight:800; color:var(--frost-navy);">{len(active_roles)} / 3 Active</span>
-                        </div>
-                        <div class="mapping-card-subtitle">
-                            Band {selected_band} Cohort Roles
+                            <span class="mapping-card-count">{len(active_roles)} / 3 Active</span>
                         </div>
                     </div>
                     <div class="mapping-filter-btn-row">
@@ -4210,13 +4215,10 @@ def render_guardian_mapping(
                     <div class="mapping-card-header">
                         <div class="mapping-card-title">
                             <span>2. Select Badge</span>
-                            <span style="font-size:11.5px; font-weight:800; color:#047857;">{escape(selected_badge) if selected_badge else 'None'}</span>
-                        </div>
-                        <div class="mapping-card-subtitle">
-                            Approved Badges ({len(clean_badges)})
+                            <span class="mapping-card-count{' is-ok' if selected_badge else ''}" title="{escape(selected_badge) if selected_badge else ''}">{escape(selected_badge) if selected_badge else 'None'}</span>
                         </div>
                     </div>
-                    <input type="text" id="mapping-badge-search-input" class="form-control form-control-sm" placeholder="Search badge (Title, code...)" oninput="window.StarAppBridge.filterBadgeList(this.value)" value="{escape(badge_search)}" style="margin-bottom:8px; font-size:12px; padding:7px 10px; color:var(--frost-navy);">
+                    <input type="text" id="mapping-badge-search-input" class="form-control form-control-sm" placeholder="Search badge name..." oninput="window.StarAppBridge.filterBadgeList(this.value)" value="{escape(badge_search)}" style="margin-bottom:8px; font-size:0.75rem; padding:7px 10px; color:var(--frost-navy);">
                     <div id="mapping-badges-scroll" class="mapping-scroll-list">
                         {badges_scroll_content}
                     </div>
@@ -4227,19 +4229,16 @@ def render_guardian_mapping(
                     <div class="mapping-card-header">
                         <div class="mapping-card-title">
                             <span>3. Select Cosmonaut</span>
-                            <span style="font-size:11.5px; font-weight:800; color:var(--frost-navy);">{len(selected_cosmonauts)} Selected</span>
-                        </div>
-                        <div class="mapping-card-subtitle">
-                            Band {selected_band} &bull; {len(filtered_cosmonauts)} Candidates
+                            <span class="mapping-card-count">{len(selected_cosmonauts)} Selected</span>
                         </div>
                     </div>
-                    <input type="text" id="mapping-cosmo-search-input" class="form-control form-control-sm" placeholder="Search {selected_band} cosmonauts..." oninput="window.StarAppBridge.filterCosmoList(this.value)" value="{escape(cosmo_search)}" style="margin-bottom:8px; font-size:12px; padding:7px 10px; color:var(--frost-navy);">
+                    <input type="text" id="mapping-cosmo-search-input" class="form-control form-control-sm" placeholder="Search {selected_band} cosmonauts..." oninput="window.StarAppBridge.filterCosmoList(this.value)" value="{escape(cosmo_search)}" style="margin-bottom:8px; font-size:0.75rem; padding:7px 10px; color:var(--frost-navy);">
                     <div class="mapping-filter-btn-row">
                         <button type="button" class="mapping-filter-btn primary-action" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_cosmonauts', '{{}}')">Select All</button>
                         <button type="button" class="mapping-filter-btn" onclick="window.StarAppBridge.dispatchAction('clear_mapping_cosmonauts', '{{}}')">Clear</button>
                     </div>
                     <div id="mapping-cosmo-scroll" class="mapping-scroll-list">
-                        {"".join(cosmo_list_html) if cosmo_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12.5px; font-weight:600; color:var(--frost-navy);'>No Band {selected_band} candidates match active filters.</div>"}
+                        {"".join(cosmo_list_html) if cosmo_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:0.78125rem; font-weight:600; color:var(--frost-navy);'>No Band {selected_band} candidates match active filters.</div>"}
                     </div>
                 </div>
 
@@ -4248,22 +4247,19 @@ def render_guardian_mapping(
                     <div class="mapping-card-header">
                         <div class="mapping-card-title">
                             <span>4. Select Reviewers</span>
-                            <span style="font-size:11.5px; font-weight:800; color:#047857;">{len(selected_reviewers)} Selected</span>
-                        </div>
-                        <div class="mapping-card-subtitle">
-                            Bands {", ".join(active_reviewer_bands)} &bull; {len(filtered_reviewers)} Eligible
+                            <span class="mapping-card-count{' is-ok' if selected_reviewers else ''}">{len(selected_reviewers)} Selected</span>
                         </div>
                     </div>
-                    <div style="display:flex; align-items:center; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
+                    <div class="mapping-band-row">
                         {"".join(higher_bands_pills)}
                     </div>
-                    <input type="text" id="mapping-reviewer-search-input" class="form-control form-control-sm" placeholder="Search reviewers across {', '.join(active_reviewer_bands)}..." oninput="window.StarAppBridge.filterReviewerList(this.value)" value="{escape(reviewer_search)}" style="margin-bottom:8px; font-size:12px; padding:7px 10px; color:var(--frost-navy);">
+                    <input type="text" id="mapping-reviewer-search-input" class="form-control form-control-sm" placeholder="Search reviewers across {', '.join(active_reviewer_bands)}..." oninput="window.StarAppBridge.filterReviewerList(this.value)" value="{escape(reviewer_search)}" style="margin-bottom:8px; font-size:0.75rem; padding:7px 10px; color:var(--frost-navy);">
                     <div class="mapping-filter-btn-row">
                         <button type="button" class="mapping-filter-btn primary-action" onclick="window.StarAppBridge.dispatchAction('select_all_mapping_reviewers', '{{}}')">Select All</button>
                         <button type="button" class="mapping-filter-btn" onclick="window.StarAppBridge.dispatchAction('clear_mapping_reviewers', '{{}}')">Clear</button>
                     </div>
                     <div id="mapping-reviewer-scroll" class="mapping-scroll-list">
-                        {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:12.5px; font-weight:600; color:var(--frost-navy);'>No higher-band reviewers match active filters.</div>"}
+                        {"".join(reviewers_list_html) if reviewers_list_html else f"<div style='text-align:center; padding:30px 10px; font-size:0.78125rem; font-weight:600; color:var(--frost-navy);'>No higher-band reviewers match active filters.</div>"}
                     </div>
                 </div>
             </div>
@@ -4271,10 +4267,10 @@ def render_guardian_mapping(
             <!-- Clean Action Bar -->
             <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--icy-steel-30); display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px;">
                 {f'''
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('cancel_edit_band_mapping', '{{}}')" style="padding:8px 14px; font-size:12.5px; font-weight:700;">Cancel Edit</button>
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="padding:8px 16px; font-size:12.5px; font-weight:700;">Update Badge Mapping</button>
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('cancel_edit_band_mapping', '{{}}')" style="padding:8px 14px; font-size:0.78125rem; font-weight:700;">Cancel Edit</button>
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('save_band_mapping', '{{}}')" style="padding:8px 16px; font-size:0.78125rem; font-weight:700;">Update Badge Mapping</button>
                 ''' if editing_mapping_id else ''}
-                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('send_mapping_requests', '{{}}')" style="padding:9px 22px; font-size:13px; font-weight:800; display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg, #17345C, #2E5C9E); color:#fff;">
+                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('send_mapping_requests', '{{}}')" style="padding:9px 22px; font-size:0.8125rem; font-weight:800; display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg, #17345C, #2E5C9E); color:#fff;">
                     {get_icon("mail", 14)}
                     Send Request ({len(selected_reviewers)} Reviewers)
                 </button>
@@ -4288,17 +4284,17 @@ def render_guardian_mapping(
                     Badge Requests &amp; Mappings &bull; Band {selected_band}
                 </h3>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <span class="status-pill status-approved" style="font-weight:800; font-size:12.5px; padding:5px 12px;">{total_acc} Accepted</span>
-                    <span class="status-pill status-pending" style="font-weight:800; font-size:12.5px; padding:5px 12px;">{total_pend} Pending</span>
-                    <span class="status-pill status-rejected" style="font-weight:800; font-size:12.5px; padding:5px 12px;">{total_rej} Rejected</span>
+                    <span class="status-pill status-approved" style="font-weight:800; font-size:0.78125rem; padding:5px 12px;">{total_acc} Accepted</span>
+                    <span class="status-pill status-pending" style="font-weight:800; font-size:0.78125rem; padding:5px 12px;">{total_pend} Pending</span>
+                    <span class="status-pill status-rejected" style="font-weight:800; font-size:0.78125rem; padding:5px 12px;">{total_rej} Rejected</span>
                 </div>
             </div>
 
             {f'<div class="mapping-badge-rect-grid">{"".join(per_badge_cards_html)}</div>' if per_badge_cards_html else f'''
             <div style="text-align:center; padding:32px 20px; background:rgba(255,255,255,0.75); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);">
                 <div style="margin-bottom:8px; color:var(--frost-navy);">{get_icon("mail", 28)}</div>
-                <div style="font-size:14px; font-weight:800; color:var(--frost-navy);">No Badge Requests or Mappings in Band {selected_band} Yet</div>
-                <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy); opacity:0.82; max-width:460px; margin:4px auto 0 auto;">
+                <div style="font-size:0.875rem; font-weight:800; color:var(--frost-navy);">No Badge Requests or Mappings in Band {selected_band} Yet</div>
+                <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy); opacity:0.82; max-width:460px; margin:4px auto 0 auto;">
                     Select a badge, cosmonauts, reviewers, and a review schedule above, then click Send Request to create an independent badge card below.
                 </div>
             </div>
@@ -4343,7 +4339,7 @@ def render_guardian_mapping_badge_detail(
         <div class="liquid-glass-card" style="padding:36px 24px; text-align:center;">
             <div style="margin-bottom:10px; color:var(--frost-navy);">{get_icon("mail", 30)}</div>
             <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">No Active Requests or Mappings for This Badge</h3>
-            <p style="font-size:13px; font-weight:600; color:var(--frost-navy); margin:0 0 18px 0;">Return to the Mapping Matrix to select cosmonauts, reviewers, and dispatch requests.</p>
+            <p style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy); margin:0 0 18px 0;">Return to the Mapping Matrix to select cosmonauts, reviewers, and dispatch requests.</p>
             <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')">Back to Mapping Matrix</button>
         </div>
         """
@@ -4359,77 +4355,104 @@ def render_guardian_mapping_badge_detail(
     grp_cosmo_ids = target_grp["cosmo_ids"]
     grp_dates_disp = target_grp["dates_disp"]
 
+    # ------------------------------------------------------------------ helpers (classes live in css/components.css, .md-* / .rq-*)
+    def _band_chip(band_code: str) -> str:
+        return f'<span class="md-band">{escape(band_code)}</span>'
+
+    def _role_tag(role_name: str) -> str:
+        cfg_ = ROLE_CONFIG.get(role_name, {})
+        return f'<span class="md-role" style="color:{cfg_.get("color", "#071629")};">{escape(role_name)}</span>'
+
+    # ------------------------------------------------------------------ 1. reviewer requests history
     req_rows = []
     for req in grp_reqs:
-        r_id = req.get("id", "")
+        r_id = escape(req.get("id", ""))
         r_status = req.get("status", "pending")
+        r_expired = bool(req.get("expired"))
         g_name = req.get("reviewer_name", "Reviewer")
         g_band = req.get("reviewer_band", "B2")
-        g_role = req.get("reviewer_role", "Reviewer")
-        g_avatar = req.get("reviewer_avatar", "REV")
-        cfg = ROLE_CONFIG.get(g_role, {})
+        g_role = users_map.get(req.get("reviewer_id", ""), {}).get("role") or req.get("reviewer_role", "Reviewer")
+        sent_lbl = format_utc_stamp(req.get("sent_at")) or "&mdash;"
+        answered_lbl = format_utc_stamp(req.get("responded_at"))
+        answered_sfx = f" &middot; {answered_lbl}" if answered_lbl else ""
 
+        def _btn(kind: str, label: str, action: str, icon_name: str) -> str:
+            return (
+                f'<button type="button" class="rq-btn {kind}" '
+                f"onclick=\"window.StarAppBridge.dispatchAction('{action}', '{r_id}')\">"
+                f'<span>{label}</span></button>'      # text-only: three buttons must fit one equal-width column
+            )
+
+        delete_btn = _btn("is-delete", "Delete", "delete_mapping_request", "x")
         if r_status == "accepted":
-            st_badge = '<span class="status-pill status-approved" style="font-size:11.5px; font-weight:800;">Accepted</span>'
-            act_btns = f"""<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3);">Reject</button>"""
-            row_style = "border:1.5px solid rgba(5,150,105,0.45); background:rgba(5,150,105,0.04);"
+            st_pill = '<span class="status-pill status-approved">Accepted</span>'
+            response_html = f'<span class="rq-resp is-ok">Accepted{answered_sfx}</span>'
+            actions = _btn("is-reject", "Revoke", "reject_mapping_request", "x") + delete_btn
+            row_cls = "is-accepted"
+        elif r_status == "rejected" and r_expired:
+            st_pill = '<span class="status-pill status-rejected">Expired</span>'
+            response_html = f'<span class="rq-resp is-bad">No reply in 24 h{answered_sfx}</span>'
+            actions = _btn("is-resend", "Resend", "resend_mapping_request", "send") + delete_btn
+            row_cls = "is-expired"
         elif r_status == "rejected":
-            st_badge = '<span class="status-pill status-rejected" style="font-size:11.5px; font-weight:800;">Rejected</span>'
-            act_btns = f"""<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px;">Accept</button>"""
-            row_style = "border:1px solid rgba(220,38,38,0.28); background:rgba(220,38,38,0.03);"
+            st_pill = '<span class="status-pill status-rejected">Rejected</span>'
+            response_html = f'<span class="rq-resp is-bad">Declined{answered_sfx}</span>'
+            actions = (
+                _btn("is-accept", "Accept", "accept_mapping_request", "check")
+                + _btn("is-resend", "Resend", "resend_mapping_request", "send")
+                + delete_btn
+            )
+            row_cls = "is-rejected"
         else:
-            st_badge = '<span class="status-pill status-pending" style="font-size:11.5px; font-weight:800;">Pending</span>'
-            act_btns = f"""
-            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 13px; background:#059669; border-color:#059669; color:#fff;">Accept</button>
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="font-size:11.5px; padding:5px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3);">Reject</button>
-            """
-            row_style = "border:1px solid var(--icy-steel-30); background:rgba(255,255,255,0.92);"
+            st_pill = '<span class="status-pill status-pending">Pending</span>'
+            response_html = render_request_timer(req) or '<span class="rq-resp">Awaiting reply</span>'
+            actions = (
+                _btn("is-accept", "Accept", "accept_mapping_request", "check")
+                + _btn("is-reject", "Reject", "reject_mapping_request", "x")
+                + delete_btn
+            )
+            row_cls = "is-pending"
 
         req_rows.append(f"""
-        <div style="padding:12px 16px; border-radius:var(--radius-sm); {row_style} display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-                <div style="width:38px; height:38px; border-radius:999px; background:rgba(23,52,92,0.12); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:var(--frost-navy);">
-                    {escape(g_avatar)}
-                </div>
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span style="font-size:14px; font-weight:800; color:var(--frost-navy);">{escape(g_name)}</span>
-                        <span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:1px 6px; border-radius:3px;">{escape(g_band)}</span>
-                        <span style="font-size:11px; font-weight:700; color:{cfg.get('color', '#071629')}; background:{cfg.get('bg', 'rgba(23,52,92,0.08)')}; padding:1px 7px; border-radius:3px;">{escape(g_role)}</span>
-                    </div>
-                </div>
+        <div class="rq-row {row_cls}">
+            <div class="rq-cell rq-who">
+                <span class="rq-who-text">
+                    <span class="rq-name">{escape(g_name)}</span>
+                    <span class="rq-meta">{_band_chip(g_band)}{_role_tag(g_role)}</span>
+                </span>
             </div>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                {st_badge}
-                {act_btns}
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_mapping_request', '{r_id}')" title="Delete request" style="padding:5px 9px; font-size:11.5px; color:var(--frost-navy);">Delete</button>
-            </div>
+            <div class="rq-cell rq-sent" data-label="Sent">{sent_lbl}</div>
+            <div class="rq-cell rq-window" data-label="Response">{response_html}</div>
+            <div class="rq-cell rq-status" data-label="Status">{st_pill}</div>
+            <div class="rq-cell rq-actions">{actions}</div>
         </div>
         """)
 
-    grp_cosmo_rows = []
-    for idx, cid in enumerate(grp_cosmo_ids, start=1):
-        cu = users_map.get(cid, {})
-        grp_cosmo_rows.append(f"""
-        <tr>
-            <td style="font-weight:700; width:40px; color:var(--frost-navy);">{idx}</td>
-            <td style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(cu.get('name', cid))}</td>
-            <td style="width:72px;"><span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 6px; border-radius:3px;">{escape(cu.get('band', selected_band))}</span></td>
-        </tr>
-        """)
+    # ------------------------------------------------------------------ 2. cohort lists
+    def _person_row(idx: int, who: Dict[str, Any], fallback_band: str, tone: str = "") -> str:
+        nm = who.get("name", "")
+        return f"""
+        <div class="md-person {tone}">
+            <span class="md-person-n">{idx}</span>
+            <span class="md-person-name">{escape(nm)}</span>
+            {_band_chip(who.get("band", fallback_band))}
+        </div>
+        """
 
+    grp_cosmo_rows = [
+        _person_row(i, {**users_map.get(cid, {}), "name": users_map.get(cid, {}).get("name", cid)}, selected_band)
+        for i, cid in enumerate(grp_cosmo_ids, start=1)
+    ]
     grp_acc_rows = []
-    for idx, req in enumerate(grp_acc, start=1):
+    for i, req in enumerate(grp_acc, start=1):
         ru = users_map.get(req.get("reviewer_id", ""), {})
-        r_name = req.get("reviewer_name") or ru.get("name", "Reviewer")
-        r_band = req.get("reviewer_band") or ru.get("band", "B2")
-        grp_acc_rows.append(f"""
-        <tr>
-            <td style="font-weight:700; width:40px; color:#047857;">{idx}</td>
-            <td style="font-weight:700; color:var(--frost-navy); font-size:13px;">{escape(r_name)}</td>
-            <td style="width:72px;"><span style="font-family:var(--font-family-mono); font-size:10.5px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 6px; border-radius:3px;">{escape(r_band)}</span></td>
-        </tr>
-        """)
+        grp_acc_rows.append(_person_row(
+            i,
+            {"name": req.get("reviewer_name") or ru.get("name", "Reviewer"),
+             "band": req.get("reviewer_band") or ru.get("band", "B2"),
+             "avatar": req.get("reviewer_avatar") or ru.get("avatar", "")},
+            "B2", "is-ok",
+        ))
 
     can_map = (len(grp_acc) > 0 and len(grp_cosmo_ids) > 0)
     map_payload_json = escape(json.dumps({"band": selected_band, "badge_id": grp_bid, "badge": grp_title}))
@@ -4445,242 +4468,140 @@ def render_guardian_mapping_badge_detail(
             r_lbl = asn.get("reviewer_name", asn.get("reviewer_id", "Reviewer"))
             r_bnd = asn.get("reviewer_band", "B2")
             c_chips = "".join([
-                f'<span class="mapped-cosmo-chip" style="padding:4px 10px; font-size:12px; font-weight:700; color:var(--frost-navy);">{escape(users_map.get(cid, {}).get("name", cid))}</span>'
+                f'<span class="md-chip">{escape(users_map.get(cid, {}).get("name", cid))}</span>'
                 for cid in asn.get("cosmonauts", [])
             ])
             assign_rows.append(f"""
-            <div class="mapping-pair-item" style="justify-content:space-between;">
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <strong style="font-size:13.5px; color:var(--frost-navy);">{escape(r_lbl)}</strong>
-                    <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:1px 6px; border-radius:3px;">{escape(r_bnd)}</span>
-                    <span class="mapping-connector-arrow">&rarr;</span>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">{c_chips}</div>
-                </div>
-                <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">{len(asn.get("cosmonauts", []))} Cadets</span>
+            <div class="md-stage-row">
+                <div class="md-stage-who"><strong>{escape(r_lbl)}</strong>{_band_chip(r_bnd)}<span class="mapping-connector-arrow">&rarr;</span></div>
+                <div class="md-chip-row">{c_chips}</div>
+                <span class="status-pill status-approved">{len(asn.get("cosmonauts", []))} Cosmonauts</span>
             </div>
             """)
         staged_html = f"""
         <div class="staged-preview-box">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-                <h4 style="font-size:14.5px; font-weight:800; color:var(--frost-navy); margin:0;">
-                    Proposed Assignment Partition &bull; {escape(grp_title)}
-                </h4>
-                <span style="font-size:12px; font-weight:700; color:#047857;">{escape(grp_dates_disp)}</span>
+            <div class="md-head-text">
+                <h4 class="md-panel-title">Proposed Assignment Partition</h4>
+                <p class="md-sub">Review the split below, then save it to make it live.</p>
             </div>
-            <div>{"".join(assign_rows)}</div>
-            <div style="display:flex; justify-content:flex-end; margin-top:12px;">
-                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('save_staged_mapping', '{map_payload_json}')" style="padding:9px 22px; font-size:13px; font-weight:800; background:linear-gradient(135deg, #059669, #047857); color:#fff; border:none;">
-                    Save Mapping
-                </button>
+            <div class="md-stage-list">{"".join(assign_rows)}</div>
+            <div class="md-foot">
+                <button type="button" class="btn-metal md-save-btn" onclick="window.StarAppBridge.dispatchAction('save_staged_mapping', '{map_payload_json}')">Save Mapping</button>
             </div>
         </div>
         """
 
-    badge_mapping_rows = []
+    # ------------------------------------------------------------------ 3. live mapped allocations
+    alloc_cards = []
     for mp in grp_mappings:
-        m_id = mp.get("id", "")
+        m_id = escape(mp.get("id", ""))
         m_cosmo_ids = mp.get("cosmonauts", [])
         m_rev_ids = mp.get("reviewers", [])
-        m_rev_band = mp.get("reviewer_band", "B2")
-        m_dates = mp.get("review_dates", [])
-
-        g_id = m_rev_ids[0] if m_rev_ids else ""
-        guardian = users_map.get(g_id, {})
-        g_name = guardian.get("name", g_id)
+        guardian = users_map.get(m_rev_ids[0] if m_rev_ids else "", {})
+        g_name = guardian.get("name", m_rev_ids[0] if m_rev_ids else "Reviewer")
         g_role = guardian.get("role", "Reviewer")
-        g_band = guardian.get("band", m_rev_band)
-        g_avatar = guardian.get("avatar") or (g_name[:2].upper() if g_name else "REV")
-        g_cfg = ROLE_CONFIG.get(g_role, {})
-
-        cadet_cells = []
-        for cid in m_cosmo_ids:
-            cosmo = users_map.get(cid, {})
-            c_name = cosmo.get("name", cid)
-            c_band = cosmo.get("band", selected_band)
-            c_avatar = cosmo.get("avatar") or (c_name[:2].upper() if c_name else "CAD")
-            cadet_cells.append(f"""
-            <div class="mapped-cosmo-chip" style="display:inline-flex; align-items:center; gap:7px; padding:6px 11px; background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="width:22px; height:22px; border-radius:999px; background:rgba(23,52,92,0.12); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:var(--frost-navy);">
-                    {escape(c_avatar)}
-                </div>
-                <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{escape(c_name)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:1px 5px; border-radius:3px;">{escape(c_band)}</span>
-            </div>
-            """)
-
-        m_dates_str = f"{m_dates[0]} → {m_dates[-1]} ({len(m_dates)}d)" if len(m_dates) > 1 else (m_dates[0] if m_dates else "")
-        badge_mapping_rows.append(f"""
-        <tr>
-            <td style="vertical-align:middle; padding:14px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:36px; height:36px; border-radius:999px; background:linear-gradient(135deg, #059669, #047857); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800; flex-shrink:0;">
-                        {escape(g_avatar)}
-                    </div>
-                    <div>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-size:13.5px; font-weight:800; color:var(--frost-navy);">{escape(g_name)}</span>
-                            <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:1px 5px; border-radius:3px;">{escape(g_band)}</span>
-                        </div>
-                        <div style="font-size:11px; font-weight:700; color:{g_cfg.get('color', '#071629')}; margin-top:2px;">
-                            {escape(g_role)}
-                        </div>
-                    </div>
-                </div>
-            </td>
-            <td style="vertical-align:middle; padding:14px;">
-                <div style="font-size:13px; font-weight:800; color:var(--frost-navy);">{escape(grp_title)}</div>
-                <div style="font-size:11px; font-weight:600; color:var(--frost-navy); margin-top:2px;">Band {selected_band}{(' &bull; ' + escape(m_dates_str)) if m_dates_str else ''}</div>
-            </td>
-            <td style="vertical-align:middle; padding:14px;">
-                <div style="display:flex; flex-wrap:wrap; gap:7px;">{"".join(cadet_cells)}</div>
-            </td>
-            <td style="vertical-align:middle; padding:14px; text-align:center;">
-                <span class="status-pill status-approved" style="font-size:11.5px; font-weight:800; padding:4px 9px;">{len(m_cosmo_ids)} Cadets</span>
-            </td>
-            <td style="vertical-align:middle; padding:14px; text-align:center;">
-                <div style="display:flex; gap:6px; justify-content:center;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('edit_band_mapping', '{m_id}')" style="font-size:11px; padding:4px 9px; font-weight:700; color:var(--frost-navy);">Edit</button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('delete_band_mapping', '{m_id}')" style="font-size:11px; padding:4px 9px; font-weight:700; color:#DC2626; border-color:rgba(220,38,38,0.3);">Delete</button>
-                </div>
-            </td>
-        </tr>
+        g_band = guardian.get("band", mp.get("reviewer_band", "B2"))
+        chips = "".join(
+            f'<span class="md-chip mapped-cosmo-chip">{escape(users_map.get(cid, {}).get("name", cid))}</span>'
+            for cid in m_cosmo_ids
+        )
+        n_c = len(m_cosmo_ids)
+        alloc_cards.append(f"""
+        <article class="md-alloc">
+            <header class="md-alloc-head">
+                <span class="md-alloc-who">
+                    <span class="md-alloc-name">{escape(g_name)}</span>
+                    <span class="rq-meta">{_band_chip(g_band)}{_role_tag(g_role)}</span>
+                </span>
+                <span class="status-pill status-approved md-alloc-count">{n_c} Cosmonaut{'s' if n_c != 1 else ''}</span>
+            </header>
+            <div class="md-chip-row">{chips or '<span class="md-empty-inline">No cosmonauts in this allocation.</span>'}</div>
+            <footer class="md-alloc-foot">
+                <button type="button" class="rq-btn is-neutral" onclick="window.StarAppBridge.dispatchAction('edit_band_mapping', '{m_id}')">{get_icon("edit", 13)}<span>Edit</span></button>
+                <button type="button" class="rq-btn is-delete" onclick="window.StarAppBridge.dispatchAction('delete_band_mapping', '{m_id}')">{get_icon("x", 13)}<span>Delete</span></button>
+            </footer>
+        </article>
         """)
 
     saved_mapping_section = ""
-    if badge_mapping_rows:
+    if alloc_cards:
         saved_mapping_section = f"""
-        <div class="liquid-glass-card" style="padding:22px; margin-bottom:24px; border:1.5px solid rgba(5,150,105,0.4);">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid var(--icy-steel-30);">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    {get_icon("target", 17, "color:#047857;")}
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                        3. Live Mapped Review Allocations &bull; {escape(grp_title)}
-                    </h3>
-                    <span class="status-pill status-approved" style="font-size:11px; font-weight:800;">Saved</span>
+        <section class="md-card is-live">
+            <div class="md-card-head">
+                <div class="md-head-text">
+                    <h3 class="md-title"><span class="md-step is-green">{get_icon("target", 15)}</span>Live Mapped Review Allocations</h3>
                 </div>
-                <div style="display:flex; gap:8px;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('clear_band_mappings', '{map_payload_json}')" style="font-size:12px; padding:6px 14px; font-weight:700; color:#DC2626;">Clear Mapping</button>
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('execute_cosmonaut_mapping', '{map_payload_json}')" style="font-size:12px; padding:6px 16px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">Re-Map</button>
+                <div class="md-head-actions">
+                    <span class="status-pill status-approved">Saved</span>
+                    <button type="button" class="rq-btn is-reject" onclick="window.StarAppBridge.dispatchAction('clear_band_mappings', '{map_payload_json}')"><span>Clear Mapping</span></button>
+                    <button type="button" class="rq-btn is-accept is-solid" onclick="window.StarAppBridge.dispatchAction('execute_cosmonaut_mapping', '{map_payload_json}')">{get_icon("refresh", 13)}<span>Re-Map</span></button>
                 </div>
             </div>
-            <div class="table-responsive">
-                <table class="star-table" style="font-size:12.5px; background:#fff; border-radius:var(--radius-sm); overflow:hidden;">
-                    <thead>
-                        <tr>
-                            <th style="width:240px;">Guardian Reviewer</th>
-                            <th style="width:190px;">Milestone</th>
-                            <th>Mapped Cosmonauts</th>
-                            <th style="width:85px; text-align:center;">Cadets</th>
-                            <th style="width:120px; text-align:center;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join(badge_mapping_rows)}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+            <div class="md-alloc-grid">{"".join(alloc_cards)}</div>
+        </section>
         """
 
+    map_btn = (
+        f'''<button type="button" class="btn-metal md-map-btn" onclick="window.StarAppBridge.dispatchAction('preview_cosmonaut_mapping', '{map_payload_json}')">{get_icon("target", 14)} Map</button>'''
+        if can_map else
+        '<button type="button" class="btn-secondary md-map-btn" disabled>Map</button>'
+    )
+    map_hint = "" if can_map else '<span class="md-hint">Accept at least one reviewer request to enable mapping.</span>'
+    empty_requests = '<div class="md-empty">No reviewer requests recorded for this badge.</div>'
+    history_html = (
+        '<div class="rq-table" role="table">'
+        '<div class="rq-row rq-head" role="row">'
+        '<div class="rq-cell">Reviewer</div><div class="rq-cell">Sent</div><div class="rq-cell">Response</div>'
+        '<div class="rq-cell">Status</div><div class="rq-cell rq-actions">Actions</div></div>'
+        + "".join(req_rows) + '</div>'
+    ) if req_rows else empty_requests
+
     return f"""
-    <div>
-        <!-- Dedicated Badge Detail Header -->
-        <div class="lg-tl-hero" style="margin-bottom:22px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                    {f'<span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:3px 9px; border-radius:4px;">{escape(grp_code)}</span>' if grp_code else ''}
-                    <span class="status-pill" style="font-weight:700; font-size:11.5px; background:rgba(23,52,92,0.08); color:var(--frost-navy);">Band {selected_band}</span>
-                    <span class="status-pill" style="font-weight:700; font-size:11.5px; background:rgba(5,150,105,0.1); color:#047857;">{escape(grp_dates_disp)}</span>
-                </div>
-                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                    {escape(grp_title)}
-                </h2>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <span class="status-pill status-approved" style="font-size:11.5px; font-weight:800;">{len(grp_acc)} Accepted</span>
-                <span class="status-pill status-pending" style="font-size:11.5px; font-weight:800;">{len(grp_pend)} Pending</span>
-                <span class="status-pill status-rejected" style="font-size:11.5px; font-weight:800;">{len(grp_rej)} Rejected</span>
-            </div>
-        </div>
+    <div class="md-page">
+        <!-- Badge title (shown in the Back-button row via title hoisting) -->
+        <h2 class="md-page-title">{escape(grp_title)}</h2>
 
         <!-- 1. Reviewer Requests History -->
-        <div class="liquid-glass-card" style="padding:22px; margin-bottom:22px;">
-            <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0 0 14px 0;">
-                1. Reviewer Requests History ({len(grp_reqs)})
-            </h3>
-            <div style="display:flex; flex-direction:column; gap:10px;">
-                {"".join(req_rows) if req_rows else '<div style="padding:16px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.8); border:1px dashed var(--icy-steel-40); font-size:13px; font-weight:600; color:var(--frost-navy);">No reviewer requests recorded for this badge.</div>'}
+        <section class="md-card">
+            <div class="md-card-head">
+                <div class="md-head-text">
+                    <h3 class="md-title"><span class="md-step">1</span>Reviewer Requests History <span class="md-count">{len(grp_reqs)}</span></h3>
+                </div>
             </div>
-        </div>
+            {history_html}
+        </section>
 
-        <!-- 2. Candidate Cosmonauts & Accepted Reviewers + Map -->
-        <div class="liquid-glass-card" style="padding:22px; margin-bottom:22px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
-                <h3 style="font-size:1.2rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                    2. Final Review Cohort: Candidate Cosmonauts & Accepted Reviewers
-                </h3>
-                <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">{len(grp_cosmo_ids)} Cosmonauts &bull; {len(grp_acc)} Accepted</span>
+        <!-- 2. Final Review Cohort -->
+        <section class="md-card">
+            <div class="md-card-head">
+                <div class="md-head-text">
+                    <h3 class="md-title"><span class="md-step">2</span>Final Review Cohort</h3>
+                </div>
+                <span class="md-summary">{len(grp_cosmo_ids)} Cosmonauts &middot; {len(grp_acc)} Accepted</span>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:16px; margin-bottom:16px;">
-                <div class="liquid-glass-panel" style="padding:16px;">
-                    <div style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin-bottom:10px;">
-                        Selected Cosmonauts ({len(grp_cosmo_ids)})
+            <div class="md-panels">
+                <div class="md-panel">
+                    <div class="md-panel-head">
+                        <h4 class="md-panel-title">Selected Cosmonauts</h4><span class="md-count">{len(grp_cosmo_ids)}</span>
                     </div>
-                    <div class="table-responsive" style="max-height:260px; overflow-y:auto;">
-                        <table class="star-table" style="font-size:12.5px;">
-                            <thead>
-                                <tr>
-                                    <th style="width:40px;">#</th>
-                                    <th>Cosmonaut</th>
-                                    <th style="width:72px;">Band</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {"".join(grp_cosmo_rows) if grp_cosmo_rows else "<tr><td colspan='3' style='text-align:center; padding:16px; color:var(--frost-navy); font-weight:600;'>No cosmonauts attached.</td></tr>"}
-                            </tbody>
-                        </table>
+                    <div class="md-list">
+                        {"".join(grp_cosmo_rows) if grp_cosmo_rows else '<div class="md-empty">No cosmonauts attached.</div>'}
                     </div>
                 </div>
-                <div class="liquid-glass-panel" style="padding:16px;">
-                    <div style="font-size:13.5px; font-weight:800; color:#047857; margin-bottom:10px;">
-                        Accepted Reviewers ({len(grp_acc)})
+                <div class="md-panel">
+                    <div class="md-panel-head">
+                        <h4 class="md-panel-title is-ok">Accepted Reviewers</h4><span class="md-count is-ok">{len(grp_acc)}</span>
                     </div>
-                    <div class="table-responsive" style="max-height:260px; overflow-y:auto;">
-                        <table class="star-table" style="font-size:12.5px;">
-                            <thead>
-                                <tr>
-                                    <th style="width:40px;">#</th>
-                                    <th>Reviewer</th>
-                                    <th style="width:72px;">Band</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {"".join(grp_acc_rows) if grp_acc_rows else "<tr><td colspan='3' style='text-align:center; padding:16px; color:var(--frost-navy); font-weight:600;'>Awaiting reviewer acceptance above.</td></tr>"}
-                            </tbody>
-                        </table>
+                    <div class="md-list">
+                        {"".join(grp_acc_rows) if grp_acc_rows else '<div class="md-empty">Awaiting reviewer acceptance above.</div>'}
                     </div>
                 </div>
             </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div style="font-size:13px; font-weight:700; color:var(--frost-navy);">
-                    {f"Ready to equally partition {len(grp_cosmo_ids)} cosmonaut(s) across {len(grp_acc)} accepted reviewer(s)." if can_map else "Accept at least 1 reviewer request above to enable mapping."}
-                </div>
-                {f'''
-                <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('preview_cosmonaut_mapping', '{map_payload_json}')" style="padding:9px 22px; font-size:13px; font-weight:800; display:inline-flex; align-items:center; gap:6px;">
-                    {get_icon("target", 14)} Map
-                </button>
-                ''' if can_map else '''
-                <button type="button" class="btn-secondary" disabled style="opacity:0.5; padding:8px 18px; font-size:12.5px; font-weight:700; cursor:not-allowed;">
-                    Map
-                </button>
-                '''}
-            </div>
-
+            <div class="md-foot">{map_hint}{map_btn}</div>
             {staged_html}
-        </div>
+        </section>
 
-        <!-- 3. Saved Mapping for This Badge -->
+        <!-- 3. Live Mapped Review Allocations -->
         {saved_mapping_section}
     </div>
     """
@@ -4788,7 +4709,7 @@ def render_guardian_create_badge(
                     </div>
                 </div>
 
-                <button type="button" class="btn-metal" style="width:100%; justify-content:center; height:42px; font-size:13.5px; font-weight:800;">
+                <button type="button" class="btn-metal" style="width:100%; justify-content:center; height:42px; font-size:0.84375rem; font-weight:800;">
                     <span>Enter Band {b_id}</span>{arrow_icon}
                 </button>
             </div>
@@ -4805,10 +4726,10 @@ def render_guardian_create_badge(
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_cycles')" style="font-size:12.5px; font-weight:700; height:36px; padding:0 14px; color:var(--frost-navy);">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_cycles')" style="font-size:0.78125rem; font-weight:700; height:36px; padding:0 14px; color:var(--frost-navy);">
                         <span>Choose Cycle</span>
                     </button>
-                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_dashboard')" style="font-size:12.5px; font-weight:700; height:36px; padding:0 15px;">
+                    <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_dashboard')" style="font-size:0.78125rem; font-weight:700; height:36px; padding:0 15px;">
                         <span>Batch Overview</span>{arrow_icon}
                     </button>
                 </div>
@@ -4989,7 +4910,7 @@ def render_guardian_create_badge(
             {_skel("13px","72%","10px")}
             {_skel("13px","80%","10px")}
             {_skel("13px","60%","10px")}
-            <p style="font-size:13.5px; font-weight:600; color:var(--frost-navy); margin-top:14px;">
+            <p style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy); margin-top:14px;">
                 Select dropdowns and click <strong>Create Badge with Gemini</strong> to generate outcomes.
             </p>
         </div>
@@ -5002,14 +4923,14 @@ def render_guardian_create_badge(
                 Learning Outcomes (one per line, starting with "Can...")
             </label>
             <textarea id="edit-badge-outcomes-input" class="form-input auto-grow-textarea" rows="4"
-                style="font-size:14.5px; line-height:1.65; font-weight:500; color:var(--frost-navy); font-family:var(--font-family-base); width:100%; box-sizing:border-box; padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
+                style="font-size:0.90625rem; line-height:1.65; font-weight:500; color:var(--frost-navy); font-family:var(--font-family-base); width:100%; box-sizing:border-box; padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
                 placeholder="Can identify...&#10;Can analyze...&#10;Can design...&#10;Can implement...">{escape(outcomes_joined)}</textarea>
         </div>
         """
     else:
         check_svg = get_icon("check", size=14)
         outcomes_list_items = "".join([
-            f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:14.5px; color:var(--frost-navy); line-height:1.6; padding:12px 16px; background:rgba(255,255,255,0.88); border:1.5px solid rgba(5,150,105,0.28); border-radius:var(--radius-sm); margin-bottom:9px;">
+            f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:0.90625rem; color:var(--frost-navy); line-height:1.6; padding:12px 16px; background:rgba(255,255,255,0.88); border:1.5px solid rgba(5,150,105,0.28); border-radius:var(--radius-sm); margin-bottom:9px;">
                 <span style="width:24px; height:24px; border-radius:50%; background:rgba(5,150,105,0.14); color:#047857; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">{check_svg}</span>
                 <span style="font-weight:600; flex:1; color:var(--frost-navy);">{escape(o)}</span>
             </div>'''
@@ -5041,20 +4962,20 @@ def render_guardian_create_badge(
             topics_edit_rows.append(f"""
             <div class="cb-edit-card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
-                    <span style="font-size:12px; font-weight:800; background:rgba(6,182,212,0.14); color:#0E7490; padding:4px 12px; border-radius:12px; border:1px solid rgba(6,182,212,0.3);">Topic {idx+1}</span>
-                    <span style="font-size:12.5px; font-weight:700; color:var(--frost-navy);">Curriculum Module</span>
+                    <span style="font-size:0.75rem; font-weight:800; background:rgba(6,182,212,0.14); color:#0E7490; padding:4px 12px; border-radius:12px; border:1px solid rgba(6,182,212,0.3);">Topic {idx+1}</span>
+                    <span style="font-size:0.78125rem; font-weight:700; color:var(--frost-navy);">Curriculum Module</span>
                 </div>
                 <div style="margin-bottom:10px;">
                     <label for="edit-topic-title-{idx}" class="cb-edit-label">Topic Title</label>
                     <input type="text" id="edit-topic-title-{idx}" class="form-input"
                         data-completed="{'1' if t_comp else '0'}" data-status="{escape(t_status)}"
-                        style="font-size:15px; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);"
+                        style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);"
                         placeholder="Topic Title" value="{escape(t_title)}">
                 </div>
                 <div>
                     <label for="edit-topic-desc-{idx}" class="cb-edit-label">Description &amp; Scope</label>
                     <textarea id="edit-topic-desc-{idx}" class="form-input auto-grow-textarea" rows="2"
-                        style="font-size:14px; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
+                        style="font-size:0.875rem; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
                         placeholder="Topic Description / Scope">{escape(t_desc)}</textarea>
                 </div>
             </div>
@@ -5085,17 +5006,17 @@ def render_guardian_create_badge(
             <div id="topic-card-{idx}" class="topic-row-card" style="padding:18px 22px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
                 <div style="flex:1;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px; flex-wrap:wrap;">
-                        <span style="font-size:12px; font-weight:800; background:rgba(8,145,178,0.13); color:#0E7490; padding:3px 11px; border-radius:12px; border:1px solid rgba(8,145,178,0.28);">Topic {idx+1}</span>
-                        <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 11px; border-radius:12px; font-size:12px; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
-                        <span style="font-size:12px; color:var(--frost-navy); font-weight:700;">Curriculum Module</span>
+                        <span style="font-size:0.75rem; font-weight:800; background:rgba(8,145,178,0.13); color:#0E7490; padding:3px 11px; border-radius:12px; border:1px solid rgba(8,145,178,0.28);">Topic {idx+1}</span>
+                        <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 11px; border-radius:12px; font-size:0.75rem; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
+                        <span style="font-size:0.75rem; color:var(--frost-navy); font-weight:700;">Curriculum Module</span>
                     </div>
-                    <div style="font-size:15.5px; font-weight:800; color:var(--frost-navy); margin-bottom:5px;">{escape(t_title)}</div>
-                    <div style="font-size:14px; font-weight:500; color:var(--frost-navy); line-height:1.55;">{escape(t_desc)}</div>
+                    <div style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy); margin-bottom:5px;">{escape(t_title)}</div>
+                    <div style="font-size:0.875rem; font-weight:500; color:var(--frost-navy); line-height:1.55;">{escape(t_desc)}</div>
                 </div>
                 <div style="flex-shrink:0;">
                     <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
                         onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
-                        style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:13px; font-weight:800; padding:9px 18px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
+                        style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:0.8125rem; font-weight:800; padding:9px 18px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
                         {btn_content}
                     </button>
                 </div>
@@ -5109,13 +5030,11 @@ def render_guardian_create_badge(
         saved_cards = []
         for sb in saved_list:
             sb_title = sb.get("title", "")
-            sb_code = sb.get("code", "")
-            sb_loc = sb.get("location", "")
             sb_band = sb.get("target_band", selected_band)
             sb_id = sb.get("id", "")
             sb_status = sb.get("workflow_status", "ready_for_review")
-            sb_rev_id = sb.get("assigned_reviewer_id")
             sb_rev_name = sb.get("assigned_reviewer_name")
+            sb_rev_id = sb.get("assigned_reviewer_id")
             sb_rev_band = sb.get("assigned_reviewer_band") or (
                 getattr(store.get_user_by_id(sb_rev_id), "band", "") if sb_rev_id else ""
             )
@@ -5124,112 +5043,49 @@ def render_guardian_create_badge(
             sb_skill = sb.get("skill") or (sb.get("badge_data") or {}).get("skill") or "Foundations"
             sb_notes = sb.get("decision_notes", "")
 
-            # Status pill
-            if sb_status == "ready_for_review":
-                status_pill = '<span class="status-pill status-active" style="font-size:12px; font-weight:800; padding:4px 11px;">Ready for Review</span>'
-            elif sb_status == "pending_review":
-                status_pill = '<span class="status-pill status-warning" style="font-size:12px; font-weight:800; padding:4px 11px;">Pending Review</span>'
-            elif sb_status == "approved":
-                status_pill = f'<span class="status-pill status-approved" style="font-size:12px; font-weight:800; padding:4px 11px;">{get_icon("check", 12, "margin-right:4px;")} Approved</span>'
-            elif sb_status == "returned":
-                status_pill = '<span class="status-pill status-rejected" style="font-size:12px; font-weight:800; padding:4px 11px;">Returned for Changes</span>'
+            # Review state: only "Reviewed" (a decision exists) or "Not reviewed".
+            is_reviewed = sb_status in ("approved", "returned")
+            if is_reviewed:
+                review_state_html = f'<span class="lg-sb-state is-reviewed">{get_icon("check", 12)} Reviewed</span>'
             else:
-                status_pill = f'<span class="status-pill status-active" style="font-size:12px; font-weight:800; padding:4px 11px;">{escape(sb_status.title())}</span>'
+                review_state_html = '<span class="lg-sb-state is-pending">Not reviewed</span>'
 
-            # Higher-band reviewer selector
-            reviewer_selector_html = ""
-            if sb_status in ("ready_for_review", "returned", "pending_review"):
-                if sb_band == "B6":
-                    reviewer_selector_html = '<div style="font-size:13px; font-weight:700; color:var(--frost-navy);">Executive council review required (Band B6).</div>'
-                else:
-                    el_revs = store.get_eligible_badge_reviewers(sb_band)
-                    opt_items = ['<option value="">-- Select Higher-Band Reviewer --</option>']
-                    for r in el_revs:
-                        sel_attr = "selected" if r.get("id") == sb_rev_id else ""
-                        opt_items.append(f'<option value="{r["id"]}" {sel_attr}>{escape(r["name"])} ({r["band"]}) - {escape(r["learning_track"])}</option>')
-                    reviewer_selector_html = f"""
-                    <div style="display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap;">
-                        <span style="font-size:13px; font-weight:800; color:var(--frost-navy);">Badge Reviewer:</span>
-                        <div class="liquid-select-wrapper" style="min-width:220px; flex:1; max-width:290px;">
-                            <select id="reviewer-select-{sb_id}" class="liquid-glass-control liquid-glass-select" style="height:38px; font-size:13.5px; font-weight:700; color:var(--frost-navy);">
-                                {"".join(opt_items)}
-                            </select>
-                        </div>
-                        <button type="button" class="btn-metal btn-sm" onclick="const sel=document.getElementById('reviewer-select-{sb_id}'); if(!sel.value){{alert('Please select an eligible higher-band reviewer.'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{sb_id}', reviewer_id:sel.value}}));" style="font-size:13px; font-weight:800; padding:7px 16px;">
-                            Send Request
-                        </button>
-                    </div>
-                    """
+            # Action result of the review (only when a decision has been made).
+            by_suffix = ""
+            if sb_rev_name:
+                band_suffix = f" (Band {escape(sb_rev_band)})" if sb_rev_band else ""
+                by_suffix = f" by <strong>{escape(sb_rev_name)}{band_suffix}</strong>"
+            result_html = ""
+            if sb_status == "approved":
+                result_html = f'<span class="status-pill status-approved">{get_icon("check", 12, "margin-right:4px;")} Approved{by_suffix}</span>'
+            elif sb_status == "returned":
+                result_html = f'<span class="status-pill status-rejected">Returned for Changes{by_suffix}</span>'
 
-            # Assigned reviewer info banner
-            rev_band_suffix = f" (Band {escape(sb_rev_band)})" if sb_rev_band else ""
-            rev_info_html = ""
-            if sb_status == "pending_review" and sb_rev_name:
-                rev_info_html = f'<div style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--frost-navy); background:rgba(255,255,255,0.85); border:1px solid rgba(157,183,213,0.45); padding:6px 12px; border-radius:999px;">{get_icon("clock", 13)} Request sent to: <strong>{escape(sb_rev_name)}{rev_band_suffix}</strong></div>'
-            elif sb_status == "approved" and sb_rev_name:
-                rev_info_html = f'<div style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#047857; background:rgba(5,150,105,0.09); border:1px solid rgba(5,150,105,0.26); padding:6px 12px; border-radius:999px;">{get_icon("check_circle", 13)} Authorized by: <strong>{escape(sb_rev_name)}{rev_band_suffix}</strong></div>'
-
-            # Decision notes if returned
             notes_html = ""
             if sb_notes and sb_status == "returned":
-                notes_html = f'<div style="margin-top:10px; padding:10px 14px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:13px; font-weight:600; color:#B91C1C;"><strong>Reviewer Feedback:</strong> {escape(sb_notes)}</div>'
-
-            allot_btn = ""
-            sb_is_published = sb.get("is_published", False)
-            if sb_status == "approved":
-                if sb_is_published:
-                    allot_btn = f"""
-                    <span class="status-pill status-approved" style="font-size:12.5px; font-weight:800; background:#059669; color:#fff; padding:6px 13px;">{get_icon("check", 12, "margin-right:4px;")} Published</span>
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')" style="font-size:13px; font-weight:800; padding:7px 16px;">
-                        Go to Mapping &rarr;
-                    </button>
-                    """
-                else:
-                    allot_btn = f"""
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.publishBadge('{sb_id}')" style="background:#0891B2; color:#fff; border-color:#0E7490; font-size:13px; font-weight:800; padding:7px 15px; box-shadow:0 2px 8px rgba(8,145,178,0.25);">
-                        Publish Badge &rarr;
-                    </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_allotment')" style="font-size:13px; font-weight:700; padding:7px 14px; color:var(--frost-navy);">
-                        Allot &rarr;
-                    </button>
-                    """
+                notes_html = f'<div class="lg-sb-feedback"><strong>Reviewer Feedback:</strong> {escape(sb_notes)}</div>'
 
             sb_hier_html = render_taxonomy_hierarchy_tree(sb_power, sb_cap, sb_skill, compact=True)
             saved_cards.append(f"""
             <div class="lg-saved-badge-card">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;">
-                    <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
-                        <span style="font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 10px; border-radius:var(--radius-xs);">Band {escape(sb_band)}</span>
-                        {f'<span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:rgba(255,255,255,0.92); border:1px solid rgba(157,183,213,0.55); color:var(--frost-navy); padding:4px 10px; border-radius:var(--radius-xs);">{escape(sb_code)}</span>' if sb_code else ''}
-                        <h4 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(sb_title)}</h4>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        {status_pill}
-                    </div>
+                <h4 class="lg-sb-title">{escape(sb_title)}</h4>
+                {review_state_html}
+                <div class="lg-sb-meta">
+                    {sb_hier_html}
+                    {result_html}
                 </div>
-
-                <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-top:14px;">
-                    <div style="flex:1; min-width:250px;">
-                        {sb_hier_html}
-                        <div style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                            {rev_info_html}
-                        </div>
-                        {notes_html}
-                        {reviewer_selector_html}
-                    </div>
-                    <div style="display:flex; gap:9px; align-items:center; flex-wrap:wrap; padding-top:4px;">
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{sb_id}')" style="font-size:13px; font-weight:800; color:var(--frost-navy); padding:7px 15px;">
-                            View Badge
-                        </button>
-                        {allot_btn}
-                    </div>
+                {notes_html}
+                <div class="lg-sb-actions">
+                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{sb_id}')">
+                        View Badge
+                    </button>
                 </div>
             </div>
             """)
         saved_badges_html = f'<div class="lg-allot-grid">{"".join(saved_cards)}</div>'
     else:
         saved_badges_html = f"""
-        <div style="padding:20px; text-align:center; background:rgba(255,255,255,0.72); border:1.5px dashed var(--icy-steel); border-radius:var(--radius-sm); font-size:14px; font-weight:600; color:var(--frost-navy);">
+        <div style="padding:20px; text-align:center; background:rgba(255,255,255,0.72); border:1.5px dashed var(--icy-steel); border-radius:var(--radius-sm); font-size:0.875rem; font-weight:600; color:var(--frost-navy);">
             No badges saved yet for Band {selected_band}. Generate a badge above and click <strong>Save Badge</strong> to persist it.
         </div>
         """
@@ -5238,7 +5094,7 @@ def render_guardian_create_badge(
     reviewer_cards = []
     if selected_band == "B6":
         reviewer_cards.append("""
-        <div style="padding:10px; background:rgba(23,52,92,0.06); border:1px dashed var(--icy-steel); border-radius:var(--radius-sm); text-align:center; font-size:11.5px; color:var(--frost-navy-75);">
+        <div style="padding:10px; background:rgba(23,52,92,0.06); border:1px dashed var(--icy-steel); border-radius:var(--radius-sm); text-align:center; font-size:0.71875rem; color:var(--frost-navy-75);">
             <strong>No Higher-Band Reviewer Available</strong> (Executive council authorization required).
         </div>
         """)
@@ -5248,9 +5104,9 @@ def render_guardian_create_badge(
             r_name = rev.get("name", "")
             r_band = rev.get("band", "")
             reviewer_cards.append(f"""
-            <div style="padding:6px 10px; background:rgba(255,255,255,0.8); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:4px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="padding:6px 10px; background:rgba(255,255,255,0.8); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:4px; font-size:0.71875rem; display:flex; justify-content:space-between; align-items:center;">
                 <span>{escape(r_name)} (Band {escape(r_band)})</span>
-                <button type="button" class="btn-secondary btn-sm" style="font-size:10px; padding:2px 6px;" onclick="window.StarAppBridge.dispatchAction('select_badge_reviewer', '{r_id}')">Select</button>
+                <button type="button" class="btn-secondary btn-sm" style="font-size:0.625rem; padding:2px 6px;" onclick="window.StarAppBridge.dispatchAction('select_badge_reviewer', '{r_id}')">Select</button>
             </div>
             """)
 
@@ -5261,13 +5117,13 @@ def render_guardian_create_badge(
     if has_badge:
         edit_btn_html = (
             '<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveBadgeEdits()" '
-            'style="font-size:13px; font-weight:800; padding:8px 16px; display:inline-flex; align-items:center; gap:6px;">'
+            'style="font-size:0.8125rem; font-weight:800; padding:8px 16px; display:inline-flex; align-items:center; gap:6px;">'
             f'{get_icon("check", size=14)} Apply Changes</button>'
             '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'toggle_edit_badge\')" '
-            'style="font-size:13px; font-weight:700; padding:8px 14px;">Cancel</button>'
+            'style="font-size:0.8125rem; font-weight:700; padding:8px 14px;">Cancel</button>'
             if is_editing_badge else
             '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleEditBadge()" '
-            'style="font-size:13px; font-weight:700; padding:8px 14px; display:inline-flex; align-items:center; gap:6px;">'
+            'style="font-size:0.8125rem; font-weight:700; padding:8px 14px; display:inline-flex; align-items:center; gap:6px;">'
             f'{get_icon("edit", size=14)} Edit</button>'
         )
 
@@ -5283,14 +5139,14 @@ def render_guardian_create_badge(
                 <div class="cb-edit-card">
                     <label for="edit-badge-desc-input" class="cb-edit-label">Scope &amp; Summary Description</label>
                     <textarea id="edit-badge-desc-input" class="form-input auto-grow-textarea" rows="3"
-                        style="font-size:14.5px; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(badge_desc)}</textarea>
+                        style="font-size:0.90625rem; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(badge_desc)}</textarea>
                 </div>
             </div>
             '''
             if is_editing_badge else
             f'''
             <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0; line-height:1.25;">{escape(badge_title)}</h2>
-            <p style="font-size:15px; font-weight:500; color:var(--frost-navy); line-height:1.6; margin:0;">{escape(badge_desc)}</p>
+            <p style="font-size:0.9375rem; font-weight:500; color:var(--frost-navy); line-height:1.6; margin:0;">{escape(badge_desc)}</p>
             '''
         )
 
@@ -5299,7 +5155,7 @@ def render_guardian_create_badge(
             <div class="cb-edit-card">
                 <label for="edit-practice-prompt-input" class="cb-edit-label">Practice Project Prompt</label>
                 <textarea id="edit-practice-prompt-input" class="form-input auto-grow-textarea" rows="6"
-                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:14.5px; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(practice_prompt)}</textarea>
+                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:0.90625rem; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(practice_prompt)}</textarea>
             </div>
             '''
             if is_editing_badge else
@@ -5311,7 +5167,7 @@ def render_guardian_create_badge(
             <div class="cb-edit-card">
                 <label for="edit-resources-prompt-input" class="cb-edit-label">Learning Resources Prompt</label>
                 <textarea id="edit-resources-prompt-input" class="form-input auto-grow-textarea" rows="6"
-                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:14.5px; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(resources_prompt)}</textarea>
+                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:0.90625rem; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(resources_prompt)}</textarea>
             </div>
             '''
             if is_editing_badge else
@@ -5321,9 +5177,9 @@ def render_guardian_create_badge(
         edit_footer_bar = (
             f'''
             <div class="cb-selection-bar" style="margin-top:8px; margin-bottom:24px; justify-content:flex-end;">
-                <span style="font-size:13.5px; font-weight:700; color:var(--frost-navy); margin-right:auto;">Editing generated badge draft before saving</span>
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_edit_badge')" style="font-size:13px; font-weight:700; padding:8px 16px;">Cancel</button>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveBadgeEdits()" style="font-size:13px; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">{get_icon("check", size=14)} Apply Changes</button>
+                <span style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); margin-right:auto;">Editing generated badge draft before saving</span>
+                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_edit_badge')" style="font-size:0.8125rem; font-weight:700; padding:8px 16px;">Cancel</button>
+                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveBadgeEdits()" style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">{get_icon("check", size=14)} Apply Changes</button>
             </div>
             '''
             if is_editing_badge else ""
@@ -5336,27 +5192,27 @@ def render_guardian_create_badge(
             <div class="cb-result-hero">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--icy-steel-40);">
                     <div style="flex:1; min-width:260px;">
-                        <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy); margin-bottom:6px;">
+                        <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy); margin-bottom:6px;">
                             Created Badge Location
                         </div>
                         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-                            <span style="color:var(--frost-navy); font-size:15.5px; font-weight:800;">{escape(badge_title)}</span>
+                            <span style="color:var(--frost-navy); font-size:0.96875rem; font-weight:800;">{escape(badge_title)}</span>
                             {crumb_sep_svg}
-                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:4px 12px; border-radius:14px; font-size:13px; font-weight:700; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
+                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
                             {crumb_sep_svg}
-                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:4px 12px; border-radius:14px; font-size:13px; font-weight:700; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
+                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
                             {crumb_sep_svg}
-                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:4px 12px; border-radius:14px; font-size:13px; font-weight:700; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
+                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
                             {crumb_sep_svg}
-                            <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 12px; border-radius:14px; font-size:13px; font-weight:800;">Band {selected_band}</span>
+                            <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:800;">Band {selected_band}</span>
                         </div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex-shrink:0;">
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:13px; font-weight:700; padding:8px 14px;">
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:0.8125rem; font-weight:700; padding:8px 14px;">
                             Toggle All
                         </button>
                         {edit_btn_html}
-                        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveGeneratedBadge()" style="font-size:13px; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">
+                        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveGeneratedBadge()" style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">
                             {get_icon("badge", size=14)} Save Badge
                         </button>
                     </div>
@@ -5397,11 +5253,11 @@ def render_guardian_create_badge(
                     </span>
                     <div>
                         <div class="cb-section-title">Earn the Badge</div>
-                        <div style="font-size:14.5px; font-weight:600; color:var(--frost-navy); margin-top:3px;">Great job submitting your project &mdash; your guardian is reviewing it now.</div>
+                        <div style="font-size:0.90625rem; font-weight:600; color:var(--frost-navy); margin-top:3px;">Great job submitting your project &mdash; your guardian is reviewing it now.</div>
                     </div>
                 </div>
                 <div>
-                    <span style="background:rgba(245,158,11,0.16); color:#B45309; padding:5px 14px; border-radius:20px; font-size:12.5px; font-weight:800; border:1px solid rgba(217,119,6,0.34);">
+                    <span style="background:rgba(245,158,11,0.16); color:#B45309; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:800; border:1px solid rgba(217,119,6,0.34);">
                         Pending Review
                     </span>
                 </div>
@@ -5419,11 +5275,11 @@ def render_guardian_create_badge(
                     <span id="chevron-practice" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
                 </div>
                 <div id="content-practice" style="padding:0 22px 22px 22px; display:block;">
-                    <p style="font-size:14px; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Want some hands-on practice? Use this structured prompt to generate a practice project.</p>
+                    <p style="font-size:0.875rem; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Want some hands-on practice? Use this structured prompt to generate a practice project.</p>
                     {practice_inner_html}
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:13px; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to generate a practice project for this badge.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
+                        <span style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to generate a practice project for this badge.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             Copy Prompt
                         </button>
@@ -5439,14 +5295,14 @@ def render_guardian_create_badge(
                             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                         </span>
                         <span class="cb-section-title">Learning Topics</span>
-                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.16)' if progress_pct > 0 else 'rgba(157,183,213,0.24)'}; color:{'#047857' if progress_pct > 0 else 'var(--frost-navy)'}; padding:3px 12px; border-radius:12px; font-size:12px; font-weight:700; border:1px solid {'rgba(16,185,129,0.34)' if progress_pct > 0 else 'var(--icy-steel)'};">
+                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.16)' if progress_pct > 0 else 'rgba(157,183,213,0.24)'}; color:{'#047857' if progress_pct > 0 else 'var(--frost-navy)'}; padding:3px 12px; border-radius:12px; font-size:0.75rem; font-weight:700; border:1px solid {'rgba(16,185,129,0.34)' if progress_pct > 0 else 'var(--icy-steel)'};">
                             {completed_topics_count}/{total_topics} Completed
                         </span>
                         <div style="display:flex; align-items:center; gap:8px;">
                             <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.35); overflow:hidden;">
                                 <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #0891B2, #059669); border-radius:4px; transition:width 0.4s ease;"></div>
                             </div>
-                            <span id="topics-progress-text" style="font-size:13px; font-weight:800; color:var(--frost-navy); min-width:38px;">{progress_pct}%</span>
+                            <span id="topics-progress-text" style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy); min-width:38px;">{progress_pct}%</span>
                         </div>
                     </div>
                     <span id="chevron-topics" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
@@ -5468,11 +5324,11 @@ def render_guardian_create_badge(
                     <span id="chevron-resources" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
                 </div>
                 <div id="content-resources" style="padding:0 22px 22px 22px; display:block;">
-                    <p style="font-size:14px; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Not sure where to start learning? Use this structured prompt to find curated resources tailored to this badge.</p>
+                    <p style="font-size:0.875rem; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Not sure where to start learning? Use this structured prompt to find curated resources tailored to this badge.</p>
                     {resources_inner_html}
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:13px; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to get relevant learning resources.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
+                        <span style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to get relevant learning resources.</span>
+                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             Copy Prompt
                         </button>
@@ -5494,16 +5350,16 @@ def render_guardian_create_badge(
                 <div id="content-related" style="padding:0 22px 22px 22px; display:block;">
                     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
                         <div>
-                            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Skills</div>
-                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:6px 15px; border-radius:20px; font-size:13.5px; font-weight:700; display:inline-block; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
+                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Skills</div>
+                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
                         </div>
                         <div>
-                            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Capabilities</div>
-                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:6px 15px; border-radius:20px; font-size:13.5px; font-weight:700; display:inline-block; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
+                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Capabilities</div>
+                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
                         </div>
                         <div>
-                            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Powers</div>
-                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:6px 15px; border-radius:20px; font-size:13.5px; font-weight:700; display:inline-block; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
+                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Powers</div>
+                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
                         </div>
                     </div>
                 </div>
@@ -5521,10 +5377,10 @@ def render_guardian_create_badge(
                 </svg>
             </div>
             <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">Curriculum Badge Builder</h3>
-            <p style="font-size:14.5px; font-weight:500; color:var(--frost-navy); max-width:560px; margin:0 auto 16px auto; line-height:1.55;">
+            <p style="font-size:0.90625rem; font-weight:500; color:var(--frost-navy); max-width:560px; margin:0 auto 16px auto; line-height:1.55;">
                 Select your <strong>Power</strong>, <strong>Capability</strong>, and <strong>Skill</strong> above, then click <strong>Create Badge with Gemini</strong> to generate structured learning outcomes, a hands-on practice project, and curriculum modules.
             </p>
-            <div style="display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--frost-navy); background:rgba(255,255,255,0.92); padding:7px 16px; border-radius:20px; border:1.5px solid var(--icy-steel); font-weight:700;">
+            <div style="display:inline-flex; align-items:center; gap:8px; font-size:0.8125rem; color:var(--frost-navy); background:rgba(255,255,255,0.92); padding:7px 16px; border-radius:20px; border:1.5px solid var(--icy-steel); font-weight:700;">
                 <span>Band {selected_band}</span>
                 <span>&bull;</span>
                 <span>{escape(active_power)}</span>
@@ -5621,7 +5477,7 @@ def render_guardian_create_badge(
                     <label for="badge-outcome-sentence-input" class="cb-field-label" style="margin-bottom:0;">
                         Target Outcome Statement &mdash; Band {selected_band}
                     </label>
-                    <span style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Seed prompt sent to Gemini AI</span>
+                    <span style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Seed prompt sent to Gemini AI</span>
                 </div>
                 <textarea id="badge-outcome-sentence-input"
                     class="cb-outcome-input auto-grow-textarea"
@@ -5635,7 +5491,7 @@ def render_guardian_create_badge(
 
                 <!-- Create Badge button -->
                 <button type="button" id="create-badge-gemini-btn" class="btn-metal"
-                    style="font-size:14.5px; font-weight:800; padding:11px 26px; display:inline-flex; align-items:center; gap:9px; cursor:pointer; border-radius:var(--radius-md);"
+                    style="font-size:0.90625rem; font-weight:800; padding:11px 26px; display:inline-flex; align-items:center; gap:9px; cursor:pointer; border-radius:var(--radius-md);"
                     onclick="window.StarAppBridge.triggerCreateBadgeGemini()">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
@@ -5645,7 +5501,7 @@ def render_guardian_create_badge(
 
                 <!-- API Key button -->
                 <button type="button" class="btn-secondary btn-sm"
-                    style="font-size:13px; font-weight:700; padding:10px 16px; display:inline-flex; align-items:center; gap:7px; cursor:pointer; border-radius:var(--radius-md);"
+                    style="font-size:0.8125rem; font-weight:700; padding:10px 16px; display:inline-flex; align-items:center; gap:7px; cursor:pointer; border-radius:var(--radius-md);"
                     onclick="window.StarAppBridge.promptSetApiKey()"
                     title="Configure Gemini API Key">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -5657,7 +5513,7 @@ def render_guardian_create_badge(
                 <!-- Spinner / progress text -->
                 <div id="gemini-loading-indicator" style="display:none; align-items:center; gap:10px;">
                     <span style="width:18px; height:18px; border:2.5px solid var(--icy-steel); border-top-color:var(--deep-frozen-midnight); border-radius:50%; animation:spin 0.75s linear infinite; display:inline-block; flex-shrink:0;"></span>
-                    <span id="gemini-loading-text" style="font-size:13.5px; font-weight:700; color:var(--frost-navy);">Generating badge with Gemini AI...</span>
+                    <span id="gemini-loading-text" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy);">Generating badge with Gemini AI...</span>
                 </div>
 
             </div>
@@ -5675,7 +5531,7 @@ def render_guardian_create_badge(
         <div class="liquid-glass-card" style="padding:22px 24px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel); margin-bottom:28px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                 <h3 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0;">Saved Badges for Band {selected_band}</h3>
-                <span class="status-pill status-active" style="font-size:12.5px; font-weight:800;">{len(saved_list)} Saved</span>
+                <span class="status-pill status-active" style="font-size:0.78125rem; font-weight:800;">{len(saved_list)} Saved</span>
             </div>
             {saved_badges_html}
         </div>
@@ -5690,21 +5546,21 @@ def render_guardian_create_badge(
                 Select Power: Tech, Domain, Leadership
                 Select Capability: Data & Machine, Reasoning
                 <div style="margin-top:6px;">
-                    <input type="text" id="custom-capability-input" class="form-input" placeholder="Add custom capability..." style="font-size:11.5px; padding:4px 8px; max-width:280px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomCapability();}}">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomCapability()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
+                    <input type="text" id="custom-capability-input" class="form-input" placeholder="Add custom capability..." style="font-size:0.71875rem; padding:4px 8px; max-width:280px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomCapability();}}">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomCapability()" style="font-size:0.65625rem; padding:3px 8px; margin-left:6px;">+ Add</button>
                 </div>
                 Select Skill: Hardware, AI-OS
                 <div style="margin-top:6px;">
-                    <input type="text" id="skill-search-input" class="form-input" placeholder="Search skills..." value="{escape(skill_search)}" style="font-size:11.5px; padding:4px 8px; max-width:280px;" oninput="window.StarAppBridge.dispatchAction('search_skills', this.value)">
-                    <input type="text" id="custom-skill-input" class="form-input" placeholder="Add custom skill..." style="font-size:11.5px; padding:4px 8px; max-width:280px; margin-top:4px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomSkill();}}">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomSkill()" style="font-size:10.5px; padding:3px 8px; margin-left:6px;">+ Add</button>
+                    <input type="text" id="skill-search-input" class="form-input" placeholder="Search skills..." value="{escape(skill_search)}" style="font-size:0.71875rem; padding:4px 8px; max-width:280px;" oninput="window.StarAppBridge.dispatchAction('search_skills', this.value)">
+                    <input type="text" id="custom-skill-input" class="form-input" placeholder="Add custom skill..." style="font-size:0.71875rem; padding:4px 8px; max-width:280px; margin-top:4px;" onkeydown="if(event.key==='Enter'){{event.preventDefault(); window.StarAppBridge.addCustomSkill();}}">
+                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.addCustomSkill()" style="font-size:0.65625rem; padding:3px 8px; margin-left:6px;">+ Add</button>
                 </div>
                 Select Higher-Band Reviewer
                 <div style="margin-top:6px;">
                     {"".join(reviewer_cards)}
                 </div>
                 Badge Prompt / Instructions (learning_objectives)
-                <textarea id="badge-prompt-editor" class="form-input auto-grow-textarea" style="font-size:12px; font-family:var(--font-family-mono); height:80px; margin-top:6px; resize:none; overflow:hidden;" oninput="window.StarAppBridge.onPromptChange(this.value)">{escape(prompt_json)}</textarea>
+                <textarea id="badge-prompt-editor" class="form-input auto-grow-textarea" style="font-size:0.75rem; font-family:var(--font-family-mono); height:80px; margin-top:6px; resize:none; overflow:hidden;" oninput="window.StarAppBridge.onPromptChange(this.value)">{escape(prompt_json)}</textarea>
             </div>
         </div>
     </div>
@@ -5749,13 +5605,13 @@ def render_badge_creation_preview_modal(badge_data: Dict[str, Any], reviewer: Op
     <div style="padding:6px 0;">
         <div style="margin-bottom:20px;">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{code}</span>
-                <span class="status-pill status-warning" style="font-size:11px;">Pending Authorization</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{code}</span>
+                <span class="status-pill status-warning" style="font-size:0.6875rem;">Pending Authorization</span>
             </div>
             <h2 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">{title}</h2>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; margin-bottom:20px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap:12px; margin-bottom:20px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:0.75rem;">
             <div><span style="color:var(--frost-navy-50);">Target Band:</span> <strong style="color:var(--frost-navy);">Band {band}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Power:</span> <strong style="color:var(--frost-navy);">{power}</strong></div>
             <div><span style="color:var(--frost-navy-50);">Capability:</span> <strong style="color:var(--frost-navy);">{cap}</strong></div>
@@ -5766,31 +5622,31 @@ def render_badge_creation_preview_modal(badge_data: Dict[str, Any], reviewer: Op
         </div>
 
         <div style="margin-bottom:18px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Description:</div>
-            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{desc}</p>
+            <div style="font-size:0.75rem; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Description:</div>
+            <p style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5; margin:0;">{desc}</p>
         </div>
 
         <div style="margin-bottom:18px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Project Requirements:</div>
-            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{reqs}</p>
+            <div style="font-size:0.75rem; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Project Requirements:</div>
+            <p style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5; margin:0;">{reqs}</p>
         </div>
 
         {f'''
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px;">
             <div style="padding:12px; background:var(--snow-white); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Learning Objectives:</div>
-                <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">{objs_html}</ul>
+                <div style="font-size:0.75rem; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Learning Objectives:</div>
+                <ul style="margin:0; padding-left:18px; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.5;">{objs_html}</ul>
             </div>
             <div style="padding:12px; background:var(--snow-white); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Expected Outcomes:</div>
-                <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">{outcomes_html}</ul>
+                <div style="font-size:0.75rem; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Expected Outcomes:</div>
+                <ul style="margin:0; padding-left:18px; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.5;">{outcomes_html}</ul>
             </div>
         </div>
         ''' if (objs_html or outcomes_html) else ''}
 
         <div style="margin-bottom:20px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Structured Prompt Payload (JSON):</div>
-            <pre style="font-family:var(--font-family-mono); font-size:11.5px; background:var(--frost-navy); color:var(--snow-white); padding:14px; border-radius:var(--radius-sm); max-height:200px; overflow-y:auto; line-height:1.5;">{escape(formatted_prompt_json)}</pre>
+            <div style="font-size:0.75rem; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Structured Prompt Payload (JSON):</div>
+            <pre style="font-family:var(--font-family-mono); font-size:0.71875rem; background:var(--frost-navy); color:var(--snow-white); padding:14px; border-radius:var(--radius-sm); max-height:200px; overflow-y:auto; line-height:1.5;">{escape(formatted_prompt_json)}</pre>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:12px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
@@ -5836,17 +5692,28 @@ def render_guardian_badge_approval_queue(
     if status_filter and status_filter not in ("all", "history"):
         filtered = [b for b in filtered if getattr(b, "workflow_status", "approved") == status_filter]
 
-    if search_query and search_query.strip():
-        q = search_query.strip().lower()
-        filtered = [
-            b for b in filtered
-            if q in b.title.lower()
-            or q in b.code.lower()
-            or q in getattr(b, "target_band", "").lower()
-            or q in getattr(b, "skill", "").lower()
-            or q in getattr(b, "capability", "").lower()
-            or q in getattr(b, "power", "").lower()
-        ]
+    q = (search_query or "").strip().lower()
+    _name_cache: Dict[str, str] = {}
+
+    def _user_name(uid: Any) -> str:
+        uid = str(uid or "")
+        if uid not in _name_cache:
+            u = store.get_user_by_id(uid) if uid else None
+            _name_cache[uid] = (u.name if u else "").lower()
+        return _name_cache[uid]
+
+    if q:
+        def _badge_matches(b: Badge) -> bool:
+            status = str(getattr(b, "workflow_status", "") or "")
+            haystack = " ".join(str(x or "") for x in [
+                b.title, b.code,
+                getattr(b, "target_band", ""), f"band {getattr(b, 'target_band', '')}",
+                getattr(b, "skill", ""), getattr(b, "capability", ""), getattr(b, "power", ""),
+                status, status.replace("_", " "),
+                _user_name(getattr(b, "creator_id", "")), _user_name(getattr(b, "assigned_reviewer_id", "")),
+            ]).lower()
+            return q in haystack
+        filtered = [b for b in filtered if _badge_matches(b)]
 
     # Counts for unified dropdown + Review History toggle
     all_cnt = len(badges)
@@ -5858,6 +5725,15 @@ def render_guardian_badge_approval_queue(
     history_records = store.get_badge_review_history() if hasattr(store, "get_badge_review_history") else []
     if selected_band and selected_band != "all":
         history_records = [h for h in history_records if h.get("target_band") == selected_band]
+    if q:
+        history_records = [
+            h for h in history_records
+            if q in " ".join(str(h.get(k) or "") for k in (
+                "badge_title", "badge_code", "target_band", "skill", "capability", "power",
+                "actor_name", "event_type", "notes", "formatted_timestamp",
+            )).lower().replace("_", " ")
+            or q in str(h.get("event_type") or "").lower()
+        ]
     history_cnt = len(history_records)
 
     hier_arrow_svg = (
@@ -5878,7 +5754,7 @@ def render_guardian_badge_approval_queue(
                 parts = [p.strip() for p in raw.split(sep) if p.strip()]
                 if len(parts) >= 3:
                     return _render_taxonomy_hierarchy_cell(parts[0], parts[1], parts[2])
-        return f'<div style="font-size:13.5px; font-weight:700; color:var(--frost-navy); line-height:1.45;">{escape(raw)}</div>'
+        return f'<div style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); line-height:1.45;">{escape(raw)}</div>'
 
     is_history = (status_filter == "history")
     status_options_data = [
@@ -5894,12 +5770,6 @@ def render_guardian_badge_approval_queue(
     ])
     if is_history:
         status_opts = f'<option value="history" selected hidden>Review History &amp; Audit ({history_cnt})</option>' + status_opts
-
-    bands_list = ["all", "B1", "B2", "B3", "B4", "B5", "B6"]
-    band_opts = "".join([
-        f'<option value="{b}"{" selected" if b == selected_band else ""}>{"All Bands" if b == "all" else f"Band {b}"}</option>'
-        for b in bands_list
-    ])
 
     history_target = "all" if is_history else "history"
     history_btn_cls = "ba-history-btn is-active" if is_history else "ba-history-btn"
@@ -5923,15 +5793,6 @@ def render_guardian_badge_approval_queue(
             <span>Review History &amp; Audit ({history_cnt})</span>
         </button>
 
-        <div class="liquid-select-wrapper ba-band-select-wrap">
-            <select id="ba-band-filter-select"
-                    class="liquid-glass-control liquid-glass-select ba-toolbar-select"
-                    aria-label="Filter Submissions by Band"
-                    onchange="window.StarAppBridge.dispatchAction('filter_badge_approval_band', this.value)">
-                {band_opts}
-            </select>
-        </div>
-
         <div class="ba-search-wrap">
             <span class="ba-search-icon">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -5939,15 +5800,16 @@ def render_guardian_badge_approval_queue(
                 </svg>
             </span>
             <input type="text" id="ba-search-input" class="ba-search-input"
-                   placeholder="Search badge, code, skill, band..."
+                   placeholder="Search badge, code, skill, band, reviewer..."
                    value="{escape(search_query)}"
-                   oninput="window.StarAppBridge.dispatchAction('search_badge_approval', this.value)">
+                   oninput="window.StarAppBridge.debouncedDispatch('search_badge_approval', this.value)">
         </div>
     </div>
     """
 
     # Rows
     rows_html = []
+    cards_html = []
     user_roles = getattr(current_user, "roles", [current_user.role])
     is_reviewer = "badge_reviewer" in user_roles
 
@@ -5955,13 +5817,15 @@ def render_guardian_badge_approval_queue(
         for h in history_records:
             ev_type = h.get("event_type", "")
             if ev_type == "approved":
-                ev_pill = '<span class="status-pill status-approved" style="font-size:12.5px; font-weight:800;">Authorized &amp; Approved</span>'
+                ev_pill = '<span class="status-pill status-approved" style="font-size:0.78125rem; font-weight:800;">Authorized &amp; Approved</span>'
             elif ev_type == "returned":
-                ev_pill = '<span class="status-pill status-rejected" style="font-size:12.5px; font-weight:800;">Returned for Revisions</span>'
+                ev_pill = '<span class="status-pill status-rejected" style="font-size:0.78125rem; font-weight:800;">Returned for Revisions</span>'
             elif ev_type == "edited":
-                ev_pill = '<span class="status-pill status-warning" style="font-size:12.5px; font-weight:800;">Badge Edited</span>'
+                ev_pill = '<span class="status-pill status-warning" style="font-size:0.78125rem; font-weight:800;">Badge Edited</span>'
+            elif ev_type == "reviewer_cancelled":
+                ev_pill = '<span class="status-pill status-rejected" style="font-size:0.78125rem; font-weight:800;">Reviewer Cancelled</span>'
             else:
-                ev_pill = '<span class="status-pill status-active" style="font-size:12.5px; font-weight:800;">Review Dispatched</span>'
+                ev_pill = '<span class="status-pill status-active" style="font-size:0.78125rem; font-weight:800;">Review Dispatched</span>'
 
             rows_html.append(f"""
             <tr>
@@ -5979,30 +5843,32 @@ def render_guardian_badge_approval_queue(
                     {ev_pill}
                 </td>
                 <td>
-                    <div style="font-weight:800; color:var(--frost-navy); font-size:14px;">{escape(h.get('actor_name') or 'Officer')}</div>
-                    <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Band {escape(h.get('actor_band') or 'B2')}</div>
+                    <div style="font-weight:800; color:var(--frost-navy); font-size:0.875rem;">{escape(h.get('actor_name') or 'Officer')}</div>
+                    <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Band {escape(h.get('actor_band') or 'B2')}</div>
                 </td>
                 <td>
-                    <div style="font-weight:700; color:var(--frost-navy); font-size:13.5px;">{escape(h.get('formatted_timestamp', ''))}</div>
+                    <div style="font-weight:700; color:var(--frost-navy); font-size:0.84375rem;">{escape(h.get('formatted_timestamp', ''))}</div>
                 </td>
                 <td style="max-width:240px;">
-                    <div style="font-size:13.5px; font-weight:600; color:var(--frost-navy); line-height:1.45;">{escape(h.get('notes') or 'Action completed.')}</div>
+                    <div style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy); line-height:1.45;">{escape(h.get('notes') or 'Action completed.')}</div>
                 </td>
             </tr>
             """)
     else:
-        for b in filtered:
+        is_guardian_user = "guardian" in user_roles
+        page_badges, ba_pager_html = page_slice(f"g_badge_approval:{status_filter}:{selected_band}", filtered, 10)
+        for b in page_badges:
             status_val = getattr(b, "workflow_status", "approved")
             if status_val == "ready_for_review":
-                status_pill = '<span class="status-pill status-active" style="font-size:12.5px; font-weight:800;">Ready for Review</span>'
+                status_pill = '<span class="status-pill status-active">Ready for Review</span>'
             elif status_val == "pending_review":
-                status_pill = '<span class="status-pill status-warning" style="font-size:12.5px; font-weight:800;">Pending Review</span>'
+                status_pill = '<span class="status-pill status-pending">Pending Review</span>'
             elif status_val == "approved":
-                status_pill = '<span class="status-pill status-approved" style="font-size:12.5px; font-weight:800;">Approved</span>'
+                status_pill = f'<span class="status-pill status-approved">{get_icon("check", 12, "margin-right:4px;")} Approved</span>'
             elif status_val == "returned":
-                status_pill = '<span class="status-pill status-rejected" style="font-size:12.5px; font-weight:800;">Returned</span>'
+                status_pill = '<span class="status-pill status-rejected">Returned</span>'
             else:
-                status_pill = f'<span class="status-pill status-active" style="font-size:12.5px; font-weight:800;">{escape(status_val.title())}</span>'
+                status_pill = f'<span class="status-pill status-active">{escape(status_val.title())}</span>'
 
             target_band = getattr(b, "target_band", "B1")
             power = getattr(b, "power", "Tech")
@@ -6011,133 +5877,169 @@ def render_guardian_badge_approval_queue(
 
             creator = store.get_user_by_id(getattr(b, "creator_id", ""))
             creator_name = creator.name if creator else "Guardian Admin"
-
-            assigned_rev = store.get_user_by_id(getattr(b, "assigned_reviewer_id", ""))
-            rev_name = assigned_rev.name if assigned_rev else "Unassigned"
-
             created_at_fmt = format_badge_timestamp(getattr(b, "created_at", None))
 
-            # Reviewer column presentation
+            assigned_rev = store.get_user_by_id(getattr(b, "assigned_reviewer_id", "") or "")
+            rev_name = assigned_rev.name if assigned_rev else ""
+            rev_band = getattr(assigned_rev, "band", "") if assigned_rev else ""
+
+            # ── Reviewer information cell ──
             if target_band == "B6":
-                rev_col_html = '<div style="font-size:13px; font-weight:700; color:var(--frost-navy);">Executive Council</div>'
-            elif status_val == "approved":
-                rev_col_html = f"""
-                <div style="font-weight:800; color:var(--frost-navy); font-size:14px;">{escape(rev_name)}</div>
-                <div style="color:#047857; font-size:12.5px; font-weight:700;">Authorized Reviewer</div>
-                """
-            elif status_val in ("ready_for_review", "returned") or not assigned_rev:
+                rev_cell_html = '<div class="ba-info-v">Executive Council</div><div class="ba-info-s">Band B6 oversight</div>'
+            elif assigned_rev:
+                rev_caption = "Authorized reviewer" if status_val == "approved" else "Assigned reviewer"
+                rev_cell_html = (
+                    f'<div class="ba-info-v">{escape(rev_name)}{f" ({escape(rev_band)})" if rev_band else ""}</div>'
+                    f'<div class="ba-info-s{" is-ok" if status_val == "approved" else ""}">{rev_caption}</div>'
+                )
+            else:
+                rev_cell_html = '<div class="ba-info-v is-muted">Not assigned</div>'
+
+            # ── Reviewer picker: select + Send on ONE line (Guardian only; only while no reviewer holds the badge) ──
+            assign_html = ""
+            if is_guardian_user and target_band != "B6" and status_val != "approved" and (status_val in ("ready_for_review", "returned") or not assigned_rev):
                 el_revs = store.get_eligible_badge_reviewers(target_band)
-                opt_revs = "".join([f'<option value="{r["id"]}" {"selected" if assigned_rev and r["id"] == assigned_rev.id else ""}>{escape(r["name"])} ({r["band"]})</option>' for r in el_revs])
-                rev_col_html = f"""
-                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                opt_revs = "".join(
+                    f'<option value="{r["id"]}">{escape(r["name"])} ({r["band"]})</option>' for r in el_revs
+                )
+                assign_html = f"""
+                <div class="ba-assign">
                     <div class="liquid-select-wrapper ba-rev-select-wrap">
-                        <select id="g-queue-rev-{b.id}" class="liquid-glass-control liquid-glass-select" style="height:36px; font-size:13px; font-weight:700; color:var(--frost-navy);">
+                        <select id="g-queue-rev-{b.id}" class="liquid-glass-control liquid-glass-select" aria-label="Select reviewer">
                             <option value="">Select Reviewer</option>
                             {opt_revs}
                         </select>
                     </div>
-                    <button type="button" class="btn-metal btn-sm" style="font-size:12.5px; padding:6px 12px; font-weight:800;"
+                    <button type="button" class="btn-metal btn-sm"
                             onclick="const s=document.getElementById('g-queue-rev-{b.id}'); if(!s.value){{alert('Please select an eligible higher-band reviewer'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{b.id}', reviewer_id:s.value}}));">
                         Send
                     </button>
                 </div>
                 """
-            else:
-                rev_col_html = f"""
-                <div style="font-weight:800; color:var(--frost-navy); font-size:14px;">{escape(rev_name)}</div>
-                <div style="color:var(--frost-navy); font-size:12.5px; font-weight:600;">Assigned Reviewer</div>
-                """
 
-            # Action buttons
+            # ── Actions: Inspect (activity log) + Edit on one line, then Return / Approve ──
             inspect_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:12.5px; padding:6px 13px; font-weight:700; color:var(--frost-navy);"
-                    onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b.id}')">
+            <button type="button" class="btn-secondary btn-sm" title="View the activity log of this badge"
+                    onclick="window.StarAppBridge.dispatchAction('open_badge_activity_log', '{b.id}')">
                 Inspect
             </button>
             """
 
-            can_edit = (is_reviewer and assigned_rev and assigned_rev.id == current_user.id) or ("guardian" in user_roles)
             edit_btn = ""
-            if can_edit and status_val in ("pending_review", "ready_for_review", "returned"):
+            if is_guardian_user and target_band != "B6" and status_val != "approved":
                 edit_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" style="font-size:12.5px; padding:6px 13px; font-weight:700; color:var(--frost-navy);"
-                        onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b.id}')">
+                <button type="button" class="btn-secondary btn-sm" title="Cancel or change the reviewer"
+                        onclick="window.StarAppBridge.dispatchAction('manage_badge_reviewer', '{b.id}')">
                     Edit
                 </button>
                 """
 
             return_btn = ""
-            can_return = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+            can_return = is_reviewer and status_val == "pending_review" and (assigned_rev and assigned_rev.id == current_user.id or is_guardian_user)
             if can_return:
                 return_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" style="font-size:12.5px; padding:6px 12px; font-weight:700; color:#B91C1C; border-color:rgba(220,38,38,0.45);"
+                <button type="button" class="btn-secondary btn-sm ba-btn-danger"
                         onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b.id}')">
                     Return
                 </button>
                 """
 
-            can_approve = is_reviewer and status_val in ("pending_review", "ready_for_review") and (assigned_rev and assigned_rev.id == current_user.id or "guardian" in user_roles)
+            can_approve = is_reviewer and status_val in ("pending_review", "ready_for_review") and (assigned_rev and assigned_rev.id == current_user.id or is_guardian_user)
             approve_btn = ""
             if can_approve:
                 approve_btn = f"""
-                <button type="button" class="btn-metal btn-sm" style="font-size:12.5px; padding:6px 14px; font-weight:800; display:inline-flex; align-items:center; gap:5px;"
+                <button type="button" class="btn-metal btn-sm"
                         onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b.id}')">
-                    <span>Approve</span>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    Approve
                 </button>
                 """
 
-            rows_html.append(f"""
-            <tr>
-                <td>
-                    <div class="ba-title-text">{escape(b.title)}</div>
-                    <span class="ba-code-tag">{escape(b.code)}</span>
-                </td>
-                <td>
-                    <span class="ba-band-pill">Band {escape(target_band)}</span>
-                </td>
-                <td style="min-width:260px;">
-                    {_render_taxonomy_hierarchy_cell(power, cap, skill)}
-                </td>
-                <td>
-                    <div style="font-weight:700; color:var(--frost-navy); font-size:14px;">{escape(creator_name)}</div>
-                    <div style="color:var(--frost-navy); font-size:12.5px; font-weight:600;">Created {created_at_fmt}</div>
-                </td>
-                <td>
-                    {rev_col_html}
-                </td>
-                <td style="text-align:center;">
-                    {status_pill}
-                </td>
-                <td style="text-align:right;">
-                    <div style="display:flex; justify-content:flex-end; gap:7px; align-items:center; flex-wrap:wrap;">
+            reviewer_cell_html = assign_html or rev_cell_html
+            cards_html.append(f"""
+            <article class="ba-row">
+                <div class="ba-c ba-c-title">
+                    <div class="ba-row-title">{escape(b.title)}</div>
+                    <div class="ba-card-tags">
+                        <span class="ba-code-tag">{escape(b.code)}</span>
+                        <span class="ba-band-pill">Band {escape(target_band)}</span>
+                    </div>
+                </div>
+                <div class="ba-c ba-c-skill" data-label="Taxonomy Hierarchy">{_render_taxonomy_hierarchy_cell(power, cap, skill)}</div>
+                <div class="ba-c ba-c-by" data-label="Created by">
+                    <div class="ba-info-v">{escape(creator_name)}</div>
+                    <div class="ba-info-s">{created_at_fmt}</div>
+                </div>
+                <div class="ba-c ba-c-rev" data-label="Reviewer">{reviewer_cell_html}</div>
+                <div class="ba-c ba-c-status" data-label="Status">{status_pill}</div>
+                <div class="ba-c ba-c-act">
+                    <div class="ba-actions">
                         {inspect_btn}
                         {edit_btn}
                         {return_btn}
                         {approve_btn}
                     </div>
-                </td>
-            </tr>
+                </div>
+            </article>
             """)
 
     empty_html = """
     <tr>
         <td colspan="7" style="text-align:center; padding:48px 20px; color:var(--frost-navy);">
-            <div style="font-size:16px; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Badges Found</div>
-            <div style="font-size:14px; font-weight:600; color:var(--frost-navy);">No badge submissions match the selected filter criteria.</div>
+            <div style="font-size:1rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Badges Found</div>
+            <div style="font-size:0.875rem; font-weight:600; color:var(--frost-navy);">No review events match the selected filter criteria.</div>
         </td>
     </tr>
     """
 
-    headers_list = [
+    cards_empty = """
+    <div class="ba-empty">
+        <div class="ba-empty-title">No Badges Found</div>
+        <div class="ba-empty-text">No badge submissions match the selected filter criteria.</div>
+    </div>
+    """
+
+    history_headers = [
         '<th style="padding:15px 16px;">Badge Title &amp; Code</th>',
         '<th style="padding:15px 16px;">Band</th>',
         '<th style="padding:15px 16px;">Taxonomy Hierarchy</th>',
-        '<th style="padding:15px 16px; text-align:center;">Action / Event</th>' if is_history else '<th style="padding:15px 16px;">Creator</th>',
-        '<th style="padding:15px 16px;">Reviewer / Officer</th>' if is_history else '<th style="padding:15px 16px;">Assigned Reviewer</th>',
-        '<th style="padding:15px 16px;">Timestamp</th>' if is_history else '<th style="padding:15px 16px; text-align:center;">Status</th>',
-        '<th style="padding:15px 16px;">Audit Notes / Reason</th>' if is_history else '<th style="padding:15px 16px; text-align:right;">Actions</th>',
+        '<th style="padding:15px 16px; text-align:center;">Action / Event</th>',
+        '<th style="padding:15px 16px;">Reviewer / Officer</th>',
+        '<th style="padding:15px 16px;">Timestamp</th>',
+        '<th style="padding:15px 16px;">Audit Notes / Reason</th>',
     ]
+
+    if is_history:
+        listing_html = f"""
+        <div class="liquid-glass-card ba-table-card">
+            <div style="overflow-x:auto;">
+                <table class="ba-table">
+                    <thead>
+                        <tr>
+                            {"".join(history_headers)}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {"".join(rows_html) if rows_html else empty_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        """
+    else:
+        listing_html = f"""
+        <div class="liquid-glass-card ba-table-card ba-row-list">
+            <div class="ba-row ba-row-head" aria-hidden="true">
+                <div class="ba-c">Badge</div>
+                <div class="ba-c">Taxonomy Hierarchy</div>
+                <div class="ba-c">Created by</div>
+                <div class="ba-c">Reviewer</div>
+                <div class="ba-c">Status</div>
+                <div class="ba-c ba-c-act">Actions</div>
+            </div>
+            {"".join(cards_html) if cards_html else cards_empty}
+        </div>
+        {ba_pager_html}
+        """
 
     return f"""
     <div>
@@ -6147,20 +6049,110 @@ def render_guardian_badge_approval_queue(
         <!-- Unified Single-Line Liquid-Glass Controls Bar -->
         {toolbar_html}
 
-        <!-- Table Container -->
-        <div class="liquid-glass-card ba-table-card">
-            <div style="overflow-x:auto;">
-                <table class="ba-table">
-                    <thead>
-                        <tr>
-                            {"".join(headers_list)}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {"".join(rows_html) if rows_html else empty_html}
-                    </tbody>
-                </table>
+        {listing_html}
+    </div>
+    """
+
+
+# ==============================================================================
+# 7.11b BADGE ACTIVITY LOG MODAL (Inspect button in Reviewer Badge Approval)
+# ==============================================================================
+
+_AL_EVENT_META = {
+    # event_type: (label, icon, tone)
+    "created_and_submitted": ("Review requested", "arrow_right", "info"),
+    "created_for_review": ("Submitted for review", "arrow_right", "info"),
+    "edited": ("Badge edited", "edit", "warn"),
+    "approved": ("Approved & authorized", "check", "ok"),
+    "returned": ("Returned for revisions", "undo", "bad"),
+    "reviewer_cancelled": ("Reviewer cancelled", "x", "bad"),
+}
+
+
+def render_badge_activity_log_modal(badge: Badge, events: List[Dict[str, Any]], reviewer: Optional[User]) -> str:
+    """Audit timeline (who did what, when, why) for one badge, newest first."""
+    status_val = str(getattr(badge, "workflow_status", "approved") or "approved")
+    status_label = escape(status_val.replace("_", " ").title())
+    status_cls = {"approved": "is-approved", "returned": "is-returned",
+                  "pending_review": "is-pending", "ready_for_review": "is-pending"}.get(status_val, "is-info")
+    band = escape(getattr(badge, "target_band", "B1"))
+    rev_line = (
+        f"{escape(reviewer.name)}{f' (Band {escape(reviewer.band)})' if getattr(reviewer, 'band', '') else ''}"
+        if reviewer else "No reviewer assigned"
+    )
+
+    items = []
+    for ev in events or []:
+        etype = str(ev.get("event_type", ""))
+        label, icon, tone = _AL_EVENT_META.get(etype, (etype.replace("_", " ").title() or "Activity", "clock", "info"))
+        notes = str(ev.get("notes") or "")
+        if etype == "created_and_submitted" and notes.startswith("Reviewer changed"):
+            label, icon, tone = "Reviewer changed", "users", "warn"
+        actor = escape(ev.get("actor_name") or "System")
+        actor_band = f" &middot; Band {escape(ev.get('actor_band'))}" if ev.get("actor_band") else ""
+        prev_s = str(ev.get("previous_status") or "")
+        new_s = str(ev.get("new_status") or "")
+        transition = ""
+        if prev_s and new_s and prev_s != new_s:
+            transition = (
+                f'<span class="al-transition">{escape(prev_s.replace("_", " ").title())}'
+                f' <span aria-hidden="true">&rarr;</span> {escape(new_s.replace("_", " ").title())}</span>'
+            )
+        notes_html = f'<p class="al-notes">{escape(notes)}</p>' if notes else ""
+        items.append(f"""
+        <li class="al-item is-{tone}">
+            <span class="al-dot">{get_icon(icon, 13)}</span>
+            <div class="al-body">
+                <div class="al-line">
+                    <span class="al-label">{escape(label)}</span>
+                    <span class="al-time">{escape(ev.get('formatted_timestamp', ''))}</span>
+                </div>
+                <div class="al-actor">{actor}{actor_band}{transition}</div>
+                {notes_html}
             </div>
+        </li>
+        """)
+
+    timeline_html = (
+        f'<ol class="al-timeline">{"".join(items)}</ol>'
+        if items else
+        '<div class="al-empty">No activity has been recorded for this badge yet.</div>'
+    )
+
+    return f"""
+    <div class="bi-wrap">
+        <div class="bi-hero">
+            <div class="bi-hero-top">
+                <span class="bi-chip bi-chip-dark">{escape(badge.code)}</span>
+                <span class="bi-chip">Band {band}</span>
+                <span class="bi-status {status_cls}">{status_label}</span>
+            </div>
+            <h2 class="bi-title">{escape(badge.title)}</h2>
+        </div>
+
+        <div class="bi-people">
+            <div class="bi-person">
+                <span class="bi-person-ico">{get_icon("shield", 16)}</span>
+                <div><div class="bi-k">Current reviewer</div><div class="bi-v">{rev_line}</div></div>
+            </div>
+            <div class="bi-person">
+                <span class="bi-person-ico">{get_icon("clock", 16)}</span>
+                <div><div class="bi-k">Events logged</div><div class="bi-v">{len(events or [])}</div></div>
+            </div>
+        </div>
+
+        <section class="bi-card">
+            <h4 class="bi-card-h"><span class="bi-card-ico">{get_icon("clipboard", 14)}</span>Activity &amp; audit log</h4>
+            {timeline_html}
+        </section>
+
+        <div class="bi-footer" style="gap:10px;">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{escape(badge.id)}')" style="font-weight:700;">
+                View Badge Details
+            </button>
+            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:800;">
+                Close
+            </button>
         </div>
     </div>
     """
@@ -6169,6 +6161,104 @@ def render_guardian_badge_approval_queue(
 # ==============================================================================
 # 7.11 BADGE REVIEW INSPECT MODAL
 # ==============================================================================
+
+import re as _re
+import html as _html
+
+_BI_TOPIC_RE = _re.compile(r"^[-*•]?\s*(\d+)[.)]\s*([^:]{2,90}?):\s*(.+)$")
+_BI_OUTCOME_RE = _re.compile(r"^by the end[^:]*:\s*(.+)$", _re.I)
+
+
+def _bi_norm(text: Any) -> str:
+    return _re.sub(r"\s+", " ", str(text or "")).strip().lower().rstrip(".")
+
+
+def _bi_parse_prompt(text: str):
+    """Split a generated prompt into (intro lines, numbered topics, outcomes, trailing task lines)."""
+    text = str(text or "")
+    # Flattened single-line variants: restore the line structure first.
+    text = _re.sub(r"\s+-\s+(?=\d+\.\s)", "\n- ", text)
+    text = _re.sub(r"\s+(?=By the end I need)", "\n", text)
+    text = _re.sub(r"\s+(?=(?:Design one small|Please suggest))", "\n", text)
+    pre, topics, outcomes, post = [], [], [], []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        m = _BI_TOPIC_RE.match(line)
+        if m:
+            topics.append((m.group(1), m.group(2).strip(), m.group(3).strip()))
+            continue
+        m = _BI_OUTCOME_RE.match(line)
+        if m:
+            outcomes = [x.strip().rstrip(".") + "." for x in m.group(1).split(";") if x.strip()]
+            continue
+        (post if (topics or outcomes) else pre).append(line)
+    return pre, topics, outcomes, post
+
+
+def _bi_highlight_quotes(escaped_html: str) -> str:
+    return _re.sub(r"&quot;(.+?)&quot;", r'<mark class="bi-hl">\1</mark>', escaped_html)
+
+
+def _bi_render_raw_prompt(text: str) -> str:
+    """Show a prompt exactly as written, in a prompt-style panel (verbatim text, light emphasis only)."""
+    lines = []
+    for line in str(text or "").strip().splitlines():
+        h = _bi_highlight_quotes(escape(line))
+        h = _re.sub(r"^(\s*[-*]?\s*\d+[.)]\s*)([^:]{2,90}?)(:)", r'\1<strong class="bi-pr-t">\2</strong>\3', h)
+        lines.append(h)
+    body = "\n".join(lines)
+    copy_js = (
+        "var b=this.closest('.bi-prompt-real').querySelector('.bi-prompt-body');"
+        "if(navigator.clipboard){navigator.clipboard.writeText(b.innerText);}"
+        "var t=this;t.textContent='Copied';setTimeout(function(){t.textContent='Copy'},1500);"
+    )
+    return (
+        '<div class="bi-prompt-real">'
+        '<div class="bi-prompt-bar"><span class="bi-prompt-dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+        '<span class="bi-prompt-label">Prompt</span>'
+        f'<button type="button" class="bi-copy-btn" onclick="{copy_js}">Copy</button></div>'
+        f'<div class="bi-prompt-body">{body}</div>'
+        '</div>'
+    )
+
+
+def _bi_render_prompt(text: str, known_outcomes_norm: set, mode: str = "steps") -> str:
+    """Render a generated prompt from its numbered topics only.
+
+    The boiler-plate intro ("I'm working toward …") and the closing task instruction are intentionally
+    dropped (they stay in the structured JSON). mode="steps":
+    mode="steps": one numbered point after another.
+    """
+    pre, topics, outcomes, post = _bi_parse_prompt(text)
+    if not topics and not outcomes:
+        return f'<div class="bi-prompt">{escape(text)}</div>'
+    parts = []
+    if topics:
+        if mode == "steps":
+            rows = "".join(
+                f'<li class="bi-step"><span class="bi-step-n">{escape(n)}</span>'
+                f'<div class="bi-step-body"><div class="bi-step-t">{escape(t)}</div>'
+                f'<div class="bi-step-d">{escape(d)}</div></div></li>'
+                for n, t, d in topics
+            )
+            parts.append(f'<ol class="bi-steps">{rows}</ol>')
+    # The outcomes are already shown in "Expected Outcomes"; only repeat them when they differ.
+    if outcomes and not all(_bi_norm(o) in known_outcomes_norm for o in outcomes):
+        items = "".join(f"<li>{escape(o)}</li>" for o in outcomes)
+        parts.append(f'<div class="bi-sub">By the end you should be able to</div><ul class="bi-list bi-checks">{items}</ul>')
+    return "".join(parts)
+
+
+def _bi_highlight_json(formatted_json: str) -> str:
+    """Escape JSON text and wrap keys / string values in spans for a readable, coloured view."""
+    h = escape(formatted_json)
+    h = _re.sub(r"(&quot;(?:(?!&quot;).)*&quot;)(\s*:)", r'<span class="bi-j-k">\1</span>\2', h)
+    h = _re.sub(r"(:\s*)(&quot;(?:(?!&quot;).)*&quot;)", r'\1<span class="bi-j-s">\2</span>', h)
+    h = _re.sub(r"(?m)^(\s*)(&quot;(?:(?!&quot;).)*&quot;)(,?)$", r'\1<span class="bi-j-s">\2</span>\3', h)
+    return h
+
 
 def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], creator: Optional[User]) -> str:
     import json
@@ -6192,12 +6282,12 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
         p_obj = json.loads(prompt_str) if isinstance(prompt_str, str) else prompt_str
         objs = p_obj.get("learning_objectives", [])
         if isinstance(objs, list):
-            objs_html = "".join([f"<li style='margin-bottom:4px;'>{escape(str(o))}</li>" for o in objs])
+            objs_html = "".join([f"<li>{escape(str(o))}</li>" for o in objs])
         outs = p_obj.get("expected_outcomes", []) or p_obj.get("outcomes", [])
         if not outs and getattr(badge, "learning_outcomes", None):
             outs = badge.learning_outcomes
         if isinstance(outs, list):
-            outcomes_html = "".join([f"<li style='margin-bottom:4px;'>{escape(str(o))}</li>" for o in outs])
+            outcomes_html = "".join([f"<li>{escape(str(o))}</li>" for o in outs])
         
         if isinstance(p_obj, dict):
             if isinstance(p_obj.get("practice_project"), dict):
@@ -6219,83 +6309,170 @@ def render_badge_review_inspect_modal(badge: Badge, reviewer: Optional[User], cr
     rev_name = escape(reviewer.name) if reviewer else "Unassigned"
     creator_name = escape(creator.name) if creator else "System"
 
-    practice_card_html = ""
-    if prac_prompt:
-        practice_card_html = f"""
-        <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; color:#EA580C; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                {get_icon("wrench", 14)}<span>Practice Project Prompt:</span>
-            </div>
-            <div style="background:rgba(241,245,249,0.9); border:1px solid rgba(249,115,22,0.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--frost-navy); line-height:1.6; white-space:pre-wrap; max-height:180px; overflow-y:auto;">{escape(prac_prompt)}</div>
-        </div>
-        """
+    def _section(icon: str, label: str, inner: str, cls: str = "") -> str:
+        return (
+            f'<section class="bi-card {cls}">'
+            f'<h4 class="bi-card-h"><span class="bi-card-ico">{get_icon(icon, 14)}</span>{label}</h4>'
+            f'{inner}</section>'
+        )
 
-    resources_card_html = ""
+    def _list(items_html: str) -> str:
+        return f'<ul class="bi-list">{items_html}</ul>'
+
+    # Status chip (green = approved, red = returned, amber = waiting, blue = anything else)
+    status_cls = {"approved": "is-approved", "returned": "is-returned",
+                  "pending_review": "is-pending", "ready_for_review": "is-pending"}.get(status_val, "is-info")
+    status_label = escape(str(status_val).replace("_", " ").title())
+    status_icon = get_icon("check", 12) if status_val == "approved" else ""
+
+    objs_list_html = objs_html
+    outs_list_html = outcomes_html
+    known_outcomes_norm = {_bi_norm(x) for x in _re.findall(r"<li[^>]*>(.*?)</li>", outcomes_html, flags=_re.S)}
+    known_outcomes_norm |= {_bi_norm(_html.unescape(x)) for x in _re.findall(r"<li[^>]*>(.*?)</li>", outcomes_html, flags=_re.S)}
+
+    sections = []
+    # Project Requirements usually repeats the Practice Project prompt verbatim; show it once.
+    reqs_dup = bool(reqs) and bool(prac_prompt) and _bi_norm(_html.unescape(reqs)) == _bi_norm(prac_prompt)
+    if reqs and not reqs_dup and _bi_norm(_html.unescape(reqs)) != _bi_norm(prac_prompt):
+        sections.append(_section("clipboard", "Project Requirements",
+                                 _bi_render_raw_prompt(_html.unescape(reqs)), "is-requirements"))
+    if objs_list_html:
+        sections.append(_section("target", "Learning Objectives", _list(objs_list_html)))
+    if outs_list_html:
+        sections.append(_section("award", "Expected Outcomes", f'<ul class="bi-list bi-checks">{outs_list_html}</ul>', "is-outcomes"))
+    if prac_prompt:
+        sections.append(_section("wrench", "Practice Project Prompt",
+                                 _bi_render_raw_prompt(prac_prompt), "is-practice"))
     if res_prompt:
-        resources_card_html = f"""
-        <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; color:#1D4ED8; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                {get_icon("book", 14)}<span>Learning Resources Prompt:</span>
+        sections.append(_section("book", "Learning Resources Prompt",
+                                 _bi_render_prompt(res_prompt, known_outcomes_norm, "steps"), "is-resources"))
+
+    return f"""
+    <div class="bi-wrap">
+        <div class="bi-hero">
+            <div class="bi-hero-top">
+                <span class="bi-chip bi-chip-dark">{code}</span>
+                <span class="bi-chip">Band {band}</span>
+                <span class="bi-status {status_cls}">{status_icon}{status_label}</span>
             </div>
-            <div style="background:rgba(241,245,249,0.9); border:1px solid rgba(59,130,246,0.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--frost-navy); line-height:1.6; white-space:pre-wrap; max-height:180px; overflow-y:auto;">{escape(res_prompt)}</div>
+            <h2 class="bi-title">{title}</h2>
+            <div class="bi-lineage" aria-label="Power, Capability and Skill">
+                <span class="bi-lin is-power"><em>Power</em>{power}</span>
+                <span class="bi-lin-sep" aria-hidden="true">&rsaquo;</span>
+                <span class="bi-lin is-cap"><em>Capability</em>{cap}</span>
+                <span class="bi-lin-sep" aria-hidden="true">&rsaquo;</span>
+                <span class="bi-lin is-skill"><em>Skill</em>{skill}</span>
+            </div>
+        </div>
+
+        <div class="bi-people">
+            <div class="bi-person">
+                <span class="bi-person-ico">{get_icon("user", 16)}</span>
+                <div><div class="bi-k">Created by</div><div class="bi-v">{creator_name}</div></div>
+            </div>
+            <div class="bi-person">
+                <span class="bi-person-ico">{get_icon("shield", 16)}</span>
+                <div><div class="bi-k">Badge reviewer</div><div class="bi-v">{rev_name}</div></div>
+            </div>
+        </div>
+
+        <div class="bi-grid">
+            {"".join(sections)}
+        </div>
+
+        <details class="bi-json" open>
+            <summary>{get_icon("code", 14)}<span>Structured JSON prompt</span><span class="bi-json-hint">click to collapse</span></summary>
+            <pre>{_bi_highlight_json(formatted_json)}</pre>
+        </details>
+
+        <div class="bi-footer">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
+                Close
+            </button>
+        </div>
+    </div>
+    """
+
+
+# ==============================================================================
+# 7.12b MANAGE REVIEWER MODAL (Edit button in Reviewer Badge Approval — Guardian only)
+# ==============================================================================
+
+def render_badge_reviewer_manage_modal(
+    badge: Badge,
+    eligible_reviewers: List[Dict[str, Any]],
+    current_reviewer: Optional[User] = None,
+) -> str:
+    """Compact modal: who holds the badge now, cancel that reviewer, or hand the badge to another one."""
+    b_id = escape(badge.id)
+    b_status = str(getattr(badge, "workflow_status", "") or "")
+    b_band_raw = str(getattr(badge, "target_band", "B1") or "B1")
+    status_cls = {"approved": "is-approved", "returned": "is-returned",
+                  "pending_review": "is-pending", "ready_for_review": "is-pending"}.get(b_status, "is-info")
+    has_reviewer = bool(current_reviewer) and b_status == "pending_review"
+
+    if current_reviewer:
+        cur_label = escape(current_reviewer.name) + (
+            f" (Band {escape(current_reviewer.band)})" if getattr(current_reviewer, "band", "") else ""
+        )
+        cur_html = f'<div class="rv-current"><span class="rv-k">Current reviewer</span><span class="rv-v">{cur_label}</span></div>'
+    else:
+        cur_html = '<div class="rv-current"><span class="rv-k">Current reviewer</span><span class="rv-v is-muted">Not assigned</span></div>'
+
+    if b_band_raw == "B6":
+        controls_html = '<div class="rv-note">Band B6 badges are overseen by the Executive Council; no reviewer can be assigned.</div>'
+    elif b_status == "approved":
+        controls_html = '<div class="rv-note">This badge is already approved, so its reviewer can no longer be changed.</div>'
+    else:
+        cur_id = getattr(current_reviewer, "id", "") if current_reviewer else ""
+        opts = "".join(
+            f'<option value="{r["id"]}">{escape(r["name"])} ({r["band"]}) - {escape(r["learning_track"])}</option>'
+            for r in eligible_reviewers if r.get("id") != cur_id
+        )
+        pick_label = "Select another reviewer" if has_reviewer else "Select reviewer"
+        btn_label = "Reassign" if has_reviewer else "Send Request"
+        cancel_html = ""
+        if has_reviewer:
+            cancel_html = f"""
+            <button type="button" class="btn-secondary btn-sm ba-btn-danger"
+                    onclick="if(confirm('Cancel the current reviewer? The badge goes back to Ready for Review and the reviewer is notified.')){{window.StarAppBridge.dispatchAction('cancel_badge_reviewer', '{b_id}');}}">
+                Cancel Reviewer
+            </button>
+            """
+        controls_html = f"""
+        <div class="rv-row">
+            <div class="liquid-select-wrapper rv-select-wrap">
+                <select id="rv-select-{b_id}" class="liquid-glass-control liquid-glass-select" aria-label="{pick_label}">
+                    <option value="">{pick_label}</option>
+                    {opts}
+                </select>
+            </div>
+            <button type="button" class="btn-metal btn-sm"
+                    onclick="const s=document.getElementById('rv-select-{b_id}'); if(!s.value){{alert('Please select an eligible higher-band reviewer'); return;}} window.StarAppBridge.dispatchAction('send_badge_review_request', JSON.stringify({{badge_id:'{b_id}', reviewer_id:s.value}}));">
+                {btn_label}
+            </button>
+            {cancel_html}
         </div>
         """
 
     return f"""
-    <div style="padding:4px 0;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{code}</span>
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">BAND {band}</span>
-                    <span class="status-pill status-active" style="font-size:11px;">{escape(status_val.title())}</span>
-                </div>
-                <h2 style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); margin:0;">{title}</h2>
+    <div class="bi-wrap">
+        <div class="bi-hero">
+            <div class="bi-hero-top">
+                <span class="bi-chip bi-chip-dark">{escape(badge.code)}</span>
+                <span class="bi-chip">Band {escape(b_band_raw)}</span>
+                <span class="bi-status {status_cls}">{escape(b_status.replace('_', ' ').title())}</span>
             </div>
+            <h2 class="bi-title">{escape(badge.title)}</h2>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap:12px; margin-bottom:18px; padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); font-size:12px;">
-            <div><span style="color:var(--frost-navy-50);">Power:</span> <strong style="color:var(--frost-navy);">{power}</strong></div>
-            <div><span style="color:var(--frost-navy-50);">Capability:</span> <strong style="color:var(--frost-navy);">{cap}</strong></div>
-            <div><span style="color:var(--frost-navy-50);">Skill:</span> <strong style="color:var(--frost-navy);">{skill}</strong></div>
-            <div><span style="color:var(--frost-navy-50);">Created By:</span> <strong style="color:var(--frost-navy);">{creator_name}</strong></div>
-            <div style="grid-column:1 / -1; border-top:1px dashed var(--icy-steel-25); padding-top:8px; margin-top:2px;">
-                <span style="color:var(--frost-navy-50);">Assigned Badge Reviewer:</span> <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
-            </div>
-        </div>
+        <section class="rv-panel">
+            <h4 class="rv-title"><span class="rv-ico">{get_icon("shield", 14)}</span>Reviewer assignment</h4>
+            {cur_html}
+            {controls_html}
+        </section>
 
-        <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Description:</div>
-            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{desc}</p>
-        </div>
-
-        <div style="margin-bottom:16px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:4px;">Project Requirements:</div>
-            <p style="font-size:12.5px; color:var(--frost-navy-75); line-height:1.5; margin:0;">{reqs}</p>
-        </div>
-
-        {f'''
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
-            <div style="padding:12px; background:var(--snow-white); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Learning Objectives:</div>
-                <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">{objs_html}</ul>
-            </div>
-            <div style="padding:12px; background:var(--snow-white); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm);">
-                <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Expected Outcomes:</div>
-                <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">{outcomes_html}</ul>
-            </div>
-        </div>
-        ''' if (objs_html or outcomes_html) else ''}
-
-        {practice_card_html}
-        {resources_card_html}
-
-        <div style="margin-bottom:18px;">
-            <div style="font-size:12px; font-weight:700; color:var(--frost-navy); margin-bottom:6px;">Structured JSON Prompt:</div>
-            <pre style="font-family:var(--font-family-mono); font-size:11.5px; background:var(--frost-navy); color:var(--snow-white); padding:12px; border-radius:var(--radius-sm); max-height:180px; overflow-y:auto; line-height:1.5;">{escape(formatted_json)}</pre>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
+        <div class="bi-footer">
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
                 Close
             </button>
@@ -6418,16 +6595,16 @@ def render_badge_reviewer_edit_modal(
         topics_rows.append(f"""
         <div class="cb-edit-card" style="width:100%; box-sizing:border-box;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-size:12px; font-weight:800; background:rgba(8,145,178,0.12); color:#0E7490; padding:3px 10px; border-radius:12px; border:1px solid rgba(8,145,178,0.28);">Topic {idx+1}</span>
-                <span style="font-size:12px; font-weight:700; color:var(--frost-navy);">Curriculum Module</span>
+                <span style="font-size:0.75rem; font-weight:800; background:rgba(8,145,178,0.12); color:#0E7490; padding:3px 10px; border-radius:12px; border:1px solid rgba(8,145,178,0.28);">Topic {idx+1}</span>
+                <span style="font-size:0.75rem; font-weight:700; color:var(--frost-navy);">Curriculum Module</span>
             </div>
             <div style="margin-bottom:8px;">
                 <label class="cb-edit-label">Topic Title</label>
-                <input type="text" id="edit-topic-title-{idx}" class="form-input" style="font-size:14.5px; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);" placeholder="Topic Title" value="{t_title}">
+                <input type="text" id="edit-topic-title-{idx}" class="form-input" style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);" placeholder="Topic Title" value="{t_title}">
             </div>
             <div>
                 <label class="cb-edit-label">Description &amp; Scope</label>
-                <textarea id="edit-topic-desc-{idx}" class="form-input auto-grow-textarea" rows="2" style="font-size:14px; font-weight:500; color:var(--frost-navy); line-height:1.55; width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Topic Description / Scope">{t_desc}</textarea>
+                <textarea id="edit-topic-desc-{idx}" class="form-input auto-grow-textarea" rows="2" style="font-size:0.875rem; font-weight:500; color:var(--frost-navy); line-height:1.55; width:100%; box-sizing:border-box; padding:9px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Topic Description / Scope">{t_desc}</textarea>
             </div>
         </div>
         """)
@@ -6437,11 +6614,11 @@ def render_badge_reviewer_edit_modal(
         <!-- Top Status Bar & Location -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:var(--radius-xs);">{code}</span>
-                <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; background:var(--frost-mist); color:var(--frost-navy); padding:3px 10px; border-radius:var(--radius-xs);">BAND {band}</span>
-                <span class="status-pill status-warning" style="font-size:12px; font-weight:700;">Reviewer Edit Mode</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.78125rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 10px; border-radius:var(--radius-xs);">{code}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.78125rem; font-weight:800; background:var(--frost-mist); color:var(--frost-navy); padding:3px 10px; border-radius:var(--radius-xs);">BAND {band}</span>
+                <span class="status-pill status-warning" style="font-size:0.75rem; font-weight:700;">Reviewer Edit Mode</span>
             </div>
-            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">
+            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">
                 Higher-Band Quality &amp; Rubric Verification
             </div>
         </div>
@@ -6463,22 +6640,22 @@ def render_badge_reviewer_edit_modal(
                 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
                     <div>
                         <label class="cb-edit-label">Power</label>
-                        <select id="edit-badge-power" class="form-input" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{power_opts}</select>
+                        <select id="edit-badge-power" class="form-input" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{power_opts}</select>
                     </div>
                     <div>
                         <label class="cb-edit-label">Capability</label>
-                        <select id="edit-badge-cap" class="form-input" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{cap_opts}</select>
+                        <select id="edit-badge-cap" class="form-input" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{cap_opts}</select>
                     </div>
                     <div>
                         <label class="cb-edit-label">Skill</label>
-                        <select id="edit-badge-skill" class="form-input" style="font-size:13.5px; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{skill_opts}</select>
+                        <select id="edit-badge-skill" class="form-input" style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); width:100%; box-sizing:border-box;">{skill_opts}</select>
                     </div>
                 </div>
 
                 <!-- Description -->
                 <div>
                     <label class="cb-edit-label">Target Outcome &amp; Scope Description</label>
-                    <textarea id="edit-badge-desc" class="form-input auto-grow-textarea" rows="3" style="font-size:14.5px; font-weight:500; color:var(--frost-navy); line-height:1.55; width:100%; box-sizing:border-box; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{desc}</textarea>
+                    <textarea id="edit-badge-desc" class="form-input auto-grow-textarea" rows="3" style="font-size:0.90625rem; font-weight:500; color:var(--frost-navy); line-height:1.55; width:100%; box-sizing:border-box; padding:10px 12px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{desc}</textarea>
                 </div>
             </div>
 
@@ -6490,13 +6667,13 @@ def render_badge_reviewer_edit_modal(
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         </span>
                         <div>
-                            <span style="font-size:15.5px; font-weight:800; color:var(--frost-navy);">Learning Outcomes</span>
-                            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">One bullet point per line, starting with "Can..."</div>
+                            <span style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy);">Learning Outcomes</span>
+                            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">One bullet point per line, starting with "Can..."</div>
                         </div>
                     </div>
                 </div>
                 <div style="padding:16px 20px;">
-                    <textarea id="edit-badge-outcomes" class="form-input auto-grow-textarea" rows="5" style="font-size:14.5px; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Can design...&#10;Can analyze...&#10;Can implement...">{escape(outcomes_str)}</textarea>
+                    <textarea id="edit-badge-outcomes" class="form-input auto-grow-textarea" rows="5" style="font-size:0.90625rem; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Can design...&#10;Can analyze...&#10;Can implement...">{escape(outcomes_str)}</textarea>
                 </div>
             </div>
 
@@ -6508,13 +6685,13 @@ def render_badge_reviewer_edit_modal(
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
                         </span>
                         <div>
-                            <span style="font-size:15.5px; font-weight:800; color:var(--frost-navy);">Practice Project Prompt</span>
-                            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Hands-on challenge prompt provided to LLMs to generate practice projects</div>
+                            <span style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy);">Practice Project Prompt</span>
+                            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Hands-on challenge prompt provided to LLMs to generate practice projects</div>
                         </div>
                     </div>
                 </div>
                 <div style="padding:16px 20px;">
-                    <textarea id="edit-practice-prompt" class="form-input auto-grow-textarea" rows="6" style="width:100%; box-sizing:border-box; font-size:14.5px; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(practice_prompt)}</textarea>
+                    <textarea id="edit-practice-prompt" class="form-input auto-grow-textarea" rows="6" style="width:100%; box-sizing:border-box; font-size:0.90625rem; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(practice_prompt)}</textarea>
                 </div>
             </div>
 
@@ -6526,8 +6703,8 @@ def render_badge_reviewer_edit_modal(
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                         </span>
                         <div>
-                            <span style="font-size:15.5px; font-weight:800; color:var(--frost-navy);">Learning Topics (6 Curriculum Modules)</span>
-                            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Structured syllabus modules covering theoretical and practical concepts</div>
+                            <span style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy);">Learning Topics (6 Curriculum Modules)</span>
+                            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Structured syllabus modules covering theoretical and practical concepts</div>
                         </div>
                     </div>
                 </div>
@@ -6544,13 +6721,13 @@ def render_badge_reviewer_edit_modal(
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         </span>
                         <div>
-                            <span style="font-size:15.5px; font-weight:800; color:var(--frost-navy);">Learning Resources Prompt</span>
-                            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Curated syllabus prompt to discover whitepapers, labs, and documentation</div>
+                            <span style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy);">Learning Resources Prompt</span>
+                            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Curated syllabus prompt to discover whitepapers, labs, and documentation</div>
                         </div>
                     </div>
                 </div>
                 <div style="padding:16px 20px;">
-                    <textarea id="edit-resources-prompt" class="form-input auto-grow-textarea" rows="6" style="width:100%; box-sizing:border-box; font-size:14.5px; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(resources_prompt)}</textarea>
+                    <textarea id="edit-resources-prompt" class="form-input auto-grow-textarea" rows="6" style="width:100%; box-sizing:border-box; font-size:0.90625rem; font-weight:500; color:var(--frost-navy); line-height:1.65; font-family:var(--font-family-base); padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(resources_prompt)}</textarea>
                 </div>
             </div>
 
@@ -6562,13 +6739,13 @@ def render_badge_reviewer_edit_modal(
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </span>
                         <div>
-                            <span style="font-size:15.5px; font-weight:800; color:var(--frost-navy);">Reviewer Audit Notes &amp; Feedback</span>
-                            <div style="font-size:12.5px; font-weight:600; color:var(--frost-navy);">Institutional review remarks and audit trail log</div>
+                            <span style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy);">Reviewer Audit Notes &amp; Feedback</span>
+                            <div style="font-size:0.78125rem; font-weight:600; color:var(--frost-navy);">Institutional review remarks and audit trail log</div>
                         </div>
                     </div>
                 </div>
                 <div style="padding:16px 20px;">
-                    <textarea id="edit-reviewer-notes" class="form-input auto-grow-textarea" rows="3" style="width:100%; box-sizing:border-box; font-size:14.5px; font-weight:500; color:var(--frost-navy); line-height:1.55; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Optional remarks, recommendations, or audit reasoning to attach to this review..."></textarea>
+                    <textarea id="edit-reviewer-notes" class="form-input auto-grow-textarea" rows="3" style="width:100%; box-sizing:border-box; font-size:0.90625rem; font-weight:500; color:var(--frost-navy); line-height:1.55; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;" placeholder="Optional remarks, recommendations, or audit reasoning to attach to this review..."></textarea>
                 </div>
             </div>
 
@@ -6607,20 +6784,20 @@ def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) 
             </div>
             <div>
                 <h2 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Authorize & Approve Badge</h2>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Authorizing Academic Milestone for Band {band}</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Authorizing Academic Milestone for Band {band}</div>
             </div>
         </div>
 
-        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:12.5px; line-height:1.5;">
+        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:0.78125rem; line-height:1.5;">
             <div><strong style="color:var(--frost-navy);">{code}: {title}</strong></div>
             <div style="color:var(--frost-navy-75); margin-top:4px;">
                 Reviewing Officer: <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
             </div>
         </div>
 
-        <div style="padding:12px 14px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:20px; font-size:12px; color:var(--frost-navy-75); line-height:1.5;">
+        <div style="padding:12px 14px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:20px; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.5;">
             <strong style="color:#047857;">Institutional Authorization Notice:</strong> By authorizing this badge, you certify that its learning objectives, assessment instructions, and project rubric meet StarApp's curriculum standards for Band {band}.
-            <div style="margin-top:6px; font-size:11.5px; color:var(--frost-navy-50);">Note: The badge will be marked Approved and the originating Guardian will be notified. It will NOT be automatically allotted to Cosmonauts.</div>
+            <div style="margin-top:6px; font-size:0.71875rem; color:var(--frost-navy-50);">Note: The badge will be marked Approved and the originating Guardian will be notified. It will NOT be automatically allotted to Cosmonauts.</div>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
@@ -6653,11 +6830,11 @@ def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) ->
             </div>
             <div>
                 <h2 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Return Badge with Feedback</h2>
-                <div style="font-size:12px; color:var(--frost-navy-50);">Request Revisions for Band {band} Milestone</div>
+                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Request Revisions for Band {band} Milestone</div>
             </div>
         </div>
 
-        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:12.5px; line-height:1.5;">
+        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:0.78125rem; line-height:1.5;">
             <div><strong style="color:var(--frost-navy);">{code}: {title}</strong></div>
             <div style="color:var(--frost-navy-75); margin-top:4px;">
                 Reviewing Officer: <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
@@ -6665,8 +6842,8 @@ def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) ->
         </div>
 
         <div class="form-group" style="margin-bottom:20px;">
-            <label class="form-label" style="font-size:12px; font-weight:700;">Revision Feedback / Reason for Return</label>
-            <textarea id="badge-return-notes-input" class="form-input" rows="4" placeholder="Detail the necessary curriculum adjustments, missing outcomes, or rubric improvements needed before this badge can be authorized..." style="font-size:12.5px;"></textarea>
+            <label class="form-label" style="font-size:0.75rem; font-weight:700;">Revision Feedback / Reason for Return</label>
+            <textarea id="badge-return-notes-input" class="form-input" rows="4" placeholder="Detail the necessary curriculum adjustments, missing outcomes, or rubric improvements needed before this badge can be authorized..." style="font-size:0.78125rem;"></textarea>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
@@ -6688,14 +6865,14 @@ def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) ->
 def _tier_pill_html(tier: str) -> str:
     t = (tier or "Not Assessed").lower()
     if "outstanding" in t:
-        return '<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.35); padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#059669;"></span>Outstanding</span>'
+        return '<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.35); padding:4px 11px; border-radius:999px; font-size:0.75rem; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#059669;"></span>Outstanding</span>'
     if "exceeds" in t or "strong" in t:
-        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(14,116,144,0.11); color:#0E7490; border:1px solid rgba(14,116,144,0.35); padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#0E7490;"></span>{escape(tier)}</span>'
+        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(14,116,144,0.11); color:#0E7490; border:1px solid rgba(14,116,144,0.35); padding:4px 11px; border-radius:999px; font-size:0.75rem; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#0E7490;"></span>{escape(tier)}</span>'
     if "meets" in t:
-        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(23,52,92,0.10); color:#071629; border:1px solid rgba(23,52,92,0.28); padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#17345C;"></span>{escape(tier)}</span>'
+        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(23,52,92,0.10); color:#071629; border:1px solid rgba(23,52,92,0.28); padding:4px 11px; border-radius:999px; font-size:0.75rem; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#17345C;"></span>{escape(tier)}</span>'
     if "needs" in t:
-        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(180,83,9,0.12); color:#B45309; border:1px solid rgba(180,83,9,0.32); padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#D97706;"></span>{escape(tier)}</span>'
-    return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(157,183,213,0.22); color:var(--frost-navy); border:1px solid rgba(7,22,41,0.25); padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap;">{escape(tier)}</span>'
+        return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(180,83,9,0.12); color:#B45309; border:1px solid rgba(180,83,9,0.32); padding:4px 11px; border-radius:999px; font-size:0.75rem; font-weight:700; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#D97706;"></span>{escape(tier)}</span>'
+    return f'<span style="display:inline-flex; align-items:center; gap:6px; background:rgba(157,183,213,0.22); color:var(--frost-navy); border:1px solid rgba(7,22,41,0.25); padding:4px 11px; border-radius:999px; font-size:0.75rem; font-weight:700; white-space:nowrap;">{escape(tier)}</span>'
 
 
 def _fmt_cycle_window(start_iso: str, end_iso: str) -> str:
@@ -6752,11 +6929,11 @@ def render_guardian_cycles_view(
 
     # Status pill for hero heading
     if c_status == "active":
-        hero_status_pill = '<span class="status-pill status-active" style="font-size:12.5px; padding:4px 12px;">Active</span>'
+        hero_status_pill = '<span class="status-pill status-active" style="font-size:0.78125rem; padding:4px 12px;">Active</span>'
     elif c_status == "evaluating":
-        hero_status_pill = '<span class="status-pill status-pending" style="font-size:12.5px; padding:4px 12px;">Evaluating</span>'
+        hero_status_pill = '<span class="status-pill status-pending" style="font-size:0.78125rem; padding:4px 12px;">Evaluating</span>'
     else:
-        hero_status_pill = '<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:12.5px; font-weight:700; background:rgba(157,183,213,0.28); color:var(--frost-navy); border:1px solid rgba(7,22,41,0.25);">Archived</span>'
+        hero_status_pill = '<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:0.78125rem; font-weight:700; background:rgba(157,183,213,0.28); color:var(--frost-navy); border:1px solid rgba(7,22,41,0.25);">Archived</span>'
 
     # Apply band / role activity filters
     filtered = []
@@ -6802,34 +6979,34 @@ def render_guardian_cycles_view(
     # Action bar based on cycle state (clean SVG icons, no casual symbols)
     if is_closed:
         action_controls = f"""
-        <button type="button" class="btn-secondary btn-sm" style="font-size:13px; font-weight:700; height:38px; padding:0 14px; border-color:rgba(5,150,105,0.45); color:#047857;"
+        <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; height:38px; padding:0 14px; border-color:rgba(5,150,105,0.45); color:#047857;"
                 onclick="window.StarAppBridge.dispatchAction('activate_cycle', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
             {check_icon}<span>Set Active</span>
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="font-size:13px; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
+        <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
                 onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
             {plus_icon}<span>New Cycle</span>
         </button>
-        <button type="button" class="btn-metal" style="height:38px; padding:0 16px; font-size:13px; font-weight:700;"
+        <button type="button" class="btn-metal" style="height:38px; padding:0 16px; font-size:0.8125rem; font-weight:700;"
                 onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')">
             <span>Open Learning</span>{arrow_icon}
         </button>
         """
     else:
         action_controls = f"""
-        <button type="button" class="btn-secondary btn-sm" style="font-size:13px; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
+        <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
                 onclick="window.StarAppBridge.dispatchAction('calculate_cycle_appraisals', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
             {analytics_icon}<span>Refresh Scores</span>
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="font-size:13px; font-weight:700; height:38px; padding:0 14px; border-color:rgba(5,150,105,0.45); color:#047857;"
+        <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; height:38px; padding:0 14px; border-color:rgba(5,150,105,0.45); color:#047857;"
                 onclick="window.StarAppBridge.dispatchAction('finalize_and_close_cycle', JSON.stringify({{cycle_id:'{escape(c_id)}'}}))">
             {check_icon}<span>Finalize Cycle</span>
         </button>
-        <button type="button" class="btn-secondary btn-sm" style="font-size:13px; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
+        <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; height:38px; padding:0 14px; color:var(--frost-navy);"
                 onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{{}}')">
             {plus_icon}<span>New Cycle</span>
         </button>
-        <button type="button" class="btn-metal" style="height:38px; padding:0 16px; font-size:13px; font-weight:700;"
+        <button type="button" class="btn-metal" style="height:38px; padding:0 16px; font-size:0.8125rem; font-weight:700;"
                 onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_learning')">
             <span>Open Learning</span>{arrow_icon}
         </button>
@@ -6842,26 +7019,26 @@ def render_guardian_cycles_view(
         is_sel = (cyc.id == c_id)
         item_cls = "cycle-item is-selected" if is_sel else "cycle-item"
         if cyc_status == "active":
-            st_pill = '<span class="status-pill status-active" style="font-size:11px; padding:2px 9px;">Active</span>'
+            st_pill = '<span class="status-pill status-active" style="font-size:0.6875rem; padding:2px 9px;">Active</span>'
         elif cyc_status == "evaluating":
-            st_pill = '<span class="status-pill status-pending" style="font-size:11px; padding:2px 9px;">Evaluating</span>'
+            st_pill = '<span class="status-pill status-pending" style="font-size:0.6875rem; padding:2px 9px;">Evaluating</span>'
         else:
-            st_pill = '<span style="font-size:11px; font-weight:700; color:var(--frost-navy); background:rgba(157,183,213,0.28); padding:2px 9px; border-radius:999px;">Archived</span>'
+            st_pill = '<span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:rgba(157,183,213,0.28); padding:2px 9px; border-radius:999px;">Archived</span>'
 
         cyc_window = _fmt_cycle_window(getattr(cyc, "start_date", ""), getattr(cyc, "end_date", ""))
         if cyc_status != "active":
             foot_action = f"""
             <button type="button" class="btn-secondary btn-sm"
-                    style="height:26px; padding:0 10px; font-size:11.5px; font-weight:700; border-color:rgba(5,150,105,0.45); color:#047857;"
+                    style="height:26px; padding:0 10px; font-size:0.71875rem; font-weight:700; border-color:rgba(5,150,105,0.45); color:#047857;"
                     onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('activate_cycle', JSON.stringify({{cycle_id:'{escape(cyc.id)}'}}));"
                     title="Set as active cycle">
                 Set Active
             </button>
             """
         elif is_sel:
-            foot_action = '<span style="font-size:12px; font-weight:800; color:var(--frost-navy);">Selected</span>'
+            foot_action = '<span style="font-size:0.75rem; font-weight:800; color:var(--frost-navy);">Selected</span>'
         else:
-            foot_action = '<span style="font-size:12px; font-weight:700; color:var(--frost-navy);">View</span>'
+            foot_action = '<span style="font-size:0.75rem; font-weight:700; color:var(--frost-navy);">View</span>'
 
         cycle_cards_html.append(f"""
         <div class="{item_cls}" data-cycle-status="{escape(cyc_status)}"
@@ -6910,7 +7087,7 @@ def render_guardian_cycles_view(
             </div>
             """
         else:
-            c_cell = '<span style="font-size:13.5px; color:var(--frost-navy); font-weight:700;">No tasks assigned</span>'
+            c_cell = '<span style="font-size:0.84375rem; color:var(--frost-navy); font-weight:700;">No tasks assigned</span>'
 
         if r.get("reviewer_has_activity"):
             rev_pct = max(0.0, min(100.0, float(r.get("reviewer_score", 0) or 0)))
@@ -6927,17 +7104,17 @@ def render_guardian_cycles_view(
             </div>
             """
         else:
-            r_cell = '<span style="font-size:13.5px; color:var(--frost-navy); font-weight:700;">No reviews assigned</span>'
+            r_cell = '<span style="font-size:0.84375rem; color:var(--frost-navy); font-weight:700;">No reviews assigned</span>'
 
         table_rows.append(f"""
         <tr onclick="window.StarAppBridge.dispatchAction('view_cycle_candidate_detail', JSON.stringify({{cycle_id:'{escape(c_id)}', user_id:'{escape(uid)}'}}))"
             title="Click to inspect {escape(r['name'])}">
             <td>
                 <div class="cycle-candidate-cell">
-                    <div style="font-weight:800; color:var(--frost-navy); font-size:15.5px; line-height:1.25;">{escape(r["name"])}</div>
+                    <div style="font-weight:800; color:var(--frost-navy); font-size:0.96875rem; line-height:1.25;">{escape(r["name"])}</div>
                     <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
                         <span class="cycle-band-chip">{escape(r["band_code"])}</span>
-                        <span style="font-size:13.5px; font-weight:700; color:var(--frost-navy);">{escape(sub_label)}</span>
+                        <span style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy);">{escape(sub_label)}</span>
                     </div>
                 </div>
             </td>
@@ -6979,7 +7156,7 @@ def render_guardian_cycles_view(
 
             <div class="cycle-switcher-section">
                 <div class="cycle-switcher-bar">
-                    <span style="font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.45px; color:var(--frost-navy);">Performance Cycles ({len(cycles)})</span>
+                    <span style="font-size:0.78125rem; font-weight:800; text-transform:uppercase; letter-spacing:0.45px; color:var(--frost-navy);">Performance Cycles ({len(cycles)})</span>
                     {switcher_tabs_html}
                 </div>
                 <div id="cycle-switcher-grid" class="cycle-grid">
@@ -7043,7 +7220,7 @@ def render_guardian_cycles_view(
                         </tr>
                     </thead>
                     <tbody>
-                        {"".join(table_rows) if table_rows else '<tr><td colspan="4" style="padding:28px; text-align:center; font-size:14px; font-weight:700; color:var(--frost-navy);">No candidates matched the selected filter.</td></tr>'}
+                        {"".join(table_rows) if table_rows else '<tr><td colspan="4" style="padding:28px; text-align:center; font-size:0.875rem; font-weight:700; color:var(--frost-navy);">No candidates matched the selected filter.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -7080,13 +7257,13 @@ def render_create_cycle_modal(existing_cycles: List[Any], active_cycle: Optional
     auto_close_checkbox = ""
     if active_cycle and getattr(active_cycle, "status", "") in ("active", "evaluating"):
         active_warn = f"""
-        <div style="display:flex; align-items:center; gap:10px; padding:9px 13px; border-radius:var(--radius-sm); background:rgba(245,158,11,0.10); border:1px solid rgba(217,119,6,0.35); margin-bottom:14px; font-size:12px; color:#92400E;">
+        <div style="display:flex; align-items:center; gap:10px; padding:9px 13px; border-radius:var(--radius-sm); background:rgba(245,158,11,0.10); border:1px solid rgba(217,119,6,0.35); margin-bottom:14px; font-size:0.75rem; color:#92400E;">
             {get_icon("alert_triangle", 15, "flex-shrink:0;")}
             <span><strong>{escape(active_cycle.name)}</strong> is active and will be finalized when this cycle launches.</span>
         </div>
         """
         auto_close_checkbox = f"""
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--frost-navy); cursor:pointer; margin-top:10px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; font-weight:600; color:var(--frost-navy); cursor:pointer; margin-top:10px;">
             <input type="checkbox" id="new-cycle-auto-close" checked>
             <span>Close {escape(active_cycle.name)} and activate immediately</span>
         </label>
@@ -7190,10 +7367,10 @@ def render_cycle_candidate_detail_modal(
     <div>
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:14px; border-bottom:1px solid var(--icy-steel-30); margin-bottom:16px;">
             <div style="display:flex; align-items:center; gap:10px;">
-                <div class="user-avatar" style="width:40px; height:40px; font-size:13px;">{escape(row["avatar"])}</div>
+                <div class="user-avatar" style="width:40px; height:40px; font-size:0.8125rem;">{escape(row["avatar"])}</div>
                 <div>
                     <h3 style="margin:0; font-size:1.2rem; font-weight:800; color:var(--frost-navy);">{escape(row["name"])}</h3>
-                    <div style="font-size:12px; color:var(--frost-navy-50);">Band {escape(row["band_code"])} &bull; {escape(sub_desc)} &bull; Cycle: <strong>{escape(getattr(cycle, "name", c_id))}</strong></div>
+                    <div style="font-size:0.75rem; color:var(--frost-navy-50);">Band {escape(row["band_code"])} &bull; {escape(sub_desc)} &bull; Cycle: <strong>{escape(getattr(cycle, "name", c_id))}</strong></div>
                 </div>
             </div>
             <div style="text-align:right;">
@@ -7205,13 +7382,13 @@ def render_cycle_candidate_detail_modal(
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
             <!-- Role 1: As Cosmonaut -->
             <div style="padding:14px 16px; border-radius:var(--radius-md); background:rgba(234,244,255,0.55); border:1px solid var(--icy-steel-50);">
-                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:8px;">{award_icon}<span>Performance as Cosmonaut</span></div>
-                <div style="font-size:13px; color:var(--frost-navy); line-height:1.7;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); margin-bottom:8px;">{award_icon}<span>Performance as Cosmonaut</span></div>
+                <div style="font-size:0.8125rem; color:var(--frost-navy); line-height:1.7;">
                     <div>Badges Earned: <strong>{row["badges_earned"]} / {row["badges_assigned"]}</strong> ({row["cosmo_completion_pct"]}%)</div>
                     <div>Average Assessment: <strong>{row["avg_marks"]} / 50</strong> ({row["avg_percentage"]}%)</div>
                     <div>First-Attempt Passes: <strong>{row["first_attempt_passes"]}</strong> &bull; Attempts: {row["total_attempts"]}</div>
                     <div>Extensions Requested: <strong>{row["extensions_count"]}</strong></div>
-                    <div style="margin-top:6px; font-size:11.5px; color:var(--frost-navy-50);">
+                    <div style="margin-top:6px; font-size:0.71875rem; color:var(--frost-navy-50);">
                         Rubric Avg &mdash; Bus: <strong>{rubric.get("business", 0)}</strong> | Arch: <strong>{rubric.get("architecture", 0)}</strong> | Tech: <strong>{rubric.get("technical", 0)}</strong> | Pres: <strong>{rubric.get("presentation", 0)}</strong> | Q&amp;A: <strong>{rubric.get("qa", 0)}</strong>
                     </div>
                 </div>
@@ -7219,8 +7396,8 @@ def render_cycle_candidate_detail_modal(
 
             <!-- Role 2: As Reviewer -->
             <div style="padding:14px 16px; border-radius:var(--radius-md); background:rgba(240,253,250,0.75); border:1px solid rgba(13,148,136,0.3);">
-                <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:8px;">{clip_icon}<span>Performance as Reviewer</span></div>
-                <div style="font-size:13px; color:var(--frost-navy); line-height:1.7;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:#0F766E; margin-bottom:8px;">{clip_icon}<span>Performance as Reviewer</span></div>
+                <div style="font-size:0.8125rem; color:var(--frost-navy); line-height:1.7;">
                     <div>Badge Proposals Reviewed: <strong>{row["badge_reviews_completed"]} / {row["badge_reviews_assigned"]}</strong></div>
                     <div>Cohort Mapping Invites Accepted: <strong>{row["mapping_invitations_accepted"]} / {row["mapping_invitations_total"]}</strong></div>
                     <div>Projects Authored / Released: <strong>{row["projects_released"]} / {row["projects_created"]}</strong></div>
@@ -7232,27 +7409,27 @@ def render_cycle_candidate_detail_modal(
 
         <form onsubmit="event.preventDefault(); window.StarAppBridge.dispatchAction('update_cycle_appraisal', JSON.stringify({{cycle_id:'{escape(c_id)}', user_id:'{escape(uid)}', base_salary:parseFloat(document.getElementById('app-base-sal').value||0), approved_hike_pct:parseFloat(document.getElementById('app-hike-pct').value||0), bonus_amount:parseFloat(document.getElementById('app-bonus').value||0), recommended_promotion_band:document.getElementById('app-promo-band').value, guardian_remarks:document.getElementById('app-remarks').value}}));"
               style="padding:16px; border-radius:var(--radius-md); background:#fff; border:1.5px solid var(--icy-steel-30);">
-            <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:var(--frost-navy); margin-bottom:10px;">Cycle Appraisal, Optional Compensation &amp; Promotion Decision</div>
+            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); margin-bottom:10px;">Cycle Appraisal, Optional Compensation &amp; Promotion Decision</div>
             <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:12px;">
                 <div>
-                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Approved Hike % (Rec: {row["recommended_hike_pct"]:.1f}%)</label>
+                    <label style="font-size:0.6875rem; font-weight:700; display:block; margin-bottom:3px;">Approved Hike % (Rec: {row["recommended_hike_pct"]:.1f}%)</label>
                     <input type="number" step="0.5" min="0" max="100" id="app-hike-pct" class="form-control" value="{row["approved_hike_pct"]:.1f}"{readonly_attr}>
                 </div>
                 <div>
-                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Base Salary (Optional)</label>
+                    <label style="font-size:0.6875rem; font-weight:700; display:block; margin-bottom:3px;">Base Salary (Optional)</label>
                     <input type="number" step="100" min="0" id="app-base-sal" class="form-control" value="{row["base_salary"]:.0f}"{readonly_attr}>
                 </div>
                 <div>
-                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Cycle Bonus (Optional)</label>
+                    <label style="font-size:0.6875rem; font-weight:700; display:block; margin-bottom:3px;">Cycle Bonus (Optional)</label>
                     <input type="number" step="100" min="0" id="app-bonus" class="form-control" value="{row["bonus_amount"]:.0f}"{readonly_attr}>
                 </div>
                 <div>
-                    <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Promotion Band</label>
+                    <label style="font-size:0.6875rem; font-weight:700; display:block; margin-bottom:3px;">Promotion Band</label>
                     <select id="app-promo-band" class="form-select"{readonly_attr}>{"".join(promo_opts)}</select>
                 </div>
             </div>
             <div style="margin-bottom:12px;">
-                <label style="font-size:11px; font-weight:700; display:block; margin-bottom:3px;">Guardian End-of-Cycle Appraisal Remarks</label>
+                <label style="font-size:0.6875rem; font-weight:700; display:block; margin-bottom:3px;">Guardian End-of-Cycle Appraisal Remarks</label>
                 <textarea id="app-remarks" rows="2" class="form-control" placeholder="Summarize performance as Cosmonaut and Reviewer..." {readonly_attr}>{escape(row.get("guardian_remarks", ""))}</textarea>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -7287,11 +7464,11 @@ def render_guardian_pillar_placeholder(
         <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(c_code)}</span>
-                    <span style="font-size:11px; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:999px;">Global Filter &bull; {escape(c_status)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(c_code)}</span>
+                    <span style="font-size:0.6875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); padding:2px 8px; border-radius:999px;">Global Filter &bull; {escape(c_status)}</span>
                 </div>
                 <h2 style="font-size:1.5rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(pillar_name)}</h2>
-                <p style="font-size:12.5px; color:var(--frost-navy-50); margin:4px 0 0 0;">Scoped globally to <strong>{escape(c_name)}</strong> ({escape(c_start)} &rarr; {escape(c_end)}).</p>
+                <p style="font-size:0.78125rem; color:var(--frost-navy-50); margin:4px 0 0 0;">Scoped globally to <strong>{escape(c_name)}</strong> ({escape(c_start)} &rarr; {escape(c_end)}).</p>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button type="button" class="btn-secondary" style="font-weight:700;"
@@ -7307,7 +7484,7 @@ def render_guardian_pillar_placeholder(
 
         <div class="liquid-glass-card" style="padding:56px 28px; text-align:center; border:1.5px dashed var(--icy-steel-50); background:rgba(255,255,255,0.72);">
             <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:8px;">{escape(pillar_name)} Module &mdash; Ready for Cycle-Scoped Implementation</div>
-            <p style="font-size:13px; color:var(--frost-navy-50); max-width:560px; margin:0 auto;">{escape(desc)}</p>
+            <p style="font-size:0.8125rem; color:var(--frost-navy-50); max-width:560px; margin:0 auto;">{escape(desc)}</p>
         </div>
     </div>
     """

@@ -2878,7 +2878,16 @@ class DatabaseManager:
             due_date = (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
             assign_id = f"bra_{badge_id}_{reviewer_id}_{int(datetime.datetime.now().timestamp())}"
 
+            prev_reviewer_id = badge_row["assigned_reviewer_id"] if "assigned_reviewer_id" in badge_row.keys() else None
+            changed_from = ""
+            if prev_reviewer_id and prev_reviewer_id != reviewer_id and badge_row["workflow_status"] == "pending_review":
+                prev_row = self.conn.execute("SELECT name FROM users WHERE id = ?", (prev_reviewer_id,)).fetchone()
+                changed_from = prev_row["name"] if prev_row else prev_reviewer_id
+
             with self.conn:
+                # 0. Any other reviewer's open request for this badge is revoked (they must not keep decision rights)
+                self._release_pending_reviewers(badge_row, now_iso, b_cycle_id, creator_id, keep_reviewer_id=reviewer_id)
+
                 # 1. Update Badge status & assigned reviewer
                 self.conn.execute(
                     """
@@ -2908,7 +2917,9 @@ class DatabaseManager:
                     INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
                     VALUES (?, ?, ?, 'created_and_submitted', ?, 'pending_review', ?, ?, ?)
                     """,
-                    (event_id, badge_id, creator_id, badge_row["workflow_status"], f"Review requested from {rev_name} ({rev_band}).", now_iso, b_cycle_id)
+                    (event_id, badge_id, creator_id, badge_row["workflow_status"],
+                     (f"Reviewer changed from {changed_from} to {rev_name} ({rev_band})." if changed_from else f"Review requested from {rev_name} ({rev_band})."),
+                     now_iso, b_cycle_id)
                 )
 
                 # 4. Dispatch Notification to Reviewer
@@ -2950,6 +2961,96 @@ class DatabaseManager:
             return True, f"Review request for badge '{badge_title}' sent to {rev_name} ({rev_band})!"
         except Exception as e:
             return False, f"Failed to dispatch review request: {e}"
+
+    def _release_pending_reviewers(
+        self,
+        badge_row: Any,
+        now_iso: str,
+        cycle_id: str,
+        actor_id: str,
+        keep_reviewer_id: Optional[str] = None,
+    ) -> List[str]:
+        """
+        Marks every OPEN ('pending') reviewer assignment of the badge as 'cancelled' (except `keep_reviewer_id`)
+        and notifies those reviewers. Must be called inside a transaction. Returns the released reviewer ids.
+        `authorize_badge_decision` accepts a reviewer who still holds a 'pending' row, so a stale row would let a
+        removed reviewer keep approving / returning the badge.
+        """
+        badge_id = badge_row["id"]
+        rows = self.conn.execute(
+            "SELECT DISTINCT reviewer_id FROM badge_reviewer_assignments WHERE badge_id = ? AND status = 'pending'",
+            (badge_id,),
+        ).fetchall()
+        released = [r["reviewer_id"] for r in rows if r["reviewer_id"] != keep_reviewer_id]
+        if not released:
+            return []
+        for rid in released:
+            self.conn.execute(
+                "UPDATE badge_reviewer_assignments SET status = 'cancelled', decided_at = ? "
+                "WHERE badge_id = ? AND reviewer_id = ? AND status = 'pending'",
+                (now_iso, badge_id, rid),
+            )
+            self.conn.execute(
+                """
+                INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                VALUES (?, ?, ?, ?, 'c_requests', ?, 0, 'badge_review_cancelled', ?, ?)
+                """,
+                (
+                    f"notif_rel_{badge_id}_{rid}_{int(datetime.datetime.now().timestamp() * 1000)}",
+                    rid,
+                    f"Review Withdrawn: {badge_row['code']}",
+                    f"The review request for badge '{badge_row['title']}' ({badge_row['code']}) was withdrawn by the Guardian. No action is needed from you.",
+                    now_iso,
+                    badge_id,
+                    cycle_id,
+                ),
+            )
+        return released
+
+    def cancel_badge_review_request(self, badge_id: str, actor_id: str) -> Tuple[bool, str]:
+        """
+        Guardian cancels the reviewer currently holding a badge: the badge goes back to 'ready_for_review' with
+        no assigned reviewer, the reviewer's open request is revoked and the event is written to the audit trail.
+        Only a badge that is awaiting review (`pending_review`) has a reviewer to cancel.
+        """
+        now_iso = current_iso_timestamp()
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return True, "Reviewer cancelled."
+        try:
+            badge_row = self.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
+            if not badge_row:
+                return False, f"Badge {badge_id} not found."
+            if badge_row["workflow_status"] != "pending_review" or not badge_row["assigned_reviewer_id"]:
+                return False, "There is no active reviewer to cancel for this badge."
+
+            prev_id = badge_row["assigned_reviewer_id"]
+            prev_row = self.conn.execute("SELECT name FROM users WHERE id = ?", (prev_id,)).fetchone()
+            prev_name = prev_row["name"] if prev_row else prev_id
+            b_cycle_id = (badge_row["cycle_id"] if "cycle_id" in badge_row.keys() and badge_row["cycle_id"] else None) or self._get_active_cycle_id()
+
+            with self.conn:
+                self._release_pending_reviewers(badge_row, now_iso, b_cycle_id, actor_id)
+                self.conn.execute(
+                    "UPDATE badges SET workflow_status = 'ready_for_review', assigned_reviewer_id = NULL, updated_at = ? WHERE id = ?",
+                    (now_iso, badge_id),
+                )
+                self.conn.execute(
+                    """
+                    INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                    VALUES (?, ?, ?, 'reviewer_cancelled', 'pending_review', 'ready_for_review', ?, ?, ?)
+                    """,
+                    (
+                        f"bre_{badge_id}_cancel_{int(datetime.datetime.now().timestamp() * 1000)}",
+                        badge_id,
+                        actor_id,
+                        f"Reviewer {prev_name} was cancelled by the Guardian.",
+                        now_iso,
+                        b_cycle_id,
+                    ),
+                )
+            return True, f"Reviewer {prev_name} cancelled for badge '{badge_row['title']}'. Select another reviewer to continue."
+        except Exception as e:
+            return False, f"Failed to cancel reviewer: {e}"
 
     # ==========================================================================
     # WORKFLOW QUERY ACCESSORS

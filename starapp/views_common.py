@@ -5,6 +5,7 @@ Reusable UI templates for liquid-glass containers, marksheets, timelines, and na
 """
 
 import html
+import re
 from typing import List, Dict, Any, Optional
 from starapp.models import AssessmentMarksheet, BadgeTimeline, Badge, Notification, User, LearningMaterial
 
@@ -65,6 +66,8 @@ ICON_SVGS = {
     "chevron_right": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polyline points="9 18 15 12 9 6"></polyline></svg>',
     "folder": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
     "wrench": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>',
+    "send": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>',
+    "refresh": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>',
     "x": '<svg width="{s}" height="{s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;{st}"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
 }
 
@@ -74,6 +77,47 @@ def get_icon(name: str, size: int = 15, style: str = "") -> str:
     if not template:
         template = ICON_SVGS.get("award")
     return template.format(s=size, st=style)
+
+
+def format_hms(total_seconds: int) -> str:
+    """86399 -> '23:59:59' (the 24-hour countdown format)."""
+    total_seconds = max(0, int(total_seconds))
+    h, rem = divmod(total_seconds, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{sec:02d}"
+
+
+def format_utc_stamp(iso_value: Any) -> str:
+    """'2026-11-27T14:05:09+00:00' -> '27 Nov, 14:05 UTC' ('' when empty / malformed)."""
+    import datetime as _dt
+    try:
+        dt = _dt.datetime.fromisoformat(str(iso_value or "").replace("Z", "+00:00"))
+    except Exception:
+        return ""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(_dt.timezone.utc)
+    return dt.strftime("%d %b, %H:%M UTC")
+
+
+def render_request_timer(req: Dict[str, Any], prefix: str = "") -> str:
+    """
+    Live 24-hour countdown for a PENDING mapping request, shown to the Guardian and to the reviewer.
+    The server renders the seconds left (no clock-skew); js/bridge.js ticks every `.rq-timer` once a second
+    and asks the server to sync when one reaches zero (the request is then auto-declined).
+    Returns '' for answered requests or requests that carry no deadline.
+    """
+    from starapp.storage import mapping_request_seconds_left
+    left = mapping_request_seconds_left(req)
+    if left is None:
+        return ""
+    urgent = " is-urgent" if left < 3600 else ""
+    lead = f'<span class="rq-timer-lbl">{escape(prefix)}</span>' if prefix else ""
+    return (
+        f'<span class="rq-timer{urgent}" data-remaining="{left}" '
+        f'title="Time left to respond. After 24 hours without an answer the request counts as not accepted.">'
+        f'{get_icon("clock", 13)}{lead}<span class="rq-timer-text">{format_hms(left)}</span>'
+        f'<span class="rq-timer-lbl">left</span></span>'
+    )
 
 
 def escape(text: Any) -> str:
@@ -211,7 +255,7 @@ def render_back_button(
     onclick_attr = f"window.StarAppBridge.dispatchAction('{escape(target_action)}', '{escape(payload_json)}')"
     return f"""
     <button type="button" class="btn-secondary btn-sm" onclick="{onclick_attr}"
-            style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm); {extra_style}"
+            style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:var(--radius-sm); {extra_style}"
             title="Navigate back">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"></polyline>
@@ -266,7 +310,7 @@ def render_standard_marksheet(
             )
         attempts_tabs_html = f'''
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; padding:12px 16px; background:rgba(234,244,255,0.45); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
-            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Evaluation History:</span>
+            <span style="font-size:0.71875rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Evaluation History:</span>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">{"".join(tab_buttons)}</div>
         </div>
         '''
@@ -318,10 +362,10 @@ def render_standard_marksheet(
         criteria_rows.append(f"""
         <tr style="transition:background 150ms ease;">
             <td style="padding:14px 18px; border-bottom:1px solid var(--frost-mist);">
-                <div style="font-weight:700; color:var(--frost-navy); font-size:13.5px; margin-bottom:2px;">
+                <div style="font-weight:700; color:var(--frost-navy); font-size:0.84375rem; margin-bottom:2px;">
                     {c['num']}. {c['name']}
                 </div>
-                <div style="font-size:12px; color:var(--frost-navy-50); line-height:1.4;">
+                <div style="font-size:0.75rem; color:var(--frost-navy-50); line-height:1.4;">
                     {c['scope']}
                 </div>
             </td>
@@ -330,13 +374,13 @@ def render_standard_marksheet(
                     <div style="flex:1; height:7px; border-radius:999px; background:rgba(157,183,213,0.3); overflow:hidden;">
                         <div style="width:{pct}%; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
                     </div>
-                    <span style="font-family:var(--font-family-mono); font-size:11px; font-weight:700; color:var(--deep-frozen-midnight);">{pct}%</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight);">{pct}%</span>
                 </div>
             </td>
-            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:13px; color:var(--frost-navy-50); border-bottom:1px solid var(--frost-mist);">
+            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.8125rem; color:var(--frost-navy-50); border-bottom:1px solid var(--frost-mist);">
                 {c['max']:.1f}
             </td>
-            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:14px; font-weight:800; color:var(--deep-frozen-midnight); border-bottom:1px solid var(--frost-mist);">
+            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.875rem; font-weight:800; color:var(--deep-frozen-midnight); border-bottom:1px solid var(--frost-mist);">
                 {c['score']:.1f}
             </td>
         </tr>
@@ -348,11 +392,11 @@ def render_standard_marksheet(
         <div class="marksheet-header" style="background:linear-gradient(135deg, #071629 0%, #17345C 100%); color:var(--snow-white); padding:24px 32px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--icy-steel-50);">
             <div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:12px; font-weight:800; color:var(--snow-white); background:rgba(157,183,213,0.22); padding:3px 10px; border-radius:var(--radius-xs); border:1px solid rgba(157,183,213,0.35);">{escape(badge_code)}</span>
-                    <span style="font-size:12px; font-weight:700; color:var(--icy-steel); letter-spacing:0.8px; text-transform:uppercase;">Official Evaluation Marksheet &bull; Attempt #{marksheet.attempt_number}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--snow-white); background:rgba(157,183,213,0.22); padding:3px 10px; border-radius:var(--radius-xs); border:1px solid rgba(157,183,213,0.35);">{escape(badge_code)}</span>
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--icy-steel); letter-spacing:0.8px; text-transform:uppercase;">Official Evaluation Marksheet &bull; Attempt #{marksheet.attempt_number}</span>
                 </div>
                 <h2 style="font-size:1.6rem; font-weight:800; margin:0 0 6px 0; color:var(--snow-white); letter-spacing:-0.3px;">{escape(badge_title)}</h2>
-                <div style="font-size:12.5px; color:rgba(234,244,255,0.8); display:flex; align-items:center; gap:8px;">
+                <div style="font-size:0.78125rem; color:rgba(234,244,255,0.8); display:flex; align-items:center; gap:8px;">
                     <span>Evaluated by: <strong>{escape(marksheet.reviewer_name)}</strong> ({assessor_title})</span>
                     <span>&bull;</span>
                     <span>Evaluation Date: <strong>{escape(marksheet.reviewed_at[:10])}</strong></span>
@@ -362,7 +406,7 @@ def render_standard_marksheet(
                 <div class="marksheet-score-num" style="font-size:2.2rem; font-weight:800; line-height:1; color:var(--snow-white); font-family:var(--font-family-mono);">
                     {marksheet.total_marks} <span style="font-size:1.1rem; color:var(--icy-steel); font-weight:600;">/ 50.0</span>
                 </div>
-                <div class="marksheet-percent" style="font-size:12.5px; color:var(--icy-steel); font-weight:700; margin-top:4px;">
+                <div class="marksheet-percent" style="font-size:0.78125rem; color:var(--icy-steel); font-weight:700; margin-top:4px;">
                     {marksheet.percentage}% Standard Score
                 </div>
                 <div style="margin-top:8px;">{decision_pill}</div>
@@ -377,19 +421,19 @@ def render_standard_marksheet(
             <table class="marksheet-rubric-table" style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); overflow:hidden;">
                 <thead>
                     <tr style="background:var(--frost-mist); text-align:left;">
-                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Assessment Criterion & Scope</th>
-                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Mastery Index</th>
-                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Max</th>
-                        <th style="padding:12px 18px; font-size:12px; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Score</th>
+                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Assessment Criterion & Scope</th>
+                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Mastery Index</th>
+                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Max</th>
+                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Score</th>
                     </tr>
                 </thead>
                 <tbody>
                     {"".join(criteria_rows)}
                     <tr style="background:rgba(234,244,255,0.7); font-weight:800;">
-                        <td colspan="2" style="padding:14px 18px; text-align:right; text-transform:uppercase; font-size:12.5px; letter-spacing:0.6px; color:var(--deep-frozen-midnight);">
+                        <td colspan="2" style="padding:14px 18px; text-align:right; text-transform:uppercase; font-size:0.78125rem; letter-spacing:0.6px; color:var(--deep-frozen-midnight);">
                             Universal 5-Criterion Evaluation Total:
                         </td>
-                        <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:13px; color:var(--frost-navy);">
+                        <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.8125rem; color:var(--frost-navy);">
                             50.0
                         </td>
                         <td style="padding:14px 18px; text-align:center; font-size:1.2rem; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); font-weight:900;">
@@ -402,18 +446,18 @@ def render_standard_marksheet(
             <!-- Two-Column Structured Feedback -->
             <div class="marksheet-feedback-section" style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:22px;">
                 <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                    <div class="feedback-card-title" style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                    <div class="feedback-card-title" style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
                         <span>&#10003;</span> Identified Strengths & Distinctions
                     </div>
-                    <p style="font-size:13.5px; line-height:1.6; color:var(--frost-navy); margin:0;">
+                    <p style="font-size:0.84375rem; line-height:1.6; color:var(--frost-navy); margin:0;">
                         {escape(marksheet.strength_areas or "No specific strengths highlighted.")}
                     </p>
                 </div>
                 <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                    <div class="feedback-card-title" style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                    <div class="feedback-card-title" style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
                         <span>&#9873;</span> Areas for Technical Growth & Optimization
                     </div>
-                    <p style="font-size:13.5px; line-height:1.6; color:var(--frost-navy); margin:0;">
+                    <p style="font-size:0.84375rem; line-height:1.6; color:var(--frost-navy); margin:0;">
                         {escape(marksheet.improvement_areas or "No critical weaknesses noted.")}
                     </p>
                 </div>
@@ -421,10 +465,10 @@ def render_standard_marksheet(
 
             <!-- Assessor Synthesis & Recommendation -->
             <div style="background:linear-gradient(135deg, rgba(234,244,255,0.7) 0%, rgba(255,255,255,0.95) 100%); border-left:4.5px solid var(--deep-frozen-midnight); padding:18px 22px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); border-left-width:4.5px; box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                <div style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:6px;">
+                <div style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:6px;">
                     {escape(assessor_title)} Synthesis &amp; Recommendation
                 </div>
-                <p style="font-size:14px; color:var(--frost-navy); line-height:1.6; margin:0;">
+                <p style="font-size:0.875rem; color:var(--frost-navy); line-height:1.6; margin:0;">
                     {escape(marksheet.overall_feedback or "No feedback recorded.")}
                 </p>
             </div>
@@ -455,7 +499,7 @@ def render_9point_timeline(timeline: BadgeTimeline, badge: Optional[Badge] = Non
         <div class="timeline-node {node_cls}">
             <div>
                 <div class="timeline-label">{node["num"]}. {escape(node["label"])}</div>
-                <div style="font-size:11.5px; color:var(--frost-navy-50);">{escape(node["desc"])}</div>
+                <div style="font-size:0.71875rem; color:var(--frost-navy-50);">{escape(node["desc"])}</div>
             </div>
             <div class="timeline-date">{escape(node["date"] or "TBD")}</div>
         </div>
@@ -490,11 +534,11 @@ def render_cycle_context_bar(
     c_status = (getattr(selected_cycle, "status", "active") or "active").lower()
 
     if c_status == "closed":
-        status_badge = '<span style="background:rgba(100,116,139,0.16); color:#334155; border:1px solid #94A3B8; font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">CLOSED &bull; READ-ONLY ARCHIVE</span>'
+        status_badge = '<span style="background:rgba(100,116,139,0.16); color:#334155; border:1px solid #94A3B8; font-size:0.65625rem; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">CLOSED &bull; READ-ONLY ARCHIVE</span>'
     elif c_status == "evaluating":
-        status_badge = '<span style="background:rgba(245,158,11,0.14); color:#B45309; border:1px solid #FBBF24; font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">EVALUATING CYCLE</span>'
+        status_badge = '<span style="background:rgba(245,158,11,0.14); color:#B45309; border:1px solid #FBBF24; font-size:0.65625rem; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">EVALUATING CYCLE</span>'
     else:
-        status_badge = '<span style="background:rgba(16,185,129,0.14); color:#047857; border:1px solid rgba(16,185,129,0.35); font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">ACTIVE 6-MONTH CYCLE</span>'
+        status_badge = '<span style="background:rgba(16,185,129,0.14); color:#047857; border:1px solid rgba(16,185,129,0.35); font-size:0.65625rem; font-weight:800; padding:2px 9px; border-radius:999px; letter-spacing:0.4px;">ACTIVE 6-MONTH CYCLE</span>'
 
     opts = []
     for cyc in cycles:
@@ -512,7 +556,7 @@ def render_cycle_context_bar(
     if is_guardian:
         guardian_create_btn = """
         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_cycle_modal', '{}')"
-                style="font-size:11.5px; font-weight:800; padding:5px 11px; white-space:nowrap;">
+                style="font-size:0.71875rem; font-weight:800; padding:5px 11px; white-space:nowrap;">
             + New 6-Month Cycle
         </button>
         """
@@ -521,7 +565,7 @@ def render_cycle_context_bar(
     if current_view != cycles_view:
         cycles_nav_btn = f"""
         <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('{nav_action}', '{cycles_view}')"
-                style="font-size:11.5px; font-weight:700; padding:5px 11px; white-space:nowrap; color:var(--deep-frozen-midnight);">
+                style="font-size:0.71875rem; font-weight:700; padding:5px 11px; white-space:nowrap; color:var(--deep-frozen-midnight);">
             {escape(cycles_btn_label)} &rarr;
         </button>
         """
@@ -529,19 +573,19 @@ def render_cycle_context_bar(
     return f"""
     <div id="starapp-cycle-topbar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:10px 16px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.82) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 3px 12px rgba(7,22,41,0.04);">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:800; color:var(--deep-frozen-midnight);">
+            <span style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight);">
                 {get_icon("calendar", 14)}
                 <span>{escape(c_name)}</span>
             </span>
-            <span style="font-family:var(--font-family-mono); font-size:11.5px; font-weight:700; color:var(--frost-navy-50);">
+            <span style="font-family:var(--font-family-mono); font-size:0.71875rem; font-weight:700; color:var(--frost-navy-50);">
                 {escape(c_start)} &rarr; {escape(c_end)}
             </span>
             {status_badge}
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <label for="topbar-cycle-select" style="font-size:11px; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.4px;">Cycle:</label>
+            <label for="topbar-cycle-select" style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.4px;">Cycle:</label>
             <select id="topbar-cycle-select" class="liquid-glass-control liquid-glass-select"
-                    style="font-size:12px; font-weight:700; padding:4px 10px; min-width:250px; height:32px;"
+                    style="font-size:0.75rem; font-weight:700; padding:4px 10px; min-width:250px; height:32px;"
                     onchange="window.StarAppBridge.dispatchAction('select_cycle', this.value)">
                 {"".join(opts)}
             </select>
@@ -584,16 +628,16 @@ def render_sidebar_cycle_pill(
         <div class="band-switcher-mini" title="Switch Cycle Filter: {escape(c_name)} ({escape(c_start)} to {escape(c_end)})">
             <button type="button"
                     onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
-                    style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:rgba(255,255,255,0.92); border:1.5px solid {dot_color}; color:var(--frost-navy); padding:3px 7px; border-radius:999px; cursor:pointer;"
+                    style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:800; background:rgba(255,255,255,0.92); border:1.5px solid {dot_color}; color:var(--frost-navy); padding:3px 7px; border-radius:999px; cursor:pointer;"
                     aria-label="Switch Cycle Filter">{short_code[:6]}</button>
         </div>
         <div class="band-switcher-content">
             <button type="button"
                     onclick="window.StarAppBridge.dispatchAction('{escape(nav_action)}', '{escape(choose_cycle_view)}')"
                     title="Switch Cycle Filter: {escape(c_name)}"
-                    style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.92); border:1px solid rgba(157,183,213,0.55); color:var(--frost-navy); font-size:11.5px; font-weight:800; cursor:pointer;">
+                    style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,0.92); border:1px solid rgba(157,183,213,0.55); color:var(--frost-navy); font-size:0.71875rem; font-weight:800; cursor:pointer;">
                 <span style="overflow:hidden; text-overflow:ellipsis;">{escape(c_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:10px; font-weight:800; background:{dot_color}; color:#fff; padding:1px 7px; border-radius:999px; flex-shrink:0;">{st_lbl}</span>
+                <span style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:800; background:{dot_color}; color:#fff; padding:1px 7px; border-radius:999px; flex-shrink:0;">{st_lbl}</span>
             </button>
         </div>
     </div>
@@ -627,10 +671,10 @@ def render_topbar(
             </button>
 
             <div style="display:flex; align-items:center; gap:10px; padding-left:8px; border-left:1px solid var(--icy-steel-30);">
-                <div class="user-avatar" style="width:34px; height:34px; font-size:12px;">{escape(current_user.avatar)}</div>
+                <div class="user-avatar" style="width:34px; height:34px; font-size:0.75rem;">{escape(current_user.avatar)}</div>
                 <div style="line-height:1.2;">
-                    <div style="font-size:13.5px; font-weight:700; color:var(--frost-navy);">{escape(current_user.name)}</div>
-                    <div style="font-size:11.5px; text-transform:uppercase; color:var(--deep-frozen-midnight); font-weight:700;">{escape(current_user.role)}</div>
+                    <div style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy);">{escape(current_user.name)}</div>
+                    <div style="font-size:0.71875rem; text-transform:uppercase; color:var(--deep-frozen-midnight); font-weight:700;">{escape(current_user.role)}</div>
                 </div>
             </div>
 
@@ -639,7 +683,7 @@ def render_topbar(
             </button>
 
             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')"
-                    style="font-size:12.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border-radius:var(--radius-sm); color:var(--frost-navy);"
+                    style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:6px 14px; border-radius:var(--radius-sm); color:var(--frost-navy);"
                     title="Go back to previous screen">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6"></polyline>
@@ -651,13 +695,52 @@ def render_topbar(
     """
 
 
-def render_global_back_bar() -> str:
-    """Renders the universal top-right Back strip for every workspace screen."""
-    return """
+# Views whose own page heading (first <h1>/<h2>) is shown in the Back-button row instead of inside the page.
+# Hero-style pages (dashboards, profile, cycle cards, band picker, roadmaps) keep their designed headers.
+TITLE_HOIST_VIEWS = frozenset({
+    "g_badge_approval", "g_mapping", "g_reviews", "g_materials", "g_extensions", "g_announcements", "g_activity",
+    "c_submission", "c_results", "c_materials", "c_announcements", "c_extensions", "c_activity",
+    "c_requests", "c_badge_reviews", "c_assessments", "g_mapping_badge_detail",
+})
+
+_PAGE_HEADING_RE = re.compile(r"<(h1|h2)\b([^>]*)>(.*?)</\1>", re.S | re.I)
+
+
+def hoist_page_title(main_html: str, max_offset: int = 1600):
+    """
+    Finds the page's own heading (first <h1>/<h2> near the top) and returns (html, title_text).
+    The heading stays in the DOM, visually hidden (`app-title-hoisted`), so the document keeps its heading
+    structure for assistive tech; the visible copy is rendered in the Back-button row by `render_global_back_bar`.
+    Returns the HTML unchanged and an empty title when there is no suitable heading.
+    """
+    m = _PAGE_HEADING_RE.search(main_html or "")
+    if not m or m.start() > max_offset:
+        return main_html, ""
+    text = html.unescape(re.sub(r"<[^>]+>", " ", m.group(3)))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return main_html, ""
+    attrs = m.group(2)
+    if 'class="' in attrs:
+        attrs = attrs.replace('class="', 'class="app-title-hoisted ', 1)
+    else:
+        attrs = attrs + ' class="app-title-hoisted"'
+    new_tag = f"<{m.group(1)}{attrs}>{m.group(3)}</{m.group(1)}>"
+    return main_html[:m.start()] + new_tag + main_html[m.end():], text
+
+
+def render_global_back_bar(title: str = "") -> str:
+    """Universal top strip: the page title (when the view provides one) on the left, the Back button on the right."""
+    title_html = (
+        f'<div class="app-strip-title" aria-hidden="true" title="{html.escape(title, quote=True)}">{html.escape(title)}</div>'
+        if title else ""
+    )
+    return f"""
     <div class="app-back-strip">
+        {title_html}
         <div class="topbar-right">
             <button type="button" class="btn-secondary btn-sm app-global-back-btn"
-                    onclick="window.StarAppBridge.dispatchAction('go_back', '{}')"
+                    onclick="window.StarAppBridge.dispatchAction('go_back', '{{}}')"
                     title="Go back to previous page">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="15 18 9 12 15 6"></polyline>
@@ -732,8 +815,8 @@ def render_learning_materials_view(
     # Type button styling helper
     def get_btn_style(is_active: bool) -> str:
         if is_active:
-            return "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; box-shadow:0 2px 8px rgba(23,52,92,0.3); display:inline-flex; align-items:center; gap:6px;"
-        return "background:transparent; color:var(--deep-frozen-midnight); font-weight:700; border-radius:var(--radius-sm); padding:7px 16px; font-size:12.5px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; opacity:0.85;"
+            return "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-radius:var(--radius-sm); padding:7px 16px; font-size:0.78125rem; border:none; cursor:pointer; box-shadow:0 2px 8px rgba(23,52,92,0.3); display:inline-flex; align-items:center; gap:6px;"
+        return "background:transparent; color:var(--deep-frozen-midnight); font-weight:700; border-radius:var(--radius-sm); padding:7px 16px; font-size:0.78125rem; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; opacity:0.85;"
 
     btn_all_style = get_btn_style(selected_type_filter == "all")
     btn_pdf_style = get_btn_style(selected_type_filter == "pdf")
@@ -745,7 +828,7 @@ def render_learning_materials_view(
     header_action_html = ""
     if is_guardian:
         header_action_html = """
-        <button type="button" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:12.5px; padding:8px 16px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
+        <button type="button" class="btn-metal" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:0.78125rem; padding:8px 16px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             + Upload Learning Materials
         </button>
@@ -768,12 +851,12 @@ def render_learning_materials_view(
         for m in b_mats:
             if m.material_type == "pdf":
                 type_pill = """
-                <span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--icy-steel-50); display:inline-flex; align-items:center; gap:5px;">
+                <span style="background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); font-size:0.65625rem; font-weight:800; border:1px solid var(--icy-steel-50); display:inline-flex; align-items:center; gap:5px;">
                     <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     PDF DOCUMENT
                 </span>
                 """
-                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; Clickable PDF</span>'
+                read_indicator = '<span style="font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&bull; Clickable PDF</span>'
                 pdf_src = m.url_or_data.replace(' ', '%20') if (m.url_or_data and not m.url_or_data.startswith('http') and not m.url_or_data.startswith('data:')) else (m.url_or_data or 'data/Chemistry%20Syllabus.pdf')
                 media_viewer_html = f"""
                 <div class="media-pdf-box" style="cursor:pointer; position:relative;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{m.id}');" title="Click to open and read PDF in large window">
@@ -781,7 +864,7 @@ def render_learning_materials_view(
                         <iframe src="{escape(pdf_src)}" title="{escape(m.title)}" style="pointer-events:none; width:100%; height:100%;"></iframe>
                     </object>
                     <div style="position:absolute; inset:0; z-index:10; cursor:pointer; background:rgba(7,22,41,0.03); display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px; transition:background 0.2s ease;">
-                        <span style="font-size:11px; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(255,255,255,0.95); padding:5px 12px; border-radius:20px; box-shadow:0 2px 8px rgba(7,22,41,0.18); border:1px solid var(--icy-steel-50); display:flex; align-items:center; gap:5px; cursor:pointer;">
+                        <span style="font-size:0.6875rem; font-weight:800; color:var(--deep-frozen-midnight); background:rgba(255,255,255,0.95); padding:5px 12px; border-radius:20px; box-shadow:0 2px 8px rgba(7,22,41,0.18); border:1px solid var(--icy-steel-50); display:flex; align-items:center; gap:5px; cursor:pointer;">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Click to Read in Large Window
                         </span>
                     </div>
@@ -789,12 +872,12 @@ def render_learning_materials_view(
                 """
             else:
                 type_pill = """
-                <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); font-size:10.5px; font-weight:800; border:1px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(23,52,92,0.2);">
+                <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs); font-size:0.65625rem; font-weight:800; border:1px solid var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:5px; box-shadow:0 1px 3px rgba(23,52,92,0.2);">
                     <svg viewBox="0 0 24 24" style="width:12px; height:12px;" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     YOUTUBE VIDEO
                 </span>
                 """
-                read_indicator = '<span style="font-size:11px; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&#9654; In-Container Player</span>'
+                read_indicator = '<span style="font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight); display:inline-flex; align-items:center; gap:4px;">&#9654; In-Container Player</span>'
                 vid = extract_youtube_video_id(m.url_or_data)
                 embed_src = f"https://www.youtube.com/embed/{vid}"
                 media_viewer_html = f"""
@@ -807,11 +890,11 @@ def render_learning_materials_view(
             guardian_actions = ""
             if is_guardian:
                 guardian_actions = f"""
-                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('open_edit_material_modal', '{m.id}')">
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('open_edit_material_modal', '{m.id}')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     Edit
                 </button>
-                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:11.5px; font-weight:700; color:#d9534f; display:inline-flex; align-items:center; gap:4px;" onclick="if(confirm('Are you sure you want to delete this learning material?')) window.StarAppBridge.dispatchAction('delete_material', '{m.id}')">
+                <button type="button" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.71875rem; font-weight:700; color:#d9534f; display:inline-flex; align-items:center; gap:4px;" onclick="if(confirm('Are you sure you want to delete this learning material?')) window.StarAppBridge.dispatchAction('delete_material', '{m.id}')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     Delete
                 </button>
@@ -822,10 +905,10 @@ def render_learning_materials_view(
                 <div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                         {type_pill}
-                        <span style="font-size:10.5px; font-weight:700; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">{escape(m.topic)}</span>
+                        <span style="font-size:0.65625rem; font-weight:700; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">{escape(m.topic)}</span>
                     </div>
-                    <h4 style="font-size:13.5px; font-weight:800; color:var(--frost-navy); margin:4px 0 2px 0; line-height:1.35; height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.title)}">{escape(m.title)}</h4>
-                    <p style="font-size:11.5px; color:var(--frost-navy-75); line-height:1.4; margin:0 0 6px 0; height:32px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.description)}">{escape(m.description)}</p>
+                    <h4 style="font-size:0.84375rem; font-weight:800; color:var(--frost-navy); margin:4px 0 2px 0; line-height:1.35; height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.title)}">{escape(m.title)}</h4>
+                    <p style="font-size:0.71875rem; color:var(--frost-navy-75); line-height:1.4; margin:0 0 6px 0; height:32px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="{escape(m.description)}">{escape(m.description)}</p>
 
                     {media_viewer_html}
                 </div>
@@ -833,7 +916,7 @@ def render_learning_materials_view(
                 <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid var(--icy-steel-30); margin-top:4px; flex-wrap:wrap; gap:6px;">
                     {read_indicator}
                     <div style="display:flex; align-items:center; gap:6px;">
-                        <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:11.5px; font-weight:700; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{m.id}')" title="Open document/video in large view">
+                        <button type="button" class="btn-metal btn-sm" style="padding:4px 10px; font-size:0.71875rem; font-weight:700; display:inline-flex; align-items:center; gap:5px;" onclick="window.StarAppBridge.dispatchAction('view_material_preview', '{m.id}')" title="Open document/video in large view">
                             {get_icon("file_text" if m.material_type == "pdf" else "play", 12)} Theater View (Large Reader) &rarr;
                         </button>
                         {guardian_actions}
@@ -857,12 +940,12 @@ def render_learning_materials_view(
         <div class="badge-resource-section" style="background:#FFFFFF; border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-md); padding:18px 20px; margin-bottom:24px; box-shadow:0 4px 16px rgba(7,22,41,0.04);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; padding-bottom:12px; border-bottom:1.5px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-family:var(--font-family-mono); font-size:12.5px; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs); letter-spacing:0.5px;">{escape(b.code)}</span>
+                    <span style="font-family:var(--font-family-mono); font-size:0.78125rem; font-weight:800; color:var(--snow-white); background:var(--deep-frozen-midnight); padding:3px 10px; border-radius:var(--radius-xs); letter-spacing:0.5px;">{escape(b.code)}</span>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">{escape(b.title)}</h3>
-                    <span style="font-size:11px; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{escape(b.category)}</span>
+                    <span style="font-size:0.6875rem; color:var(--frost-navy-50); background:rgba(23,52,92,0.06); padding:2px 7px; border-radius:var(--radius-xs); font-weight:600;">{escape(b.category)}</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11.5px; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:3px 10px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
+                    <span style="font-size:0.71875rem; font-weight:700; color:var(--deep-frozen-midnight); background:rgba(234,244,255,0.9); padding:3px 10px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-50);">
                         {len(b_mats)} Available {"Resource" if len(b_mats) == 1 else "Resources"}
                     </span>
                 </div>
@@ -881,8 +964,8 @@ def render_learning_materials_view(
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                 </div>
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Learning Materials Published Yet</h3>
-                <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:480px; margin:0 auto 20px;">Upload curriculum syllabi, engineering whitepapers, and embedded YouTube video lectures for your Cosmonauts.</p>
-                <button type="button" class="btn-metal" style="font-weight:800; font-size:13px; padding:10px 20px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
+                <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:480px; margin:0 auto 20px;">Upload curriculum syllabi, engineering whitepapers, and embedded YouTube video lectures for your Cosmonauts.</p>
+                <button type="button" class="btn-metal" style="font-weight:800; font-size:0.8125rem; padding:10px 20px;" onclick="window.StarAppBridge.dispatchAction('open_add_material_modal', '{}')">
                     + Upload Learning Materials
                 </button>
             </div>
@@ -894,14 +977,14 @@ def render_learning_materials_view(
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                 </div>
                 <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Learning Materials Available</h3>
-                <p style="font-size:13.5px; color:var(--frost-navy-50); max-width:480px; margin:0 auto;">Your Training Guardian will publish milestone specifications, PDF handbooks, and video lectures here.</p>
+                <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:480px; margin:0 auto;">Your Training Guardian will publish milestone specifications, PDF handbooks, and video lectures here.</p>
             </div>
             """
     elif not badge_sections:
         content_body = """
         <div class="badge-resource-section" style="padding:48px 24px; text-align:center; color:var(--frost-navy-50); background:#FFFFFF; border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-md);">
-            <p style="font-size:15px; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">No learning resources matched your filter criteria.</p>
-            <p style="font-size:13px; margin:0;">Try selecting "All Milestone Badges" or toggling the format filter to All.</p>
+            <p style="font-size:0.9375rem; font-weight:700; color:var(--deep-frozen-midnight); margin-bottom:6px;">No learning resources matched your filter criteria.</p>
+            <p style="font-size:0.8125rem; margin:0;">Try selecting "All Milestone Badges" or toggling the format filter to All.</p>
         </div>
         """
     else:
@@ -913,7 +996,7 @@ def render_learning_materials_view(
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
             <div>
                 <h2 style="font-size:1.45rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">{header_title}</h2>
-                <p style="font-size:13px; color:var(--frost-navy-50); margin:0;">{header_desc}</p>
+                <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0;">{header_desc}</p>
             </div>
             {header_action_html}
         </div>
@@ -921,8 +1004,8 @@ def render_learning_materials_view(
         <!-- Filter Controls Bar -->
         <div class="liquid-glass-card" style="padding:14px 18px; margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
             <div style="display:flex; align-items:center; gap:10px;">
-                <label for="materials-badge-filter-select" style="font-size:12px; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Milestone:</label>
-                <select id="materials-badge-filter-select" class="liquid-glass-control liquid-glass-select" style="font-size:12.5px; font-weight:700; padding:6px 12px; min-width:260px;" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value)">
+                <label for="materials-badge-filter-select" style="font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight); text-transform:uppercase; letter-spacing:0.5px;">Filter by Milestone:</label>
+                <select id="materials-badge-filter-select" class="liquid-glass-control liquid-glass-select" style="font-size:0.78125rem; font-weight:700; padding:6px 12px; min-width:260px;" onchange="window.StarAppBridge.dispatchAction('filter_materials_badge', this.value)">
                     {"".join(badge_opts)}
                 </select>
             </div>

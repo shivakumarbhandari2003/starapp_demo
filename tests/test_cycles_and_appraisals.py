@@ -364,8 +364,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
 
         self.ctrl.handle_event("nav_guardian", "g_badge_approval")
         self.assertIn("Python &amp; Backend API Foundations", self.ctrl.render())
-        self.ctrl.handle_event("select_create_badge_band", "")
-        self.ctrl.handle_event("filter_badge_approval_band", "all")
+        self.ctrl.handle_event("select_create_badge_band", "")      # no active band -> the queue lists every band
         self.ctrl.handle_event("nav_guardian", "g_badge_approval")
         ba_c0 = self.ctrl.render()
         self.assertIn("Zero-Trust Service Mesh Proposal", ba_c0)
@@ -376,8 +375,8 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
 
         self.ctrl.handle_event("nav_guardian", "g_allotment")
         al_c0 = self.ctrl.render()
-        self.assertIn("C0-B1-PY-01", al_c0)
-        self.assertIn("C0-B2-SEC-02", al_c0)
+        self.assertIn("Python &amp; Backend API Foundations", al_c0)      # cards are identified by badge name (the code chip was removed)
+        self.assertIn("Zero-Trust Service Mesh Proposal", al_c0)
 
         self.ctrl.handle_event("nav_guardian", "g_reviews")
         rv_c0 = self.ctrl.render()

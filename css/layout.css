@@ -75,15 +75,47 @@ body::before {
   transform: translateZ(0);
 }
 
-/* Reserve fixed 72px rail in flow so hovering sidebar never reflows .app-main */
+/* The 72px rail is reserved in flow. When the sidebar expands (hover or pinned) the main area SHRINKS with it
+   (margin-left + width follow the sidebar width) instead of being covered. Same easing/duration as the sidebar
+   so both edges move together; only margin/width are animated (no per-frame style churn elsewhere). */
 .app-sidebar:not(.band-selection-hidden) + .app-main {
   margin-left: 72px;
   width: calc(100% - 72px);
+  transition: margin-left 0.16s cubic-bezier(0.2, 0, 0, 1),
+              width 0.16s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .app-sidebar.pinned-expanded:not(.band-selection-hidden) + .app-main {
   margin-left: 256px;
   width: calc(100% - 256px);
+}
+
+/* Hover push. A short delay on ENTER (hover-intent) stops a mouse that merely sweeps across the rail from
+   re-flowing the whole page; collapsing back is immediate. */
+.app-sidebar:hover:not(.band-selection-hidden) + .app-main {
+  margin-left: 256px;
+  width: calc(100% - 256px);
+  transition-delay: 90ms;
+}
+
+.app-sidebar:hover:not(.band-selection-hidden) {
+  transition-delay: 90ms;
+}
+
+/* Narrow desktops / small tablets: squeezing the page would leave too little room, so the expanded sidebar
+   overlays the content again (rail stays reserved). Phones use the stacked top-bar layout (responsive.css). */
+@media (max-width: 1100px) {
+  .app-sidebar:hover:not(.band-selection-hidden):not(.pinned-expanded) + .app-main {
+    margin-left: 72px;
+    width: calc(100% - 72px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-sidebar:not(.band-selection-hidden) + .app-main {
+    transition: none;
+  }
 }
 
 /* Hidden sidebar state for the 6 Bands Selection Landing Page */
@@ -101,7 +133,7 @@ body::before {
   width: 72px;
 }
 
-/* Hover expansion overlays smoothly without pushing main content; pinned shifts margin cleanly */
+/* Expanded width (hover or pinned); the main area follows it, see the rules above */
 .app-sidebar:hover,
 .app-sidebar.collapsed:hover,
 .app-sidebar.pinned-expanded {
@@ -120,6 +152,30 @@ body::before {
   border-bottom: 1px solid rgba(157, 183, 213, 0.32);
   overflow: hidden;
   gap: 8px;
+}
+
+/* Guardian sidebar header: just the band this workspace belongs to, top-left */
+.sidebar-header.is-empty {
+  display: none;
+}
+
+.sidebar-band-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 34px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--deep-frozen-midnight);
+  color: #ffffff;
+  font-family: var(--font-family-mono);
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(23, 52, 92, 0.22);
 }
 
 .brand-text-wrap {
@@ -168,7 +224,7 @@ body::before {
 .brand-subtitle {
   height: 14px;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 0.625rem;
   color: var(--deep-frozen-midnight);
   font-weight: 800;
   text-transform: uppercase;
@@ -217,7 +273,7 @@ body::before {
 }
 
 .role-badge-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.6px;
   color: var(--frost-navy);
@@ -225,7 +281,7 @@ body::before {
 }
 
 .role-badge-val {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--snow-white);
   font-weight: 700;
   background: var(--deep-frozen-midnight);
@@ -301,7 +357,7 @@ body::before {
   padding: 0 15px;
   color: var(--frost-navy);
   text-decoration: none;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   font-weight: 700;
   border-radius: 10px;
   border: 1px solid transparent;
@@ -357,7 +413,7 @@ body::before {
 }
 
 .nav-badge {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 800;
   padding: 2px 7px;
   border-radius: var(--radius-full);
@@ -381,7 +437,8 @@ body::before {
   opacity: 1;
 }
 
-/* Sidebar footer: "View Profile" nav-link pinned at the bottom + user card (fixed slot, never shifts nav items) */
+/* Sidebar footer: "View Profile" nav-link pinned at the bottom + user card (fixed slot, never shifts nav items).
+   The profile card keeps real padding on every side so the Sign Out button's border is never clipped. */
 .sidebar-footer {
   display: flex;
   flex-direction: column;
@@ -389,7 +446,8 @@ body::before {
   height: 164px;
   min-height: 164px;
   flex-shrink: 0;
-  padding: 10px;
+  padding: 12px 12px 16px;
+  box-sizing: border-box;
   border-top: 1px solid rgba(157, 183, 213, 0.32);
   background: rgba(236, 245, 255, 0.72);
   overflow: hidden;
@@ -410,13 +468,14 @@ body::before {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-height: 0;
-  padding: 10px 12px;
+  padding: 12px 14px 14px;
+  box-sizing: border-box;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.9);
-  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  border: 1.5px solid rgba(157, 183, 213, 0.45);
   box-shadow: 0 4px 12px rgba(7, 22, 41, 0.06);
   opacity: 0;
   pointer-events: none;
@@ -462,7 +521,7 @@ body::before {
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 800;
   color: var(--frost-navy);
   overflow: hidden;
@@ -470,7 +529,7 @@ body::before {
 }
 
 .user-role-text {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 600;
   color: var(--frost-navy);
   opacity: 0.78;
@@ -480,12 +539,14 @@ body::before {
 
 .lg-sidebar-signout-btn {
   width: 100%;
-  padding: 6px 10px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 7px 10px;
   border-radius: 8px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(232, 243, 255, 0.9) 100%);
   border: 1.5px solid rgba(157, 183, 213, 0.65);
   color: var(--frost-navy);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 800;
   cursor: pointer;
   text-align: center;
@@ -598,7 +659,7 @@ body::before {
   right: -4px;
   background: var(--deep-frozen-midnight);
   color: var(--snow-white);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: var(--font-weight-bold);
   width: 18px;
   height: 18px;
@@ -686,7 +747,7 @@ body::before {
 .modal-close-btn {
   background: transparent;
   border: none;
-  font-size: 24px;
+  font-size: 1.5rem;
   line-height: 1;
   color: var(--frost-navy-50);
   cursor: pointer;

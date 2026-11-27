@@ -89,11 +89,11 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | `starapp/pagination.py` | server-side list pagination |
 | `starapp/repositories/` | small per-aggregate repository helpers |
 | `starapp/seed_data.py`, `mapping_data.py`, `previous_cycle_seed.py` | seed catalogues/users and the closed previous cycle |
-| `js/bridge.js` | browser bridge: dispatch, region patching (`updateRegions`), sidebar signature, modals |
+| `js/bridge.js` | browser bridge: dispatch, region patching (`updateRegions`), sidebar signature, modals, 24 h countdown ticker, glass date picker, Edit-Badge assignee helpers, decision list |
 | `js/api.js` | REST client `window.StarAppAPI` |
 | `js/starapp_bundle.js` | **generated** offline Pyodide bundle (`scripts/pack_py.py`) — don't hand-edit |
-| `css/` | design tokens + liquid-glass styles |
-| `tests/` | 215 tests; always via `tests/run_tests.py` |
-| `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py` |
+| `css/` | design tokens (incl. the `--type-*` rem scale) + liquid-glass styles; versioned `?v=N` in `index.html`/`sw.js` |
+| `tests/` | 264 tests; always via `tests/run_tests.py` |
+| `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py`, **`e2e_guardian_logic.py`**, **`e2e_guardian_browser.py`** (+ `_miniws.py`, a stdlib websocket client for Chrome DevTools) |
 | `ER diagram/`, `Star Registry Schema.html` | standalone schema viewers |
 | `data/starapp.db` | **the** database (tracked) |

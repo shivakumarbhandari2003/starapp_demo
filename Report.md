@@ -41,7 +41,7 @@ Unlike a traditional SPA tied to one runtime, StarApp uses a **server-first Fast
 | **Generative AI** | **Google Gemini REST API** (`gemini-1.5-flash:generateContent`) via `urllib.request` | Server-side curriculum badge JSON synthesis (`/api/v1/integrations/gemini/generate-badge`), reviewer project brief generation (`/generate-project`), mentor chat (`/mentor-chat`), plus deterministic fallback in `starapp/badge_generator.py`. |
 | **Frontend Markup & UI** | **HTML5 + Vanilla CSS3 Design System** (5 modular stylesheets, 7,178 CSS lines total) | Server/controller-rendered HTML templates styled via 5 strict palette tokens (`design_tokens.css`), frosted glassmorphism (`liquid_glass.css`), app shell (`layout.css`), KPI/rubric/roadmap widgets (`components.css`), and breakpoints (`responsive.css`). Zero CSS framework dependencies; inline SVG vector icons (`ICON_SVGS`). |
 | **Frontend Logic & Sync** | **Vanilla ES6 JavaScript** (`js/api.js`, `js/bridge.js`) | Typed REST client (`window.StarAppAPI`), incremental **3-region DOM patcher** (`updateRegions`), focus/scroll preservation, cross-tab `BroadcastChannel("starapp_cross_window_sync")`, IndexedDB (`StarAppLocalDB_v9`), custom interactive 6-month cycle calendar widget, and `FileReader` Base64/text deliverable uploads. |
-| **Offline / Client Python Runtime** | **Pyodide v0.26.2** (WebAssembly, CDN) + **Service Worker** (`sw.js`) | Fallback browser Python VM running `starapp/` + WASM `sqlite3`; `sw.js` caches static assets (`starapp-runtime-cache-v16`) and Pyodide runtime (`starapp-pyodide-v0.26.2`) in standalone static mode (auto-unregistered when `FASTAPI_ACTIVE = true`). |
+| **Offline / Client Python Runtime** | **Pyodide v0.26.2** (WebAssembly, CDN) + **Service Worker** (`sw.js`) | Fallback browser Python VM running `starapp/` + WASM `sqlite3`; `sw.js` caches static assets (`starapp-runtime-cache-v18`) and Pyodide runtime (`starapp-pyodide-v0.26.2`) in standalone static mode (auto-unregistered when `FASTAPI_ACTIVE = true`). |
 | **Testing & Tooling** | **`unittest`**, **`httpx`** (`>=0.28.0`), Starlette `TestClient` | 27 test modules under `tests/` (`137` discovered test cases in `tests/run_tests.py`) plus E2E verification, bundle packing, and DB reset/seeding utilities in `scripts/`. |
 
 ---
@@ -50,8 +50,8 @@ Unlike a traditional SPA tied to one runtime, StarApp uses a **server-first Fast
 
 ### Root Entrypoints & Config
 - [`serve.py`](serve.py) — Local production launcher starting `uvicorn` (`backend.app.main:app` on `127.0.0.1:8000` with reload), falling back to `http.server` if Uvicorn is unavailable.
-- [`index.html`](index.html) — Main HTML shell linking CSS (`v=23`), `js/api.js`, `js/bridge.js`, SSR-injected initial login screen (`STARAPP_INITIAL_ROOT_START/END`), FastAPI `/api/v1/dispatch` boot flow, and Pyodide v0.26.2 offline fallback loader.
-- [`sw.js`](sw.js) — Service Worker (`starapp-runtime-cache-v16`, `starapp-pyodide-v0.26.2`); caches CDN Pyodide binaries cache-first and local static assets network-first for standalone mode.
+- [`index.html`](index.html) — Main HTML shell linking CSS (`v=56`), `js/api.js`, `js/bridge.js`, SSR-injected initial login screen (`STARAPP_INITIAL_ROOT_START/END`), FastAPI `/api/v1/dispatch` boot flow, and Pyodide v0.26.2 offline fallback loader.
+- [`sw.js`](sw.js) — Service Worker (`starapp-runtime-cache-v18`, `starapp-pyodide-v0.26.2`); caches CDN Pyodide binaries cache-first and local static assets network-first for standalone mode.
 - [`requirements.txt`](requirements.txt), [`.env.example`](.env.example), [`.gitignore`](.gitignore), [`README.md`](README.md).
 
 ### FastAPI Backend Package (`backend/app/`)

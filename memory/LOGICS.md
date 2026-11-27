@@ -1,7 +1,7 @@
 # Logics — how the important mechanisms work (and why)
 
 Each entry: **what / how / why / where**. Use it to avoid re-inventing (or accidentally undoing) the optimisations from Stage 1 and 2.
-Short "previous → new → reason" history: [WORK_DONE_AND_STATUS.md](WORK_DONE_AND_STATUS.md) (the long Stage 1/2 log was deleted from the working tree; recover it with `git show d7706a9:STARAPP_STAGE1_LOGIC_OPTIMIZATION_LOG.md`).
+Full "previous → new → reason" history: [WORK_DONE_AND_STATUS.md §6](WORK_DONE_AND_STATUS.md#6-change-log-append-here).
 
 ## A. Data layer & caching
 
@@ -72,7 +72,7 @@ Synthetic DB with **3,038 users** (scratch tooling, not in repo), real server, P
 | `c_dashboard` | 68 s (9.8 MB) | ~200 ms (92 KB) |
 | Avg cadet page | 48 ms | 8.7 ms |
 | Throughput (60 concurrent users) | 18 req/s | 66–74 req/s, p50 ≈ 0.6 s, 0 errors |
-| Test suite | 149 tests ≈ 32 s | 215 tests ≈ 22 s |
+| Test suite | 149 tests ≈ 32 s | 264 tests ≈ 29 s |
 
 Reproduce the idea (scratch scripts were not committed): build a DB by cloning users/enrollments to ~3,000, start `uvicorn` against it via
 `DATABASE_URL`/`STARAPP_DB_PATH`, time each view with `StarAppController().handle_event("select_demo_account", uid)` + `ctrl.current_view = …; ctrl.render()`.
@@ -83,3 +83,20 @@ Reproduce the idea (scratch scripts were not committed): build a DB by cloning u
 * `starapp/` is imported by the server **and** shipped to the browser (Pyodide). Avoid server-only imports in `starapp/` modules that the bundle needs.
 * Tests call `store.reset_to_seed()`; that is why the runner isolates the DB. Don't write tests that assume the real DB's current contents.
 * REST service layer ≠ controller rules (smaller duplicate). When a rule changes, change the controller and check the REST service.
+
+## H. Guardian workflow & UI logic added in Stage 3 (2026-11-27)
+
+| # | Mechanism | How it works | Where |
+|:-:|:---|:---|:---|
+| H1 | **24 h request window** | `expires_at` stamped on send; a sweep at the start of every `handle_event` auto-declines overdue pending requests (flag `expired`), notifies both sides, logs an activity; accept after expiry is refused; resend reopens. Browser countdown is display-only (server renders seconds-left, ticker counts down, calls `sync_mapping_requests` at 0). | `storage.py` (`expire_overdue_mapping_requests`, `resend_mapping_request`, `mapping_request_seconds_left`), `app.py`, `views_common.render_request_timer`, `bridge.js` |
+| H2 | **Edit Badge = allotment only** | Existing badge ⇒ only assigned cosmonauts + reviewer assignment + timeline change; everything else is preserved server-side. Reviewer must already be mapped to the badge, new cosmonaut must match the badge band, one reviewer per cosmonaut, ≥ 1 cosmonaut, ISO dates, end ≥ start, cannot remove a cosmonaut who already submitted. Writes: badge row, `band_mappings`, `badge_timelines` (+`reviewer_id`, `review_window_json`), reviewer request `cosmonaut_ids`, notification. | `app.py::_save_badge_allotment_edit`, `views_guardian.render_badge_edit_assignees` |
+| H3 | **Read-only Timeline & Mapping** | The modal only reads the saved badge/mappings, so it always reflects the last Edit (new dates, added cosmonaut under "Not mapped to a reviewer yet", removed ones gone). | `views_guardian.render_badge_timeline_mapping_modal` |
+| H4 | **Review calendar** | Real month grid + one dropdown row (month, year, 3/5/7/Manual). Gap mode fills N consecutive working days from the clicked day; Manual toggles single working days. Saved on every click. | `views_guardian.render_mapping_calendar_modal`, `app.py` (`select_mapping_review_anchor`, `set_mapping_review_mode`) |
+| H5 | **Glass date picker** | Hidden ISO input (what forms/server read) + `.gd-btn` that opens a frosted popover; disables days before a linked start, pushes a linked end forward. | `bridge.js`, `liquid_glass.css` |
+| H6 | **Attempts accordion** | Assessment cosmonaut page: one `<details>` row per attempt (newest open) with reviewer + guardian score meters and the pass-mark tick. | `views_guardian` (cosmonaut branch of `render_guardian_review_detail`) |
+| H7 | **Marks sheet fits without scrolling** | `.review-rubric-body-fit` is `overflow:hidden`; rows/gaps/decision buttons use `clamp(..vh)`; the three feedback boxes share the remaining height. Fallback for < 1080 px wide or < 700 px tall unlocks scrolling (`responsive.css`). | `components.css`, `responsive.css` |
+| H8 | **Pixel-exact tree connectors** | Whole-pixel gaps (media queries, no vw maths), solid colours, elbow/dot/line share one `<div>` reference box, offsets from the card top. | `components.css` (`.asm-*`) |
+| H9 | **Page titles in the Back row** | `TITLE_HOIST_VIEWS` (now also `g_mapping_badge_detail`). | `views_common.py` |
+| H10 | **Verification harness** | `scripts/e2e_guardian_logic.py` (controller + SQLite file re-reads) and `scripts/e2e_guardian_browser.py` (live server + headless Chrome, real clicks, console-error capture). | `scripts/` |
+
+Sharp edges found while building this: `INSERT OR REPLACE` is still used by `add_mapping_request` / `save_timeline` / `save_band_mapping` (their tables have no cascade children today - keep it that way or convert to UPSERT); `activity_events.actor_id` must reference a real user (system events use `guardian_1`); card heights are fractional (76.375 px) so never position decorations with `%` of height.

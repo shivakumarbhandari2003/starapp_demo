@@ -23,18 +23,24 @@ Action names in `monospace` are controller actions you can grep.
 ┌─ GUARDIAN ───────────────────────────────────────────────────────────────────────────────┐
 │ 3. MAP    g_mapping  : choose band → badge → cadets (that band) → reviewers (higher band)  │
 │    + review window/anchor on the calendar        save_band_mapping → band_mappings          │
-│    send_mapping_requests ──► mapping_requests(status=pending) + notification to reviewers   │
+│    send_mapping_requests ──► mapping_requests(status=pending, expires_at = +24 h)           │
+│    + notification to reviewers; Guardian and reviewer both see a live countdown             │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ PROJECT REVIEWER ───────────────────────────────────────────────────────────────────────┐
 │ 4. ACCEPT / DECLINE invitation   c_requests                                                 │
 │        accept_mapping_request → mapping_requests.status = "accepted" (guardian notified)    │
 │        reject_mapping_request → "rejected"                                                  │
-│    (only the addressed reviewer or a guardian may act)                                      │
+│    (only the addressed reviewer or a guardian may act) · NO answer within 24 h ⇒ the request │
+│    auto-becomes "rejected" + expired (both notified); late accept refused; the Guardian can  │
+│    resend_mapping_request (fresh 24 h window)                                               │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ GUARDIAN ───────────────────────────────────────────────────────────────────────────────┐
-│ 5. ALLOT  g_allotment / g_badge_allotment   save_allotment_timeline,                        │
+│ 5. ALLOT  g_allotment: cards (3 per row) → Timeline & Mapping (READ-ONLY view) and          │
+│    Edit Badge (cosmonauts grouped per reviewer + the six timeline dates, glass calendar):   │
+│    save_badge_form → _save_badge_allotment_edit; the Timeline view reflects every change    │
+│    g_badge_allotment / save_allotment_timeline,                                              │
 │    execute_cosmonaut_mapping  → badge_timelines per (cadet,badge): learning window, project│
 │    window, submission_deadline, review_date, expected_award_date; status = "active";        │
 │    badge.is_allocated = 1; assigned_cosmonaut_ids / assigned_reviewer_id set                │
@@ -108,6 +114,7 @@ flowchart TD
     B -- return --> A2[returned → author edits] --> B
     C --> D[Guardian maps cadets + higher-band reviewers<br/>mapping_requests pending]
     D --> E{Reviewer accepts?}
+    E -- reject or 24 h expiry --> D2[Guardian resends] --> E
     E -- reject --> D
     E -- accept --> F[Guardian allots timeline<br/>badge_timelines active]
     F --> G[Guardian publishes badge]
@@ -126,7 +133,7 @@ flowchart TD
 
 **Badge (`badges.workflow_status`)**: `pending_review → approved | returned`; `returned → pending_review` (resubmit). Flags: `is_published`, `is_allocated`. Only `approved` badges can be mapped/published.
 
-**Mapping request (`mapping_requests.status`)**: `pending → accepted | rejected`; a guardian may delete a request.
+**Mapping request (`mapping_requests.status`)**: `pending → accepted | rejected`; a guardian may delete a request. `rejected` carries `expired=true` when the 24 h window ran out (shown as "Expired"; only `resend_mapping_request` reopens it → `pending`, new `expires_at`); an explicit accept/decline stores `responded_at` and clears `expired`.
 
 **Project REQUEST** (same table, `reviewer_project_prompts`): `requested` -> `fulfilled` (when the reviewer sends a project to that cosmonaut). Requests never count as projects (`get_reviewer_project_prompts(include_requests=False)` hides them).
 
