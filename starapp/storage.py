@@ -63,6 +63,26 @@ def mapping_request_seconds_left(req: Dict[str, Any], now: Optional[datetime.dat
     return max(0, int((due - now).total_seconds()))
 
 
+def badge_review_seconds_left(due_iso: Any, now: Optional[datetime.datetime] = None) -> Optional[int]:
+    """Seconds left of a badge's 48-hour review window (never negative); None for legacy date-only deadlines."""
+    from starapp.database import parse_review_due
+    due = parse_review_due(due_iso)
+    if due is None:
+        return None
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return max(0, int((due - now).total_seconds()))
+
+
+def project_window_seconds_left(published_at: Any, now: Optional[datetime.datetime] = None) -> Optional[int]:
+    """Seconds left of the reviewer's 72-hour window to send the project (never negative); None when the badge has no publish time."""
+    from starapp.database import PROJECT_WINDOW_HOURS
+    start = _parse_utc(published_at)
+    if start is None:
+        return None
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return max(0, int((start + datetime.timedelta(hours=PROJECT_WINDOW_HOURS) - now).total_seconds()))
+
+
 class StorageWriteError(RuntimeError):
     """Raised when a database write fails; the in-memory cache has been invalidated."""
 
@@ -2444,6 +2464,46 @@ class DataStore:
                 if "prompt_json" in updated_data: b.prompt_json = updated_data["prompt_json"]
             self.mark_dirty()
         return ok, msg
+
+    def get_reviewer_mapped_cosmonaut_ids(self, reviewer_id: str, badge_id: str) -> set:
+        """Cosmonauts a reviewer has actually been mapped to for one badge (timelines, band mappings, badge assignment)."""
+        cadets = set()
+        for tl in self.get_timelines_for_reviewer(reviewer_id):
+            if tl.badge_id == badge_id:
+                cadets.add(tl.cosmonaut_id)
+        b_obj = self.get_badge(badge_id)
+        for m in self.get_band_mappings():
+            if reviewer_id in (m.get("reviewers") or []):
+                m_b = m.get("badge_id") or m.get("badge")
+                if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
+                    cadets.update(m.get("cosmonauts") or [])
+        if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == reviewer_id:
+            cadets.update(getattr(b_obj, "assigned_cosmonaut_ids", []) or [])
+        return cadets
+
+    def expire_overdue_badge_reviews(self) -> List[Dict[str, Any]]:
+        """Closes every review request whose 48-hour window has passed (badge kept as it is) and syncs the in-memory badges."""
+        if not (self.db and getattr(self.db, "conn", None)):
+            return []
+        expired = self.db.expire_overdue_badge_reviews()
+        if expired:
+            for e in expired:
+                b = self.get_badge(e["badge_id"])
+                if b and e.get("cleared_reviewer"):
+                    b.workflow_status = "ready_for_review"
+                    b.assigned_reviewer_id = None
+            self._sync_feed_tables()
+            self.mark_dirty()
+        return expired
+
+    def badge_review_denied_reason(self, badge_id: str, user_id: str) -> Optional[str]:
+        """Why `user_id` may NOT edit / approve / return this badge right now (None = allowed). Same rule as the decision itself."""
+        if not (self.db and getattr(self.db, "conn", None)):
+            return None
+        row = self.db.conn.execute("SELECT * FROM badges WHERE id = ?", (badge_id,)).fetchone()
+        if not row:
+            return "Badge not found."
+        return self.db.authorize_badge_decision(row, user_id)
 
     def approve_badge(self, badge_id: str, reviewer_id: str, reviewer_name: str = "", notes: str = "") -> Tuple[bool, str]:
         if not reviewer_name:

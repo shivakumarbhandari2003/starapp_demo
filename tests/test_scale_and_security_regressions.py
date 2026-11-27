@@ -742,15 +742,26 @@ class TestGuardianSidebarHeader(unittest.TestCase):
         self.assertEqual(side.count(">B1</span>"), 1)           # shown once, not mini + expanded copies
         self.assertIn("sidebar-collapse-btn", side)             # the (hidden) toggle hook is kept
 
-    def test_footer_and_signout_have_their_own_spacing(self):
+    def test_footer_is_a_name_card_above_two_side_by_side_buttons(self):
         css = open(os.path.join(os.path.dirname(__file__), "..", "css", "layout.css"), encoding="utf-8").read()
         footer = css[css.index(".sidebar-footer {"):]
         footer = footer[:footer.index("}")]
-        self.assertIn("padding: 12px 12px 16px", footer)
-        profile = css[css.index(".lg-sidebar-profile {"):]
-        profile = profile[:profile.index("}")]
-        self.assertIn("box-sizing: border-box", profile)
-        self.assertIn("padding: 12px 14px 14px", profile)
+        self.assertIn("padding: 10px 12px 14px", footer)
+        self.assertNotIn("height: 164px", footer)                      # no fixed slot that could clip the buttons
+        self.assertNotIn(".lg-sidebar-signout-btn", css)               # the old card-with-Sign-Out design is gone
+        self.assertIn(".app-sidebar:hover .sidebar-nav-bottom,", css)   # expanded = one row
+        store.reset_to_seed()
+        g = StarAppController()
+        g.initialize()
+        g.handle_event("select_demo_account", "guardian_1")
+        g.handle_event("select_create_badge_band", "B1")
+        g.render()
+        side = g.last_rendered_regions["sidebarHtml"]
+        foot = side.split('<div class="sidebar-footer">')[1]
+        self.assertIn("lg-sidebar-profile", foot.split("<ul")[0])       # name card first ...
+        self.assertEqual(foot.count('<li class="nav-item'), 2)          # ... then View Profile + Sign Out in one list
+        self.assertIn("View Profile", foot)
+        self.assertIn("Sign Out", foot)
 
 
 class TestMappingPageCards(unittest.TestCase):
@@ -1271,7 +1282,7 @@ class TestStage2UiPolish(unittest.TestCase):
         problems = []
         for uid, views in (("guardian_1", sorted(StarAppController._GUARDIAN_VIEWS)),
                            ("m_b1_1", sorted(StarAppController._COSMONAUT_VIEWS)),
-                           ("m_b2_1", ["c_badge_reviews", "c_requests", "c_assessments"])):
+                           ("m_b2_1", ["c_badge_reviews", "c_requests", "c_assessment_detail"])):
             ctrl = StarAppController()
             ctrl.initialize()
             ctrl.handle_event("select_demo_account", uid)
@@ -1336,7 +1347,7 @@ class TestCosmonautSidebarOrderAndReviewerBands(unittest.TestCase):
             uid = f"m_{band.lower()}_1"
             c, ids = self._nav_ids(uid)
             self.assertEqual(ids, ["c_submission", "c_results", "c_extensions",
-                                   "c_badge_reviews", "c_requests", "c_assessments", "c_profile"], band)
+                                   "c_badge_reviews", "c_requests", "c_profile"], band)
 
     def test_reviewer_pages_are_refused_server_side_for_band_1(self):
         c, _ = self._nav_ids("m_b1_1")
@@ -1348,11 +1359,17 @@ class TestCosmonautSidebarOrderAndReviewerBands(unittest.TestCase):
         c.render()
         self.assertEqual(c.current_view, "c_submission")
 
-    def test_reviewer_label_says_cosmonaut_assessments(self):
+    def test_there_is_no_cosmonaut_assessments_page_any_more(self):
         c, _ = self._nav_ids("m_b2_1")
         html = c.render()
-        self.assertIn("Cosmonaut Assessments", html)
+        self.assertNotIn("Cosmonaut Assessments", html)
         self.assertNotIn("Cadet Assessments", html)
+        self.assertNotIn('data-nav-id="c_assessments"', html)
+        c.handle_event("nav_cosmonaut", "c_assessments")                   # an old link / notification lands on Badge Reviews
+        self.assertEqual(c.current_view, "c_badge_reviews")
+        c.current_view = "c_assessments"                                   # and so does a stale session
+        c.render()
+        self.assertEqual(c.current_view, "c_badge_reviews")
 
 
 class TestProjectRequestWorkflow(unittest.TestCase):
@@ -1385,13 +1402,18 @@ class TestProjectRequestWorkflow(unittest.TestCase):
         payload.update(over)
         reviewer.handle_event("send_reviewer_project", json.dumps(payload))
 
-    def test_earn_the_badge_offers_request_project_instead_of_submit_deliverables(self):
+    def test_earn_the_badge_shows_a_locked_project_allocated_button_until_the_reviewer_sends(self):
         c = self._login("m_b1_1")
         c.handle_event("open_cosmonaut_badge_page", self.BADGE)
         html = c.render()
-        self.assertIn("Request Project", html)
-        for gone in ("Allocated Milestone", "Submit Deliverables &rarr;", "Submit Project Deliverables"):
+        earn = html.split('id="badge-section-earn"')[1].split("</div>\n            </div>")[0]
+        self.assertIn("pa-btn is-locked", earn)
+        self.assertIn("disabled", earn)
+        self.assertIn("Project Allocated", earn)
+        for gone in ("Request Project", "Allocated Milestone", "Submit Deliverables", "Submit Project Deliverables"):
             self.assertNotIn(gone, html)
+        c.handle_event("open_submission_modal", self.BADGE)              # the locked button cannot be bypassed
+        self.assertIsNone(c.active_modal)
 
     def test_request_goes_to_the_mapped_reviewer_and_is_not_a_project(self):
         c = self._login("m_b1_1")
@@ -1404,7 +1426,7 @@ class TestProjectRequestWorkflow(unittest.TestCase):
         self.assertEqual(store.get_reviewer_project_prompts(badge_id=self.BADGE), [])
         self.assertTrue(any("Project requested" in n.title for n in store.get_notifications("m_b2_1")))
         c.handle_event("open_cosmonaut_badge_page", self.BADGE)
-        self.assertIn("Project Requested", c.render())
+        self.assertIn("pa-btn is-locked", c.render())                                     # the UI never asks: the button stays locked
         c.handle_event("request_project", self.BADGE)                                      # no duplicate requests
         self.assertEqual(len(store.get_pending_project_requests("m_b2_1")), 1)
 
@@ -1433,8 +1455,7 @@ class TestProjectRequestWorkflow(unittest.TestCase):
         rev = self._login("m_b2_1")
         rev.current_view = "c_badge_reviews"
         html = rev.render()
-        self.assertIn("1 Project Request", html)
-        self.assertIn("Create &amp; Send Project", html)
+        self.assertIn("Create Project", html)
         rev.handle_event("open_create_reviewer_project_modal", self.BADGE)
         modal = rev.render_active_modal()
         for expected in ("Heading", "Content", "Send Project to Mapped Cosmonauts", "Requested"):
@@ -1475,17 +1496,22 @@ class TestProjectRequestWorkflow(unittest.TestCase):
         c = self._login("m_b1_1")
         c.handle_event("open_cosmonaut_badge_page", self.BADGE)
         page = c.render()
-        self.assertIn("Submit Project Deliverables", page)
+        self.assertIn("pa-btn is-ready", page)                                             # unlocked: opens the project
         self.assertNotIn("Request Project", page)
-        for html in (page, ):
+        self.assertNotIn(self.PROJECT_TITLE, page)                                         # the project is NOT shown inside the badge page ...
+        self.assertNotIn("Submit Deliverables", page)
+        c.handle_event("open_allocated_project_page", self.BADGE)                          # ... it opens from "Project Allocated" as a page
+        c.render()
+        proj = c.last_rendered_regions["mainContentHtml"]
+        self.assertIn("Submit Deliverables", proj)                                         # which holds the submit button
+        for html in (proj, ):
             self.assertIn(self.PROJECT_TITLE, html)
             self.assertIn("font-size:1.75rem; font-weight:900", html)                      # the heading is big and bold
             self.assertIn("Your Challenge", html)
         for gone in ("Mandatory Deliverable Files", "Detailed Project Requirements", "Expected Project Outcomes"):
-            self.assertNotIn(gone, page)
+            self.assertNotIn(gone, proj)
         c.handle_event("open_submission_modal", self.BADGE)
         modal = c.render_active_modal()
-        self.assertLess(modal.index(self.PROJECT_TITLE), modal.index("submission-pdf-file"))
         self.assertLess(modal.index("submission-pdf-file"), modal.index("submission-code-file"))
         self.assertLess(modal.index("submission-code-file"), modal.index("submission-github-url"))
 
@@ -1497,11 +1523,11 @@ class TestProjectRequestWorkflow(unittest.TestCase):
         sub = store.get_submissions_for_cosmonaut("m_b1_1", self.BADGE)[-1]
         self.assertTrue(any("submitted" in n.message.lower() for n in store.get_notifications("m_b2_1")))
         rev = self._login("m_b2_1")
-        rev.handle_event("nav_cosmonaut", "c_assessments")
+        rev.handle_event("nav_cosmonaut", "c_badge_reviews")
         html = rev.render()
         self.assertIn(store.get_user_by_id("m_b1_1").name, html)
-        self.assertIn(store.get_badge(self.BADGE).code, html)
-        self.assertIn("Cosmonaut Assessments", html)
+        self.assertIn("Deliverables submitted", html)
+        self.assertIn(f"open_reviewer_assessment_page', '{sub.id}'", html)     # the Assessment button is enabled now
         rev.handle_event("open_reviewer_assessment_page", sub.id)                         # and the reviewer can open it to grade
         self.assertEqual(rev.current_view, "c_assessment_detail")
 
@@ -1540,6 +1566,23 @@ class TestViewProfileFooterAndProfilePages(unittest.TestCase):
             nav_part = html.split('<ul class="sidebar-nav">')[1].split("</ul>")[0]
             self.assertNotIn(link, nav_part, uid)                  # ... and not inside the main nav list
             self.assertNotIn(f'class="nav-link active" {link}', html, uid)
+
+    def test_cosmonaut_sidebar_shows_only_the_band_and_a_name_card_with_two_footer_buttons(self):
+        for uid in ("m_b1_1", "m_b2_1"):
+            c = self._login(uid)
+            html = c.render()
+            band = c.current_user.band
+            side = html.split('<aside id="starapp-shell-sidebar"')[1].split("</aside>")[0]
+            header = side.split('<div class="sidebar-header">')[1].split("</div>")[0]
+            self.assertIn(f">{band}</a>", header, uid)                     # header: only the band number
+            for gone in ("TARAPP", "COSMONAUT PORTAL", "Learner", "role-badge-pill", "brand-title", "C1-2026", "ACTIVE"):
+                self.assertNotIn(gone, side, (uid, gone))
+            footer = side.split('<div class="sidebar-footer">')[1]
+            self.assertIn("lg-sidebar-profile is-card", footer, uid)                 # the user's name card is back ...
+            self.assertIn(c.current_user.name, footer.split("<ul")[0], uid)
+            self.assertEqual(footer.count('<li class="nav-item'), 2, uid)            # ... above exactly two side-by-side buttons
+            self.assertIn("View Profile", footer, uid)
+            self.assertIn("Sign Out", footer, uid)
 
     def test_profile_link_is_highlighted_on_the_profile_page(self):
         c = self._login("m_b2_1")
@@ -1616,7 +1659,9 @@ class TestCosmonautPortalCycleMergeAndTerminology(unittest.TestCase):
             self.assertNotIn('data-nav-id="c_cycles"', html, uid)
             self.assertNotIn("Past Cycle", html, uid)
             self.assertNotIn('data-nav-id="c_choose_cycle"', html, uid)
-            self.assertIn("starapp-sidebar-cycle-pill", html, uid)  # cycles are still reachable from the pill
+            side = html.split('<aside id="starapp-shell-sidebar"')[1].split("</aside>")[0]
+            self.assertNotIn("starapp-sidebar-cycle-pill", side, uid)      # the C1 / ACTIVE pill is gone ...
+            self.assertIn("'c_choose_cycle'", side, uid)                   # ... the band chip still opens the cycle picker
 
     def test_choose_cycle_page_contains_the_appraisal_section_and_legacy_route_resolves(self):
         c = StarAppController()
@@ -1637,7 +1682,7 @@ class TestCosmonautPortalCycleMergeAndTerminology(unittest.TestCase):
         import re
         problems = []
         for uid, views in (("m_b1_1", sorted(StarAppController._COSMONAUT_VIEWS)),
-                           ("m_b2_1", ["c_badge_reviews", "c_requests", "c_assessments", "c_choose_cycle", "c_activity"])):
+                           ("m_b2_1", ["c_badge_reviews", "c_requests", "c_choose_cycle", "c_activity"])):
             ctrl = StarAppController()
             ctrl.initialize()
             ctrl.handle_event("select_demo_account", uid)

@@ -26,6 +26,27 @@ def review_deadline_iso_timestamp(hours: int = 24) -> str:
     due = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=hours)
     return due.isoformat()
 
+# A reviewer has this long (from the moment the Guardian sends the request) to review / edit / decide a badge.
+BADGE_REVIEW_WINDOW_HOURS = 48
+
+# From the moment the Guardian publishes a badge, each mapped reviewer has this long to create the project and send it to
+# every cosmonaut mapped to them.
+PROJECT_WINDOW_HOURS = 72
+
+
+def parse_review_due(due_iso: Any) -> Optional[datetime.datetime]:
+    """Aware-UTC datetime of a review deadline; None for empty / malformed / legacy date-only values (those never expire)."""
+    text = str(due_iso or "")
+    if "T" not in text:
+        return None
+    try:
+        dt = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
 # ==============================================================================
 # SQL DDL DEFINITIONS
 # ==============================================================================
@@ -2315,11 +2336,15 @@ class DatabaseManager:
 
         assigned = badge_row["assigned_reviewer_id"] if "assigned_reviewer_id" in badge_row.keys() else ""
         has_pending = self.conn.execute(
-            "SELECT 1 FROM badge_reviewer_assignments WHERE badge_id = ? AND reviewer_id = ? AND status = 'pending'",
+            "SELECT review_due_at FROM badge_reviewer_assignments WHERE badge_id = ? AND reviewer_id = ? AND status = 'pending' "
+            "ORDER BY assigned_at DESC LIMIT 1",
             (badge_row["id"], reviewer_id)
         ).fetchone()
         if assigned != reviewer_id and not has_pending:
             return "This badge is assigned to a different reviewer."
+        due = parse_review_due(has_pending["review_due_at"]) if has_pending else None
+        if due is not None and due <= datetime.datetime.now(datetime.timezone.utc):
+            return f"The {BADGE_REVIEW_WINDOW_HOURS}-hour review window for this badge has ended."
 
         target_band = badge_row["target_band"] if "target_band" in badge_row.keys() else ""
         if target_band:
@@ -2348,7 +2373,7 @@ class DatabaseManager:
 
         b_id = badge_data.get("id") or f"badge_{badge_data.get('code','').lower().replace('-','_')}_{int(datetime.datetime.now().timestamp())}"
         now_iso = current_iso_timestamp()
-        due_iso = review_deadline_iso_timestamp(24)
+        due_iso = review_deadline_iso_timestamp(BADGE_REVIEW_WINDOW_HOURS)
         cycle_id = badge_data.get("cycle_id") or self._get_active_cycle_id()
 
         if not SQLITE_AVAILABLE or self.conn is None:
@@ -2875,7 +2900,7 @@ class DatabaseManager:
             badge_title = badge_row["title"]
             b_cycle_id = (badge_row["cycle_id"] if "cycle_id" in badge_row.keys() and badge_row["cycle_id"] else None) or self._get_active_cycle_id()
 
-            due_date = (datetime.datetime.now() + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+            due_date = review_deadline_iso_timestamp(BADGE_REVIEW_WINDOW_HOURS)
             assign_id = f"bra_{badge_id}_{reviewer_id}_{int(datetime.datetime.now().timestamp())}"
 
             prev_reviewer_id = badge_row["assigned_reviewer_id"] if "assigned_reviewer_id" in badge_row.keys() else None
@@ -2933,7 +2958,7 @@ class DatabaseManager:
                         notif_id,
                         reviewer_id,
                         f"Review Request: {badge_code}",
-                        f"Guardian submitted badge '{badge_title}' ({badge_code}) for Band {target_band} for your review and authorization.",
+                        f"Guardian submitted badge '{badge_title}' ({badge_code}) for Band {target_band} for your review and authorization. You have {BADGE_REVIEW_WINDOW_HOURS} hours to review, edit and decide.",
                         now_iso,
                         badge_id,
                         b_cycle_id
@@ -2953,7 +2978,7 @@ class DatabaseManager:
                         creator_id,
                         badge_id,
                         f"Dispatched review request for {badge_code} ({badge_title}) to {rev_name} ({rev_band}).",
-                        f"Review due by {due_date}.",
+                        f"{BADGE_REVIEW_WINDOW_HOURS}-hour review window, closes {due_date[:16].replace('T', ' ')} UTC.",
                         b_cycle_id
                     )
                 )
@@ -3056,6 +3081,82 @@ class DatabaseManager:
     # WORKFLOW QUERY ACCESSORS
     # ==========================================================================
 
+    def expire_overdue_badge_reviews(self, now: Optional[datetime.datetime] = None) -> List[Dict[str, Any]]:
+        """
+        48-hour rule: a review request nobody decided in time is closed. The badge is kept exactly as it is (every edit the
+        reviewer already applied stays) and goes back to 'ready_for_review' with no reviewer, so the Guardian can resend it;
+        the reviewer keeps a read-only view of it. Nothing is approved automatically. Returns the requests just expired.
+        """
+        if not SQLITE_AVAILABLE or self.conn is None:
+            return []
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        try:
+            rows = self.conn.execute(
+                "SELECT ra.id AS assignment_id, ra.badge_id, ra.reviewer_id, ra.review_due_at, b.code, b.title, b.target_band, "
+                "b.creator_id, b.cycle_id, b.assigned_reviewer_id, u.name AS reviewer_name "
+                "FROM badge_reviewer_assignments ra JOIN badges b ON b.id = ra.badge_id "
+                "LEFT JOIN users u ON u.id = ra.reviewer_id "
+                "WHERE ra.status = 'pending' AND b.workflow_status = 'pending_review'"
+            ).fetchall()
+        except Exception:
+            return []
+        due_rows = []
+        for r in rows:
+            due = parse_review_due(r["review_due_at"])
+            if due is not None and due <= now:
+                due_rows.append((r, due))
+        expired: List[Dict[str, Any]] = []
+        for r, due in due_rows:
+            ts = int(now.timestamp() * 1000)
+            badge_id, rid = r["badge_id"], r["reviewer_id"]
+            cycle_id = r["cycle_id"] or self._get_active_cycle_id()
+            guardian = r["creator_id"] or "guardian_1"
+            now_iso = now.isoformat()
+            try:
+                with self.conn:
+                    self.conn.execute(
+                        "UPDATE badge_reviewer_assignments SET status = 'expired', decided_at = ? WHERE id = ? AND status = 'pending'",
+                        (r["review_due_at"], r["assignment_id"]),
+                    )
+                    if r["assigned_reviewer_id"] == rid:
+                        self.conn.execute(
+                            "UPDATE badges SET workflow_status = 'ready_for_review', assigned_reviewer_id = NULL, updated_at = ? WHERE id = ?",
+                            (now_iso, badge_id),
+                        )
+                    self.conn.execute(
+                        """
+                        INSERT INTO badge_review_events (id, badge_id, actor_id, event_type, previous_status, new_status, notes, timestamp, cycle_id)
+                        VALUES (?, ?, ?, 'review_expired', 'pending_review', 'ready_for_review', ?, ?, ?)
+                        """,
+                        (f"bre_{badge_id}_expired_{ts}", badge_id, rid,
+                         f"The {BADGE_REVIEW_WINDOW_HOURS}-hour review window ended without a decision. The badge was kept as it is.",
+                         now_iso, cycle_id),
+                    )
+                    for rcpt, link, msg in (
+                        (rid, "c_requests", f"Your {BADGE_REVIEW_WINDOW_HOURS}-hour window to review '{r['title']}' ({r['code']}) ended. The badge was kept as it is; you can still read it."),
+                        (guardian, "g_badge_approval", f"{r['reviewer_name'] or 'The reviewer'} did not decide '{r['title']}' ({r['code']}) within {BADGE_REVIEW_WINDOW_HOURS} hours. The badge was kept as it is - send it for review again when ready."),
+                    ):
+                        self.conn.execute(
+                            """
+                            INSERT INTO notifications (id, recipient_id, title, message, link_section, created_at, is_read, event_type, related_badge_id, cycle_id)
+                            VALUES (?, ?, ?, ?, ?, ?, 0, 'badge_review_expired', ?, ?)
+                            """,
+                            (f"notif_bre_{badge_id}_{rcpt}_{ts}", rcpt, f"Review Window Ended: {r['code']}", msg, link, now_iso, badge_id, cycle_id),
+                        )
+                    self.conn.execute(
+                        """
+                        INSERT INTO activity_events (id, timestamp, event_type, actor_id, actor_name, cosmonaut_id, badge_id, summary, details, cycle_id)
+                        VALUES (?, ?, 'badge_review_expired', ?, 'System (auto-expiry)', '', ?, ?, ?, ?)
+                        """,
+                        (f"act_bre_{badge_id}_{ts}", now_iso, "guardian_1", badge_id,
+                         f"Review window ended for {r['code']} ({r['title']}); badge kept as it is.",
+                         f"{r['reviewer_name'] or rid} did not decide within {BADGE_REVIEW_WINDOW_HOURS} hours.", cycle_id),
+                    )
+                expired.append({"badge_id": badge_id, "reviewer_id": rid, "assignment_id": r["assignment_id"], "cleared_reviewer": r["assigned_reviewer_id"] == rid})
+            except Exception as e:
+                print(f"[Database] could not expire the review of {badge_id}: {e!r}")
+        return expired
+
     def get_submitted_badges_for_approval(self, status_filter: str = "all", cycle_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieves badges in the authorization pipeline with creator and reviewer details."""
         if not SQLITE_AVAILABLE or self.conn is None:
@@ -3144,9 +3245,9 @@ class DatabaseManager:
         FROM badges b
         LEFT JOIN users u_c ON b.creator_id = u_c.id
         LEFT JOIN users u_r ON b.assigned_reviewer_id = u_r.id
-        LEFT JOIN badge_reviewer_assignments ra ON b.id = ra.badge_id
-        WHERE (b.assigned_reviewer_id = ? OR ra.reviewer_id = ?){cycle_filter_sql}
-        ORDER BY b.created_at DESC
+        LEFT JOIN badge_reviewer_assignments ra ON b.id = ra.badge_id AND ra.reviewer_id = ? AND ra.status != 'cancelled'
+        WHERE (b.assigned_reviewer_id = ? OR ra.id IS NOT NULL){cycle_filter_sql}
+        ORDER BY b.created_at DESC, ra.assigned_at DESC
         """
         rows = self.conn.execute(query, tuple(params)).fetchall()
         results = []

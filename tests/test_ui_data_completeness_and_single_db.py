@@ -136,8 +136,8 @@ class TestUIDataCompletenessAndSingleDB(unittest.TestCase):
         self.assertIn("45.0 / 50 (90.0%)", html)
         self.assertIn("Guardian Final:", html)
         self.assertIn("46.0 / 50 (92.0%)", html)
-        self.assertIn("Aarav_Audit_Report.pdf", html)
-        self.assertIn("audit_sim.py", html)
+        self.assertNotIn("Aarav_Audit_Report.pdf", html)                # the files are in the Assessment workspace, not on the card
+        self.assertNotIn("audit_sim.py", html)
         self.assertIn("Guardian Official Award confirmed.", html)
         self.assertIn(f"open_reviewer_assessment_page', '{sub1.id}'", html)
 
@@ -197,10 +197,9 @@ class TestUIDataCompletenessAndSingleDB(unittest.TestCase):
         # 2. c_badge_detail for completed badge shows Peer Reviewer + Guardian marks & Deliverables
         self.ctrl.handle_event("open_cosmonaut_badge_page", b_pub.id)
         detail_html = self.ctrl.render()
-        self.assertIn("Final_Pub_Report.pdf", detail_html)
-        self.assertIn("pub_sol.py", detail_html)
-        self.assertIn("Peer Reviewer (Rohan Deshmukh)", detail_html)
-        self.assertIn("Guardian Final (Arjun Mehta)", detail_html)
+        self.assertIn("mbe-card", detail_html)                         # the achievement card shows the marks and feedback only
+        for gone in ("Final_Pub_Report.pdf", "pub_sol.py", "Peer reviewer (", "Guardian final (", "Submitted Deliverables"):
+            self.assertNotIn(gone, detail_html, gone)
 
         # 3. c_results prioritizes Guardian Official marksheet & labels evaluator roles cleanly
         self.ctrl.cosmonaut_results_badge_id = b_pub.id

@@ -118,7 +118,8 @@ class TestBadgeMappingAndViewReflection(unittest.TestCase):
         self.assertIn("Governance Architecture", html)
         self.assertIn("lg-allot-title", html)                        # the card is headed by the badge name (code / band chips were removed)
         self.assertNotIn("lg-allot-band", html)
-        self.assertIn("Timeline &amp; Mapping", html)
+        self.assertIn("open_badge_mapping_modal", html)             # two separate buttons: Mapping ...
+        self.assertIn("open_badge_timeline_modal", html)            # ... and Timeline
         self.ctrl.handle_event("open_badge_timeline_mapping_modal", "badge_b4_governance")
         modal_html = self.ctrl.render_active_modal()
         self.assertIn("Personnel Mapping", modal_html)

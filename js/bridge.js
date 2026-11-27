@@ -287,6 +287,19 @@
       });
     },
 
+    // Submit-deliverables dialog: show the chosen file's name (and mark the drop area as filled) without a server round trip
+    showPickedFile(input, nameId, dropId) {
+      const file = input && input.files && input.files[0];
+      const nameEl = document.getElementById(nameId);
+      const dropEl = document.getElementById(dropId);
+      if (nameEl) nameEl.textContent = file ? file.name : "No file chosen";
+      if (dropEl) {
+        dropEl.classList.toggle("is-set", !!file);
+        const lbl = dropEl.querySelector(".sd-drop-btn-lbl");
+        if (lbl) lbl.textContent = file ? "Replace" : "Browse";
+      }
+    },
+
     // Read user uploaded file as UTF-8 Text
     readFileAsText(fileInputId) {
       return new Promise((resolve, reject) => {
@@ -355,6 +368,13 @@
       if (sumDisp) {
         sumDisp.innerText = formatted;
       }
+      // Reviewer rubric: until the reviewer picks an option themselves, the recommendation follows the pass mark.
+      const sel = document.getElementById("rubric-decision");
+      if (sel && sel.getAttribute("data-auto") === "1") {
+        const want = pct >= parseFloat(sel.getAttribute("data-thr") || "70") ? "approve" : "resubmission_requested";
+        const btn = document.querySelector('.lg-dec-opt[data-value="' + want + '"]');
+        if (btn) window.StarAppBridge.setReviewDecision(btn, true);
+      }
     },
 
     // Submit evaluation marksheet with form values collected from DOM
@@ -385,11 +405,10 @@
     },
 
     // Publish badge from Guardian Approved Badge tray
+    // Publishing is confirmed in the app's own glass dialog (server-rendered), never with the browser's confirm().
     publishBadge(badgeId) {
       if (!badgeId) return;
-      if (confirm("Publish this approved badge to the Academy curriculum and enable mapping to cadets?")) {
-        window.StarAppBridge.dispatchAction("publish_badge", badgeId);
-      }
+      window.StarAppBridge.dispatchAction("confirm_publish_badge", badgeId);
     },
 
     // Submit technical assessment by assigned higher-band reviewer
@@ -413,15 +432,25 @@
         strengths: strengths,
         improvements: improvements,
         feedback: feedback,
-        decision: (bu + ar + tk + pr + qa) >= 35.0 ? "approve" : "changes_requested"
+        decision: document.getElementById("rubric-decision")?.value || ""      // the reviewer's recommendation: approve / resubmission_requested / reject
       };
       window.StarAppBridge.dispatchAction("submit_reviewer_assessment", JSON.stringify(payload));
     },
 
     // Send a reviewer project (heading + content) to the selected mapped cosmonauts
+    // The reviewer's project form: sections -> one structured content block ("Case Study", blank line, "Your Challenge", ...).
     submitReviewerProject(badgeId, reviewerId) {
-      const title = document.getElementById("rev_proj_title")?.value?.trim() || "";
-      const content = document.getElementById("rev_proj_content")?.value?.trim() || "";
+      const val = (id) => document.getElementById(id)?.value?.trim() || "";
+      const bullets = (txt) => txt.split("\n").map((l) => l.trim().replace(/^[-*\u2022]\s*/, "")).filter(Boolean).map((l) => "- " + l).join("\n");
+      const title = val("rev_proj_title");
+      const blocks = [];
+      const add = (heading, body) => { if (body) blocks.push(heading + "\n" + body); };
+      add("Case Study", val("rev_proj_case"));
+      add("Your Challenge", val("rev_proj_challenge"));
+      add("Project Details", bullets(val("rev_proj_details")));
+      add("Deliverables", bullets([0, 1, 2].map((i) => val("rev_proj_del_" + i)).concat(val("rev_proj_del_extra").split("\n")).join("\n")));
+      add("Evaluation", bullets(val("rev_proj_eval")));
+      const content = blocks.join("\n\n");
       const cosmonautIds = Array.from(document.querySelectorAll(".rev-proj-recipient:checked")).map((el) => el.value);
       if (!title) { alert("Please give the project a heading."); return; }
       if (!content) { alert("Please write the project content."); return; }
@@ -434,6 +463,82 @@
         cosmonaut_ids: cosmonautIds,
         status: "released"
       }));
+    },
+
+    // ---- Create Project: sections are shown formatted; Edit swaps in the fields, Done renders them again ----
+    _pjEsc(t) {
+      return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    },
+
+    _pjRenderSection(key) {
+      const val = (id) => (document.getElementById(id)?.value || "").trim();
+      const view = document.getElementById("rp-view-" + key);
+      if (!view) return;
+      const paragraphs = (t) => t.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => '<p class="pj-text">' + this._pjEsc(p) + "</p>").join("");
+      const bullets = (t) => {
+        const items = t.split("\n").map((l) => l.trim().replace(/^[-*\u2022]\s*/, "")).filter(Boolean);
+        return items.length ? '<ul class="pj-list">' + items.map((i) => "<li>" + this._pjEsc(i) + "</li>").join("") + "</ul>" : "";
+      };
+      if (key === "title") {
+        view.textContent = val("rev_proj_title") || "Untitled project";
+      } else if (key === "case_study") {
+        view.innerHTML = paragraphs(val("rev_proj_case"));
+      } else if (key === "challenge") {
+        view.innerHTML = paragraphs(val("rev_proj_challenge"));
+      } else if (key === "details") {
+        view.innerHTML = bullets(val("rev_proj_details"));
+      } else if (key === "evaluation") {
+        view.innerHTML = bullets(val("rev_proj_eval"));
+      } else if (key === "deliverables") {
+        [0, 1, 2].forEach((i) => {
+          const line = val("rev_proj_del_" + i);
+          const name = document.getElementById("rp-del-name-" + i);
+          const text = document.getElementById("rp-del-text-" + i);
+          const k = line.indexOf(":");
+          if (name && line) name.textContent = k > 0 ? line.slice(0, k).trim() : name.textContent;
+          if (text) text.textContent = k > 0 ? line.slice(k + 1).trim() : line;
+        });
+        const extra = document.getElementById("rp-del-extra-view");
+        if (extra) extra.innerHTML = bullets(val("rev_proj_del_extra"));
+      }
+    },
+
+    toggleProjectSection(key) {
+      const view = document.getElementById("rp-view-" + key);
+      const edit = document.getElementById("rp-edit-" + key);
+      const btn = document.querySelector('[data-pj-toggle="' + key + '"]');
+      if (!edit) return;
+      const label = btn ? btn.querySelector("span") : null;
+      if (!edit.hidden) {                       // Done -> back to the formatted view
+        this._pjRenderSection(key);
+        edit.hidden = true;
+        if (view) view.hidden = false;
+        if (label) label.textContent = "Edit";
+      } else {                                  // Edit -> the fields
+        edit.hidden = false;
+        if (view) view.hidden = true;
+        if (label) label.textContent = "Done";
+        if (this.autoResizeTextareas) requestAnimationFrame(() => this.autoResizeTextareas(edit));
+        const first = edit.querySelector("textarea, input");
+        if (first) first.focus();
+      }
+    },
+
+    // Refill the project form with the generated sample (kept on the form as data-sample).
+    resetReviewerProjectSample() {
+      const form = document.getElementById("reviewer-project-spec-form");
+      if (!form) return;
+      let sample = {};
+      try { sample = JSON.parse(form.getAttribute("data-sample") || "{}"); } catch (e) { return; }
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
+      set("rev_proj_title", sample.title);
+      set("rev_proj_case", sample.case_study);
+      set("rev_proj_challenge", sample.challenge);
+      set("rev_proj_details", sample.details);
+      set("rev_proj_eval", sample.evaluation);
+      (sample.deliverables || []).forEach((d, i) => set("rev_proj_del_" + i, d));
+      set("rev_proj_del_extra", "");
+      ["title", "case_study", "challenge", "details", "deliverables", "evaluation"].forEach((k) => this._pjRenderSection(k));
     },
 
     // Submit Guardian final assessment marksheet & badge award determination
@@ -1490,7 +1595,8 @@ Return ONLY valid JSON matching this exact schema:
       }
     },
 
-    saveBadgeEdits() {
+    // Reads the structured-badge edit form (shared by the Guardian's draft and the Reviewer's real badge).
+    _collectBadgeEditPayload() {
       const title = document.getElementById("edit-badge-title-input")?.value;
       const desc = document.getElementById("edit-badge-desc-input")?.value;
       const outcomes = document.getElementById("edit-badge-outcomes-input")?.value;
@@ -1517,7 +1623,7 @@ Return ONLY valid JSON matching this exact schema:
         });
       }
 
-      const payload = {
+      return {
         title: title || "",
         description: desc || "",
         outcomes: outcomes ? outcomes.split("\n").filter(o => o.trim()) : [],
@@ -1525,7 +1631,15 @@ Return ONLY valid JSON matching this exact schema:
         resources_prompt: resourcesPrompt || "",
         topics: topics.length > 0 ? topics : undefined
       };
-      window.StarAppBridge.dispatchAction("save_badge_edits", JSON.stringify(payload));
+    },
+
+    saveBadgeEdits() {
+      window.StarAppBridge.dispatchAction("save_badge_edits", JSON.stringify(this._collectBadgeEditPayload()));
+    },
+
+    // Reviewer: write the edits straight to the real badge (the server re-checks who may edit it).
+    saveReviewerBadgeEdits() {
+      window.StarAppBridge.dispatchAction("save_reviewer_badge_edits", JSON.stringify(this._collectBadgeEditPayload()));
     },
 
     toggleTopicCompletion(idx) {
@@ -2417,10 +2531,13 @@ Return ONLY valid JSON matching this exact schema:
 
   // Marks page: the Assessment Decision choice list drives the (hidden) <select id="rubric-decision"> the submit handler reads.
   Object.assign(window.StarAppBridge, {
-    setReviewDecision(btn) {
+    setReviewDecision(btn, auto) {
       const value = btn.getAttribute("data-value");
       const select = document.getElementById("rubric-decision");
-      if (select) select.value = value;
+      if (select) {
+        select.value = value;
+        if (!auto && select.getAttribute("data-auto") === "1") select.setAttribute("data-auto", "0");   // the user chose: stop following the score
+      }
       document.querySelectorAll(".lg-dec-opt").forEach((opt) => {
         const on = opt === btn;
         opt.classList.toggle("is-on", on);
@@ -2678,7 +2795,24 @@ Return ONLY valid JSON matching this exact schema:
   })();
 
   // ------------------------------------------------------------------
-  // 24-hour review-request countdown (display only - the server owns the deadline).
+  // Live updates: a page (or open popup) that carries `data-live-sync` re-asks the server every few seconds. The server answers
+  // with the current state; the bridge skips the repaint when nothing changed, so it is invisible unless something did
+  // (e.g. the reviewer sends the project and "Project Allocated" unlocks, or the Guardian changes the mapped reviewer).
+  // ------------------------------------------------------------------
+  (function startLiveSync() {
+    const LIVE_EVERY_MS = 6000;
+    setInterval(() => {
+      if (document.hidden || !window.StarAppBridge || !window.StarAppBridge.dispatchAction) return;
+      const modalOpen = !!document.querySelector(".modal-backdrop");
+      const liveModal = !!document.querySelector(".modal-backdrop [data-live-sync]");
+      const livePage = !!document.querySelector("#starapp-page-body [data-live-sync]");
+      if (modalOpen ? !liveModal : !livePage) return;       // never repaint under a form the user may be typing in
+      window.StarAppBridge.dispatchAction("sync_badge_reviews", "{}");
+    }, LIVE_EVERY_MS);
+  })();
+
+  // ------------------------------------------------------------------
+  // Review-request countdowns: 24 h mapping requests, 48 h badge reviews (display only - the server owns the deadline).
   // Every `.rq-timer[data-remaining]` is rendered with the seconds left; we tick them once a second.
   // When one reaches zero we ask the server to sync, which auto-declines the request and re-renders.
   // ------------------------------------------------------------------
@@ -2690,7 +2824,7 @@ Return ONLY valid JSON matching this exact schema:
       const timers = document.querySelectorAll(".rq-timer[data-remaining]");
       if (!timers.length) return;
       const now = Date.now();
-      let reachedZero = false;
+      const syncActions = new Set();
       timers.forEach((el) => {
         // anchor to the moment this element first appeared, so server/browser clock differences never matter
         if (!el.__deadline) el.__deadline = now + Number(el.getAttribute("data-remaining")) * 1000;
@@ -2700,12 +2834,13 @@ Return ONLY valid JSON matching this exact schema:
         el.classList.toggle("is-urgent", left < 3600);
         if (left === 0) {
           el.classList.add("is-expired");
-          reachedZero = true;
+          syncActions.add(el.getAttribute("data-sync") || "sync_mapping_requests");
         }
       });
-      if (reachedZero && now - lastSyncAt > 5000 && window.StarAppBridge && window.StarAppBridge.dispatchAction) {
+      if (syncActions.size && now - lastSyncAt > 5000 && window.StarAppBridge && window.StarAppBridge.dispatchAction) {
         lastSyncAt = now;
-        window.StarAppBridge.dispatchAction("sync_mapping_requests", "{}");
+        // one sync is enough: the server sweeps every kind of expiry before it handles any action
+        window.StarAppBridge.dispatchAction(syncActions.values().next().value, "{}");
       }
     }
 

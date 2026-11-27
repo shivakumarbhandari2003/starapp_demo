@@ -588,7 +588,7 @@ class TestGuardianMappingFlow(unittest.TestCase):
         modal_html = self.ctrl.render_active_modal()
         self.assertIn("tm-steps", modal_html)        # numbered, editable timeline
         self.assertIn("tm-head", modal_html)
-        self.assertIn("lg-mapping-glass-card", modal_html)
+        self.assertIn("asm-tree-root", modal_html)     # Badge -> Reviewer -> Cosmonaut hierarchy (the Assessment Dashboard tree)
         self.ctrl.handle_event("close_modal", "{}")
 
         # Dispatch request for a second B1 badge independently

@@ -117,10 +117,10 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         # STEP 2: Reviewer Views Deliverables & Submits Evaluation
         # -------------------------------------------------------------
         self.app.current_user = self.reviewer
-        self.app.current_view = "c_assessments"
+        self.app.current_view = "c_badge_reviews"
         html_rev_queue = self.app.render()
         self.assertIn("Aarav Sharma", html_rev_queue)
-        self.assertIn("Inspect Deliverables", html_rev_queue)
+        self.assertIn(f"open_reviewer_assessment_page', '{sub.id}'", html_rev_queue)           # the Assessment button is enabled: they have submitted
 
         # Reviewer opens assessment detail page
         self.app.handle_event("open_reviewer_assessment_page", sub.id)
@@ -237,16 +237,21 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         html_cosmo_sub = self.app.render()
 
         # Collapsed badge card is gold styled and shows completed status
-        self.assertIn("Badge Earned • Completed", html_cosmo_sub)
-        self.assertIn("#F59E0B", html_cosmo_sub)
+        self.assertIn("Badge Earned", html_cosmo_sub)
+        self.assertIn("gold-card", html_cosmo_sub)
+        self.assertIn("gold-medal", html_cosmo_sub)
 
         # Expand badge card to inspect 6 sections
         self.app.handle_event("toggle_cosmonaut_badge_card", self.badge.id)
         html_expanded = self.app.render()
 
         # Section 2 displays Badge Earned & Certified in Gold with marks & feedback
-        self.assertIn("Badge Earned &amp; Certified!", html_expanded)
-        self.assertIn("Allocated Marks: 45.0 / 50.0 (90.0%)", html_expanded)
+        self.assertIn("Badge earned &amp; certified", html_expanded)
+        self.assertIn("Achievement unlocked", html_expanded)
+        self.assertIn("45.0<small> / 50</small>", html_expanded)
+        self.assertIn("90.0%", html_expanded)
+        for gone in ("evaluated, approved and certified", "Peer reviewer (", "Guardian final (", "Submitted Deliverables", "Awarded "):
+            self.assertNotIn(gone, html_expanded, gone)
         self.assertIn("Flawless demonstration of data engineering principles", html_expanded)
         self.assertIn("Outstanding idempotency handling", html_expanded)
 
@@ -275,18 +280,18 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.app.handle_event("select_demo_account", self.cosmonaut.id)
         self.app.current_view = "c_submission"
         self.app.handle_event("toggle_cosmonaut_badge_card", self.badge.id)
-        self.assertIn("Request Project", self.app.render())
-        self.app.handle_event("request_project", self.badge.id)
-        requested_html = self.app.render()
-        self.assertIn("Project Requested", requested_html)
-        self.assertNotIn("Submit Project Deliverables", requested_html)
+        locked_html = self.app.render()
+        self.assertIn("Project Allocated", locked_html)                  # nothing to request: the button is simply locked
+        self.assertIn("pa-btn is-locked", locked_html)
+        self.assertNotIn("Request Project", locked_html)
+        self.assertNotIn("Submit Deliverables", locked_html)
+        self.app.handle_event("request_project", self.badge.id)         # (the server still accepts an explicit request)
 
         # STEP 2: the reviewer sees the request, creates the project (heading + content) and sends it
         self.app.handle_event("select_demo_account", self.reviewer.id)
         self.app.current_view = "c_badge_reviews"
         rev_html = self.app.render()
-        self.assertIn("1 Project Request", rev_html)
-        self.assertIn("Create &amp; Send Project", rev_html)
+        self.assertIn("Create Project", rev_html)
 
         self.app.handle_event("open_create_reviewer_project_modal", self.badge.id)
         self.assertEqual(self.app.active_modal, "reviewer_project_creator")
@@ -319,16 +324,21 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.app.current_view = "c_submission"
         self.app.handle_event("toggle_cosmonaut_badge_card", self.badge.id)
         received_html = self.app.render()
-        self.assertIn("Submit Project Deliverables", received_html)
+        self.assertIn("pa-btn is-ready", received_html)                  # the locked button unlocked
+        self.assertNotIn("pa-btn is-locked", received_html)
         self.assertNotIn("Request Project", received_html)
 
-        # STEP 4: opening it shows the project first (big heading + content), then PDF / code / GitHub
+        # STEP 4: "Project Allocated" opens the project PAGE; Submit Deliverables opens the PDF / code / GitHub dialog
+        self.app.handle_event("open_allocated_project_page", self.badge.id)
+        self.assertEqual(self.app.current_view, "c_project")
+        self.app.render()
+        project_page_html = self.app.last_rendered_regions["mainContentHtml"]
+        self.assertIn("High-Throughput Signal Streamer", project_page_html)
+        self.assertIn("Design the ingestion engine", project_page_html)
         self.app.handle_event("open_submission_modal", self.badge.id)
         modal_submit_html = self.app.render_active_modal()
-        self.assertIn("High-Throughput Signal Streamer", modal_submit_html)
-        self.assertIn("Design the ingestion engine", modal_submit_html)
         for field in ("submission-pdf-file", "submission-code-file", "submission-github-url"):
-            self.assertGreater(modal_submit_html.index(field), modal_submit_html.index("High-Throughput Signal Streamer"))
+            self.assertIn(field, modal_submit_html)
         submit_payload = {
             "badge_id": self.badge.id,
             "github_url": "https://github.com/starapp/streamer-pipeline",
@@ -393,8 +403,8 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.app.handle_event("select_demo_account", self.cosmonaut.id)
         self.app.current_view = "c_submission"
         final_cosmo_html = self.app.render()
-        self.assertIn("Badge Earned • Completed", final_cosmo_html)
-        self.assertIn("#F59E0B", final_cosmo_html)
+        self.assertIn("Badge Earned", final_cosmo_html)
+        self.assertIn("gold-card", final_cosmo_html)
 
 
 

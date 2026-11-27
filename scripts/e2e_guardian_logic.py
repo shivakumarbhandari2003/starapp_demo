@@ -258,14 +258,70 @@ def run():
     cid = "m_b1_1"
     owner_rev = q("SELECT reviewer_id FROM badge_timelines WHERE badge_id='badge_b1_signals' AND cosmonaut_id=?", (cid,))[0]["reviewer_id"]
     ev("select_demo_account", cid)
+    ev("submit_project_deliverable", {"badge_id": "badge_b1_signals", "pdf_name": "report_v0.pdf", "pdf_payload": "x", "code_name": "a.py", "code_payload": "x", "github_url": "https://github.com/x/y"})
+    check("submitting BEFORE a project is sent is refused (project-request rule)", q("SELECT COUNT(*) c FROM project_submissions WHERE badge_id='badge_b1_signals' AND cosmonaut_id=?", (cid,))[0]["c"] == 0, g.last_flash_message)
+    ev("nav_cosmonaut", "c_submission")
+    ev("open_cosmonaut_badge_page", "badge_b1_signals")
+    h = page()
+    check("cosmonaut: Earn the Badge shows a LOCKED Project Allocated button (no Request Project)", "pa-btn is-locked" in h and "Request Project" not in h and "Submit Deliverables" not in h)
+    ev("request_project", "badge_b1_signals")
+    check("Request Project saved (DB)", q("SELECT COUNT(*) c FROM reviewer_project_prompts WHERE badge_id='badge_b1_signals' AND status='requested'")[0]["c"] >= 1, g.last_flash_message)
+    ev("select_demo_account", owner_rev)
+    ev("nav_cosmonaut", "c_badge_reviews")
+    h = page()
+    pub = q("SELECT published_at FROM badges WHERE id='badge_b1_signals'")[0]["published_at"]
+    check("publishing stamped the time (DB)", bool(pub))
+    check("reviewer: 72-hour project countdown on the badge + asm connected-dot tree", "left to send projects" in h and 'data-sync="sync_badge_reviews"' in h and "asm-tree-cosmo-branch" in h)
+    h = page()
+    check("reviewer schedule: the Assessment button is DISABLED while nothing is submitted; no deliverables list, no Assessments page link",
+          "rv-assess is-locked" in h and "Inspect" not in h and "c_assessments" not in h and 'data-nav-id="c_assessments"' not in h)
+    ev("send_reviewer_project", {"badge_id": "badge_b1_signals", "title": "Signals filter challenge", "content": "Case Study\nA telemetry stream.\n\nYour Challenge\nDesign a filter.", "cosmonaut_ids": [cid]})
+    check("reviewer sent the project (DB)", q("SELECT COUNT(*) c FROM reviewer_project_prompts WHERE badge_id='badge_b1_signals' AND status='released'")[0]["c"] >= 1, g.last_flash_message)
+    ev("select_demo_account", cid)
+    ev("nav_cosmonaut", "c_submission")
+    ev("open_cosmonaut_badge_page", "badge_b1_signals")
+    h = page()
+    check("cosmonaut: the button unlocked (Project Allocated opens the project)", "pa-btn is-ready" in h and "pa-btn is-locked" not in h)
+    ev("open_allocated_project_page", "badge_b1_signals")
+    h = page()
+    check("Project Allocated opens the project as its OWN PAGE (no popup) with the submit action inside",
+          g.current_view == "c_project" and g.active_modal is None and "Signals filter challenge" in h and "Submit Deliverables" in h and "Case Study" in h)
+    ev("open_submission_modal", "badge_b1_signals")
+    m = modal()
+    check("Submit Deliverables opens the clean dialog: PDF / source code / GitHub only, project not repeated",
+          g.active_modal == "submission_portal_modal" and "sd-drop" in m and "submission-github-url" in m and "Case Study" not in m)
     ev("submit_project_deliverable", {"badge_id": "badge_b1_signals", "pdf_name": "report_v1.pdf", "pdf_payload": "data/sample_report.pdf",
                                       "code_name": "filter_v1.py", "code_payload": "print(1)", "github_url": "https://github.com/x/y"})
     check("submission saved (DB)", q("SELECT COUNT(*) c FROM project_submissions WHERE badge_id='badge_b1_signals' AND cosmonaut_id=?", (cid,))[0]["c"] == 1, g.last_flash_message)
+    h = page()
+    check("project page now shows the submission (files + Edit Deliverables)", g.active_modal is None and "report_v1.pdf" in h and "Edit Deliverables" in h)
     sub1 = q("SELECT id, status FROM project_submissions WHERE badge_id='badge_b1_signals' AND cosmonaut_id=?", (cid,))[0]
     ev("select_demo_account", owner_rev)
+    ev("nav_cosmonaut", "c_badge_reviews")
+    h = page()
+    check("after the cosmonaut submits, the Assessment button is ENABLED on the schedule (files not listed on the card)",
+          ("open_reviewer_assessment_page', '%s'" % sub1["id"]) in h and "report_v1.pdf" not in h)
+    ev("open_reviewer_assessment_page", sub1["id"])
+    h = page()
+    check("assessment workspace: deliverables viewer, rubric, Back to Badge Reviews",
+          g.current_view == "c_assessment_detail" and "reviewer-rubric-form" in h and "report_v1.pdf" in h and "Back to Badge Reviews" in h)
     rev = {"submission_id": sub1["id"], "bu": 6, "ar": 6, "tk": 6, "pr": 6, "qa": 6, "strengths": "s", "improvements": "i", "feedback": "f", "decision": "changes_requested"}
     ev("submit_reviewer_assessment", rev)
     check("reviewer marksheet saved (DB)", q("SELECT COUNT(*) c FROM assessment_marksheets WHERE submission_id=? AND assessor_role='reviewer'", (sub1["id"],))[0]["c"] == 1, g.last_flash_message)
+    check("the reviewer's choice is stored as a RECOMMENDATION (DB), nothing is awarded yet",
+          q("SELECT decision FROM assessment_marksheets WHERE submission_id=? AND assessor_role='reviewer'", (sub1["id"],))[0]["decision"] == "recommend_resubmit"
+          and q("SELECT status FROM project_submissions WHERE id=?", (sub1["id"],))[0]["status"] == "reviewer_assessed")
+    ev("open_reviewer_assessment_page", sub1["id"])
+    h = page()
+    check("reviewer: marks are locked after submitting (read-only panel, recommendation kept, no submit button)", "lg-rubric-locked" in h and "lg-dec-opt is-resubmit is-on" in h and "rubric-submit-label" not in h)
+    ev("submit_reviewer_assessment", {**rev, "bu": 9, "ar": 9, "tk": 9, "pr": 9, "qa": 9, "decision": "approve"})
+    check("a second submission for the same attempt is refused", q("SELECT COUNT(*) c FROM assessment_marksheets WHERE submission_id=? AND assessor_role='reviewer'", (sub1["id"],))[0]["c"] == 1 and "locked" in (g.last_flash_message or ""))
+    ev("select_demo_account", cid)
+    ev("nav_cosmonaut", "c_results")
+    h = page()
+    check("cosmonaut marksheet shows the reviewer's marks as soon as they are submitted (glass sheet, 5 criteria, awaiting Guardian)",
+          "ms-sheet" in h and "30.0" in h and "Awaiting Guardian" in h and h.count('class="ms-crit"') == 5 and "<table" not in h)
+    ev("select_demo_account", "guardian_1")
     ev("select_demo_account", "guardian_1")
     ev("nav_guardian", "g_reviews")
     ev("open_assessment_badge", "badge_b1_signals")
@@ -275,8 +331,10 @@ def run():
     ev("open_assessment_cosmonaut", {"badge_id": "badge_b1_signals", "cosmonaut_id": cid})
     h = page()
     check("cosmonaut page: compact attempts list, no role/feedback sentences", "lg-att-summary" in h and "Role:" not in h and "lg-meter" in h)
+    check("Guardian sees the reviewer's marks on the submission before signing off", "30.0 / 50.0" in h)
     ev("open_submission_review_page", sub1["id"])
     h = page()
+    check("Guardian sees the reviewer's recommendation above the marks and it is pre-selected", "Reviewer's recommendation" in h and "lg-dec-opt is-resubmit is-on" in h)
     check("marks page: no Back-to-reviews button, no meta bar, feedback + decision controls",
           "Back to Project Reviews" not in h and "lg-rubric-meta-bar" not in h and 'id="rubric-decision"' in h and "lg-dec-list" in h and "RUBRIC-50" not in h)
     ev("submit_guardian_final_assessment", {"submission_id": sub1["id"], "bu": 6, "ar": 6, "tk": 6, "pr": 6, "qa": 6, "strengths": "s", "improvements": "i", "feedback": "f", "decision": "changes_requested"})
@@ -291,12 +349,80 @@ def run():
     ev("submit_guardian_final_assessment", {"submission_id": sub2, "bu": 9, "ar": 9, "tk": 9, "pr": 9, "qa": 9, "strengths": "s", "improvements": "i", "feedback": "f", "decision": "approve"})
     row = q("SELECT status FROM project_submissions WHERE id=?", (sub2,))[0]
     check("approved attempt saved (DB) -> badge earned", row["status"] == "approved", g.last_flash_message)
+    ev("select_demo_account", cid)
+    ev("nav_cosmonaut", "c_submission")
+    h = page()
+    check("earned badge is GOLD on the cosmonaut's badge card", "gold-medal" in h and "Badge Earned" in h)
+    ev("select_demo_account", "guardian_1")
     check("timeline marked awarded (DB)", q("SELECT actual_award_date FROM badge_timelines WHERE badge_id='badge_b1_signals' AND cosmonaut_id=?", (cid,))[0]["actual_award_date"])
     ev("nav_guardian", "g_reviews")
     ev("open_assessment_badge", "badge_b1_signals")
     ev("open_assessment_cosmonaut", {"badge_id": "badge_b1_signals", "cosmonaut_id": cid})
     h = page()
     check("two attempts listed, newest open", h.count("lg-attempt-card") >= 2 and "<details class=\"lg-attempt-card\" open" in h.replace("\n", " ").replace("  ", " ") or h.count("<details") >= 2)
+
+    # ---------------------------------------------------------------- 9b. reviewer reviews a requested badge
+    section("9b. Reviewer: requested badge card -> structured review page -> edit -> approve")
+    RB = "b1_int_01"
+    ev("select_demo_account", "guardian_1")
+    ev("send_badge_review_request", {"badge_id": RB, "reviewer_id": "m_b2_4"})
+    check("Guardian sent the badge for review (DB)", q("SELECT workflow_status, assigned_reviewer_id FROM badges WHERE id=?", (RB,))[0]["workflow_status"] == "pending_review")
+    ev("select_demo_account", "m_b2_4")
+    ev("nav_cosmonaut", "c_requests")
+    h = page()
+    check("Review Requests: heading chips + Dashboard button removed", "&larr; Dashboard" not in h and "BAND B2" not in h and "app-global-back-btn" not in h)
+    check("requested badge shown as a card", "lg-saved-badge-card is-clickable" in h and "Intelligent Apps Foundations" in h and "Needs your review" in h)
+    ev("open_reviewer_badge_review", RB)
+    h = page()
+    check("card opens the full structured badge", g.current_view == "c_badge_review" and all(x in h for x in ("badge-section-outcomes", "badge-section-practice", "badge-section-topics", "badge-section-resources", "Created Badge Location")))
+    ev("toggle_reviewer_badge_edit")
+    h = page()
+    check("Edit shows the Guardian's edit inputs", all(x in h for x in ("edit-badge-title-input", "edit-badge-outcomes-input", "edit-topic-title-0", "edit-practice-prompt-input", "edit-resources-prompt-input")))
+    ev("save_reviewer_badge_edits", {"title": "Intelligent Apps Foundations (reviewed)", "description": "Scope fixed.", "outcomes": ["Can do A.", "Can do B."],
+                                     "practice_prompt": "Short prompt.", "resources_prompt": "Short resources.",
+                                     "topics": [{"title": "T1", "description": "D1"}, {"title": "T2", "description": "D2"}]})
+    r = q("SELECT title, description, learning_outcomes_json, learning_topics_json, prompt_json, workflow_status FROM badges WHERE id=?", (RB,))[0]
+    pj = json.loads(r["prompt_json"])
+    check("reviewer's edits saved to the real badge (DB)", r["title"].endswith("(reviewed)") and json.loads(r["learning_outcomes_json"]) == ["Can do A.", "Can do B."] and json.loads(r["learning_topics_json"]) == ["T1", "T2"], r["title"])
+    check("structured prompt_json updated, reviewer marked, status unchanged", pj["practice_project"]["prompt"] == "Short prompt." and pj["reviewed_by"] and r["workflow_status"] == "pending_review")
+    ev("select_demo_account", "guardian_1")
+    ev("select_create_badge_band", "B1")
+    ev("view_saved_badge", RB)
+    h = page()
+    check("Guardian sees the same edited badge", all(x in h for x in ("Intelligent Apps Foundations (reviewed)", "Scope fixed.", "Can do B.", "Short prompt.", "T2")))
+    ev("select_demo_account", "m_b2_1")
+    g.reviewer_review_badge_id = RB
+    ev("save_reviewer_badge_edits", {"title": "Hijack", "outcomes": ["Can x."]})
+    check("a reviewer who was not sent the badge cannot edit it", q("SELECT title FROM badges WHERE id=?", (RB,))[0]["title"].endswith("(reviewed)"))
+    ev("select_demo_account", "m_b2_4")
+    ev("open_reviewer_badge_review", RB)
+    ev("approve_submitted_badge", RB)
+    check("reviewer approved the edited badge (DB)", q("SELECT workflow_status, title FROM badges WHERE id=?", (RB,))[0]["workflow_status"] == "approved")
+    ev("toggle_reviewer_badge_edit")
+    check("an approved badge can no longer be edited", not g.reviewer_review_editing, g.last_flash_message)
+
+    # 48-hour review window: countdown on the card, silence closes the review and keeps the badge as it is
+    RB2 = "b1_dat_01"
+    ev("select_demo_account", "guardian_1")
+    ev("send_badge_review_request", {"badge_id": RB2, "reviewer_id": "m_b3_6"})
+    ra = q("SELECT assigned_at, review_due_at FROM badge_reviewer_assignments WHERE badge_id=? AND status='pending'", (RB2,))[0]
+    span = (datetime.datetime.fromisoformat(ra["review_due_at"]) - datetime.datetime.fromisoformat(ra["assigned_at"])).total_seconds()
+    check("review deadline = 48 hours after sending (DB)", abs(span - 48 * 3600) < 5, span)
+    ev("select_demo_account", "m_b3_6")
+    ev("nav_cosmonaut", "c_requests")
+    h = page()
+    check("card shows the live countdown (no 'sent by'), bold big title, no outcome/topic chips", 'data-sync="sync_badge_reviews"' in h and 'lg-sb-title is-request' in h and "Sent by" not in h.split("Cosmonaut Evaluation")[0] and " outcomes</span>" not in h)
+    con = sqlite3.connect(DB)
+    with con:
+        con.execute("UPDATE badge_reviewer_assignments SET review_due_at=? WHERE badge_id=? AND status='pending'", ((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)).isoformat(), RB2))
+    con.close()
+    ev("sync_badge_reviews")
+    r = q("SELECT workflow_status, assigned_reviewer_id FROM badges WHERE id=?", (RB2,))[0]
+    check("window ended: badge kept as it is and returned to the Guardian (DB)", r["workflow_status"] == "ready_for_review" and r["assigned_reviewer_id"] is None)
+    check("assignment expired + audit event (DB)", q("SELECT status FROM badge_reviewer_assignments WHERE badge_id=?", (RB2,))[0]["status"] == "expired" and q("SELECT COUNT(*) c FROM badge_review_events WHERE badge_id=? AND event_type='review_expired'", (RB2,))[0]["c"] == 1)
+    ev("open_reviewer_badge_review", RB2)
+    h = page()
+    check("expired review opens read-only", "Review Window Ended" in h and "Read-only" in h and "toggle_reviewer_badge_edit" not in h)
 
     # ---------------------------------------------------------------- 10. reload from the database
     section("10. Reload everything from the database and re-render")

@@ -38,7 +38,6 @@ from starapp.badge_generator import generate_reviewer_project_spec
 from starapp.views_guardian import render_guardian_badge_allotment
 from starapp.views_cosmonaut import (
     render_cosmonaut_submission_workspace,
-    render_reviewer_assessment_queue,
     render_reviewer_badge_schedule
 )
 
@@ -175,8 +174,8 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
             all_band_mappings=store.get_band_mappings(),
             all_timelines=store.timelines
         )
-        self.assertIn("Timeline &amp; Mapping", allotment_html)
-        self.assertIn("Reviewer", allotment_html)
+        self.assertIn("open_badge_mapping_modal", allotment_html)
+        self.assertIn("open_badge_timeline_modal", allotment_html)
 
         # =========================================================================
         # 4. REVIEWER AI PROJECT GENERATION & 1:N DELIVERY ISOLATION
@@ -290,19 +289,10 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
         # =========================================================================
         # Reviewer 2 (unauthorized for Cadet 1) logs in
         self.ctrl.handle_event("select_demo_account", rev2_id)
-        asms_map = {a.submission_id: a for a in store.get_all_assessments()}
-
-        # Verify Reviewer 2 queue does NOT display Cadet 1's submission
-        rev2_queue_html = render_reviewer_assessment_queue(
-            submissions=store.get_all_submissions(),
-            assessments_by_sub=asms_map,
-            badges_map={badge1.id: badge1, badge2.id: badge2},
-            cosmonauts_map={u.id: u for u in store.get_all_cosmonauts()},
-            current_user=store.get_user_by_id(rev2_id),
-            status_filter="all"
-        )
-        self.assertNotIn("Astraea_Signals_Telemetry_Charter.pdf", rev2_queue_html,
-                         "Reviewer 2 must not see submissions of cadets mapped to Reviewer 1")
+        # Reviewer 2 cannot open Cadet 1's submission (the assessment workspace is reached from the Badge Review schedule)
+        self.ctrl.handle_event("open_reviewer_assessment_page", sub1.id)
+        self.assertNotEqual(self.ctrl.current_view, "c_assessment_detail",
+                            "Reviewer 2 must not be able to open submissions of cadets mapped to Reviewer 1")
 
         # Reviewer 2 attempts unauthorized assessment of Cadet 1's submission
         self.ctrl.handle_event("submit_reviewer_assessment", json.dumps({
@@ -315,16 +305,10 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
 
         # Reviewer 1 (authorized) logs in
         self.ctrl.handle_event("select_demo_account", rev1_id)
-        rev1_queue_html = render_reviewer_assessment_queue(
-            submissions=store.get_all_submissions(),
-            assessments_by_sub=asms_map,
-            badges_map={badge1.id: badge1, badge2.id: badge2},
-            cosmonauts_map={u.id: u for u in store.get_all_cosmonauts()},
-            current_user=store.get_user_by_id(rev1_id),
-            status_filter="all"
-        )
-        self.assertIn("Astraea_Signals_Telemetry_Charter.pdf", rev1_queue_html,
-                      "Reviewer 1 must see mapped Cadet 1's submission")
+        self.ctrl.handle_event("open_reviewer_assessment_page", sub1.id)
+        self.assertEqual(self.ctrl.current_view, "c_assessment_detail", "Reviewer 1 must be able to open mapped Cadet 1's submission")
+        self.assertIn("Astraea_Signals_Telemetry_Charter.pdf", self.ctrl.render(),
+                      "Reviewer 1 must see mapped Cadet 1's deliverables in the workspace")
 
         # Reviewer 1 scores Cadet 1 with 50-mark rubric (Total: 44.0/50.0 = 88%)
         self.ctrl.handle_event("submit_reviewer_assessment", json.dumps({

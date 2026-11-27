@@ -352,9 +352,9 @@ body::before {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;                   /* 12px + 11px right padding: the longest label ("Reviewer Badge Approval", active = bolder) fits the 256px rail */
   height: 42px;
-  padding: 0 15px;
+  padding: 0 11px 0 15px;
   color: var(--frost-navy);
   text-decoration: none;
   font-size: 0.84375rem;
@@ -437,56 +437,40 @@ body::before {
   opacity: 1;
 }
 
-/* Sidebar footer: "View Profile" nav-link pinned at the bottom + user card (fixed slot, never shifts nav items).
-   The profile card keeps real padding on every side so the Sign Out button's border is never clipped. */
+/* Sidebar footer (every portal): the user's name card and, below it, two buttons side by side (View Profile | Sign Out).
+   Narrow 72 px rail: the card is hidden and the two buttons stack as icons. Expanded: card + one row of buttons. */
 .sidebar-footer {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: 164px;
-  min-height: 164px;
   flex-shrink: 0;
-  padding: 12px 12px 16px;
+  padding: 10px 12px 14px;
   box-sizing: border-box;
   border-top: 1px solid rgba(157, 183, 213, 0.32);
   background: rgba(236, 245, 255, 0.72);
-  overflow: hidden;
 }
 
 .sidebar-nav-bottom {
   list-style: none;
   margin: 0;
   padding: 0;
-  flex-shrink: 0;
-}
-
-.sidebar-nav-bottom .nav-item {
-  margin-bottom: 0;
-}
-
-.lg-sidebar-profile {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 10px;
-  flex: 1;
-  min-height: 0;
-  padding: 12px 14px 14px;
+  gap: 4px;
+}
+
+.sidebar-nav-bottom .nav-item { min-width: 0; margin-bottom: 0; }
+
+.lg-sidebar-profile {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
   box-sizing: border-box;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.9);
   border: 1.5px solid rgba(157, 183, 213, 0.45);
   box-shadow: 0 4px 12px rgba(7, 22, 41, 0.06);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.13s ease;
-}
-
-.app-sidebar:hover .lg-sidebar-profile,
-.app-sidebar.pinned-expanded .lg-sidebar-profile,
-.app-sidebar.collapsed:hover .lg-sidebar-profile {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .lg-sidebar-profile-meta {
@@ -496,28 +480,54 @@ body::before {
   min-width: 0;
 }
 
-.user-mini-card {
+.app-sidebar:hover .lg-sidebar-profile,
+.app-sidebar.pinned-expanded .lg-sidebar-profile {
   display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
-.user-avatar {
-  display: none;
+/* expanded: one row, equal height, View Profile a little wider than Sign Out */
+.app-sidebar:hover .sidebar-nav-bottom,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom {
+  flex-direction: row;
+  gap: 8px;
 }
 
-.user-details {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 0.13s ease;
+.app-sidebar:hover .sidebar-nav-bottom .nav-item,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom .nav-item { flex: 1 1 0; }
+
+.app-sidebar:hover .sidebar-nav-bottom .nav-item.is-wide,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom .nav-item.is-wide { flex: 1.12 1 0; }
+
+.app-sidebar:hover .sidebar-nav-bottom .nav-link,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom .nav-link {
+  justify-content: center;
+  gap: 6px;
+  padding: 0 6px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  border: 1px solid rgba(157, 183, 213, 0.6);
+  background: rgba(255, 255, 255, 0.9);
 }
 
-.app-sidebar:hover .user-details,
-.app-sidebar.pinned-expanded .user-details,
-.app-sidebar.collapsed:hover .user-details {
-  opacity: 1;
+.app-sidebar:hover .sidebar-nav-bottom .nav-link span,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom .nav-link span {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.app-sidebar:hover .sidebar-nav-bottom .nav-link.active,
+.app-sidebar.pinned-expanded .sidebar-nav-bottom .nav-link.active {
+  background: var(--deep-frozen-midnight);
+  color: #ffffff;
+  border-color: var(--deep-frozen-midnight);
+}
+
+.sidebar-nav-bottom .signout-link:hover {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
 }
 
 .user-name {
@@ -535,28 +545,6 @@ body::before {
   opacity: 0.78;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.lg-sidebar-signout-btn {
-  width: 100%;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(232, 243, 255, 0.9) 100%);
-  border: 1.5px solid rgba(157, 183, 213, 0.65);
-  color: var(--frost-navy);
-  font-size: 0.78125rem;
-  font-weight: 800;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.13s ease, border-color 0.13s ease, color 0.13s ease;
-}
-
-.lg-sidebar-signout-btn:hover {
-  background: linear-gradient(135deg, #17345C 0%, #071629 100%);
-  border-color: #071629;
-  color: #ffffff;
 }
 
 .topbar-sidebar-toggle-btn {
@@ -722,6 +710,11 @@ body::before {
   width: 95vw;
 }
 
+.modal-dialog.modal-form {
+  max-width: min(640px, 96vw);
+  width: 95vw;
+}
+
 .modal-dialog.modal-xl {
   max-width: min(1280px, 96vw);
   width: 96vw;
@@ -780,3 +773,6 @@ body::before {
   background: rgba(234, 244, 255, 0.4);
 }
 
+/* The band chip of the Cosmonaut sidebar also opens the cycle picker */
+.sidebar-band-chip.is-link { cursor: pointer; text-decoration: none; }
+.sidebar-band-chip.is-link:hover { background: #0b2545; }

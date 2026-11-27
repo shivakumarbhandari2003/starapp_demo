@@ -331,8 +331,8 @@ def run_e2e_verification():
     assert s_row["github_url"] == "https://github.com/starapp-cosmonauts/b1-sig-01-signals-aarav", "GitHub URL mismatch"
     conn.close()
 
-    # Verify Reviewer Assessment Queue reflects new submission
-    r_ctrl.current_view = "c_assessments"
+    # Verify Reviewer Badge Review schedule reflects new submission
+    r_ctrl.current_view = "c_badge_reviews"
     r_queue_html = r_ctrl.render()
     assert "Aarav Sharma" in r_queue_html or "m_b1_1" in r_queue_html, "Submission missing from Reviewer assessment queue"
     print("✓ Step 6 PASSED: Deliverables saved in SQLite and routed exclusively to assigned Reviewer.")

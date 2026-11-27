@@ -38,7 +38,7 @@ class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
 
         modal_html = self.ctrl.render()
         self.assertIn("Submit Project Deliverables", modal_html)
-        self.assertIn("SmartFit: The Member Intelligence Challenge", modal_html)  # the reviewer's project is shown first
+        self.assertNotIn("SmartFit: The Member Intelligence Challenge", modal_html)  # the project lives on its page, not in the dialog
         self.assertIn("submission-pdf-file", modal_html)
         self.assertIn("submission-code-file", modal_html)
         self.assertIn("submission-github-url", modal_html)
@@ -116,19 +116,14 @@ class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
                 badge.assigned_cosmonaut_ids.append(self.cadet_id)
             store.save_badge(badge)
 
-        # Log in as reviewer and navigate to c_assessments
+        # Log in as reviewer: the Badge Review schedule has one enabled Assessment button for this submission
         self.ctrl.handle_event("select_demo_account", self.reviewer_id)
-        self.ctrl.handle_event("nav_cosmonaut", "c_assessments")
-        queue_html = self.ctrl.render()
+        self.ctrl.handle_event("nav_cosmonaut", "c_badge_reviews")
+        schedule_html = self.ctrl.render()
+        self.assertIn("rv-assess", schedule_html)
+        self.assertEqual(schedule_html.count(f"open_reviewer_assessment_page', '{sub.id}'"), 1)
 
-        # Check queue renders and has the inspect deliverables button
-        self.assertIn("Inspect Deliverables &amp; Evaluate (50 Marks)", queue_html)
-        self.assertIn(sub.id, queue_html)
-
-        # Ensure exactly 1 card for this submission (card onclick + button onclick)
-        self.assertEqual(queue_html.count(f"open_reviewer_assessment_page', '{sub.id}'"), 2)
-
-        # Click Inspect Deliverables & Evaluate
+        # Click Assessment
         self.ctrl.handle_event("open_reviewer_assessment_page", sub.id)
         self.assertEqual(self.ctrl.current_view, "c_assessment_detail")
 
@@ -212,7 +207,8 @@ class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
         reviewer_asm = next((a for a in asms if a.submission_id == sub.id and a.assessor_role == "reviewer"), None)
         self.assertIsNotNone(reviewer_asm, "Reviewer assessment must be saved in database")
         self.assertEqual(reviewer_asm.total_marks, 44.0)
-        self.assertIn(reviewer_asm.decision, ("reviewer_assessed", "approve"))
+        self.assertEqual(reviewer_asm.decision, "recommend_approve")        # a recommendation: the Guardian gives the final decision
+        self.assertEqual(store.get_submission(sub.id).status, "reviewer_assessed")
 
 if __name__ == "__main__":
     unittest.main()

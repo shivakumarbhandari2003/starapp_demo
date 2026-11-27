@@ -98,10 +98,8 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         # By default for multiple cadets, starts with Level 1 badge card
         html_collapsed = self.app.render()
         self.assertIn("Badge Review Schedule", html_collapsed)
-        self.assertIn("B4-AI--01", html_collapsed)
-        self.assertIn("BAND B4", html_collapsed)
         self.assertIn("AI-OS Architecture", html_collapsed)
-        self.assertIn("4 Mapped Cosmonauts", html_collapsed)
+        self.assertIn("4 mapped cosmonauts", html_collapsed)
 
         # 2. Toggle expand Level 1 card
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
@@ -118,13 +116,16 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
             self.assertNotIn(c_user.name, html_expanded, f"Cadet {c_user.name} must NOT appear in Reviewer A schedule")
 
         # Dedicated cadet card: one compact row per cadet (the badge header is not repeated inside it)
-        self.assertIn("Project Pending", html_expanded)
-        self.assertIn("Review Window:", html_expanded)
-        self.assertIn("Submission Deadline:", html_expanded)
+        self.assertIn("Project pending", html_expanded)
+        self.assertIn("Review window", html_expanded)                  # shown once, in the badge header (shared by every cosmonaut)
+        self.assertIn("Submission deadline", html_expanded)
         self.assertNotIn("Reviewer creates project, Cadet learns concepts", html_expanded)  # removed boilerplate
-        self.assertIn("View Timeline", html_expanded)
-        self.assertIn("Create Project", html_expanded)
-        self.assertIn("Cosmonaut Assessments", html_expanded)
+        self.assertIn("Timeline", html_expanded)
+        self.assertIn("Create Project", html_expanded)                 # one Create Project for the badge (sent to the mapped cosmonauts)
+        self.assertIn("rv-assess is-locked", html_expanded)            # nobody submitted yet: the Assessment button is disabled
+        self.assertNotIn("Assessments", html_expanded)                 # and there is no link to a separate assessments page
+        self.assertIn("asm-tree-cosmo-branch", html_expanded)          # cosmonauts hang off the same connected-dot tree as the Assessment Dashboard
+        self.assertIn("asm-elbow", html_expanded)
 
         # 3. Reviewer B logs in: must see strictly 3 cadets, none from cadets_a
         self.app.handle_event("select_demo_account", self.rev_b.id)
@@ -132,7 +133,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
         html_b = self.app.render()
 
-        self.assertIn("2 Mapped Cosmonauts", html_b)
+        self.assertIn("2 mapped cosmonauts", html_b)
         for cid in self.cadets_b:
             c_user = store.users.get(cid)
             self.assertIn(c_user.name, html_b, f"Cadet {c_user.name} must appear in Reviewer B schedule")
@@ -147,7 +148,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         self.app.handle_event("nav_cosmonaut", "c_badge_reviews")
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
         html1 = self.app.render()
-        self.assertIn("Project Pending", html1)
+        self.assertIn("Project pending", html1)
         self.assertIn("Create Project", html1)
 
         # 2. Reviewer A authors and releases project
@@ -163,7 +164,7 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
 
         # In Reviewer A schedule, status becomes Project Given & button becomes Edit Project
         html2 = self.app.render()
-        self.assertIn("Project Given", html2)
+        self.assertIn("Project sent", html2)
         self.assertIn("Edit Project", html2)
 
         # 3. First Cadet submits deliverables
@@ -177,13 +178,18 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
             "source_code": "class KernelScheduler:\n    pass"
         })
 
-        # 4. Reviewer A views schedule: Cadet 1 shows "Deliverables Submitted" and "Inspect Deliverables & Allocate Marks"
+        # 4. Reviewer A views schedule: Cadet 1 shows "Deliverables submitted" and the Assessment button is now ENABLED
+        #    (it was disabled until they submitted); the deliverables themselves are not listed on the card any more
         self.app.handle_event("select_demo_account", self.rev_a.id)
         self.app.handle_event("nav_cosmonaut", "c_badge_reviews")
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
         html3 = self.app.render()
-        self.assertIn("Deliverables Submitted", html3)
-        self.assertIn("Inspect Deliverables", html3)
+        self.assertIn("Deliverables submitted", html3)
+        self.assertIn("rv-assess", html3)
+        self.assertIn("open_reviewer_assessment_page", html3)
+        self.assertNotIn("Inspect", html3)
+        self.assertNotIn("ai_kernel_spec.pdf", html3)
+        self.assertNotIn("Submitted Deliverables", html3)
 
         # 5. Reviewer evaluates deliverables
         submissions = store.get_submissions_for_cosmonaut(cadet_1, self.badge.id)
@@ -203,8 +209,8 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
         # In Reviewer A schedule, status becomes Evaluated: 46.0/50 and button becomes View Marksheet
         self.app.handle_event("nav_cosmonaut", "c_badge_reviews")
         html4 = self.app.render()
-        self.assertIn("Evaluated: 46.0/50", html4)
-        self.assertIn("View Marksheet (46.0/50)", html4)
+        self.assertIn("Evaluated 46.0/50", html4)
+        self.assertIn("open_reviewer_assessment_page", html4)               # the Assessment button stays enabled to view the marks
 
 
 if __name__ == "__main__":

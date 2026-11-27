@@ -77,6 +77,10 @@ ev("execute_cosmonaut_mapping", {"band": "B1", "badge_id": "badge_b1_signals", "
 ev("publish_badge", "badge_b1_signals")
 owner = store.get_timeline("badge_b1_signals", "m_b1_1").reviewer_id
 ev("select_demo_account", "m_b1_1")
+ev("request_project", "badge_b1_signals")
+ev("select_demo_account", owner)
+ev("send_reviewer_project", {"badge_id": "badge_b1_signals", "title": "Signals filter challenge", "content": "Case Study\nA telemetry stream.\n\nYour Challenge\nDesign a filter.", "cosmonaut_ids": ["m_b1_1"]})
+ev("select_demo_account", "m_b1_1")
 ev("submit_project_deliverable", {"badge_id": "badge_b1_signals", "pdf_name": "report_v1.pdf", "pdf_payload": "data:application/pdf;base64,JVBERi0xLjQKJSVFT0YK",
                                   "code_name": "filter_v1.py", "code_payload": "print(1)", "github_url": "https://github.com/x/y"})
 sub = store.get_submissions_for_cosmonaut("m_b1_1", "badge_b1_signals")[0]
@@ -198,6 +202,11 @@ try:
     act("select_demo_account", "guardian_1")
     act("select_create_badge_band", "B1")
     check("signed in as Guardian (sidebar present)", js("!!document.querySelector('.app-sidebar')"))
+    check("Guardian footer = name card + exactly two buttons (View Profile, Sign Out)", js("document.querySelectorAll('.sidebar-footer .nav-item').length") == 2 and js("!!document.querySelector('.sidebar-footer .lg-sidebar-profile')"))
+    js("(function(){var l=document.querySelector('.sidebar-nav [data-nav-id=g_badge_approval]');if(l)l.classList.add('active');document.querySelector('.app-sidebar').classList.add('pinned-expanded')})()")
+    wait(0.8)
+    check("no truncated sidebar labels when expanded (longest label active)", js("Array.from(document.querySelectorAll('.sidebar-nav .nav-link span')).filter(function(e){return e.scrollWidth>e.clientWidth+1}).length") == 0)
+    js("(function(){var l=document.querySelector('.sidebar-nav [data-nav-id=g_badge_approval]');if(l)l.classList.remove('active');document.querySelector('.app-sidebar').classList.remove('pinned-expanded')})()")
     nav_ids = js("Array.from(document.querySelectorAll('.sidebar-nav [data-nav-id]')).map(function(a){return a.getAttribute('data-nav-id')})") or []
     check("sidebar has the Guardian pages", all(x in nav_ids for x in ("g_create_badge", "g_badge_approval", "g_mapping", "g_allotment", "g_reviews")), nav_ids)
     for nid in [n for n in nav_ids if n != "g_learning"]:
@@ -212,6 +221,87 @@ try:
     check("typing in the search box filters the list (debounced)", "Signals Foundations" in body() and "Data Systems Architecture" not in body())
 
     # ---------------------------------------------------------------- Mapping page
+    # ---------------------------------------------------------------- Reviewer: requested badge card -> full badge -> edit -> save
+    act("send_badge_review_request", {"badge_id": "b1_int_01", "reviewer_id": "m_b2_4"})
+    act("select_demo_account", "m_b2_4")
+    click('.sidebar-nav [data-nav-id="c_requests"]')
+    b = body()
+    check("reviewer: Review Requests has no heading chips / Dashboard button", "&larr; Dashboard" not in b and "BAND B2" not in b and (js("document.querySelectorAll('.app-global-back-btn').length") == 1))
+    check("reviewer: requested badge is a card", "lg-saved-badge-card" in b and "Needs your review" in b)
+    same_line = js("(function(){var t=document.querySelector('.rr-head-title').getBoundingClientRect();var tools=['rr-status-filter-select','rr-history-toggle-btn','rr-search-input'].map(function(i){return document.getElementById(i).getBoundingClientRect()});return tools.every(function(r){return Math.abs((r.top+r.height/2)-(t.top+t.height/2))<30 && r.left>t.right})})()")
+    check("reviewer: dropdown + history + search are on the heading line, to its right", same_line)
+    js("(function(){var s=document.getElementById('rr-status-filter-select');s.value='approved';s.dispatchEvent(new Event('change',{bubbles:true}))})()")
+    wait(0.8); settle()
+    check("reviewer: dropdown 'Approved' hides the pending card", "lg-saved-badge-card" not in body() and js("document.getElementById('rr-status-filter-select').value") == "approved")
+    js("(function(){var s=document.getElementById('rr-status-filter-select');s.value='all';s.dispatchEvent(new Event('change',{bubbles:true}))})()")
+    wait(0.8); settle()
+    js("(function(){var i=document.getElementById('rr-search-input');i.value='zzz-nothing';i.dispatchEvent(new Event('input',{bubbles:true}))})()")
+    wait(1.2); settle()
+    check("reviewer: typing in the search box filters the cards (debounced)", "lg-saved-badge-card" not in body())
+    js("(function(){var i=document.getElementById('rr-search-input');i.value='';i.dispatchEvent(new Event('input',{bubbles:true}))})()")
+    wait(1.2); settle()
+    check("reviewer: clearing the search brings the card back", "lg-saved-badge-card" in body())
+    check("reviewer: History button opens the history, and again closes it", click("#rr-history-toggle-btn") and "ba-history-btn is-active" in body() and click("#rr-history-toggle-btn") and "lg-saved-badge-card" in body())
+    check("reviewer: click the card opens the full badge", click(".lg-saved-badge-card.is-clickable", 0) and "badge-section-outcomes" in body() and "Created Badge Location" in body())
+    check("reviewer: badge page has no horizontal overflow", (overflow() or 0) <= 1, overflow())
+    check("reviewer: Edit button -> edit inputs", click_text("button", "Edit") and js("!!document.getElementById('edit-badge-title-input')"))
+    js("(function(){var t=document.getElementById('edit-badge-title-input');t.value='Intelligent Apps Foundations (reviewed)';var o=document.getElementById('edit-badge-outcomes-input');o.value='Can do A.\\nCan do B.';var d=document.getElementById('edit-topic-desc-0');d.value='Reviewed topic text.'})()")
+    check("reviewer: Apply Changes saves", click_text("button", "Apply Changes"))
+    r = q("SELECT title, learning_outcomes_json, prompt_json, workflow_status FROM badges WHERE id='b1_int_01'")[0]
+    check("reviewer: edits are in the database", r["title"].endswith("(reviewed)") and "Can do B." in r["learning_outcomes_json"] and "Reviewed topic text." in r["prompt_json"] and r["workflow_status"] == "pending_review", r["title"])
+    check("reviewer: page shows Approve / Return after the edit", "confirm_approve_badge" in body() and "confirm_return_badge" in body())
+    act("select_demo_account", "guardian_1")
+    act("select_create_badge_band", "B1")
+    act("view_saved_badge", "b1_int_01")
+    check("Guardian opens the same badge and sees the reviewer's edits", "Intelligent Apps Foundations (reviewed)" in body() and "Reviewed topic text." in body())
+
+    # Create Project: pre-filled sample, edited and sent with the real form
+    act("select_demo_account", owner)
+    click('.sidebar-nav [data-nav-id="c_badge_reviews"]')
+    opened = click(".rv-create")
+    check("reviewer: Create Project opens the structured form (sections, deliverable inputs, recipients)", opened and all(js("!!document.getElementById('%s')" % i) for i in ("rev_proj_title", "rev_proj_case", "rev_proj_challenge", "rev_proj_details", "rev_proj_del_0", "rev_proj_del_1", "rev_proj_del_2", "rev_proj_eval")))
+    click(".rp-notice button")           # Reset / Load a fresh sample -> the synthetic project fills every field
+    check("reviewer: the sample fills the form (case study, 3 deliverables, evaluation)", (js("document.getElementById('rev_proj_case').value.length") or 0) > 80 and (js("document.getElementById('rev_proj_del_0').value.indexOf('PDF report')") == 0) and (js("document.getElementById('rev_proj_eval').value.split(String.fromCharCode(10)).length") or 0) == 5)
+    check("reviewer: the sections are shown FORMATTED (bullets, deliverable cards), fields hidden", js("document.querySelectorAll('#rp-view-details .pj-list li').length") >= 5 and js("document.querySelectorAll('.pj-deliv').length") == 3 and js("document.getElementById('rev_proj_case').offsetParent === null"))
+    click('[data-pj-toggle="case_study"]')
+    check("reviewer: Edit shows the field, the formatted view hides", js("document.getElementById('rev_proj_case').offsetParent !== null") and js("document.getElementById('rp-view-case_study').offsetParent === null"))
+    js("(function(){var t=document.getElementById('rev_proj_case');t.value='A brand new case study written by the reviewer.';})()")
+    click('[data-pj-toggle="case_study"]')
+    check("reviewer: Done re-renders the formatted view from the edit", "A brand new case study written by the reviewer." in (js("document.getElementById('rp-view-case_study').innerText") or "") and js("document.getElementById('rev_proj_case').offsetParent === null"))
+    js("(function(){document.getElementById('rev_proj_title').value='Edited by the reviewer';document.querySelectorAll('.rev-proj-recipient').forEach(function(c){c.checked=true})})()")
+    click(".rp-send")
+    pr = q("SELECT description FROM reviewer_project_prompts WHERE title='Edited by the reviewer'")
+    check("reviewer: the form's sections were composed into one structured project and saved (DB)", bool(pr) and all(x in pr[0]["description"] for x in ("Case Study", "Your Challenge", "Project Details", "Deliverables", "- PDF report", "Evaluation")))
+    act("select_demo_account", "guardian_1")
+    act("select_create_badge_band", "B1")
+
+    # Cosmonaut badge page: Reviewer + Timeline on the badge-name line, popups, project only behind "Project Allocated"
+    act("select_demo_account", "m_b1_1")
+    act("open_cosmonaut_badge_page", "badge_b1_signals")
+    bp = body()
+    check("cosmonaut: badge page has no back rows / chips / reviewer banner", all(x not in bp for x in ("Back to Badges", "Back to All Badges", "Badge Workspace", "Assigned Peer Reviewer")) and "cbp-page" in bp)
+    check("cosmonaut: Reviewer + Timeline buttons on the badge name line", js("document.querySelectorAll('.cb-title-actions button').length") == 2)
+    check("cosmonaut: Reviewer button opens the mapped reviewer popup", click_text(".cb-title-actions button", "Reviewer") and "Mapped to you" in modal() and "rvm-card" in modal())
+    click(".modal-close-btn")
+    check("cosmonaut: Timeline button opens the connected-dot timeline", click_text(".cb-title-actions button", "Timeline") and js("document.querySelectorAll('.tlv-step').length") == 7)
+    click(".modal-close-btn")
+    check("cosmonaut: Project Allocated is enabled and the project is not inside the badge", js("(document.querySelector('.pa-btn')||{}).disabled") is False and "Edited by the reviewer" not in body())
+    check("cosmonaut: Project Allocated opens the project as a PAGE (no popup) with the whole project", click(".pa-btn") and js("!!document.querySelector('.pjp-page')") and "Edited by the reviewer" in body() and js("!document.querySelector('.modal-dialog')") and "Case Study" in body())
+    check("project page: facts row, formatted sections and the submission card", js("document.querySelectorAll('.pjp-facts .tlv-fact').length") == 3 and (js("document.querySelectorAll('.cb-section-card').length") or 0) >= 4 and js("!!document.getElementById('project-submission-card')"))
+    check("project page: no horizontal overflow", not overflow())
+    check("project page: the header action matches the cosmonaut's state (Submit / Edit Deliverables, or the marksheet once evaluated)", js("document.querySelectorAll('.pjp-bar-actions button').length") == 1)
+    if not click(".pjp-primary"):                       # already evaluated: the dialog is still reachable, open it directly
+        act("open_submission_modal", "badge_b1_signals")
+    check("project page: Submit / Edit Deliverables opens the clean glass dialog", js("!!document.querySelector('.modal-dialog.modal-form .sd-wrap')") and js("document.querySelectorAll('.sd-drop').length") == 2 and js("!!document.getElementById('submission-github-url')"))
+    js("(function(){var i=document.getElementById('submission-pdf-file');var dt=new DataTransfer();dt.items.add(new File(['x'],'my_report.pdf'));i.files=dt.files;i.dispatchEvent(new Event('change',{bubbles:true}))})()")
+    check("dialog: choosing a file shows its name and marks the drop area filled", js("document.getElementById('sd-name-submission-pdf-file').textContent") == "my_report.pdf" and js("document.getElementById('sd-drop-submission-pdf-file').classList.contains('is-set')"))
+    click(".modal-close-btn")
+    check("cosmonaut: marksheet page is a glass sheet or a clear pending state", click('.sidebar-nav [data-nav-id="c_results"]') and js("!!document.querySelector('.ms-page')") and js("!!document.querySelector('.ms-sheet, .ms-empty')") and js("!!document.getElementById('results-badge-select')"))
+    check("marksheet page: no horizontal overflow", not overflow())
+    js("(function(){var s=document.querySelector('.ms-sheet');if(!s)return;})()")
+    act("select_demo_account", "guardian_1")
+    act("select_create_badge_band", "B1")
+
     click('.sidebar-nav [data-nav-id="g_mapping"]')
     b = body()
     check("mapping: saved card shows the checklist", "mbc-checks" in b and "mapped" in b)
@@ -271,11 +361,21 @@ try:
     ncols = js("getComputedStyle(document.querySelector('.lg-allot-grid')).gridTemplateColumns.split(' ').length")
     check("3 cards per row at 1440px", ncols == 3, ncols)
     same_line = js("(function(){var a=document.querySelector('.lg-allot-actions');var t=Array.from(a.children).map(function(b){return Math.round(b.getBoundingClientRect().top)});return Math.max.apply(null,t)-Math.min.apply(null,t)})()")
-    check("Timeline / Edit / Revoke on ONE line", same_line is not None and same_line <= 2, same_line)
-    check("open Timeline & Mapping", click_text(".lg-allot-actions button", "Timeline"))
+    check("Edit (left) and Revoke / Publish (right) on ONE line, only two buttons", same_line is not None and same_line <= 2 and js("document.querySelector('.lg-allot-actions').children.length") == 2, same_line)
+    check("card has separate Mapping and Timeline buttons", js("document.querySelector('.lg-allot-card').querySelectorAll('.lg-allot-view-btn').length") == 2)
+    check("open Mapping", click_text(".lg-allot-view-btn", "Mapping"))
     m = modal()
-    check("timeline modal read-only with reviewers", "tm-steps" in m and "<input" not in m and "tm-rev" in m)
+    check("mapping modal: reviewers + cosmonauts only, no timeline", "tm-rev" in m and "tm-steps" not in m and "<input" not in m)
     click(".modal-close-btn")
+    check("open Timeline", click_text(".lg-allot-view-btn", "Timeline"))
+    m = modal()
+    check("timeline modal read-only, schedule only", "tm-steps" in m and "<input" not in m and "tm-rev" not in m)
+    click(".modal-close-btn")
+    # Publish asks first, in the app's own dialog (a native confirm() would block the browser and is not styled)
+    check("Publish opens the glass confirmation dialog", click_text(".lg-allot-actions .lg-allot-btn", "Publish") and "Publish Badge to Roadmap" in modal() and "rc-confirm is-publish" in modal())
+    n_pub_before = q("SELECT COUNT(*) c FROM badges WHERE is_published=1")[0]["c"]
+    click(".rc-footer .btn-secondary")
+    check("Cancel in the dialog publishes nothing", modal().strip() == "" and q("SELECT COUNT(*) c FROM badges WHERE is_published=1")[0]["c"] == n_pub_before)
     # Edit modal: real interactions + real submit
     check("open Edit Badge", click_text(".lg-allot-actions button", "Edit"))
     m = modal()
@@ -314,8 +414,16 @@ try:
     click(".lg-attempt-cta")
     b = body()
     check("marks page opens (no Back-to-reviews, no meta bar, no RUBRIC-50)", "Back to Project Reviews" not in b and "lg-rubric-meta-bar" not in b and "RUBRIC-50" not in b and "lg-dec-list" in b)
-    fit = js("(function(){var e=document.querySelector('.review-rubric-body-fit');var f=document.querySelector('#guardian-rubric-form button[type=submit]').getBoundingClientRect();var c=document.querySelector('.review-right-column').getBoundingClientRect();return [e.scrollHeight<=e.clientHeight+1, f.bottom<=c.bottom+1]})()")
-    check("marks sheet fits with no scrolling at 900px height", fit == [True, True], fit)
+    fit = js("""(function(){
+        var col=document.querySelector('.review-right-column').getBoundingClientRect();
+        var btn=document.querySelector('#guardian-rubric-form button[type=submit]').getBoundingClientRect();
+        var dock=document.querySelector('.lg-decision-dock').getBoundingClientRect();
+        var body=document.querySelector('.review-rubric-body-fit').getBoundingClientRect();
+        var fields=Array.from(document.querySelectorAll('.review-rubric-body-fit .lg-fb-field')), ok=true;
+        for(var i=1;i<fields.length;i++){ if(fields[i].getBoundingClientRect().top < fields[i-1].getBoundingClientRect().bottom - 0.5) ok=false; }   // no label sits on the box above it
+        var tas=Array.from(document.querySelectorAll('.lg-fb-textarea')).every(function(t){return t.getBoundingClientRect().height>=60});            // no squashed text boxes
+        return [ok && tas, btn.bottom<=col.bottom+1 && dock.top>=body.bottom-1];})()""")
+    check("marks sheet: no overlapping fields / squashed boxes, decision + action button pinned and visible", fit == [True, True], fit)
     click(".lg-dec-opt.is-resubmit")
     check("decision buttons drive the select + submit label", js("document.getElementById('rubric-decision').value") == "resubmission_requested" and "Resubmission" in (js("document.getElementById('rubric-submit-label').textContent") or ""))
     click(".lg-dec-opt.is-approve")
@@ -326,6 +434,20 @@ try:
     check("final assessment saved in the DB (approved)", st == "approved", st)
     n_g = q("SELECT COUNT(*) c FROM assessment_marksheets WHERE submission_id=? AND assessor_role='guardian'", (sub.id,))[0]["c"]
     check("guardian marksheet row exists", n_g == 1, n_g)
+
+    # ---------------------------------------------------------------- Cosmonaut + reviewer portals (same shell, merged work)
+    for uid, label in (("m_b1_1", "cosmonaut"), ("m_b2_1", "reviewer")):
+        act("select_demo_account", uid)
+        hdr = (js("(document.querySelector('.sidebar-header')||{}).innerText||''") or "").strip()
+        check("%s portal: sidebar header is only the band number" % label, js("!!document.querySelector('.app-sidebar')") and hdr in ("B1", "B2"), hdr)
+        navs = js("Array.from(document.querySelectorAll('.sidebar-nav [data-nav-id]')).map(function(a){return a.getAttribute('data-nav-id')})") or []
+        check("%s portal: sidebar has pages" % label, len(navs) >= 3, navs)
+        for nid in navs:
+            click('.sidebar-nav [data-nav-id="%s"]' % nid)
+            check("%s page %s: renders, no horizontal overflow" % (label, nid), len(body()) > 150 and (overflow() or 0) <= 1, overflow())
+        check("%s portal: footer = exactly two buttons (View Profile + Sign Out)" % label, js("document.querySelectorAll('.sidebar-footer .nav-item').length") == 2 and "Sign Out" in (js("(document.querySelector('.sidebar-footer')||{}).innerText||''") or "") and "View Profile" in (js("(document.querySelector('.sidebar-footer')||{}).innerText||''") or ""))
+    act("select_demo_account", "guardian_1")
+    act("select_create_badge_band", "B1")
 
     # ---------------------------------------------------------------- narrow window sanity
     call("Emulation.setDeviceMetricsOverride", width=1100, height=800, deviceScaleFactor=1, mobile=False)

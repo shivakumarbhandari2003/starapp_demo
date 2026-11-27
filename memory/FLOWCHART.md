@@ -13,7 +13,7 @@ Action names in `monospace` are controller actions you can grep.
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼   send_badge_review_request  → badge_reviewer_assignments(status=pending)
 ┌─ BADGE REVIEWER (band > badge band) or GUARDIAN ─────────────────────────────────────────┐
-│ 2. REVIEW  g_badge_approval / c_requests                                                   │
+│ 2. REVIEW  g_badge_approval / c_requests (card) → c_badge_review (edit real badge, approve) │
 │    authorize_badge_decision: status must be pending_review · assigned reviewer or guardian │
 │    · Reviewer_Band > Badge_Band · never the author                                         │
 │        ├── approve_submitted_badge ──► workflow_status = "approved"                        │
@@ -53,7 +53,7 @@ Action names in `monospace` are controller actions you can grep.
 │    request_project (only for an allotted badge with a mapped reviewer, not yet earned, one  │
 │    open request) → reviewer_project_prompts row id projreq_<badge>_<cosmo>, status          │
 │    "requested", reviewer_id = mapped reviewer; notification + activity "project_requested"  │
-│    (button shows "Project Requested" meanwhile; no deliverables can be submitted yet)       │
+│    (UI: no request button any more - "Project Allocated" stays disabled until the reviewer sends; 72 h window from publish)       │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐
@@ -67,7 +67,7 @@ Action names in `monospace` are controller actions you can grep.
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 9. LEARN  c_submission (Badges, landing page) / c_roadmap / c_badge_detail / c_materials (milestone state: completed|active|locked)│
+│ 9. LEARN  c_submission (Badges, landing page) / c_roadmap / c_badge_detail / c_project / c_materials (milestone state: completed|active|locked)│
 │    optional: submit_extension_request (once pending at a time) → guardian approves/rejects  │
 │    The button becomes "Submit Project Deliverables" → modal shows the project (Heading +    │
 │    Content) first, then PDF · code · GitHub link                                            │
@@ -76,7 +76,7 @@ Action names in `monospace` are controller actions you can grep.
 │    already earned · not awaiting final decision · deliverables present (PDF report + code   │
 │    file + https GitHub URL; demo mode may fill placeholders) · size ≤ ~9 MB                 │
 │    new row in project_submissions, attempt_number = previous+1 (edit if latest is pending); │
-│    the mapped reviewer is notified and it appears in their "Cosmonaut Assessments"          │
+│    the mapped reviewer is notified and its "Assessment" button (Badge Reviews) unlocks             │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐

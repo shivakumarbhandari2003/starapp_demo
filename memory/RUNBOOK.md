@@ -14,7 +14,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env            # Windows: copy .env.example .env   (then edit; .env is gitignored)
-python tests/run_tests.py       # expect: Ran 264 tests ... OK   (~29 s)
+python tests/run_tests.py       # expect: Ran 411 tests ... OK   (~29 s)
 python serve.py                 # http://127.0.0.1:8000   (docs: /docs, health: /api/health)
 ```
 
@@ -54,7 +54,7 @@ Open `http://127.0.0.1:8000`. With `STARAPP_DEMO_MODE=true` (default) the login 
 ## 5. Testing
 
 ```bash
-python tests/run_tests.py                      # full suite (264 tests, isolated DB copy)  ← the only supported entry point
+python tests/run_tests.py                      # full suite (411 tests, isolated DB copy)  ← the only supported entry point
 python tests/test_backend_fullstack.py         # fast backend smoke (only on a throw-away DB copy!)
 ```
 

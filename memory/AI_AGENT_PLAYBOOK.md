@@ -86,7 +86,7 @@ Then run `python scripts/e2e_guardian_logic.py` and `python scripts/e2e_guardian
 
 * Pass mark: badge `passing_percentage` (default 70 % = 35/50). Rubric: 5 × 10.
 * Reviewer must be in a strictly higher band; B6 badges have no peer reviewers (Guardian oversees).
-* Flow: create → approve → map → **reviewer accepts within 24 h (else the request expires and counts as declined; Guardian can resend)** → allot (Edit Badge: cosmonauts + reviewer + dates) → publish → brief → submit → reviewer grades → guardian finalises → badge earned / retake.
+* Flow: create → approve → map → **reviewer accepts within 24 h (else the request expires and counts as declined; Guardian can resend)** → allot (Edit Badge: cosmonauts + reviewer + dates) → publish → brief → submit → reviewer grades + recommends (Give Badge / Re-attempt / Reject; marks lock per attempt) → guardian checks and decides → badge earned (gold) / re-attempt / reject (the loop restarts with a new attempt).
 * Cycle score: cosmo (marks 70 % + completion 30 %) and reviewer execution blended 80/20; tiers 90/80/70/1; promotion at ≥ 85 with ≥ 1 badge.
-* 264 tests + 135 end-to-end checks; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
+* 411 tests + 225 end-to-end checks; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
 * `g_cosmonauts` is a legacy view id with no renderer and no sidebar link (empty page if routed to) - not a regression; ignore or remove.

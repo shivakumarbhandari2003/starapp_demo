@@ -114,7 +114,9 @@ class TestBadgeMappingPersistenceAndReset(unittest.TestCase):
         self.assertIn("Cloud Solutions Architecture Test", allotment_html)
         self.assertIn("Ready to Publish", allotment_html)
         self.assertIn("Publish to Roadmap", allotment_html)
-        self.assertIn("Anirudh", allotment_html)
+        self.ctrl.handle_event("open_badge_mapping_modal", badge_id)
+        self.assertIn("Anirudh", self.ctrl.render_active_modal())   # the mapped people are inside the Mapping modal
+        self.ctrl.handle_event("close_modal", "{}")
 
         # 6. Guardian clicks Publish
         self.ctrl.handle_event("publish_badge", badge_id)

@@ -9,12 +9,17 @@ from typing import List, Dict, Any, Optional
 from starapp.pagination import page_slice
 from starapp.models import User, Badge, ProjectSubmission, AssessmentMarksheet, LearningMaterial, DeadlineExtension, Announcement, ActivityEvent
 from starapp.views_common import (
+    normalize_decision as normalize_decision_value,
     humanize_internal_ids,
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
+    REVIEWER_RECOMMENDATIONS, reviewer_recommendation_key, render_recommendation_chip,
     render_learning_materials_view, render_taxonomy_hierarchy_tree,
     render_request_timer, format_utc_stamp
+)
+from starapp.views_badge_document import (
+    render_badge_document, render_badge_edit_controls, render_badge_edit_footer_bar
 )
 from starapp.assessment import RUBRIC_CRITERIA
 from starapp.analytics import get_kpi_popover
@@ -77,7 +82,7 @@ def render_guardian_sidebar(
     selected_cycle: Optional[Any] = None
 ) -> str:
     from starapp.storage import store
-    from starapp.views_common import render_sidebar_cycle_pill, render_sidebar_profile_footer
+    from starapp.views_common import render_sidebar_cycle_pill, render_sidebar_actions_footer
 
     if selected_cycle is None and hasattr(store, "get_cycle"):
         try:
@@ -190,7 +195,7 @@ def render_guardian_sidebar(
         else (f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Academy Guardian")
     )
 
-    profile_footer_html = render_sidebar_profile_footer(current_user, "nav_guardian", "g_profile", active_view, user_sub_desc)
+    profile_footer_html = render_sidebar_actions_footer(current_user, "nav_guardian", "g_profile", active_view, user_sub_desc)
 
     sidebar_hidden_attr = ' class="app-sidebar band-selection-hidden" style="display:none !important;" aria-hidden="true"' if hidden else ' class="app-sidebar"'
     cycle_pill_html = ""
@@ -1476,12 +1481,13 @@ def _fmt_nice_date(iso_value: Any, with_year: bool = True) -> str:
         return str(iso_value or "")
 
 
-def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
+def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None, section: str = "both") -> str:
     """
     Timeline & Mapping modal opened from a Badge Allotment card.
     READ-ONLY. Left: who reviews whom (one compact card per reviewer, plus any cosmonauts assigned but not mapped yet).
     Right: the milestone timeline as numbered steps. Everything shown is read from the saved badge, so whatever the
     Edit Badge option saves (cosmonauts, dates) appears here. Two columns when wide, one when narrow.
+    `section` = "mapping" | "timeline" renders just that card (the allotment card has a separate button for each); "both" = legacy.
     """
     if store is None:
         from starapp.storage import store as global_store
@@ -1497,48 +1503,128 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
     rev_id, rev_name, rev_dates, assigned_cosmo_ids, matched_mappings = _extract_badge_mapping_details(badge, cosmo_map, all_mappings)
     b_band = getattr(badge, "target_band", "B1") or "B1"
 
-    # ------------------------------------------------------------------ personnel mapping
-    pair_cards = []
-    for mp in matched_mappings:
-        m_revs = mp.get("reviewers") or []
-        m_cos = mp.get("cosmonauts") or []
-        m_dates = mp.get("review_dates") or rev_dates
-        r_uid = m_revs[0] if m_revs else ""
-        r_u = cosmo_map.get(r_uid) or (store.get_user_by_id(r_uid) if store and r_uid else None)
-        r_label = r_u.name if r_u else (r_uid or "Reviewer")
-        r_band = getattr(r_u, "band", "") or mp.get("reviewer_band", "B2")
-        r_role = getattr(r_u, "learning_track", "") or "Reviewer"
+    # ------------------------------------------------------------------ personnel mapping (a Badge -> Reviewer -> Cosmonaut hierarchy)
+    # A badge with an assigned reviewer but no saved band-mapping row (seeded / legacy data) still shows that reviewer with
+    # the cosmonauts assigned to the badge.
+    pair_source = list(matched_mappings)
+    if not pair_source and rev_id:
+        pair_source = [{"reviewers": [rev_id], "cosmonauts": list(assigned_cosmo_ids), "review_dates": rev_dates}]
 
-        chips = []
-        for cid in m_cos:
-            cu = cosmo_map.get(cid) or (store.get_user_by_id(cid) if store else None)
-            chips.append(f'<span class="tm-chip">{escape(cu.name if cu else cid)}</span>')
+    def _person(uid: str) -> Any:
+        return cosmo_map.get(uid) or (store.get_user_by_id(uid) if store and uid else None)
 
+    def _window(m_dates: List[str]) -> str:
         if len(m_dates) > 1:
             same_year = str(m_dates[0])[:4] == str(m_dates[-1])[:4]
-            d_label = f"{_fmt_nice_date(m_dates[0], with_year=not same_year)} → {_fmt_nice_date(m_dates[-1])} · {len(m_dates)} working days"
-        elif m_dates:
-            d_label = _fmt_nice_date(m_dates[0])
-        else:
-            d_label = "Schedule pending"
+            return f"{_fmt_nice_date(m_dates[0], with_year=not same_year)} \u2192 {_fmt_nice_date(m_dates[-1])} \u00b7 {len(m_dates)} working days"
+        if m_dates:
+            return _fmt_nice_date(m_dates[0])
+        return "Schedule pending"
 
-        pair_cards.append(f"""
-        <div class="lg-mapping-glass-card tm-rev">
-            <div class="tm-rev-head">
-                <div class="tm-rev-who">
-                    <span class="tm-rev-name">{escape(r_label)}</span>
-                    <span class="md-band">{escape(r_band)}</span>
-                    <span class="md-role" style="color:#047857;">{escape(r_role)}</span>
+    # ---- the SAME tree markup / classes as the Assessment Dashboard (asm-tree-*): badge -> reviewer panels -> cosmonaut cards,
+    # joined by its pixel-exact elbows and ringed dots. Here the cards are read-only (no deliverables, no buttons).
+    shield_ic, award_ic, users_ic, user_ic, cal_ic = (get_icon("shield", 16), get_icon("award", 14), get_icon("users", 13),
+                                                      get_icon("user", 15), get_icon("calendar", 13))
+
+    def _cosmo_branch(cid: str) -> str:
+        cu = _person(cid)
+        name = cu.name if cu else cid
+        band = getattr(cu, "band", "") if cu is not None else ""
+        track = getattr(cu, "learning_track", "") if cu is not None else ""
+        chips = (f'<span class="asm-cosmo-chip is-band">Band {escape(band)}</span>' if band else "") + \
+                (f'<span class="asm-cosmo-chip">{escape(track)}</span>' if track else "")
+        return f"""
+                <div class="asm-tree-cosmo-branch">
+                    <span class="asm-elbow" aria-hidden="true"></span>
+                    <div class="asm-cosmonaut-card is-static">
+                        <div class="asm-cosmo-identity">
+                            <span class="asm-cosmo-avatar">{user_ic}</span>
+                            <div style="min-width:0;">
+                                <div class="asm-cosmo-name">{escape(name)}</div>
+                                <div class="asm-cosmo-chip-row">{chips}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>"""
+
+    groups: List[Dict[str, Any]] = []
+    by_rev: Dict[str, Dict[str, Any]] = {}
+    for mp in pair_source:
+        m_revs = mp.get("reviewers") or []
+        r_uid = m_revs[0] if m_revs else ""
+        grp = by_rev.get(r_uid)
+        if grp is None:
+            grp = {"uid": r_uid, "dates": list(mp.get("review_dates") or rev_dates), "cosmonauts": []}
+            by_rev[r_uid] = grp
+            groups.append(grp)
+        for cid in mp.get("cosmonauts") or []:
+            if cid not in grp["cosmonauts"]:
+                grp["cosmonauts"].append(cid)
+
+    deadline_pill = (
+        f'<span class="asm-window-pill">{cal_ic}<span>Submission deadline&nbsp;<b>{escape(_fmt_nice_date(dt.get("submission_deadline")))}</b></span></span>'
+        if dt.get("submission_deadline") else ""
+    )
+
+    def _reviewer_branch(title_html: str, band_role_html: str, window_html: str, cosmo_ids: List[str], loose: bool = False) -> str:
+        body = "".join(_cosmo_branch(cid) for cid in cosmo_ids) or (
+            '<div style="padding:12px 14px; font-size:0.8125rem; font-weight:700; color:var(--frost-navy); background:rgba(255,255,255,0.75); '
+            'border-radius:var(--radius-sm); border:1px solid rgba(157,183,213,0.45);">No cosmonauts assigned yet.</div>'
+        )
+        return f"""
+            <div class="asm-tree-reviewer-branch">
+                <div class="asm-reviewer-panel">
+                    <div class="asm-reviewer-header">
+                        <div class="asm-reviewer-id-wrap">
+                            <span class="asm-reviewer-icon-box{' is-loose' if loose else ''}">{shield_ic}</span>
+                            {title_html}
+                            {band_role_html}
+                        </div>
+                        <div class="asm-reviewer-meta-pills">
+                            {window_html}
+                            <span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:5px; font-size:0.75rem; font-weight:800;">
+                                {users_ic}<span>Assigned Cosmonauts ({len(cosmo_ids)})</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="asm-tree-cosmo-list">{body}</div>
                 </div>
-                <span class="tm-window">{escape(d_label)}</span>
-            </div>
-            <div class="tm-label">Assigned Cosmonauts ({len(m_cos)})</div>
-            <div class="tm-chips">{"".join(chips) if chips else '<span class="md-empty-inline">None assigned</span>'}</div>
-        </div>
-        """)
+            </div>"""
 
-    if pair_cards:
-        mapping_body_html = f'<div class="tm-list">{"".join(pair_cards)}</div>'
+    branches = []
+    for grp in groups:
+        r_u = _person(grp["uid"])
+        r_label = r_u.name if r_u else (grp["uid"] or "Reviewer")
+        r_band = getattr(r_u, "band", "") or "B2"
+        r_role = getattr(r_u, "learning_track", "") or "Reviewer"
+        branches.append(_reviewer_branch(
+            f'<h3 class="asm-node-title tm-rev-name">{escape(r_label)}</h3>',
+            f'<span class="asm-cosmo-chip is-band">{escape(r_band)}</span><span class="asm-cosmo-chip">{escape(r_role)}</span>',
+            f'<span class="asm-window-pill">{cal_ic}<span>Review window&nbsp;<b>{escape(_window(grp["dates"]))}</b></span></span>{deadline_pill}',
+            grp["cosmonauts"],
+        ))
+
+    # cosmonauts assigned to the badge but not (yet) mapped to a reviewer
+    mapped_ids = {cid for grp in groups for cid in grp["cosmonauts"]}
+    unmapped = [cid for cid in assigned_cosmo_ids if cid not in mapped_ids]
+    if unmapped:
+        branches.append(_reviewer_branch('<h3 class="asm-node-title">Not mapped to a reviewer yet</h3>', "", "", unmapped, loose=True))
+
+    if branches:
+        n_revs = len(groups)
+        mapping_body_html = f"""
+        <div class="asm-tree-root">
+            <div class="asm-tree-badge-node">
+                <div class="asm-reviewer-id-wrap">
+                    <span class="asm-reviewer-icon-box">{award_ic}</span>
+                    <h3 class="asm-node-title is-badge">{escape(badge.title)}</h3>
+                    <span class="asm-cosmo-chip is-band">Band {escape(b_band)}</span>
+                </div>
+                <span class="asm-window-pill">{n_revs} reviewer{"" if n_revs == 1 else "s"} &middot; {len(assigned_cosmo_ids)} cosmonaut{"" if len(assigned_cosmo_ids) == 1 else "s"}</span>
+            </div>
+            <div class="asm-tree-trunk">{"".join(branches)}</div>
+        </div>
+        """
     else:
         rel_reqs = [
             r for r in all_requests
@@ -1563,28 +1649,6 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
                 <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_guardian', 'g_mapping')">Assign in Mapping Matrix</button>
             </div>
             """
-
-    # ------------------------------------------------------------------ cosmonauts assigned but not (yet) mapped to a reviewer
-    mapped_ids = {cid for mp in matched_mappings for cid in (mp.get("cosmonauts") or [])}
-    unmapped = [cid for cid in assigned_cosmo_ids if cid not in mapped_ids]
-    if unmapped:
-        un_chips = []
-        for cid in unmapped:
-            cu = cosmo_map.get(cid) or (store.get_user_by_id(cid) if store else None)
-            un_chips.append(f'<span class="tm-chip">{escape(cu.name if cu else cid)}</span>')
-        unmapped_html = f"""
-        <div class="tm-rev is-unmapped">
-            <div class="tm-rev-head">
-                <div class="tm-rev-who"><span class="tm-rev-name">Not mapped to a reviewer yet</span></div>
-            </div>
-            <div class="tm-label">Assigned Cosmonauts ({len(unmapped)})</div>
-            <div class="tm-chips">{"".join(un_chips)}</div>
-        </div>
-        """
-        if pair_cards:
-            mapping_body_html = mapping_body_html[:-len("</div>")] + unmapped_html + "</div>"   # inside the scrolling list
-        else:
-            mapping_body_html += f'<div class="tm-list" style="margin-top:10px;">{unmapped_html}</div>'
 
     # ------------------------------------------------------------------ timeline (READ-ONLY: dates are changed from Edit Badge)
     def _span(a_key: str, b_key: str = "") -> str:
@@ -1617,6 +1681,28 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
     is_live = bool(getattr(badge, "is_published", False))
     lock_ico = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
 
+    mapping_card = f"""
+            <section class="tm-card">
+                <div class="tm-card-head">
+                    <h5 class="tm-card-title">{get_icon("users", 17)} Personnel Mapping &amp; Assessment Window</h5>
+                    <span class="md-count">{len(assigned_cosmo_ids)} Cosmonauts</span>
+                </div>
+                {mapping_body_html}
+            </section>
+    """
+    timeline_card = f"""
+            <section class="tm-card">
+                <div class="tm-card-head">
+                    <h5 class="tm-card-title">{get_icon("calendar", 17)} Milestone Timeline Schedule</h5>
+                    <span class="status-pill {'status-approved' if is_live else 'status-locked'}">{"Active Roadmap Sequence" if is_live else "Target Schedule"}</span>
+                </div>
+                <ol class="tm-steps">{steps_html}</ol>
+                <div class="tm-foot is-note">
+                    <span class="tm-readonly">{lock_ico} Read-only view &middot; change cosmonauts and dates from <b>Edit Badge</b></span>
+                </div>
+            </section>
+    """
+
     return f"""
     <div class="tm-wrap">
         <div class="tm-head">
@@ -1635,25 +1721,9 @@ def render_badge_timeline_mapping_modal(badge: Badge, store: Any = None) -> str:
             </div>
         </div>
 
-        <div class="tm-grid">
-            <section class="tm-card">
-                <div class="tm-card-head">
-                    <h5 class="tm-card-title">{get_icon("users", 17)} Personnel Mapping &amp; Assessment Window</h5>
-                    <span class="md-count">{len(assigned_cosmo_ids)} Cosmonauts</span>
-                </div>
-                {mapping_body_html}
-            </section>
-
-            <section class="tm-card">
-                <div class="tm-card-head">
-                    <h5 class="tm-card-title">{get_icon("calendar", 17)} Milestone Timeline Schedule</h5>
-                    <span class="status-pill {'status-approved' if is_live else 'status-locked'}">{"Active Roadmap Sequence" if is_live else "Target Schedule"}</span>
-                </div>
-                <ol class="tm-steps">{steps_html}</ol>
-                <div class="tm-foot is-note">
-                    <span class="tm-readonly">{lock_ico} Read-only view &middot; change cosmonauts and dates from <b>Edit Badge</b></span>
-                </div>
-            </section>
+        <div class="{'tm-grid' if section == 'both' else 'tm-single'}">
+            {mapping_card if section in ("both", "mapping") else ""}
+            {timeline_card if section in ("both", "timeline") else ""}
         </div>
     </div>
     """
@@ -1829,46 +1899,42 @@ def render_guardian_badge_allotment(
         b_cap = getattr(b, "capability", b.category) or "Data & Machine"
         b_skill = getattr(b, "skill", "Foundations") or "Foundations"
 
-        _, rev_name, rev_dates, assigned_cosmo_ids, _ = _extract_badge_mapping_details(b, cosmo_users_map, all_band_mappings)
-        def _nice_date(iso_value: str, with_year: bool = True) -> str:
-            try:
-                d_ = datetime.date.fromisoformat(str(iso_value)[:10])
-                return d_.strftime("%d %b %Y" if with_year else "%d %b").lstrip("0")
-            except Exception:
-                return str(iso_value or "")
-
-        rev_window_note = ""
-        if len(rev_dates) > 1:
-            same_year = str(rev_dates[0])[:4] == str(rev_dates[-1])[:4]
-            rev_window_disp = f"{_nice_date(rev_dates[0], with_year=not same_year)} → {_nice_date(rev_dates[-1])}"
-            rev_window_note = f"{len(rev_dates)} days"
-        elif rev_dates:
-            rev_window_disp = _nice_date(rev_dates[0])
-            rev_window_note = "1 day"
-        else:
-            rev_window_disp = _nice_date(dt.get("review_date")) if dt.get("review_date") else "Pending"
-        sub_deadline = _nice_date(dt.get("submission_deadline")) if dt.get("submission_deadline") else "TBD"
 
         if is_pub_section:
             if is_completed:
                 status_pill = f'<span class="status-pill status-approved" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{check_ic_11} Certified</span>'
                 card_cls = "lg-allot-card"
-                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="window.StarAppBridge.dispatchAction('confirm_revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
             elif getattr(b, "is_published", False):
                 status_pill = f'<span class="status-pill status-active" style="font-weight:800; font-size:0.75rem; padding:4px 11px; background:var(--deep-frozen-midnight); color:var(--snow-white);">{flash_ic_11} Published</span>'
-                card_cls = "lg-allot-card is-published"
-                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="if(confirm('Revoke milestone {escape(b.code)} from Cosmonaut roadmap?')) window.StarAppBridge.dispatchAction('revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
+                card_cls = "lg-allot-card"
+                action_btn = f"""<button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:#DC2626; border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05);" onclick="window.StarAppBridge.dispatchAction('confirm_revoke_badge', '{b.id}')">{revoke_ic_13} Revoke</button>"""
             else:
                 status_pill = f'<span class="status-pill status-warning" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{get_icon("clock", 11, "margin-right:4px;")} Mapped</span>'
-                card_cls = "lg-allot-card is-mapped"
-                action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
+                card_cls = "lg-allot-card"
+                action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.dispatchAction('confirm_publish_badge', '{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
         else:
             status_pill = f'<span class="status-pill status-locked" style="font-weight:800; font-size:0.75rem; padding:4px 11px;">{get_icon("lock", 11, "margin-right:4px;")} Ready to Publish</span>'
             card_cls = "lg-allot-card"
-            action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.publishBadge('{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
+            action_btn = f"""<button type="button" class="btn-metal btn-sm lg-allot-btn" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border-color:#059669;" onclick="window.StarAppBridge.dispatchAction('confirm_publish_badge', '{b.id}')">{get_icon("rocket", 13)} <span class="lg-lbl-full">Publish to Roadmap</span><span class="lg-lbl-short">Publish</span></button>"""
 
-        cadets_disp = f"{len(assigned_cosmo_ids)} Mapped Cadets" if assigned_cosmo_ids else "All Cohort Cadets"
         hier_tree_html = render_taxonomy_hierarchy_tree(b_power, b_cap, b_skill, compact=True)
+
+        # the two schedule values shown under the Mapping / Timeline buttons
+        _, _rn, _card_dates, _ids, _mm = _extract_badge_mapping_details(b, cosmo_users_map, all_band_mappings)
+        _dt = b.default_timeline or {}
+        if len(_card_dates) > 1:
+            _same_year = str(_card_dates[0])[:4] == str(_card_dates[-1])[:4]
+            _parts = [_fmt_nice_date(_card_dates[0], with_year=not _same_year), _fmt_nice_date(_card_dates[-1])]
+            _win_note = f"{len(_card_dates)} working days"
+        elif _card_dates:
+            _parts, _win_note = [_fmt_nice_date(_card_dates[0])], "1 working day"
+        elif _dt.get("review_date"):
+            _parts, _win_note = [_fmt_nice_date(_dt.get("review_date"))], ""
+        else:
+            _parts, _win_note = ["Pending"], ""
+        review_window_html = ' <span class="allot-arrow">&rarr;</span> '.join(f'<span class="allot-nw">{escape(p_)}</span>' for p_ in _parts)
+        submission_html = escape(_fmt_nice_date(_dt.get("submission_deadline"))) if _dt.get("submission_deadline") else "TBD"
 
         return f"""
         <div class="{card_cls}">
@@ -1879,35 +1945,33 @@ def render_guardian_badge_allotment(
                 </div>
                 <div>{hier_tree_html}</div>
 
-                <!-- Mapping & schedule: four labelled facts in one bordered panel -->
-                <div class="allot-summary-strip">
-                    <div class="lg-allot-meta-cell">
-                        <div class="lg-allot-meta-label">Reviewer</div>
-                        <div class="lg-allot-meta-val is-reviewer">{escape(rev_name)}</div>
+                <!-- The data is one click away: Mapping (reviewers + cosmonauts) and Timeline (review window, deadline ...) -->
+                <div class="lg-allot-views">
+                    <button type="button" class="btn-secondary lg-allot-view-btn" onclick="window.StarAppBridge.dispatchAction('open_badge_mapping_modal', '{b.id}')">
+                        {get_icon("users", 15)} <span>Mapping</span>
+                    </button>
+                    <button type="button" class="btn-secondary lg-allot-view-btn" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_modal', '{b.id}')">
+                        {get_icon("calendar", 15)} <span>Timeline</span>
+                    </button>
+                </div>
+
+                <div class="lg-allot-dates">
+                    <div class="lg-allot-date">
+                        <div class="lg-allot-date-label">Review Window</div>
+                        <div class="lg-allot-date-val">{review_window_html}</div>
+                        {f'<div class="lg-allot-date-note">{escape(_win_note)}</div>' if _win_note else ''}
                     </div>
-                    <div class="lg-allot-meta-cell">
-                        <div class="lg-allot-meta-label">Cohort Allocation</div>
-                        <div class="lg-allot-meta-val">{escape(cadets_disp)}</div>
-                    </div>
-                    <div class="lg-allot-meta-cell">
-                        <div class="lg-allot-meta-label">Review Window</div>
-                        <div class="lg-allot-meta-val">{escape(rev_window_disp)}</div>
-                        {f'<div class="lg-allot-meta-note">{escape(rev_window_note)}</div>' if rev_window_note else ''}
-                    </div>
-                    <div class="lg-allot-meta-cell">
-                        <div class="lg-allot-meta-label">Submission Deadline</div>
-                        <div class="lg-allot-meta-val is-deadline">{escape(sub_deadline)}</div>
+                    <div class="lg-allot-date">
+                        <div class="lg-allot-date-label">Submission Date</div>
+                        <div class="lg-allot-date-val is-deadline">{submission_html}</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Action row: Timeline, Edit and Revoke / Publish always on ONE line -->
+            <!-- Edit on the left, Publish / Revoke on the right -->
             <div class="lg-allot-actions">
-                <button type="button" class="btn-metal btn-sm lg-allot-btn" onclick="window.StarAppBridge.dispatchAction('open_badge_timeline_mapping_modal', '{b.id}')">
-                    {get_icon("calendar", 13)} <span class="lg-lbl-full">Timeline &amp; Mapping</span><span class="lg-lbl-short">Timeline</span>
-                </button>
-                <button type="button" class="btn-secondary btn-sm lg-allot-btn" style="color:var(--frost-navy);" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
-                    {get_icon("edit", 13)} <span class="lg-lbl-full">Edit Badge</span><span class="lg-lbl-short">Edit</span>
+                <button type="button" class="btn-secondary btn-sm lg-allot-btn is-edit" onclick="window.StarAppBridge.dispatchAction('open_edit_badge_modal', '{b.id}')">
+                    {get_icon("edit", 13)} <span>Edit</span>
                 </button>
                 {action_btn}
             </div>
@@ -2236,6 +2300,7 @@ def render_guardian_review_queue(
                 <span class="lg-sum-val" style="color:#047857;">{rev_asm.total_marks:.1f} / 50.0</span>
                 <span class="lg-eval-pct">{rev_asm.percentage:.1f}%</span>
                 {_meter(rev_asm.percentage, "#059669")}
+                {render_recommendation_chip(reviewer_recommendation_key(rev_asm), "Recommends")}
                 """
             else:
                 rev_cell = '<span class="lg-sum-none">Pending</span>'
@@ -2729,9 +2794,22 @@ def run():
     init_strengths = active_eval.strength_areas if active_eval else "Robust atomic deduplication store prevents duplicate writes on Kafka consumer rebalance."
     init_improvements = active_eval.improvement_areas if active_eval else "Consider configuring exponential backoff with jitter for DLQ retries."
     init_feedback = active_eval.overall_feedback if active_eval else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
-    init_decision = active_eval.decision if active_eval else ("approve" if init_pct >= badge_thresh else "resubmission_requested")
+    rec_key = reviewer_recommendation_key(rev_asm)
+    if g_asm:
+        init_decision = normalize_decision_value(g_asm.decision) or "resubmission_requested"
+    else:
+        # the Guardian starts from the reviewer's recommendation (when there is one), else from the pass mark
+        init_decision = rec_key or ("approve" if init_pct >= badge_thresh else "resubmission_requested")
 
-    threshold_banner = ""   # (the "name • code / Pass ≥ 70%" bar was removed from the marks sheet)
+    # what the reviewer recommended, shown above the marks so the Guardian can check it before deciding
+    if rev_asm:
+        rec_chip = render_recommendation_chip(rec_key, "") if rec_key else ""
+        rec_lbl = "Reviewer's recommendation" if rec_key else "Reviewer's marks"
+        threshold_banner = (f'<div class="rec-banner"><div class="rec-banner-top"><span class="rec-banner-lbl">{rec_lbl}</span>{rec_chip}</div>'
+                            f'<div class="rec-banner-by">{escape(rev_asm.reviewer_name)} scored this attempt {rev_asm.total_marks:.1f} / 50 ({rev_asm.percentage:.1f}%). '
+                            f'You decide below.</div></div>')
+    else:
+        threshold_banner = ""
 
     # 1. Selector Tab Buttons Styling
     tab_pdf_style = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800; border-color:var(--deep-frozen-midnight);" if selected_tab == "pdf" else "background:rgba(255,255,255,0.85); color:var(--frost-navy); font-weight:600;"
@@ -2932,7 +3010,12 @@ def run():
                                 <label class="lg-fb-label" for="rubric-feedback">Overall Remarks</label>
                                 <textarea id="rubric-feedback" rows="2" class="lg-fb-textarea" placeholder="Summary for the cosmonaut">{escape(init_feedback)}</textarea>
                             </div>
+                        </div>
+                    </div>
 
+                    <!-- Pinned Bottom Action Footer -->
+                    <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
+                        <div class="lg-decision-dock">
                             <div class="lg-fb-field">
                                 <span class="lg-fb-label" id="rubric-decision-label">Assessment Decision</span>
                                 <select id="rubric-decision" class="lg-fb-select-hidden" hidden aria-labelledby="rubric-decision-label">
@@ -2957,10 +3040,6 @@ def run():
                                 <div class="lg-dec-desc" id="rubric-decision-desc">{"Approve and certify the milestone." if init_decision == "approve" else ("Keep this attempt on record and ask for a new one." if init_decision == "resubmission_requested" else "Reject the deliverable.")}</div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Pinned Bottom Action Footer -->
-                    <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
                         <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.84375rem; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
                             <span id="rubric-submit-label">{"Earn the Badge" if init_decision == "approve" else ("Request Resubmission" if init_decision == "resubmission_requested" else "Reject Deliverable")}</span> &rarr;
                         </button>
@@ -4786,35 +4865,11 @@ def render_guardian_create_badge(
         if not resources_prompt and "resources_prompt" in badge_data:
             resources_prompt = badge_data.get("resources_prompt", "")
 
-        # Defense-in-depth: If prompts are empty or 1-line placeholders, synthesize full curriculum prompt
-        from starapp.badge_generator import build_practice_project_prompt, build_learning_resources_prompt
-        if not practice_prompt or len(practice_prompt.strip()) < 120 or "\n-" not in practice_prompt:
-            practice_prompt = build_practice_project_prompt(
-                badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
-            )
-            if isinstance(badge_data.get("practice_project"), dict):
-                badge_data["practice_project"]["prompt"] = practice_prompt
-            else:
-                badge_data["practice_project"] = {
-                    "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
-                    "prompt": practice_prompt,
-                    "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
-                }
-            badge_data["practice_prompt"] = practice_prompt
-
-        if not resources_prompt or len(resources_prompt.strip()) < 120 or "\n-" not in resources_prompt:
-            resources_prompt = build_learning_resources_prompt(
-                badge_title, active_skill, active_cap, active_power, selected_band, learning_topics, outcomes
-            )
-            if isinstance(badge_data.get("learning_resources"), dict):
-                badge_data["learning_resources"]["prompt"] = resources_prompt
-            else:
-                badge_data["learning_resources"] = {
-                    "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
-                    "prompt": resources_prompt,
-                    "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
-                }
-            badge_data["resources_prompt"] = resources_prompt
+        # Defense-in-depth: empty / one-line prompts become the full curriculum prompt (shared with the Reviewer page)
+        from starapp.badge_generator import complete_badge_prompts
+        complete_badge_prompts(badge_data, badge_title, active_skill, active_cap, active_power, selected_band)
+        practice_prompt = badge_data["practice_prompt"]
+        resources_prompt = badge_data["resources_prompt"]
 
         # Band alignment in description
         if badge_desc and badge_desc.startswith("B1 badge") and selected_band != "B1":
@@ -4830,10 +4885,6 @@ def render_guardian_create_badge(
         learning_topics = []
         resources_prompt = ""
         badge_location = ""
-
-    total_topics = len(learning_topics) if has_badge else 6
-    completed_topics_count = sum(1 for t in learning_topics if t.get("completed", False) or t.get("status", "").lower() == "completed") if has_badge else 0
-    progress_pct = int(round((completed_topics_count / total_topics) * 100)) if total_topics > 0 else 0
 
     # Saved Badges
     saved_list = saved_badges if saved_badges is not None else store.get_saved_badges(selected_band)
@@ -4855,174 +4906,6 @@ def render_guardian_create_badge(
         f'<option value="{escape(s)}" {"selected" if s == active_skill else ""}>{escape(s)}</option>'
         for s in valid_skills
     ]) + '<option value="__add_custom_skill__">+ Add New Skill...</option>'
-
-    # ── Section HTML builders (handle empty / filled states) ──────────────────
-    def _format_prompt_readable_html(prompt_text: str, elem_id: str) -> str:
-        """Render multi-line LLM prompt as clean, high-contrast prose + bullet list."""
-        raw = str(prompt_text or "").strip()
-        if not raw:
-            return f'<div id="{elem_id}" class="cb-prompt-surface"><p class="cb-prompt-lead">No prompt content provided.</p></div>'
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        blocks = []
-        bullet_items = []
-
-        def _bold_prefix(text: str) -> str:
-            esc_text = escape(text)
-            if ":" in esc_text:
-                head, tail = esc_text.split(":", 1)
-                if 1 <= len(head) <= 34 and not head.lower().startswith("http") and tail.strip():
-                    return f'<strong style="font-weight:800; color:var(--frost-navy);">{head}:</strong>{tail}'
-            return esc_text
-
-        def _flush_bullets():
-            if bullet_items:
-                lis = "".join(f"<li>{_bold_prefix(item)}</li>" for item in bullet_items)
-                blocks.append(f'<ul class="cb-prompt-bullets">{lis}</ul>')
-                bullet_items.clear()
-
-        for line in lines:
-            is_dash_bullet = line.startswith(("- ", "* ", "• "))
-            if is_dash_bullet:
-                bullet_items.append(line[2:].strip())
-            elif len(line) > 3 and line[0].isdigit() and line[1:3] in (". ", ") "):
-                bullet_items.append(line)
-            else:
-                _flush_bullets()
-                has_header = (":" in line and 1 <= len(line.split(":", 1)[0]) <= 34 and not line.lower().startswith("http"))
-                fw = "700" if (len(blocks) == 0 or has_header) else "500"
-                blocks.append(f'<p class="cb-prompt-lead" style="font-weight:{fw};">{_bold_prefix(line)}</p>')
-        _flush_bullets()
-        return f'<div id="{elem_id}" class="cb-prompt-surface">{"".join(blocks)}</div>'
-
-    # Skeleton pulse div helper
-    def _skel(h="14px", w="100%", mb="8px"):
-        return (
-            f'<div style="height:{h}; width:{w}; border-radius:6px; margin-bottom:{mb}; '
-            f'background:linear-gradient(90deg,rgba(157,183,213,0.18) 25%,rgba(157,183,213,0.32) 50%,rgba(157,183,213,0.18) 75%); '
-            f'background-size:200% 100%; animation:shimmer 1.6s linear infinite;"></div>'
-        )
-
-    # Section 1: Outcomes HTML
-    if not has_badge:
-        outcomes_html = f"""
-        <div style="padding:8px 0 4px 0;">
-            {_skel("13px","88%","10px")}
-            {_skel("13px","72%","10px")}
-            {_skel("13px","80%","10px")}
-            {_skel("13px","60%","10px")}
-            <p style="font-size:0.84375rem; font-weight:600; color:var(--frost-navy); margin-top:14px;">
-                Select dropdowns and click <strong>Create Badge with Gemini</strong> to generate outcomes.
-            </p>
-        </div>
-        """
-    elif is_editing_badge:
-        outcomes_joined = "\n".join(outcomes)
-        outcomes_html = f"""
-        <div class="cb-edit-card">
-            <label for="edit-badge-outcomes-input" class="cb-edit-label">
-                Learning Outcomes (one per line, starting with "Can...")
-            </label>
-            <textarea id="edit-badge-outcomes-input" class="form-input auto-grow-textarea" rows="4"
-                style="font-size:0.90625rem; line-height:1.65; font-weight:500; color:var(--frost-navy); font-family:var(--font-family-base); width:100%; box-sizing:border-box; padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
-                placeholder="Can identify...&#10;Can analyze...&#10;Can design...&#10;Can implement...">{escape(outcomes_joined)}</textarea>
-        </div>
-        """
-    else:
-        check_svg = get_icon("check", size=14)
-        outcomes_list_items = "".join([
-            f'''<div style="display:flex; align-items:flex-start; gap:12px; font-size:0.90625rem; color:var(--frost-navy); line-height:1.6; padding:12px 16px; background:rgba(255,255,255,0.88); border:1.5px solid rgba(5,150,105,0.28); border-radius:var(--radius-sm); margin-bottom:9px;">
-                <span style="width:24px; height:24px; border-radius:50%; background:rgba(5,150,105,0.14); color:#047857; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">{check_svg}</span>
-                <span style="font-weight:600; flex:1; color:var(--frost-navy);">{escape(o)}</span>
-            </div>'''
-            for o in outcomes
-        ])
-        outcomes_html = f"""
-        <div style="display:flex; flex-direction:column; gap:2px;">
-            {outcomes_list_items}
-        </div>
-        """
-
-    # Section 4: Learning Topics HTML
-    if not has_badge:
-        empty_topic_cards = "".join([
-            f'''
-            <div style="padding:16px 20px; border-radius:var(--radius-md); border:1.5px solid rgba(157,183,213,0.25); background:rgba(255,255,255,0.7); width:100%; box-sizing:border-box;">
-                {_skel("13px","35%","8px")}
-                {_skel("11px","78%","0")}
-            </div>
-            ''' for _ in range(6)])
-        topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{empty_topic_cards}</div>'
-    elif is_editing_badge:
-        topics_edit_rows = []
-        for idx, t in enumerate(learning_topics):
-            t_title = t.get("title", "")
-            t_desc = t.get("description", "")
-            t_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
-            t_status = t.get("status") or ("Completed" if t_comp else "In Progress")
-            topics_edit_rows.append(f"""
-            <div class="cb-edit-card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
-                    <span style="font-size:0.75rem; font-weight:800; background:rgba(6,182,212,0.14); color:#0E7490; padding:4px 12px; border-radius:12px; border:1px solid rgba(6,182,212,0.3);">Topic {idx+1}</span>
-                    <span style="font-size:0.78125rem; font-weight:700; color:var(--frost-navy);">Curriculum Module</span>
-                </div>
-                <div style="margin-bottom:10px;">
-                    <label for="edit-topic-title-{idx}" class="cb-edit-label">Topic Title</label>
-                    <input type="text" id="edit-topic-title-{idx}" class="form-input"
-                        data-completed="{'1' if t_comp else '0'}" data-status="{escape(t_status)}"
-                        style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);"
-                        placeholder="Topic Title" value="{escape(t_title)}">
-                </div>
-                <div>
-                    <label for="edit-topic-desc-{idx}" class="cb-edit-label">Description &amp; Scope</label>
-                    <textarea id="edit-topic-desc-{idx}" class="form-input auto-grow-textarea" rows="2"
-                        style="font-size:0.875rem; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;"
-                        placeholder="Topic Description / Scope">{escape(t_desc)}</textarea>
-                </div>
-            </div>
-            """)
-        topics_html = f'<div id="topics-list-container" class="cb-edit-grid" style="width:100%; box-sizing:border-box;">{"".join(topics_edit_rows)}</div>'
-    else:
-        topics_card_items = []
-        for idx, t in enumerate(learning_topics):
-            t_title = t.get("title", "")
-            t_desc = t.get("description", "")
-            is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
-
-            border_color = "#059669" if is_comp else "rgba(8,145,178,0.34)"
-            bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(236,253,245,0.75) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(234,244,255,0.82) 100%);"
-            status_text = "Completed" if is_comp else "In Progress"
-            status_bg = "rgba(16,185,129,0.16)" if is_comp else "rgba(157,183,213,0.25)"
-            status_color = "#047857" if is_comp else "var(--frost-navy)"
-            status_border = "rgba(16,185,129,0.36)" if is_comp else "var(--icy-steel)"
-
-            btn_class = "is-completed" if is_comp else ""
-            btn_bg = "#059669" if is_comp else "var(--snow-white)"
-            btn_color = "white" if is_comp else "var(--frost-navy)"
-            btn_border = "#047857" if is_comp else "var(--icy-steel)"
-            btn_shadow = "0 2px 8px rgba(5,150,105,0.28)" if is_comp else "none"
-            btn_content = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Completed' if is_comp else "Mark Complete"
-
-            topics_card_items.append(f"""
-            <div id="topic-card-{idx}" class="topic-row-card" style="padding:18px 22px; border-radius:var(--radius-md); border:1.5px solid {border_color}; {bg_style} display:flex; justify-content:space-between; align-items:center; gap:20px; width:100%; box-sizing:border-box; transition:border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;">
-                <div style="flex:1;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px; flex-wrap:wrap;">
-                        <span style="font-size:0.75rem; font-weight:800; background:rgba(8,145,178,0.13); color:#0E7490; padding:3px 11px; border-radius:12px; border:1px solid rgba(8,145,178,0.28);">Topic {idx+1}</span>
-                        <span id="topic-status-tag-{idx}" style="background:{status_bg}; color:{status_color}; padding:3px 11px; border-radius:12px; font-size:0.75rem; font-weight:700; border:1px solid {status_border}; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease;">{status_text}</span>
-                        <span style="font-size:0.75rem; color:var(--frost-navy); font-weight:700;">Curriculum Module</span>
-                    </div>
-                    <div style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy); margin-bottom:5px;">{escape(t_title)}</div>
-                    <div style="font-size:0.875rem; font-weight:500; color:var(--frost-navy); line-height:1.55;">{escape(t_desc)}</div>
-                </div>
-                <div style="flex-shrink:0;">
-                    <button type="button" id="topic-toggle-btn-{idx}" class="{btn_class}"
-                        onclick="window.StarAppBridge.toggleTopicCompletion({idx})"
-                        style="background:{btn_bg}; color:{btn_color}; border:1.5px solid {btn_border}; box-shadow:{btn_shadow}; font-size:0.8125rem; font-weight:800; padding:9px 18px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:border-color 0.25s ease, background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;">
-                        {btn_content}
-                    </button>
-                </div>
-            </div>
-            """)
-        topics_html = f'<div id="topics-list-container" style="display:flex; flex-direction:column; gap:12px; width:100%; box-sizing:border-box;">{"".join(topics_card_items)}</div>'
 
     # Saved Badges Cards HTML
     saved_badges_html = ""
@@ -5110,264 +4993,29 @@ def render_guardian_create_badge(
             </div>
             """)
 
-    chevron_down_svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
-    chevron_up_svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s ease;"><polyline points="18 15 12 9 6 15"/></svg>'
     crumb_sep_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--frost-navy)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>'
 
     if has_badge:
-        edit_btn_html = (
-            '<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveBadgeEdits()" '
-            'style="font-size:0.8125rem; font-weight:800; padding:8px 16px; display:inline-flex; align-items:center; gap:6px;">'
-            f'{get_icon("check", size=14)} Apply Changes</button>'
-            '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'toggle_edit_badge\')" '
-            'style="font-size:0.8125rem; font-weight:700; padding:8px 14px;">Cancel</button>'
-            if is_editing_badge else
-            '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleEditBadge()" '
-            'style="font-size:0.8125rem; font-weight:700; padding:8px 14px; display:inline-flex; align-items:center; gap:6px;">'
-            f'{get_icon("edit", size=14)} Edit</button>'
+        # Same structured badge the Reviewer sees on the Review Requests page (views_badge_document.render_badge_document).
+        _apply_js = "window.StarAppBridge.saveBadgeEdits()"
+        _cancel_js = "window.StarAppBridge.dispatchAction('toggle_edit_badge')"
+        badge_result_area_html = render_badge_document(
+            title=badge_title, description=badge_desc, outcomes=outcomes,
+            practice_prompt=practice_prompt, resources_prompt=resources_prompt, topics=learning_topics,
+            skill=active_skill, capability=active_cap, power=active_power, band=selected_band,
+            is_editing=is_editing_badge,
+            header_actions_html=(
+                render_badge_edit_controls(is_editing_badge, "window.StarAppBridge.toggleEditBadge()", _apply_js, _cancel_js)
+                + '<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveGeneratedBadge()" '
+                  'style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">'
+                  f'{get_icon("badge", size=14)} Save Badge</button>'
+            ),
+            footer_bar_html=(
+                render_badge_edit_footer_bar("Editing generated badge draft before saving", _apply_js, _cancel_js)
+                if is_editing_badge else ""
+            ),
+            show_topic_progress=True,
         )
-
-        badge_header_body = (
-            f'''
-            <div class="cb-edit-grid" style="margin-top:4px;">
-                <div class="cb-edit-card">
-                    <label for="edit-badge-title-input" class="cb-edit-label">Badge Title</label>
-                    <input type="text" id="edit-badge-title-input" class="form-input"
-                        style="font-size:1.35rem; font-weight:800; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white);"
-                        value="{escape(badge_title)}">
-                </div>
-                <div class="cb-edit-card">
-                    <label for="edit-badge-desc-input" class="cb-edit-label">Scope &amp; Summary Description</label>
-                    <textarea id="edit-badge-desc-input" class="form-input auto-grow-textarea" rows="3"
-                        style="font-size:0.90625rem; line-height:1.6; font-weight:500; color:var(--frost-navy); width:100%; box-sizing:border-box; padding:10px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(badge_desc)}</textarea>
-                </div>
-            </div>
-            '''
-            if is_editing_badge else
-            f'''
-            <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0; line-height:1.25;">{escape(badge_title)}</h2>
-            <p style="font-size:0.9375rem; font-weight:500; color:var(--frost-navy); line-height:1.6; margin:0;">{escape(badge_desc)}</p>
-            '''
-        )
-
-        practice_inner_html = (
-            f'''
-            <div class="cb-edit-card">
-                <label for="edit-practice-prompt-input" class="cb-edit-label">Practice Project Prompt</label>
-                <textarea id="edit-practice-prompt-input" class="form-input auto-grow-textarea" rows="6"
-                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:0.90625rem; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(practice_prompt)}</textarea>
-            </div>
-            '''
-            if is_editing_badge else
-            _format_prompt_readable_html(practice_prompt, "practice-prompt-text")
-        )
-
-        resources_inner_html = (
-            f'''
-            <div class="cb-edit-card">
-                <label for="edit-resources-prompt-input" class="cb-edit-label">Learning Resources Prompt</label>
-                <textarea id="edit-resources-prompt-input" class="form-input auto-grow-textarea" rows="6"
-                    style="width:100%; box-sizing:border-box; min-height:140px; font-size:0.90625rem; font-weight:500; line-height:1.65; color:var(--frost-navy); font-family:var(--font-family-base); padding:12px 14px; border-radius:var(--radius-sm); border:1.5px solid var(--icy-steel); background:var(--snow-white); resize:none; overflow:hidden;">{escape(resources_prompt)}</textarea>
-            </div>
-            '''
-            if is_editing_badge else
-            _format_prompt_readable_html(resources_prompt, "resources-prompt-text")
-        )
-
-        edit_footer_bar = (
-            f'''
-            <div class="cb-selection-bar" style="margin-top:8px; margin-bottom:24px; justify-content:flex-end;">
-                <span style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); margin-right:auto;">Editing generated badge draft before saving</span>
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_edit_badge')" style="font-size:0.8125rem; font-weight:700; padding:8px 16px;">Cancel</button>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveBadgeEdits()" style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">{get_icon("check", size=14)} Apply Changes</button>
-            </div>
-            '''
-            if is_editing_badge else ""
-        )
-
-        badge_result_area_html = f"""
-        <div id="created-badge-display-area" style="margin-bottom:32px;">
-
-            <!-- LOCATION & ACTION HERO CARD -->
-            <div class="cb-result-hero">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--icy-steel-40);">
-                    <div style="flex:1; min-width:260px;">
-                        <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy); margin-bottom:6px;">
-                            Created Badge Location
-                        </div>
-                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
-                            <span style="color:var(--frost-navy); font-size:0.96875rem; font-weight:800;">{escape(badge_title)}</span>
-                            {crumb_sep_svg}
-                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
-                            {crumb_sep_svg}
-                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
-                            {crumb_sep_svg}
-                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:700; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
-                            {crumb_sep_svg}
-                            <span style="background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 12px; border-radius:14px; font-size:0.8125rem; font-weight:800;">Band {selected_band}</span>
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; flex-shrink:0;">
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.toggleAllBadgeSections()" style="font-size:0.8125rem; font-weight:700; padding:8px 14px;">
-                            Toggle All
-                        </button>
-                        {edit_btn_html}
-                        <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.saveGeneratedBadge()" style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px;">
-                            {get_icon("badge", size=14)} Save Badge
-                        </button>
-                    </div>
-                </div>
-
-                <!-- BADGE TITLE & SCOPE -->
-                <div style="display:flex; align-items:flex-start; gap:16px;">
-                    <div style="width:50px; height:50px; border-radius:14px; background:linear-gradient(135deg, var(--snow-white) 0%, var(--frost-mist) 100%); border:1.5px solid var(--icy-steel); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
-                    </div>
-                    <div style="flex:1; min-width:0;">
-                        {badge_header_body}
-                    </div>
-                </div>
-            </div>
-
-            <!-- SECTION 1: OUTCOMES -->
-            <div id="badge-section-outcomes" class="cb-section-card accent-emerald">
-                <div class="cb-section-head" onclick="window.StarAppBridge.toggleBadgeSection('outcomes')">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span class="cb-section-icon" style="background:rgba(5,150,105,0.12); color:#047857;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                        </span>
-                        <span class="cb-section-title">Outcomes ({len(outcomes)})</span>
-                    </div>
-                    <span id="chevron-outcomes" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
-                </div>
-                <div id="content-outcomes" style="padding:0 22px 20px 22px; display:block;">
-                    {outcomes_html}
-                </div>
-            </div>
-
-            <!-- SECTION 2: EARN THE BADGE -->
-            <div id="badge-section-earn" class="cb-section-card" style="border-left-color:#2563EB; padding:18px 22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span class="cb-section-icon" style="background:rgba(37,99,235,0.12); color:#1D4ED8;">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div class="cb-section-title">Earn the Badge</div>
-                        <div style="font-size:0.90625rem; font-weight:600; color:var(--frost-navy); margin-top:3px;">Great job submitting your project &mdash; your guardian is reviewing it now.</div>
-                    </div>
-                </div>
-                <div>
-                    <span style="background:rgba(245,158,11,0.16); color:#B45309; padding:5px 14px; border-radius:20px; font-size:0.78125rem; font-weight:800; border:1px solid rgba(217,119,6,0.34);">
-                        Pending Review
-                    </span>
-                </div>
-            </div>
-
-            <!-- SECTION 3: PRACTICE PROJECT -->
-            <div id="badge-section-practice" class="cb-section-card accent-amber">
-                <div class="cb-section-head" onclick="window.StarAppBridge.toggleBadgeSection('practice')">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span class="cb-section-icon" style="background:rgba(217,119,6,0.12); color:#B45309;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m14 2-4 0"/><path d="M10 2v7.5L5 19a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3L14 9.5V2"/></svg>
-                        </span>
-                        <span class="cb-section-title">Practice Project</span>
-                    </div>
-                    <span id="chevron-practice" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
-                </div>
-                <div id="content-practice" style="padding:0 22px 22px 22px; display:block;">
-                    <p style="font-size:0.875rem; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Want some hands-on practice? Use this structured prompt to generate a practice project.</p>
-                    {practice_inner_html}
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to generate a practice project for this badge.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('practice-prompt-text', this)" style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy Prompt
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SECTION 4: LEARNING TOPICS -->
-            <div id="badge-section-topics" class="cb-section-card accent-cyan">
-                <div class="cb-section-head" onclick="window.StarAppBridge.toggleBadgeSection('topics')">
-                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <span class="cb-section-icon" style="background:rgba(8,145,178,0.12); color:#0E7490;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-                        </span>
-                        <span class="cb-section-title">Learning Topics</span>
-                        <span id="topics-summary-pill" style="background:{'rgba(16,185,129,0.16)' if progress_pct > 0 else 'rgba(157,183,213,0.24)'}; color:{'#047857' if progress_pct > 0 else 'var(--frost-navy)'}; padding:3px 12px; border-radius:12px; font-size:0.75rem; font-weight:700; border:1px solid {'rgba(16,185,129,0.34)' if progress_pct > 0 else 'var(--icy-steel)'};">
-                            {completed_topics_count}/{total_topics} Completed
-                        </span>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="width:130px; height:8px; border-radius:4px; background:rgba(157,183,213,0.35); overflow:hidden;">
-                                <div id="topics-progress-bar" style="width:{progress_pct}%; height:100%; background:linear-gradient(90deg, #0891B2, #059669); border-radius:4px; transition:width 0.4s ease;"></div>
-                            </div>
-                            <span id="topics-progress-text" style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy); min-width:38px;">{progress_pct}%</span>
-                        </div>
-                    </div>
-                    <span id="chevron-topics" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
-                </div>
-                <div id="content-topics" style="padding:0 22px 22px 22px; display:block;">
-                    {topics_html}
-                </div>
-            </div>
-
-            <!-- SECTION 5: LEARNING RESOURCES -->
-            <div id="badge-section-resources" class="cb-section-card" style="border-left-color:#2563EB;">
-                <div class="cb-section-head" onclick="window.StarAppBridge.toggleBadgeSection('resources')">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span class="cb-section-icon" style="background:rgba(37,99,235,0.12); color:#1D4ED8;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                        </span>
-                        <span class="cb-section-title">Learning Resources</span>
-                    </div>
-                    <span id="chevron-resources" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
-                </div>
-                <div id="content-resources" style="padding:0 22px 22px 22px; display:block;">
-                    <p style="font-size:0.875rem; font-weight:600; color:var(--frost-navy); margin:0 0 12px 0;">Not sure where to start learning? Use this structured prompt to find curated resources tailored to this badge.</p>
-                    {resources_inner_html}
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; flex-wrap:wrap; gap:10px;">
-                        <span style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy);">This is a prompt which should be provided to an LLM (Gemini, Claude, ChatGPT) to get relevant learning resources.</span>
-                        <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.copyTextFromElement('resources-prompt-text', this)" style="font-size:0.78125rem; font-weight:700; display:inline-flex; align-items:center; gap:6px; padding:7px 14px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy Prompt
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SECTION 6: RELATED SKILLS, CAPABILITIES & POWERS -->
-            <div id="badge-section-related" class="cb-section-card" style="border-left-color:#7C3AED; margin-bottom:24px;">
-                <div class="cb-section-head" onclick="window.StarAppBridge.toggleBadgeSection('related')">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span class="cb-section-icon" style="background:rgba(124,58,237,0.12); color:#6D28D9;">
-                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-                        </span>
-                        <span class="cb-section-title">Related Skills, Capabilities &amp; Powers</span>
-                    </div>
-                    <span id="chevron-related" style="color:var(--frost-navy); display:inline-flex; align-items:center;">{chevron_up_svg}</span>
-                </div>
-                <div id="content-related" style="padding:0 22px 22px 22px; display:block;">
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:20px;">
-                        <div>
-                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Skills</div>
-                            <span style="background:rgba(8,145,178,0.12); color:#0E7490; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(8,145,178,0.28);">{escape(active_skill)}</span>
-                        </div>
-                        <div>
-                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Capabilities</div>
-                            <span style="background:rgba(37,99,235,0.12); color:#1D4ED8; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(37,99,235,0.28);">{escape(active_cap)}</span>
-                        </div>
-                        <div>
-                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; margin-bottom:7px;">Powers</div>
-                            <span style="background:rgba(124,58,237,0.12); color:#6D28D9; padding:6px 15px; border-radius:20px; font-size:0.84375rem; font-weight:700; display:inline-block; border:1px solid rgba(124,58,237,0.28);">{escape(active_power)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {edit_footer_bar}
-        </div>
-        """
     else:
         badge_result_area_html = f"""
         <div id="badge-empty-guidance-card" class="liquid-glass-card" style="padding:34px 26px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(234,244,255,0.78) 100%); margin-bottom:28px;">
@@ -5824,6 +5472,8 @@ def render_guardian_badge_approval_queue(
                 ev_pill = '<span class="status-pill status-warning" style="font-size:0.78125rem; font-weight:800;">Badge Edited</span>'
             elif ev_type == "reviewer_cancelled":
                 ev_pill = '<span class="status-pill status-rejected" style="font-size:0.78125rem; font-weight:800;">Reviewer Cancelled</span>'
+            elif ev_type == "review_expired":
+                ev_pill = '<span class="status-pill status-warning" style="font-size:0.78125rem; font-weight:800;">Review Window Ended</span>'
             else:
                 ev_pill = '<span class="status-pill status-active" style="font-size:0.78125rem; font-weight:800;">Review Dispatched</span>'
 
@@ -6066,6 +5716,7 @@ _AL_EVENT_META = {
     "approved": ("Approved & authorized", "check", "ok"),
     "returned": ("Returned for revisions", "undo", "bad"),
     "reviewer_cancelled": ("Reviewer cancelled", "x", "bad"),
+    "review_expired": ("Review window ended", "clock", "warn"),
 }
 
 
@@ -6770,46 +6421,70 @@ def render_badge_reviewer_edit_modal(
 # 7.13 BADGE APPROVAL CONFIRMATION MODAL
 # ==============================================================================
 
-def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) -> str:
-    code = escape(badge.code)
-    title = escape(badge.title)
+def _review_confirm_shell(kind: str, heading: str, sub: str, badge: Badge, reviewer: Optional[User], body_html: str, footer_html: str,
+                          who_label: str = "Reviewing officer") -> str:
+    """Shared frame of the decision dialogs (approve / return / publish / revoke): tone icon + heading, a badge summary card, a body, a footer."""
     band = escape(getattr(badge, "target_band", "B1"))
     rev_name = escape(reviewer.name) if reviewer else "Current Reviewer"
-
+    icon = {
+        "approve": '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+        "return": '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+        "publish": get_icon("rocket", 24),
+        "revoke": get_icon("revoke", 24),
+    }.get(kind, get_icon("check", 24))
+    tree = render_taxonomy_hierarchy_tree(getattr(badge, "power", ""), getattr(badge, "capability", ""), getattr(badge, "skill", ""), compact=True)
     return f"""
-    <div style="padding:6px 0;">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-            <div style="width:42px; height:42px; border-radius:50%; background:rgba(16,185,129,0.12); border:1.5px solid #10B981; display:flex; align-items:center; justify-content:center; color:#047857; flex-shrink:0;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
+    <div class="rc-modal is-{kind}">
+        <div class="rc-head">
+            <span class="rc-ico">{icon}</span>
             <div>
-                <h2 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Authorize & Approve Badge</h2>
-                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Authorizing Academic Milestone for Band {band}</div>
+                <div class="rc-heading" role="heading" aria-level="2">{escape(heading)}</div>
+                <div class="rc-sub">{escape(sub)} &middot; Band {band}</div>
             </div>
         </div>
 
-        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:0.78125rem; line-height:1.5;">
-            <div><strong style="color:var(--frost-navy);">{code}: {title}</strong></div>
-            <div style="color:var(--frost-navy-75); margin-top:4px;">
-                Reviewing Officer: <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
+        <div class="rc-badge">
+            <div class="rc-badge-top">
+                <span class="rc-code">{escape(badge.code)}</span>
+                <span class="rc-band">BAND {band}</span>
             </div>
+            <div class="rc-badge-title">{escape(badge.title)}</div>
+            <div class="rc-badge-meta">{tree}<span class="rc-officer">{escape(who_label)} <strong>{rev_name}</strong></span></div>
         </div>
 
-        <div style="padding:12px 14px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:var(--radius-sm); margin-bottom:20px; font-size:0.75rem; color:var(--frost-navy-75); line-height:1.5;">
-            <strong style="color:#047857;">Institutional Authorization Notice:</strong> By authorizing this badge, you certify that its learning objectives, assessment instructions, and project rubric meet StarApp's curriculum standards for Band {band}.
-            <div style="margin-top:6px; font-size:0.71875rem; color:var(--frost-navy-50);">Note: The badge will be marked Approved and the originating Guardian will be notified. It will NOT be automatically allotted to Cosmonauts.</div>
-        </div>
+        {body_html}
 
-        <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
-                Cancel
-            </button>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('approve_submitted_badge', '{badge.id}')" style="font-weight:800; padding:9px 22px; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;">
-                Confirm & Authorize Badge &rarr;
-            </button>
-        </div>
+        <div class="rc-footer">{footer_html}</div>
     </div>
     """
+
+
+def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) -> str:
+    band = escape(getattr(badge, "target_band", "B1"))
+    check = get_icon("check", 14)
+    certify = "".join(
+        f'<li><span class="rc-tick">{check}</span><span>{t}</span></li>'
+        for t in ("Its learning outcomes are accurate and measurable.",
+                  "Its practice project and learning topics are correct and complete.",
+                  f"It meets StarApp's curriculum standards for Band {band}.")
+    )
+    body = f"""
+        <div class="rc-section">
+            <div class="rc-section-title">By authorizing, you certify that</div>
+            <ul class="rc-checks">{certify}</ul>
+        </div>
+        <div class="rc-note is-ok">
+            <strong>What happens next</strong>
+            <span>The badge is marked <b>Approved</b> and the Guardian is notified. It is <b>not</b> allotted to Cosmonauts automatically, and it can no longer be edited.</span>
+        </div>
+    """
+    footer = f"""
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Cancel</button>
+            <button type="button" class="btn-metal rc-confirm is-approve" onclick="window.StarAppBridge.dispatchAction('approve_submitted_badge', '{escape(badge.id)}')">
+                {check} Confirm &amp; Authorize Badge
+            </button>
+    """
+    return _review_confirm_shell("approve", "Authorize & Approve Badge", "Authorizing academic milestone", badge, reviewer, body, footer)
 
 
 # ==============================================================================
@@ -6817,45 +6492,74 @@ def render_badge_approval_confirm_modal(badge: Badge, reviewer: Optional[User]) 
 # ==============================================================================
 
 def render_badge_return_confirm_modal(badge: Badge, reviewer: Optional[User]) -> str:
-    code = escape(badge.code)
-    title = escape(badge.title)
-    band = escape(getattr(badge, "target_band", "B1"))
-    rev_name = escape(reviewer.name) if reviewer else "Current Reviewer"
-
-    return f"""
-    <div style="padding:6px 0;">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-            <div style="width:42px; height:42px; border-radius:50%; background:rgba(239,68,68,0.12); border:1.5px solid #EF4444; display:flex; align-items:center; justify-content:center; color:#B91C1C; flex-shrink:0;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            </div>
-            <div>
-                <h2 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">Return Badge with Feedback</h2>
-                <div style="font-size:0.75rem; color:var(--frost-navy-50);">Request Revisions for Band {band} Milestone</div>
-            </div>
+    body = """
+        <div class="rc-section">
+            <label for="badge-return-notes-input" class="rc-section-title">Feedback for the Guardian <span class="rc-req">required</span></label>
+            <textarea id="badge-return-notes-input" class="form-input rc-textarea" rows="5"
+                placeholder="What needs to change? Name the outcome, topic or prompt and say how to fix it..."
+                oninput="this.classList.remove('is-invalid')"></textarea>
+            <div class="rc-hint">The Guardian sees this note on the badge card and can correct the badge and send it for review again.</div>
         </div>
-
-        <div style="padding:14px; background:rgba(23,52,92,0.03); border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); margin-bottom:18px; font-size:0.78125rem; line-height:1.5;">
-            <div><strong style="color:var(--frost-navy);">{code}: {title}</strong></div>
-            <div style="color:var(--frost-navy-75); margin-top:4px;">
-                Reviewing Officer: <strong style="color:var(--deep-frozen-midnight);">{rev_name}</strong>
-            </div>
+        <div class="rc-note is-warn">
+            <strong>What happens next</strong>
+            <span>The badge is marked <b>Returned for Changes</b> and this review closes. Any edits you already applied stay on the badge.</span>
         </div>
-
-        <div class="form-group" style="margin-bottom:20px;">
-            <label class="form-label" style="font-size:0.75rem; font-weight:700;">Revision Feedback / Reason for Return</label>
-            <textarea id="badge-return-notes-input" class="form-input" rows="4" placeholder="Detail the necessary curriculum adjustments, missing outcomes, or rubric improvements needed before this badge can be authorized..." style="font-size:0.78125rem;"></textarea>
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:14px; border-top:1px solid var(--icy-steel-30);">
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
-                Cancel
-            </button>
-            <button type="button" class="btn-metal" onclick="const n=document.getElementById('badge-return-notes-input')?.value.trim(); window.StarAppBridge.dispatchAction('return_submitted_badge', JSON.stringify({{badge_id:'{badge.id}', notes:n}}));" style="font-weight:800; padding:9px 22px; background:linear-gradient(135deg, #EF4444 0%, #DC2626 100%); border-color:#DC2626; color:#fff;">
-                Confirm Return with Feedback &rarr;
-            </button>
-        </div>
-    </div>
     """
+    footer = f"""
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Cancel</button>
+            <button type="button" class="btn-metal rc-confirm is-return"
+                onclick="const t=document.getElementById('badge-return-notes-input'); const n=(t&&t.value||'').trim(); if(!n){{ if(t){{t.classList.add('is-invalid'); t.focus();}} return; }} window.StarAppBridge.dispatchAction('return_submitted_badge', JSON.stringify({{badge_id:'{escape(badge.id)}', notes:n}}));">
+                Return with Feedback
+            </button>
+    """
+    return _review_confirm_shell("return", "Return Badge with Feedback", "Requesting revisions", badge, reviewer, body, footer)
+
+
+# ==============================================================================
+# 7.14b PUBLISH / REVOKE CONFIRMATION DIALOGS (Badge Allotment) - the app's own glass dialogs, not the browser's confirm()
+# ==============================================================================
+
+def render_badge_publish_confirm_modal(badge: Badge, guardian: Optional[User], store: Any = None) -> str:
+    if store is None:
+        from starapp.storage import store as store
+    cosmo_map = {c.id: c for c in store.get_all_cosmonauts()}
+    _, _, _, cosmo_ids, matched = _extract_badge_mapping_details(badge, cosmo_map, store.get_band_mappings())
+    reviewers = {rid for m in matched for rid in (m.get("reviewers") or [])} or ({badge.assigned_reviewer_id} if getattr(badge, "assigned_reviewer_id", "") else set())
+    n_rev, n_cos = len(reviewers), len(cosmo_ids)
+    if n_rev and n_cos:
+        mapped_note = (f'<div class="rc-note is-ok"><strong>Mapped and ready</strong>'
+                       f'<span><b>{n_rev}</b> reviewer{"" if n_rev == 1 else "s"} and <b>{n_cos}</b> cosmonaut{"" if n_cos == 1 else "s"} are mapped to this badge.</span></div>')
+    else:
+        mapped_note = ('<div class="rc-note is-warn"><strong>Nobody is mapped yet</strong>'
+                       '<span>No reviewer or cosmonaut is mapped to this badge, so no one will be assigned when it goes live. You can still publish it.</span></div>')
+    body = f"""
+        <p class="rc-lead">The badge goes live on the Cosmonaut roadmap for the cosmonauts mapped to it, and they and their reviewer(s) are notified. You can revoke it again at any time.</p>
+        {mapped_note}
+    """
+    footer = f"""
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Cancel</button>
+            <button type="button" class="btn-metal rc-confirm is-publish" onclick="window.StarAppBridge.dispatchAction('publish_badge', '{escape(badge.id)}')">
+                {get_icon("rocket", 14)} Publish Badge
+            </button>
+    """
+    return _review_confirm_shell("publish", "Publish Badge to Roadmap", "Making this badge live", badge, guardian, body, footer, who_label="Publishing as")
+
+
+def render_badge_revoke_confirm_modal(badge: Badge, guardian: Optional[User]) -> str:
+    body = """
+        <div class="rc-note is-warn">
+            <strong>What happens next</strong>
+            <span>The badge is removed from the Cosmonaut roadmap and returned to the catalog, and its milestones are locked.
+            Submissions and marks already recorded are kept. You can publish it again later.</span>
+        </div>
+    """
+    footer = f"""
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Keep Published</button>
+            <button type="button" class="btn-metal rc-confirm is-revoke" onclick="window.StarAppBridge.dispatchAction('revoke_badge', '{escape(badge.id)}')">
+                {get_icon("revoke", 14)} Revoke Badge
+            </button>
+    """
+    return _review_confirm_shell("revoke", "Revoke Badge from Roadmap", "Taking this badge offline", badge, guardian, body, footer, who_label="Revoking as")
 
 
 # ==============================================================================

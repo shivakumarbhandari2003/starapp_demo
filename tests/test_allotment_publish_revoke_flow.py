@@ -41,13 +41,16 @@ class TestAllotmentPublishRevokeFlow(unittest.TestCase):
         # Check Published Badge (Signals Foundations)
         self.assertIn("Signals Foundations", html)
         self.assertIn("Revoke", html)
-        self.assertIn("Rohan Deshmukh", html)  # Mapped reviewer
+        self.assertIn("open_badge_mapping_modal", html)  # the mapped reviewer / cosmonauts are one click away (Mapping button)
+        self.ctrl.handle_event("open_badge_mapping_modal", "badge_b1_signals")
+        self.assertIn("Rohan Deshmukh", self.ctrl.render_active_modal())  # Mapped reviewer
+        self.ctrl.handle_event("close_modal", "{}")
 
         # Check Not Published Yet Badges
         self.assertIn("Intelligent Apps Foundations", html)
         self.assertIn("Data Systems Architecture", html)
         self.assertIn("Publish to Roadmap", html)
-        self.assertIn("Mapped Cadets", html)
+        self.assertIn("open_badge_timeline_modal", html)
 
     def test_02_published_badge_visible_on_cosmonaut_roadmap_and_reviewer_schedule(self):
         """Verify published badge is visible to mapped cosmonaut and reviewer."""

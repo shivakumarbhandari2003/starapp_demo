@@ -303,7 +303,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         # Badges (home) -> Assessment Marksheet -> Deadline Extension -> reviewer tools -> Profile (always last)
         ids = [
             "c_submission", "c_results", "c_extensions",
-            "c_badge_reviews", "c_requests", "c_assessments", "c_profile"
+            "c_badge_reviews", "c_requests", "c_profile"
         ]
         positions = [c_html.find(f'data-nav-id="{nid}"') for nid in ids]
         self.assertTrue(all(p > 0 for p in positions), f"Missing cosmonaut nav ids: {positions}")

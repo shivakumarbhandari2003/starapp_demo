@@ -35,6 +35,7 @@ from starapp.analytics import (
     get_cosmonaut_individual_dossier
 )
 from starapp.views_common import (
+    normalize_decision, REVIEWER_RECOMMENDATIONS,
     get_icon, render_global_back_bar, hoist_page_title, TITLE_HOIST_VIEWS,
     render_cycle_context_bar, render_topbar, render_liquid_card, render_metal_button, escape,
     render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html, cosmonaut_terms,
@@ -52,7 +53,7 @@ from starapp.views_guardian import (
     render_guardian_create_badge, render_guardian_badge_approval_queue,
     render_badge_creation_preview_modal, render_badge_review_inspect_modal,
     render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal, render_badge_activity_log_modal, render_badge_reviewer_manage_modal,
-    render_badge_return_confirm_modal,
+    render_badge_return_confirm_modal, render_badge_publish_confirm_modal, render_badge_revoke_confirm_modal,
     render_guardian_cycles_view, render_create_cycle_modal, render_cycle_candidate_detail_modal,
     render_badge_timeline_mapping_modal,
     render_guardian_pillar_placeholder
@@ -65,14 +66,15 @@ from starapp.views_cosmonaut import (
     render_cosmonaut_sidebar, render_cosmonaut_dashboard,
     render_cosmonaut_profile, render_gamified_roadmap,
     render_badge_detail_modal_content, render_cosmonaut_submission_workspace,
-    render_cosmonaut_badge_detail_page, render_cosmonaut_allocated_project_modal,
+    render_cosmonaut_badge_detail_page, render_cosmonaut_project_page,
+    render_cosmonaut_reviewer_modal, render_cosmonaut_timeline_modal,
     render_cosmonaut_submission_modal,
     render_cosmonaut_badge_preview_modal,
     render_cosmonaut_results, render_cosmonaut_materials,
     render_cosmonaut_extensions, render_cosmonaut_announcements,
     render_cosmonaut_activity_stream, render_cosmonaut_review_requests,
-    render_reviewer_assessment_queue, render_reviewer_assessment_detail,
-    render_reviewer_badge_schedule,
+    render_reviewer_assessment_detail,
+    render_reviewer_badge_schedule, render_reviewer_badge_review,
     render_reviewer_badge_timeline_modal,
     render_reviewer_project_creator_modal,
     render_cosmonaut_cycles_view,
@@ -126,6 +128,8 @@ class StarAppController:
         self.cosmonaut_expanded_badge_id: Optional[str] = None
         self.reviewer_expanded_badge_id: Optional[str] = None
         self.cosmonaut_results_badge_id: str = "badge_gov_101"
+        self.cosmonaut_results_picked: bool = False        # True once the cosmonaut chose a badge on the marksheet page (else: the newest evaluated badge)
+        self.cosmonaut_results_asm_id: str = ""            # the evaluation tab shown on the marksheet page ("" = the newest)
         self.materials_badge_filter: str = "all"
         self.materials_type_filter: str = "all"
         self.active_modal: Optional[str] = None
@@ -215,6 +219,9 @@ class StarAppController:
         # Cosmonaut Review Requests Queue state
         self.cosmo_requests_tab: str = "all"
         self.cosmo_requests_search: str = ""
+        # Reviewer badge-review page (Review Requests -> one badge): which real badge, and whether it is being edited
+        self.reviewer_review_badge_id: str = ""
+        self.reviewer_review_editing: bool = False
 
         # 6-Month Cycle & Performance Management state
         self.selected_cycle_id: Optional[str] = None
@@ -232,10 +239,22 @@ class StarAppController:
         "g_materials", "g_extensions", "g_announcements", "g_activity", "g_cycles", "g_profile"
     }
     _COSMONAUT_VIEWS = {
-        "c_choose_cycle", "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_results",
+        "c_choose_cycle", "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_project", "c_results",
         "c_materials", "c_profile", "c_announcements", "c_extensions", "c_activity",
-        "c_requests", "c_badge_reviews", "c_assessments", "c_assessment_detail", "c_cycles"
+        "c_requests", "c_badge_review", "c_badge_reviews", "c_assessment_detail", "c_cycles"
     }
+
+    def _allocated_project_denied(self, badge_id: str) -> str:
+        """Why this user may not open this badge's project page ('' when they may): it must be a badge allotted to them whose project has been sent."""
+        user = self.current_user
+        badge = store.get_badge(badge_id) if badge_id else None
+        if not (user and badge):
+            return "Badge not found."
+        if not (store.get_timeline(badge_id, user.id) or badge_id in {b.id for b in store.get_badges_for_cosmonaut(user.id)}):
+            return "This badge is not allotted to you."
+        if not store.get_project_prompt_for_cadet(badge_id, user.id):
+            return "Your project has not been sent yet. It appears under \"Project Allocated\" as soon as your mapped reviewer sends it."
+        return ""
 
     def _get_effective_cycle_id(self) -> str:
         """Resolves the controller's active or viewed cycle_id, falling back cleanly if absent."""
@@ -705,6 +724,9 @@ class StarAppController:
         "save_band_mapping", "delete_band_mapping", "edit_band_mapping", "send_mapping_requests",
         "save_allotment_timeline", "delete_mapping_request", "resend_mapping_request", "save_staged_mapping",
         "execute_cosmonaut_mapping", "clear_band_mappings", "reset_all_mapping_state", "reset_mapping_demo",
+        # who is mapped to whom / the schedule: Guardian-only views
+        "open_badge_mapping_modal", "open_badge_timeline_modal", "open_badge_timeline_mapping_modal",
+        "confirm_publish_badge", "confirm_revoke_badge",
         # learning materials, extensions, announcements
         "save_bulk_materials", "save_material_form", "update_material", "delete_material",
         "submit_extension_decision", "broadcast_announcement",
@@ -714,19 +736,7 @@ class StarAppController:
 
     def _reviewer_cadets_for_badge(self, reviewer_id: str, badge_id: str) -> set:
         """Cadets a reviewer is mapped to for one badge (timelines, band mappings, badge assignment)."""
-        cadets = set()
-        for tl in store.get_timelines_for_reviewer(reviewer_id):
-            if tl.badge_id == badge_id:
-                cadets.add(tl.cosmonaut_id)
-        b_obj = store.get_badge(badge_id)
-        for m in store.get_band_mappings():
-            if reviewer_id in (m.get("reviewers") or []):
-                m_b = m.get("badge_id") or m.get("badge")
-                if m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id)):
-                    cadets.update(m.get("cosmonauts") or [])
-        if b_obj and getattr(b_obj, "assigned_reviewer_id", "") == reviewer_id:
-            cadets.update(getattr(b_obj, "assigned_cosmonaut_ids", []) or [])
-        return cadets
+        return store.get_reviewer_mapped_cosmonaut_ids(reviewer_id, badge_id)
 
     def _is_guardian_user(self) -> bool:
         u = self.current_user
@@ -734,6 +744,29 @@ class StarAppController:
             return False
         roles = set(getattr(u, "roles", None) or []) | {getattr(u, "role", "")}
         return bool(roles & {"guardian", "admin"}) or u.id in ("guardian_1", "admin")
+
+    def _can_open_badge_review(self, badge) -> bool:
+        """The reviewer a badge was sent to (it is in their Review Requests queue) - or a Guardian - may open its review page."""
+        if not (self.current_user and badge):
+            return False
+        if self._is_guardian_user():
+            return True
+        if not is_reviewer_band(getattr(self.current_user, "band", "")):
+            return False
+        uid = self.current_user.id
+        if getattr(badge, "assigned_reviewer_id", "") == uid:
+            return True
+        return any(r.get("id") == badge.id for r in store.get_badge_review_requests_for_user(uid))
+
+    def _badge_review_edit_denied(self, badge) -> Optional[str]:
+        """Why the signed-in user may not edit / decide this badge now (None = allowed): it must be awaiting review and
+        the user must be its assigned reviewer (Reviewer_Band > Badge_Band, not the author) or a Guardian."""
+        if not (self.current_user and badge):
+            return "Badge not found."
+        status = getattr(badge, "workflow_status", "")
+        if status != "pending_review":
+            return f"This badge is '{status or 'not submitted'}' and is no longer awaiting review, so it can't be edited."
+        return store.badge_review_denied_reason(badge.id, self.current_user.id)
 
     _CYCLE_READONLY_SAFE_ACTIONS = {
         "login", "select_demo_account", "logout", "reset_demo_data", "go_back",
@@ -749,17 +782,18 @@ class StarAppController:
         "open_assessment_badge", "close_assessment_badge",
         "open_assessment_cosmonaut", "close_assessment_cosmonaut",
         "filter_guardian_allotment", "filter_badge_approval",
-        "search_badge_approval", "open_badge_for_review", "open_badge_activity_log", "open_cosmonaut_badge_page",
+        "search_badge_approval", "open_badge_for_review", "open_badge_activity_log", "open_cosmonaut_badge_page", "open_reviewer_badge_review",
         "toggle_cosmonaut_badge_card", "open_cosmonaut_badge_preview", "toggle_reviewer_badge_expand",
         "filter_cosmo_requests", "search_cosmo_requests", "change_submission_target_badge",
-        "change_results_badge", "open_submission_review_page", "change_viewer_tab",
-        "open_reviewer_assessment_page", "filter_reviewer_assessments",
-        "open_reviewer_badge_timeline_modal", "open_badge_timeline_mapping_modal", "open_allocated_project_modal",
+        "change_results_badge", "select_results_marksheet", "open_badge_marksheet", "open_submission_review_page", "change_viewer_tab",
+        "open_reviewer_assessment_page",
+        "open_reviewer_badge_timeline_modal", "open_badge_timeline_mapping_modal", "open_badge_mapping_modal", "open_badge_timeline_modal", "open_allocated_project_modal", "open_allocated_project_page",
+        "open_cosmonaut_reviewer_modal", "open_cosmonaut_timeline_modal",
         "view_allocated_project", "recalc_rubric_total", "select_mapping_band",
         "select_mapping_badge", "select_mapping_review_anchor", "set_mapping_review_direction",
         "set_mapping_review_duration", "set_mapping_review_mode", "set_mapping_date_range",
         "jump_mapping_calendar_today", "open_mapping_calendar_modal",
-        "toggle_mapping_badge_card", "open_mapping_badge_detail", "sync_mapping_requests",
+        "toggle_mapping_badge_card", "open_mapping_badge_detail", "sync_mapping_requests", "sync_badge_reviews",
         "change_mapping_calendar_month", "cancel_edit_band_mapping", "reset_mapping_selection",
         "view_saved_badge", "search_skills", "preview_new_badge", "open_locked_milestone_notice",
         "mark_announcement_as_read", "set_list_page"
@@ -812,8 +846,16 @@ class StarAppController:
             related_badge_id=req.get("badge_id", ""),
         )
 
+    def _expire_overdue_badge_reviews(self):
+        """48-hour rule: a badge review nobody decided in time is closed (badge kept as it is, reviewer keeps a read-only view)."""
+        try:
+            store.expire_overdue_badge_reviews()
+        except Exception as exc:  # the sweep must never block the action the user actually asked for
+            print(f"[Controller] badge-review expiry sweep failed: {exc!r}")
+
     def handle_event(self, action: str, payload_json: str = "{}"):
         self._expire_overdue_mapping_requests()
+        self._expire_overdue_badge_reviews()
         if action in self._GUARDIAN_ONLY_ACTIONS and not self._is_guardian_user():
             self.set_flash("You do not have permission to perform that action.", "error")
             print(f"[Controller] DENIED guardian-only action '{action}' for user "
@@ -1111,38 +1153,8 @@ class StarAppController:
                 try: payload = json.loads(payload)
                 except Exception: payload = {}
             if isinstance(payload, dict) and self.created_badge_data:
-                if "title" in payload and payload["title"]:
-                    self.created_badge_data["title"] = payload["title"].strip()
-                if "description" in payload:
-                    self.created_badge_data["description"] = payload["description"].strip()
-                if "outcomes" in payload:
-                    if isinstance(payload["outcomes"], list):
-                        self.created_badge_data["outcomes"] = payload["outcomes"]
-                    elif isinstance(payload["outcomes"], str):
-                        self.created_badge_data["outcomes"] = [o.strip() for o in payload["outcomes"].split("\n") if o.strip()]
-                if "practice_prompt" in payload:
-                    if "practice_project" not in self.created_badge_data or not isinstance(self.created_badge_data["practice_project"], dict):
-                        self.created_badge_data["practice_project"] = {
-                            "intro": "Want some hands-on practice? Use this prompt to generate a practice project.",
-                            "prompt": payload["practice_prompt"],
-                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to generate a practice project for this badge."
-                        }
-                    else:
-                        self.created_badge_data["practice_project"]["prompt"] = payload["practice_prompt"]
-                    self.created_badge_data["practice_prompt"] = payload["practice_prompt"]
-
-                if "resources_prompt" in payload:
-                    if "learning_resources" not in self.created_badge_data or not isinstance(self.created_badge_data["learning_resources"], dict):
-                        self.created_badge_data["learning_resources"] = {
-                            "intro": "Not sure where to start learning? Use this prompt to find free resources tailored to this badge.",
-                            "prompt": payload["resources_prompt"],
-                            "footnote": "This is a prompt which should be provided to an LLM (Ex: Claude, ChatGPT, etc.) to get relevant learning resources."
-                        }
-                    else:
-                        self.created_badge_data["learning_resources"]["prompt"] = payload["resources_prompt"]
-                    self.created_badge_data["resources_prompt"] = payload["resources_prompt"]
-                if "topics" in payload and isinstance(payload["topics"], list):
-                    self.created_badge_data["learning_topics"] = payload["topics"]
+                from starapp.badge_generator import apply_badge_edits
+                apply_badge_edits(self.created_badge_data, payload)
                 t = self.created_badge_data.get("title", "")
                 self.created_badge_data["location"] = f"{t} -> {self.create_badge_skill} -> {self.create_badge_capability} -> {self.create_badge_power} -> Band {self.create_badge_band}"
                 self.is_editing_badge = False
@@ -1566,6 +1578,82 @@ class StarAppController:
                     self.active_modal = "badge_reviewer_edit"
                     self.modal_payload = {"badge_id": b_id}
 
+        elif action == "open_reviewer_badge_review":
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '')
+            badge = store.get_badge(b_id)
+            if not badge:
+                self.set_flash("Badge not found.", "warning")
+            elif not self._can_open_badge_review(badge):
+                raise ActionDenied("This badge was not sent to you for review.")
+            else:
+                self._push_history()
+                self.reviewer_review_badge_id = b_id
+                self.reviewer_review_editing = False
+                self.current_view = "c_badge_review"
+                self.active_modal = None
+
+        elif action == "toggle_reviewer_badge_edit":
+            badge = store.get_badge(self.reviewer_review_badge_id) if self.reviewer_review_badge_id else None
+            denied = self._badge_review_edit_denied(badge) if badge else "Badge not found."
+            if self.reviewer_review_editing:
+                self.reviewer_review_editing = False        # cancelling an edit is always allowed
+            elif denied:
+                self.set_flash(denied, "error")
+            else:
+                self.reviewer_review_editing = True
+
+        elif action == "save_reviewer_badge_edits":
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            badge = store.get_badge(self.reviewer_review_badge_id) if self.reviewer_review_badge_id else None
+            denied = self._badge_review_edit_denied(badge) if badge else "Badge not found."
+            if denied:
+                self.set_flash(denied, "error")
+            elif not isinstance(payload, dict):
+                self.set_flash("Nothing to save.", "warning")
+            else:
+                from starapp.badge_generator import structured_badge_from_row, apply_badge_edits
+                data = structured_badge_from_row(badge)
+                apply_badge_edits(data, payload)
+                new_title = str(data.get("title", "")).strip()
+                band = getattr(badge, "target_band", "") or "B1"
+                clash = next((o for o in store.get_all_badges(cycle_id=getattr(badge, "cycle_id", None))
+                              if o.id != badge.id and getattr(o, "target_band", "") == band and o.title.strip().lower() == new_title.lower()), None)
+                if not new_title or not data.get("outcomes"):
+                    self.set_flash("A badge needs a title and at least one outcome.", "warning")
+                elif clash:
+                    self.set_flash(f"Band {band} already has a badge titled '{clash.title}'. Pick a different title.", "warning")
+                else:
+                    skill, cap, power = getattr(badge, "skill", ""), getattr(badge, "capability", ""), getattr(badge, "power", "")
+                    data["location"] = f"{new_title} -> {skill} -> {cap} -> {power} -> Band {band}"
+                    data["reviewed_by"] = self.current_user.name
+                    data["reviewed_at"] = current_iso_timestamp()
+                    updates = {
+                        "title": new_title,
+                        "description": data.get("description", ""),
+                        "learning_outcomes": data["outcomes"],
+                        "learning_topics": [t.get("title", "") for t in data.get("learning_topics", []) if isinstance(t, dict)],
+                        "project_requirements": data.get("practice_prompt", ""),
+                        "prompt_json": json.dumps(data, indent=2),
+                    }
+                    ok, msg = store.update_badge_by_reviewer(badge.id, self.current_user.id, updates)
+                    if ok:
+                        self.reviewer_review_editing = False
+                        if badge.creator_id and badge.creator_id != self.current_user.id:
+                            store.add_notification(
+                                recipient_id=badge.creator_id,
+                                title=f"Badge edited by reviewer: {new_title}",
+                                message=f"{self.current_user.name} corrected '{new_title}' (Band {band}) during review. The saved badge now shows the reviewer's changes.",
+                                link_section="g_create_badge", event_type="badge_edited", related_badge_id=badge.id,
+                            )
+                        self.set_flash(f"Changes saved to '{new_title}'. The Guardian sees the same updated badge; it is still awaiting your decision.", "success")
+                    else:
+                        self.set_flash(f"Failed to save changes: {msg}", "error")
+
         elif action == "save_reviewed_badge":
             b_id = payload.get("badge_id") if isinstance(payload, dict) else ""
             badge = store.get_badge(b_id)
@@ -1959,6 +2047,8 @@ class StarAppController:
         elif action == "nav_cosmonaut":
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
             view_id = str(view_id or "").strip().strip('"')
+            if view_id == "c_assessments":
+                view_id = "c_badge_reviews"  # the Cosmonaut Assessments queue is gone: assessing happens from the Badge Review schedule
             if view_id not in self._COSMONAUT_VIEWS:
                 raise ActionDenied("That page does not exist.")
             if view_id == "c_cycles":
@@ -1969,6 +2059,9 @@ class StarAppController:
             self.current_view = view_id
             if view_id == "c_submission":
                 self.cosmonaut_expanded_badge_id = None
+            if view_id == "c_results":
+                self.cosmonaut_results_picked = False
+                self.cosmonaut_results_asm_id = ""
             self.active_modal = None
 
         elif action == "nav_to_submit_badge":
@@ -2822,6 +2915,9 @@ class StarAppController:
             )
             self.set_flash(f"Request re-sent to {fresh.get('reviewer_name', 'the reviewer')}. They have 24 hours to respond.", "success")
 
+        elif action == "sync_badge_reviews":
+            pass  # a review countdown reached zero in the browser: the sweep at the top of handle_event already closed it
+
         elif action == "sync_mapping_requests":
             pass  # a countdown reached zero in the browser: the sweep at the top of handle_event already applied it
 
@@ -3092,7 +3188,18 @@ class StarAppController:
                 )
                 self.set_flash(f"Published and unlocked {badge.code}: {badge.title} across Guardian & Cosmonaut roadmaps!", "success")
 
+        elif action in ("confirm_publish_badge", "confirm_revoke_badge"):
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '')
+            if store.get_badge(b_id):
+                self.active_modal = "badge_publish_confirm" if action == "confirm_publish_badge" else "badge_revoke_confirm"
+                self.modal_payload = {"badge_id": b_id}
+            else:
+                self.set_flash("Badge not found.", "warning")
+
         elif action == "revoke_badge":
+            self.active_modal = None            # the confirmation dialog closes whatever the outcome
+            self.modal_payload = {}
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id", "")
             badge = store.get_badge(badge_id)
             if badge:
@@ -3118,6 +3225,8 @@ class StarAppController:
                 self.set_flash(f"Revoked {badge.code}: {badge.title}. It has been removed from the Cosmonaut roadmap and returned to catalog.", "info")
 
         elif action == "publish_badge":
+            self.active_modal = None            # the confirmation dialog closes whatever the outcome
+            self.modal_payload = {}
             badge_id = payload.get("badge_id") if isinstance(payload, dict) else payload
             if isinstance(badge_id, str):
                 badge_id = badge_id.strip().replace('"', '')
@@ -3157,7 +3266,7 @@ class StarAppController:
                         store.add_notification(
                             recipient_id=direct_rev_id,
                             title=f"📋 Milestone Allotted: {badge.code}",
-                            message=f"Milestone '{badge.title}' has been published and assigned to your review queue ({len(all_mapped_cids)} cadet(s)). 3-day project specification window is open.",
+                            message=f"Milestone '{badge.title}' has been published and assigned to your review queue ({len(all_mapped_cids)} cadet(s)). You have 72 hours to create the project and send it to all your mapped cosmonauts.",
                             event_type="milestone",
                             link_section="c_badge_reviews"
                         )
@@ -3200,7 +3309,7 @@ class StarAppController:
                         store.add_notification(
                             recipient_id=rev_id,
                             title=f"📋 Milestone Allotted: {badge.code}",
-                            message=f"Milestone '{badge.title}' has been published and assigned to your review queue ({len(c_ids)} cadet(s)). 3-day project specification window is open.",
+                            message=f"Milestone '{badge.title}' has been published and assigned to your review queue ({len(c_ids)} cadet(s)). You have 72 hours to create the project and send it to all your mapped cosmonauts.",
                             event_type="milestone",
                             link_section="c_badge_reviews"
                         )
@@ -3392,6 +3501,29 @@ class StarAppController:
         elif action == "change_results_badge":
             badge_id = payload if isinstance(payload, str) else payload.get("badge_id")
             self.cosmonaut_results_badge_id = badge_id
+            self.cosmonaut_results_picked = True
+            self.cosmonaut_results_asm_id = ""
+
+        elif action == "select_results_marksheet":
+            # an evaluation tab on the marksheet page (attempt / reviewer / Guardian); only the cosmonaut's own marksheets can be shown
+            asm_id = payload if isinstance(payload, str) else (payload.get("marksheet_id", "") if isinstance(payload, dict) else "")
+            asm = store.get_assessment(str(asm_id).strip().replace('"', ''))
+            if asm and self.current_user and asm.cosmonaut_id == self.current_user.id:
+                self.cosmonaut_results_badge_id = asm.badge_id
+                self.cosmonaut_results_picked = True
+                self.cosmonaut_results_asm_id = asm.id
+
+        elif action == "open_badge_marksheet":
+            # "Official marksheet" / "View marks" from a badge or project page: the marksheet page on THAT badge
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '')
+            if b_id and store.get_badge(b_id):
+                self._push_history()
+                self.cosmonaut_results_badge_id = b_id
+                self.cosmonaut_results_picked = True
+                self.cosmonaut_results_asm_id = ""
+                self.current_view = "c_results"
+                self.active_modal = None
 
         elif action == "toggle_submission_method_fields":
             method = payload if isinstance(payload, str) else payload.get("method")
@@ -3439,7 +3571,7 @@ class StarAppController:
 
         elif action == "submit_reviewer_assessment":
             self.execute_submit_evaluation(payload, default_role="reviewer")
-            self.current_view = "c_assessments"
+            self.current_view = "c_badge_reviews"
 
         elif action == "open_reviewer_assessment_page":
             self._push_history()
@@ -3466,7 +3598,7 @@ class StarAppController:
                                 break
                 if not (is_assigned or is_guardian):
                     self.set_flash("Unauthorized: You are not assigned to evaluate this submission.", "error")
-                    self.current_view = "c_assessments"
+                    self.current_view = "c_badge_reviews"
                     return
             self.selected_reviewer_sub_id = sub_id
             self.reviewer_selected_submission_id = sub_id
@@ -3480,29 +3612,45 @@ class StarAppController:
             if (self.current_user and b_id and not self._is_guardian_user()
                     and not store.get_project_prompt_for_cadet(b_id, self.current_user.id)):
                 # Deliverables are only collected for a project the mapped reviewer has sent.
-                self.set_flash("Your project has not been sent yet. Use \"Request Project\" and your mapped reviewer will send it.", "info")
+                self.set_flash("Your project has not been sent yet. It will appear under \"Project Allocated\" as soon as your mapped reviewer sends it.", "info")
             else:
                 self.active_modal = "submission_portal_modal"
                 self.modal_payload = {"badge_id": b_id}
 
-        elif action in ("open_allocated_project_modal", "view_allocated_project"):
+        elif action in ("open_allocated_project_page", "open_allocated_project_modal", "view_allocated_project"):
+            # "Project Allocated" opens the whole project as its own page (open_allocated_project_modal / view_allocated_project are
+            # the old popup's names, kept so saved sessions and old buttons still land on the page).
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
             b_id = str(b_id).strip().replace('"', '') or getattr(self, "cosmonaut_submission_badge_id", "")
-            self.cosmonaut_submission_badge_id = b_id
-            self.active_modal = "allocated_project_modal"
-            self.modal_payload = {"badge_id": b_id}
-
-        elif action == "filter_reviewer_assessments":
-            self.reviewer_assessment_filter = payload if isinstance(payload, str) else "all"
+            denied = self._allocated_project_denied(b_id)
+            if denied:
+                self.set_flash(denied, "info")
+            else:
+                self._push_history()
+                self.cosmonaut_submission_badge_id = b_id
+                self.current_view = "c_project"
+                self.active_modal = None
 
         elif action == "open_reviewer_badge_timeline_modal":
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
             self.active_modal = "reviewer_timeline_modal"
             self.modal_payload = {"badge_id": b_id}
 
-        elif action == "open_badge_timeline_mapping_modal":
+        elif action in ("open_badge_timeline_mapping_modal", "open_badge_mapping_modal", "open_badge_timeline_modal"):
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
-            self.active_modal = "badge_timeline_mapping"
+            self.active_modal = {
+                "open_badge_mapping_modal": "badge_mapping_view",
+                "open_badge_timeline_modal": "badge_timeline_view",
+            }.get(action, "badge_timeline_mapping")
+            self.modal_payload = {"badge_id": b_id}
+
+        elif action in ("open_cosmonaut_reviewer_modal", "open_cosmonaut_timeline_modal"):
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            b_id = str(b_id).strip().replace('"', '')
+            uid = self.current_user.id if self.current_user else ""
+            if not (store.get_badge(b_id) and uid and (store.get_timeline(b_id, uid) or b_id in {b.id for b in store.get_badges_for_cosmonaut(uid)})):
+                raise ActionDenied("This badge is not allotted to you.")
+            self.active_modal = "cosmonaut_reviewer_view" if action == "open_cosmonaut_reviewer_modal" else "cosmonaut_timeline_view"
             self.modal_payload = {"badge_id": b_id}
 
         elif action == "open_create_reviewer_project_modal":
@@ -3793,7 +3941,7 @@ class StarAppController:
                     feedback = str(fb_el.value).strip() if fb_el and fb_el.value else ""
                 if not decision:
                     dec_el = js.document.getElementById("rubric-decision")
-                    decision = str(dec_el.value).strip() if dec_el and dec_el.value else "approve"
+                    decision = str(dec_el.value).strip() if dec_el and dec_el.value else ""
 
             rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
             if assessor_role == "guardian" and rev_asm:
@@ -3849,13 +3997,28 @@ class StarAppController:
                             if (m_badge == sub.badge_id) or (badge and m_badge in (badge.title, badge.code, badge.id)):
                                 is_authorized_reviewer = True
                                 break
+                if not is_authorized_reviewer:
+                    # same rule as the project / submission routing: the reviewer mapped to this cosmonaut for this badge (incl. the badge's own reviewer)
+                    is_authorized_reviewer = store.get_mapped_reviewer_id(sub.badge_id, sub.cosmonaut_id) == self.current_user.id
                 is_guardian = "guardian" in user_roles
                 if not (is_authorized_reviewer or is_guardian):
                     self.set_flash("Unauthorized: You are not assigned to evaluate this cadet's milestone project.", "error")
                     return
 
+                # Marks are final per attempt: once submitted they cannot be redone - a new assessment opens only for a new attempt
+                if store.get_reviewer_assessment_for_submission(sub.id) or sub.status in ("reviewer_assessed", "approved", "retake_required", "resubmission_requested"):
+                    self.set_flash("Marks for this attempt are already submitted and locked. A new assessment opens only if the cosmonaut makes a new attempt.", "info")
+                    return
+
+                # The reviewer RECOMMENDS (Give Badge / Re-attempt / Reject); the Guardian checks it and gives the final decision.
+                rec = normalize_decision(decision)
+                if rec == "approve" and pct < badge_thresh:
+                    self.set_flash(f"Score {pct:.1f}% is below the {badge_thresh:.0f}% pass mark, so the badge cannot be recommended. Choose Re-attempt or Reject.", "error")
+                    return
+                rec_label = REVIEWER_RECOMMENDATIONS[rec]["label"] if rec else ""
+
                 asm_id = f"asm_rev_{sub.id}_{sub.attempt_number}"
-                decision = "reviewer_assessed"
+                decision = {"approve": "recommend_approve", "resubmission_requested": "recommend_resubmit", "reject": "recommend_reject"}.get(rec, "reviewer_assessed")
                 marksheet = AssessmentMarksheet(
                     id=asm_id,
                     submission_id=sub.id,
@@ -3894,7 +4057,7 @@ class StarAppController:
                     cosmonaut_id=sub.cosmonaut_id,
                     badge_id=sub.badge_id,
                     summary=f"Reviewer Assessment: {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%) for {cosmo_name}",
-                    details=f"{self.current_user.name} graded Attempt #{sub.attempt_number}. Awaiting Guardian final marksheet."
+                    details=f"{self.current_user.name} graded Attempt #{sub.attempt_number}" + (f" and recommends: {rec_label}" if rec_label else "") + ". Awaiting Guardian final decision."
                 )
 
                 self.cosmonaut_results_badge_id = sub.badge_id
@@ -3909,21 +4072,26 @@ class StarAppController:
                 store.add_notification(
                     recipient_id="guardian_1",
                     title=f"Reviewer Assessed: {cosmo_name}",
-                    message=f"{self.current_user.name} completed reviewer evaluation for {cosmo_name} on {b_name} ({marksheet.total_marks:.1f}/50). Awaiting final assessment.",
+                    message=f"{self.current_user.name} completed reviewer evaluation for {cosmo_name} on {b_name} ({marksheet.total_marks:.1f}/50)" + (f" and recommends: {rec_label}" if rec_label else "") + ". Awaiting your final decision.",
                     link_section="g_reviews"
                 )
 
-                self.set_flash(f"Reviewer assessment for {cosmo_name} saved successfully ({marksheet.total_marks:.1f}/50). Awaiting Guardian final assessment.", "success")
+                self.set_flash(f"Reviewer assessment for {cosmo_name} saved successfully ({marksheet.total_marks:.1f}/50). Awaiting Guardian final decision" + (f" (you recommended: {rec_label})." if rec_label else "."), "success")
 
             else:  # guardian
                 asm_id = f"asm_g_{sub.id}_{sub.attempt_number}"
-                is_pass = pct >= badge_thresh
+                # The Guardian's choice (Earn Badge / Resubmit / Reject) decides; with no choice the pass mark decides, as before.
+                g_choice = normalize_decision(decision) or ("approve" if pct >= badge_thresh else "resubmission_requested")
+                if g_choice == "approve" and pct < badge_thresh:
+                    self.set_flash(f"Score {pct:.1f}% is below the {badge_thresh:.0f}% pass mark, so the badge cannot be awarded. Choose Resubmit or Reject.", "error")
+                    return
+                is_pass = g_choice == "approve"
                 if is_pass:
                     decision = "approve"
                     sub.status = "approved"
                 else:
-                    decision = "resubmission_requested"
-                    sub.status = "retake_required"
+                    decision = "rejected" if g_choice == "reject" else "resubmission_requested"
+                    sub.status = "retake_required"          # a rejected attempt is closed too: the cosmonaut can start a new attempt
 
                 marksheet = AssessmentMarksheet(
                     id=asm_id,
@@ -3988,12 +4156,14 @@ class StarAppController:
                         actor_name=self.current_user.name,
                         cosmonaut_id=sub.cosmonaut_id,
                         badge_id=sub.badge_id,
-                        summary=f"Retake Required: {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%) for {cosmo_name}",
-                        details=f"Evaluated Attempt #{sub.attempt_number}. Score was below passing threshold of {badge_thresh:.1f}%. Resubmission requested."
+                        summary=(f"Attempt Rejected: {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%) for {cosmo_name}" if g_choice == "reject"
+                                 else f"Retake Required: {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}%) for {cosmo_name}"),
+                        details=(f"Evaluated Attempt #{sub.attempt_number}. The Guardian rejected this attempt; the cosmonaut can start a new one." if g_choice == "reject"
+                                 else f"Evaluated Attempt #{sub.attempt_number}. A new attempt was requested (score {marksheet.percentage:.1f}% vs {badge_thresh:.1f}% pass mark).")
                     )
                     store.add_notification(
                         recipient_id=sub.cosmonaut_id,
-                        title=f"Retake Required: {b_name}",
+                        title=(f"Attempt Rejected: {b_name}" if g_choice == "reject" else f"Retake Required: {b_name}"),
                         message=f"Score for Attempt #{sub.attempt_number} was {marksheet.total_marks:.1f}/50 ({marksheet.percentage:.1f}% vs {badge_thresh}% passing threshold). Please review feedback and resubmit Attempt #{sub.attempt_number + 1}.",
                         link_section="c_submission"
                     )
@@ -4104,7 +4274,7 @@ class StarAppController:
 
             # The deliverables answer the project the mapped reviewer sent; without it there is nothing to submit.
             if not store.get_project_prompt_for_cadet(badge_id, self.current_user.id):
-                self.set_flash("Your project has not been sent yet. Use \"Request Project\" first; your mapped reviewer will send it.", "error")
+                self.set_flash("Your project has not been sent yet. Your mapped reviewer will send it; it then appears under \"Project Allocated\".", "error")
                 return
 
             # Determine single submission / edit vs new submission
@@ -4275,8 +4445,8 @@ if __name__ == "__main__":
                 store.add_notification(
                     recipient_id=assigned_rev_id,
                     title=f"Project submitted: {self.current_user.name}",
-                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. Open Cosmonaut Assessments to review it.{late_note}",
-                    link_section="c_assessments"
+                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. Open Badge Reviews and use Assessment to see the deliverables and allocate marks.{late_note}",
+                    link_section="c_badge_reviews"
                 )
 
             self.active_modal = None
@@ -5516,6 +5686,30 @@ if __name__ == "__main__":
             title = "Confirm Institutional Authorization"
             body = render_badge_approval_confirm_modal(badge, self.current_user) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
+        elif self.active_modal in ("cosmonaut_reviewer_view", "cosmonaut_timeline_view"):
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            is_rev = self.active_modal == "cosmonaut_reviewer_view"
+            title = "Your Reviewer" if is_rev else "Your Timeline"
+            if not badge:
+                body = "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+            elif is_rev:
+                body = render_cosmonaut_reviewer_modal(badge, self.current_user, store)
+            else:
+                body = render_cosmonaut_timeline_modal(badge, self.current_user, store)
+
+        elif self.active_modal in ("badge_publish_confirm", "badge_revoke_confirm"):
+            b_id = self.modal_payload.get("badge_id", "")
+            badge = store.get_badge(b_id)
+            is_pub = self.active_modal == "badge_publish_confirm"
+            title = "Confirm Publication" if is_pub else "Confirm Revocation"
+            if not badge:
+                body = "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+            elif is_pub:
+                body = render_badge_publish_confirm_modal(badge, self.current_user, store)
+            else:
+                body = render_badge_revoke_confirm_modal(badge, self.current_user)
+
         elif self.active_modal == "badge_reviewer_return":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
@@ -5534,26 +5728,21 @@ if __name__ == "__main__":
             title = f"Milestone Timeline Schedule — {badge.code if badge else ''}"
             body = render_reviewer_badge_timeline_modal(badge, self.current_user, store) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
-        elif self.active_modal == "badge_timeline_mapping":
+        elif self.active_modal in ("badge_timeline_mapping", "badge_mapping_view", "badge_timeline_view"):
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
-            title = f"Timeline & Mapping — {badge.code if badge else ''}"
-            body = render_badge_timeline_mapping_modal(badge, store) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
+            section, label = {
+                "badge_mapping_view": ("mapping", "Mapping"),
+                "badge_timeline_view": ("timeline", "Timeline"),
+            }.get(self.active_modal, ("both", "Timeline & Mapping"))
+            title = f"{label} — {badge.code if badge else ''}"
+            body = render_badge_timeline_mapping_modal(badge, store, section) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
         elif self.active_modal == "reviewer_project_creator":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
             title = f"Create Project — {badge.code if badge else ''}"
             body = render_reviewer_project_creator_modal(badge, self.current_user, store) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
-
-        elif self.active_modal == "allocated_project_modal":
-            b_id = self.modal_payload.get("badge_id", "")
-            badge = store.get_badge(b_id)
-            title = f"Project — {badge.code if badge else ''}"
-            if badge and self.current_user:
-                body = render_cosmonaut_allocated_project_modal(badge, self.current_user, store)
-            else:
-                body = "<div style='padding:24px; text-align:center; color:var(--frost-navy-50);'>Milestone badge not found.</div>"
 
         elif self.active_modal == "submission_portal_modal":
             b_id = self.modal_payload.get("badge_id", "")
@@ -5599,10 +5788,12 @@ if __name__ == "__main__":
             )
 
         modal_dialog_class = "liquid-glass-modal modal-dialog"
-        if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "badge_timeline_mapping", "reviewer_project_creator", "submission_portal_modal", "allocated_project_modal", "cycle_candidate_detail_modal", "create_badge", "edit_badge"]:
+        if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "badge_timeline_mapping", "badge_mapping_view", "badge_timeline_view", "cosmonaut_reviewer_view", "cosmonaut_timeline_view", "reviewer_project_creator", "cycle_candidate_detail_modal", "create_badge", "edit_badge"]:
             modal_dialog_class += " modal-xl modal-lg"
-        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_activity_log", "badge_reviewer_manage", "badge_reviewer_return", "create_cycle_modal"]:
+        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_publish_confirm", "badge_revoke_confirm", "badge_activity_log", "badge_reviewer_manage", "badge_reviewer_return", "create_cycle_modal"]:
             modal_dialog_class += " modal-lg"
+        elif self.active_modal == "submission_portal_modal":
+            modal_dialog_class += " modal-form"
         elif self.active_modal == "mapping_calendar_modal":
             modal_dialog_class += " modal-cal"
 
@@ -5794,12 +5985,25 @@ if __name__ == "__main__":
 
     def _render_workspace_scoped(self, render_source: str, effective_cid: str) -> str:
         # "Past Cycle & Performance" is part of the Choose Cycle page now; old links / saved sessions still resolve.
+        if self.current_view == "c_assessments":
+            self.current_view = "c_badge_reviews"
         if self.current_view == "c_cycles":
             self.current_view = "c_choose_cycle"
         # Defence in depth: reviewer pages exist only from Band 2 up (a stale session / crafted view id gets Badges).
         if (self.current_view in COSMONAUT_REVIEWER_VIEWS and not self._is_guardian_user()
                 and not is_reviewer_band(getattr(self.current_user, "band", ""))):
             self.current_view = self.COSMONAUT_HOME_VIEW
+            self.active_modal = None
+        # The reviewer's badge-review page needs a real badge that was sent to this user (stale session / crafted id -> the queue).
+        if self.current_view == "c_badge_review":
+            _rb = store.get_badge(self.reviewer_review_badge_id) if self.reviewer_review_badge_id else None
+            if not (_rb and self._can_open_badge_review(_rb)):
+                self.current_view = "c_requests"
+        if self.current_view != "c_badge_review":
+            self.reviewer_review_editing = False
+        # The project page needs a badge allotted to this cosmonaut whose project has been sent (else back to the badge / the badge list).
+        if self.current_view == "c_project" and self._allocated_project_denied(self.cosmonaut_submission_badge_id):
+            self.current_view = "c_badge_detail" if store.get_badge(self.cosmonaut_submission_badge_id) else self.COSMONAUT_HOME_VIEW
             self.active_modal = None
         # Common data calculations (scoped to effective_cid)
         badges = store.get_all_badges()
@@ -6127,10 +6331,12 @@ if __name__ == "__main__":
             unread_anns = len([a for a in store.get_announcements_for_cosmonaut(self.current_user.id) if self.current_user.id not in a.read_by_cosmonaut_ids])
             cosmo_reqs = store.get_badge_review_requests_for_user(self.current_user.id)
             pending_cosmo_reqs_cnt = len([r for r in cosmo_reqs if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
-            if self.current_view == "c_badge_detail":
+            if self.current_view in ("c_badge_detail", "c_project"):
                 active_nav_id = "c_submission"
             elif self.current_view == "c_assessment_detail":
-                active_nav_id = "c_assessments"
+                active_nav_id = "c_badge_reviews"
+            elif self.current_view == "c_badge_review":
+                active_nav_id = "c_requests"
             else:
                 active_nav_id = self.current_view
             sidebar_html = render_cosmonaut_sidebar(
@@ -6207,11 +6413,17 @@ if __name__ == "__main__":
                     submissions=user_subs
                 )
 
+            elif self.current_view == "c_project":
+                _pb = store.get_badge(self.cosmonaut_submission_badge_id)
+                page_title = f"Project — {_pb.title}"
+                route_key = f"c_project:{_pb.id}"
+                main_content_html = render_cosmonaut_project_page(_pb, self.current_user, store)
+
             elif self.current_view == "c_results":
                 page_title = "Official Evaluation Marksheets (50-Mark Rubric)"
                 res_badge_id = self.cosmonaut_results_badge_id
-                if not res_badge_id and user_asms:
-                    # Automatically select the badge with the most recent marksheet evaluation
+                if user_asms and (not res_badge_id or not self.cosmonaut_results_picked):
+                    # Unless a badge was chosen on this page, open on the badge with the most recent evaluation (so new marks are seen first)
                     latest_asm = sorted(user_asms, key=lambda a: a.reviewed_at)[-1]
                     res_badge_id = latest_asm.badge_id
                 main_content_html = render_cosmonaut_results(
@@ -6219,7 +6431,10 @@ if __name__ == "__main__":
                     badges_map=badges_map,
                     selected_badge_id=res_badge_id,
                     available_badges=assigned_badges,
-                    extensions=store.get_extensions_for_cosmonaut(self.current_user.id)
+                    extensions=store.get_extensions_for_cosmonaut(self.current_user.id),
+                    selected_asm_id=self.cosmonaut_results_asm_id,
+                    submissions=user_subs,
+                    project_ready_ids={b.id for b in assigned_badges if store.get_project_prompt_for_cadet(b.id, self.current_user.id)}
                 )
 
             elif self.current_view == "c_materials":
@@ -6272,6 +6487,17 @@ if __name__ == "__main__":
                     search_query=getattr(self, "cosmo_requests_search", "")
                 )
 
+            elif self.current_view == "c_badge_review":
+                page_title = "Badge Review"
+                _rb = store.get_badge(self.reviewer_review_badge_id)
+                main_content_html = render_reviewer_badge_review(
+                    badge=_rb,
+                    current_user=self.current_user,
+                    request_row=next((r for r in cosmo_reqs if r.get("id") == _rb.id), {}),
+                    can_edit=self._badge_review_edit_denied(_rb) is None,
+                    is_editing=self.reviewer_review_editing and self._badge_review_edit_denied(_rb) is None,
+                )
+
             elif self.current_view == "c_badge_reviews":
                 page_title = "My Badge Review Schedule"
                 main_content_html = render_reviewer_badge_schedule(
@@ -6280,20 +6506,6 @@ if __name__ == "__main__":
                     badges_map=badges_map,
                     cosmo_map=cosmo_map,
                     expanded_badge_id=getattr(self, "reviewer_expanded_badge_id", None)
-                )
-
-            elif self.current_view == "c_assessments":
-                page_title = "Cadet Deliverables Assessment Queue"
-                active_filter = getattr(self, "reviewer_assessments_filter", "all")
-                all_subs = store.get_all_submissions()
-                all_asms_dict = {a.submission_id: a for a in store.get_all_assessments()}
-                main_content_html = render_reviewer_assessment_queue(
-                    submissions=all_subs,
-                    assessments_by_sub=all_asms_dict,
-                    badges_map=badges_map,
-                    cosmonauts_map=cosmo_map,
-                    current_user=self.current_user,
-                    status_filter=active_filter
                 )
 
             elif self.current_view == "c_assessment_detail":
@@ -6317,7 +6529,7 @@ if __name__ == "__main__":
                                     is_assigned = True
                                     break
                     if not (is_assigned or is_guardian):
-                        main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'><h3 style='color:#DC2626;'>Unauthorized Access</h3><p style='color:var(--frost-navy-50); margin-top:8px;'>You are not authorized or assigned to evaluate this cadet deliverable.</p><button onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')\" class='btn-secondary' style='margin-top:14px;'>Back to Assessment Queue</button></div>"
+                        main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'><h3 style='color:#DC2626;'>Unauthorized Access</h3><p style='color:var(--frost-navy-50); margin-top:8px;'>You are not authorized or assigned to evaluate this cadet deliverable.</p><button onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_badge_reviews')\" class='btn-secondary' style='margin-top:14px;'>Back to Badge Reviews</button></div>"
                     else:
                         cadet = cosmo_map.get(sub.cosmonaut_id) or store.get_user_by_id(sub.cosmonaut_id) or store.get_cosmonaut(sub.cosmonaut_id)
                         badge = badges_map.get(sub.badge_id) or store.get_badge(sub.badge_id)
@@ -6333,7 +6545,7 @@ if __name__ == "__main__":
                             selected_tab=getattr(self, "selected_viewer_tab", "pdf")
                         )
                 else:
-                    main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'>Deliverable not found. <button onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')\" class='btn-secondary'>Back to Assessment Queue</button></div>"
+                    main_content_html = "<div class='liquid-glass-card' style='padding:40px; text-align:center;'>Deliverable not found. <button onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_badge_reviews')\" class='btn-secondary'>Back to Badge Reviews</button></div>"
 
         modal_html = iconize_html(self.render_active_modal())
         main_content_html = iconize_html(main_content_html)

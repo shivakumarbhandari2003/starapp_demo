@@ -99,25 +99,80 @@ def format_utc_stamp(iso_value: Any) -> str:
     return dt.strftime("%d %b, %H:%M UTC")
 
 
+def render_countdown(
+    seconds_left: int,
+    prefix: str = "",
+    suffix: str = "left",
+    title: str = "",
+    sync_action: str = "sync_mapping_requests",
+    large: bool = False,
+) -> str:
+    """
+    One live countdown chip for every deadline (24 h mapping request, 48 h badge review). The server renders the seconds
+    left (no clock-skew); js/bridge.js ticks every `.rq-timer` once a second and, when one reaches zero, dispatches its
+    `data-sync` action so the server applies the expiry and re-renders.
+    """
+    seconds_left = max(0, int(seconds_left))
+    urgent = " is-urgent" if seconds_left < 3600 else ""
+    big = " is-lg" if large else ""
+    lead = f'<span class="rq-timer-lbl">{escape(prefix)}</span>' if prefix else ""
+    tail = f'<span class="rq-timer-lbl">{escape(suffix)}</span>' if suffix else ""
+    return (
+        f'<span class="rq-timer{urgent}{big}" data-remaining="{seconds_left}" data-sync="{escape(sync_action)}" title="{escape(title)}">'
+        f'{get_icon("clock", 14 if large else 13)}{lead}<span class="rq-timer-text">{format_hms(seconds_left)}</span>{tail}</span>'
+    )
+
+
 def render_request_timer(req: Dict[str, Any], prefix: str = "") -> str:
     """
     Live 24-hour countdown for a PENDING mapping request, shown to the Guardian and to the reviewer.
-    The server renders the seconds left (no clock-skew); js/bridge.js ticks every `.rq-timer` once a second
-    and asks the server to sync when one reaches zero (the request is then auto-declined).
     Returns '' for answered requests or requests that carry no deadline.
     """
     from starapp.storage import mapping_request_seconds_left
     left = mapping_request_seconds_left(req)
     if left is None:
         return ""
-    urgent = " is-urgent" if left < 3600 else ""
-    lead = f'<span class="rq-timer-lbl">{escape(prefix)}</span>' if prefix else ""
-    return (
-        f'<span class="rq-timer{urgent}" data-remaining="{left}" '
-        f'title="Time left to respond. After 24 hours without an answer the request counts as not accepted.">'
-        f'{get_icon("clock", 13)}{lead}<span class="rq-timer-text">{format_hms(left)}</span>'
-        f'<span class="rq-timer-lbl">left</span></span>'
+    return render_countdown(left, prefix, "left", "Time left to respond. After 24 hours without an answer the request counts as not accepted.")
+
+
+def render_badge_review_timer(due_iso: Any, large: bool = True) -> str:
+    """Live countdown of a badge's 48-hour review window ('' for legacy date-only deadlines)."""
+    from starapp.storage import badge_review_seconds_left
+    left = badge_review_seconds_left(due_iso)
+    if left is None:
+        return ""
+    return render_countdown(
+        left, "", "left to review",
+        "Time left to review and edit this badge. When it reaches zero the review closes and the badge stays exactly as it is.",
+        sync_action="sync_badge_reviews", large=large,
     )
+
+
+def render_project_window_timer(published_at: Any, large: bool = False, suffix: str = "left to send projects") -> str:
+    """
+    Live countdown of the reviewer's 72-hour window (from the moment the badge was published) to create the project and send it
+    to every mapped cosmonaut. When it runs out the chip reads "Project window ended". '' when the badge has no publish time.
+    """
+    from starapp.storage import project_window_seconds_left
+    left = project_window_seconds_left(published_at)
+    if left is None:
+        return ""
+    if left == 0:
+        return f'<span class="rq-timer is-expired{" is-lg" if large else ""}">{get_icon("clock", 13)}<span class="rq-timer-lbl">Project window ended</span></span>'
+    return render_countdown(
+        left, "", suffix,
+        "From the moment this badge was published the reviewer has 72 hours to create the project and send it to every mapped cosmonaut.",
+        sync_action="sync_badge_reviews", large=large,
+    )
+
+
+def format_short_date(value: Any) -> str:
+    """'2026-11-18' / '2026-11-18T10:00:00+00:00' -> '18 Nov 2026' ('' when empty / malformed)."""
+    import datetime as _dt
+    try:
+        return _dt.date.fromisoformat(str(value or "")[:10]).strftime("%d %b %Y")
+    except Exception:
+        return ""
 
 
 def escape(text: Any) -> str:
@@ -281,196 +336,158 @@ def render_status_pill(status: str) -> str:
     label = status.replace("_", " ").title()
     return f'<span class="status-pill {css_class}">{escape(label)}</span>'
 
+# The reviewer's recommendation to the Guardian on a submission: Give Badge / Re-attempt / Reject. Stored on the reviewer's marksheet
+# (`decision` = recommend_approve / recommend_resubmit / recommend_reject, so no "approve" check ever mistakes it for an award).
+REVIEWER_RECOMMENDATIONS = {
+    "approve": {"label": "Give Badge", "icon": "award", "tone": "green", "desc": "Recommend the Guardian awards the badge."},
+    "resubmission_requested": {"label": "Re-attempt", "icon": "refresh", "tone": "amber", "desc": "Recommend a new attempt; this one stays on record."},
+    "reject": {"label": "Reject", "icon": "x", "tone": "red", "desc": "Recommend rejecting this attempt."},
+}
+_REC_ALIASES = {
+    "approve": "approve", "approved": "approve", "recommend_approve": "approve", "award": "approve", "earn": "approve", "give_badge": "approve",
+    "resubmission_requested": "resubmission_requested", "resubmit": "resubmission_requested", "recommend_resubmit": "resubmission_requested",
+    "changes_requested": "resubmission_requested", "request_revision": "resubmission_requested", "reattempt": "resubmission_requested", "re_attempt": "resubmission_requested",
+    "reject": "reject", "rejected": "reject", "recommend_reject": "reject",
+}
+
+
+def normalize_decision(value: Any) -> str:
+    """Any spelling of a decision -> 'approve' | 'resubmission_requested' | 'reject' ('' when not a decision)."""
+    return _REC_ALIASES.get(str(value or "").strip().lower(), "")
+
+
+def reviewer_recommendation_key(asm: Any) -> str:
+    """The recommendation recorded on a REVIEWER marksheet ('' for Guardian sheets, legacy 'reviewer_assessed', or none)."""
+    if not asm or getattr(asm, "assessor_role", "") != "reviewer":
+        return ""
+    return normalize_decision(getattr(asm, "decision", ""))
+
+
+def render_recommendation_chip(key: str, prefix: str = "Reviewer recommends") -> str:
+    """Small icon chip: 'Reviewer recommends: Give Badge' (empty string when there is no recommendation)."""
+    info = REVIEWER_RECOMMENDATIONS.get(key)
+    if not info:
+        return ""
+    lead = f"{escape(prefix)}: " if prefix else ""
+    return f'<span class="rec-chip is-{info["tone"]}">{get_icon(info["icon"], 13)}<span>{lead}<b>{info["label"]}</b></span></span>'
+
+
+_MS_CRITERIA = (
+    ("Business Understanding", "Problem formulation, compliance boundaries and business value.", "business_understanding"),
+    ("Architecture / Report", "Modularity, system design rigour, diagrams and written documentation.", "architecture_report"),
+    ("Technical Knowledge", "Code robustness, optimisation, edge-case coverage and efficiency.", "technical_knowledge"),
+    ("Presentation", "Narrative clarity, structured delivery and verification packaging.", "presentation"),
+    ("Question & Answering", "Defence of trade-offs, conceptual agility and domain comprehension.", "qa"),
+)
+
+
+def _ms_outcome(marksheet: AssessmentMarksheet) -> Dict[str, str]:
+    """Tone, label and note for a marksheet: reviewer-only sheets are provisional until the Guardian decides."""
+    decision = (getattr(marksheet, "decision", "") or "").lower()
+    is_reviewer = getattr(marksheet, "assessor_role", "") == "reviewer" or decision == "reviewer_assessed"
+    if is_reviewer:
+        rec = reviewer_recommendation_key(marksheet)
+        said = f" and recommends <b>{REVIEWER_RECOMMENDATIONS[rec]['label']}</b>" if rec else ""
+        return {"tone": "blue", "label": "Awaiting Guardian",
+                "note": f"Evaluated by your peer reviewer{said}. The Guardian gives the final decision.", "note_is_html": "1"}
+    if decision in ("approve", "approved"):
+        return {"tone": "green", "label": "Badge earned", "note": "Approved by the Guardian - the badge is certified."}
+    if decision in ("rejected", "reject"):
+        return {"tone": "red", "label": "Rejected", "note": "This attempt was rejected. Review the feedback and start a new attempt."}
+    return {"tone": "red", "label": "Re-attempt", "note": "Below the passing threshold or a new attempt was requested. Review the feedback and resubmit."}
+
+
 def render_standard_marksheet(
     marksheet: AssessmentMarksheet,
     badge: Optional[Badge] = None,
-    all_attempts: Optional[List[AssessmentMarksheet]] = None
+    all_attempts: Optional[List[AssessmentMarksheet]] = None,
+    tab_action: str = "view_marksheet",
 ) -> str:
-    """Renders the standard 50-mark marksheet layout with the 5 criteria breakdown."""
+    """
+    The official 50-mark marksheet in the glass style: header (badge, attempt, evaluator) with the score ring, the five rubric criteria as
+    meter rows, strengths / growth areas, and the evaluator's synthesis. When there is more than one evaluation (attempts, reviewer +
+    Guardian) a tab strip switches between them via `tab_action` (the modal re-opens, the page re-selects).
+    """
     badge_title = badge.title if badge else "Project Assessment"
     badge_code = badge.code if badge else "STAR-RUBRIC"
+    is_reviewer = getattr(marksheet, "assessor_role", "") == "reviewer"
+    assessor_title = "Peer Reviewer" if is_reviewer else "Guardian"
+    out = _ms_outcome(marksheet)
+    pct_val = max(0.0, min(100.0, float(marksheet.percentage or 0.0)))
 
-    # Multi-attempt / evaluator tab navigation if multiple assessments exist
-    attempts_tabs_html = ""
+    tabs = ""
     if all_attempts and len(all_attempts) > 1:
-        tab_buttons = []
+        buttons = []
         for att in all_attempts:
-            is_active = att.id == marksheet.id
-            active_style = (
-                "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:700; border:1px solid var(--deep-frozen-midnight);"
-                if is_active else
-                "background:rgba(234,244,255,0.85); color:var(--frost-navy); border:1px solid var(--icy-steel-50);"
-            )
-            att_role = "Peer Reviewer" if getattr(att, "assessor_role", "") == "reviewer" else "Guardian Official"
+            role = "Peer Reviewer" if getattr(att, "assessor_role", "") == "reviewer" else "Guardian Official"
             payload = f'{{"marksheet_id": "{att.id}"}}'
-            tab_buttons.append(
-                f'<button type="button" class="btn-secondary btn-sm" style="{active_style} padding:6px 14px; border-radius:var(--radius-xs);" '
-                f'onclick="window.StarAppBridge.dispatchAction(\'view_marksheet\', \'{escape(payload)}\')">'
-                f'Attempt #{att.attempt_number} &bull; {att_role} &bull; {att.total_marks}/50.0 ({att.decision.replace("_", " ").title()})</button>'
-            )
-        attempts_tabs_html = f'''
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; padding:12px 16px; background:rgba(234,244,255,0.45); border-radius:var(--radius-md); border:1px solid var(--icy-steel-30);">
-            <span style="font-size:0.71875rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px;">Evaluation History:</span>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">{"".join(tab_buttons)}</div>
-        </div>
-        '''
+            active = " is-active" if att.id == marksheet.id else ""
+            buttons.append(
+                f'<button type="button" class="ms-tab{active}" onclick="window.StarAppBridge.dispatchAction(\'{escape(tab_action)}\', \'{escape(payload)}\')">'
+                f'<span class="ms-tab-top">Attempt #{att.attempt_number} &middot; {role}</span>'
+                f'<span class="ms-tab-score">{att.total_marks:.1f} / 50</span></button>')
+        tabs = f'<div class="ms-tabs" role="tablist" aria-label="Evaluation history">{"".join(buttons)}</div>'
 
-    assessor_title = "Peer Reviewer" if getattr(marksheet, "assessor_role", "") == "reviewer" else "Guardian"
-    decision_pill = render_status_pill(marksheet.decision)
+    rows = []
+    for idx, (name, scope, attr) in enumerate(_MS_CRITERIA, 1):
+        score = float(getattr(marksheet, attr, 0.0) or 0.0)
+        pct = max(0, min(100, int(round(score / 10.0 * 100))))
+        level = "high" if score >= 8 else ("mid" if score >= 6 else "low")
+        rows.append(f"""
+            <div class="ms-crit">
+                <span class="ms-crit-num">{idx}</span>
+                <div class="ms-crit-main">
+                    <div class="ms-crit-name">{escape(name)}</div>
+                    <div class="ms-crit-scope">{escape(scope)}</div>
+                    <div class="ms-meter"><span class="ms-meter-fill is-{level}" style="width:{pct}%;"></span></div>
+                </div>
+                <div class="ms-crit-score"><b>{score:.1f}</b><small>/ 10</small></div>
+            </div>""")
 
-    criteria = [
-        {
-            "num": 1,
-            "name": "Business Understanding",
-            "scope": "Problem formulation, regulatory compliance boundaries (GDPR, HIPAA), and business value metrics.",
-            "score": marksheet.business_understanding,
-            "max": 10.0
-        },
-        {
-            "num": 2,
-            "name": "Architecture / Report",
-            "scope": "Modularity, system design rigor, architectural diagrams, schemas, and written documentation.",
-            "score": marksheet.architecture_report,
-            "max": 10.0
-        },
-        {
-            "num": 3,
-            "name": "Technical Knowledge",
-            "scope": "Code robustness, algorithm optimization, edge-case coverage, and execution efficiency.",
-            "score": marksheet.technical_knowledge,
-            "max": 10.0
-        },
-        {
-            "num": 4,
-            "name": "Presentation",
-            "scope": "Narrative coherence, clarity of demonstration, structured delivery, and verification packaging.",
-            "score": marksheet.presentation,
-            "max": 10.0
-        },
-        {
-            "num": 5,
-            "name": "Question & Answering",
-            "scope": "Defense of engineering trade-offs, conceptual agility, and domain comprehension under review.",
-            "score": marksheet.qa,
-            "max": 10.0
-        }
-    ]
-
-    criteria_rows = []
-    for c in criteria:
-        pct = min(100, max(0, int((c["score"] / c["max"]) * 100)))
-        criteria_rows.append(f"""
-        <tr style="transition:background 150ms ease;">
-            <td style="padding:14px 18px; border-bottom:1px solid var(--frost-mist);">
-                <div style="font-weight:700; color:var(--frost-navy); font-size:0.84375rem; margin-bottom:2px;">
-                    {c['num']}. {c['name']}
-                </div>
-                <div style="font-size:0.75rem; color:var(--frost-navy-50); line-height:1.4;">
-                    {c['scope']}
-                </div>
-            </td>
-            <td style="padding:14px 18px; border-bottom:1px solid var(--frost-mist); width:180px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <div style="flex:1; height:7px; border-radius:999px; background:rgba(157,183,213,0.3); overflow:hidden;">
-                        <div style="width:{pct}%; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--deep-frozen-midnight) 0%, var(--icy-steel) 100%);"></div>
-                    </div>
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; color:var(--deep-frozen-midnight);">{pct}%</span>
-                </div>
-            </td>
-            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.8125rem; color:var(--frost-navy-50); border-bottom:1px solid var(--frost-mist);">
-                {c['max']:.1f}
-            </td>
-            <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.875rem; font-weight:800; color:var(--deep-frozen-midnight); border-bottom:1px solid var(--frost-mist);">
-                {c['score']:.1f}
-            </td>
-        </tr>
-        """)
+    strengths = escape(marksheet.strength_areas or "No specific strengths highlighted.")
+    growth = escape(marksheet.improvement_areas or "No critical weaknesses noted.")
+    synthesis = escape(marksheet.overall_feedback or "No feedback recorded.")
+    when = escape((marksheet.reviewed_at or "")[:10])
 
     return f"""
-    <div class="marksheet-view" style="border:1.5px solid var(--icy-steel); border-radius:var(--radius-lg); overflow:hidden; background:var(--snow-white); box-shadow:0 12px 36px rgba(7, 22, 41, 0.08);">
-        <!-- Executive Header -->
-        <div class="marksheet-header" style="background:linear-gradient(135deg, #071629 0%, #17345C 100%); color:var(--snow-white); padding:24px 32px; display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid var(--icy-steel-50);">
-            <div>
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--snow-white); background:rgba(157,183,213,0.22); padding:3px 10px; border-radius:var(--radius-xs); border:1px solid rgba(157,183,213,0.35);">{escape(badge_code)}</span>
-                    <span style="font-size:0.75rem; font-weight:700; color:var(--icy-steel); letter-spacing:0.8px; text-transform:uppercase;">Official Evaluation Marksheet &bull; Attempt #{marksheet.attempt_number}</span>
-                </div>
-                <h2 style="font-size:1.6rem; font-weight:800; margin:0 0 6px 0; color:var(--snow-white); letter-spacing:-0.3px;">{escape(badge_title)}</h2>
-                <div style="font-size:0.78125rem; color:rgba(234,244,255,0.8); display:flex; align-items:center; gap:8px;">
-                    <span>Evaluated by: <strong>{escape(marksheet.reviewer_name)}</strong> ({assessor_title})</span>
-                    <span>&bull;</span>
-                    <span>Evaluation Date: <strong>{escape(marksheet.reviewed_at[:10])}</strong></span>
+    <div class="marksheet-view ms-sheet">
+        <div class="ms-head">
+            <div class="ms-head-main">
+                <div class="ms-eyebrow"><span class="ms-code">{escape(badge_code)}</span><span>Official evaluation marksheet &middot; Attempt #{marksheet.attempt_number}</span></div>
+                <div class="ms-title" role="heading" aria-level="2">{escape(badge_title)}</div>
+                <div class="ms-evaluator">
+                    <span class="ms-ev-ico">{get_icon("shield", 14)}</span>
+                    <span>Evaluated by <b>{escape(marksheet.reviewer_name)}</b></span>
+                    <span class="ms-role">{assessor_title}</span>
+                    {f'<span class="ms-when">{get_icon("calendar", 13)} {when}</span>' if when else ''}
                 </div>
             </div>
-            <div class="marksheet-score-badge" style="text-align:right;">
-                <div class="marksheet-score-num" style="font-size:2.2rem; font-weight:800; line-height:1; color:var(--snow-white); font-family:var(--font-family-mono);">
-                    {marksheet.total_marks} <span style="font-size:1.1rem; color:var(--icy-steel); font-weight:600;">/ 50.0</span>
+            <div class="ms-score">
+                <div class="ms-ring" style="--ms-pct:{pct_val:.1f};"><div class="ms-ring-in"><b>{marksheet.total_marks:.1f}</b><small>/ 50</small></div></div>
+                <div class="ms-score-side">
+                    <div class="ms-pct">{marksheet.percentage:.1f}%</div>
+                    <span class="ms-outcome is-{out['tone']}">{out['label']}</span>
                 </div>
-                <div class="marksheet-percent" style="font-size:0.78125rem; color:var(--icy-steel); font-weight:700; margin-top:4px;">
-                    {marksheet.percentage}% Standard Score
-                </div>
-                <div style="margin-top:8px;">{decision_pill}</div>
             </div>
         </div>
 
-        <!-- Marksheet Body -->
-        <div class="marksheet-body" style="padding:28px 32px;">
-            {attempts_tabs_html}
+        <div class="ms-body">
+            <div class="ms-note is-{out['tone']}">{out['note'] if out.get('note_is_html') else escape(out['note'])}</div>
+            {tabs}
 
-            <!-- 5-Criterion Rubric Table -->
-            <table class="marksheet-rubric-table" style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid var(--icy-steel-30); border-radius:var(--radius-md); overflow:hidden;">
-                <thead>
-                    <tr style="background:var(--frost-mist); text-align:left;">
-                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Assessment Criterion & Scope</th>
-                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px;">Mastery Index</th>
-                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Max</th>
-                        <th style="padding:12px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; color:var(--frost-navy); letter-spacing:0.5px; text-align:center;">Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join(criteria_rows)}
-                    <tr style="background:rgba(234,244,255,0.7); font-weight:800;">
-                        <td colspan="2" style="padding:14px 18px; text-align:right; text-transform:uppercase; font-size:0.78125rem; letter-spacing:0.6px; color:var(--deep-frozen-midnight);">
-                            Universal 5-Criterion Evaluation Total:
-                        </td>
-                        <td style="padding:14px 18px; text-align:center; font-family:var(--font-family-mono); font-size:0.8125rem; color:var(--frost-navy);">
-                            50.0
-                        </td>
-                        <td style="padding:14px 18px; text-align:center; font-size:1.2rem; font-family:var(--font-family-mono); color:var(--deep-frozen-midnight); font-weight:900;">
-                            {marksheet.total_marks:.1f}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <!-- Two-Column Structured Feedback -->
-            <div class="marksheet-feedback-section" style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:22px;">
-                <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                    <div class="feedback-card-title" style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-                        <span>&#10003;</span> Identified Strengths & Distinctions
-                    </div>
-                    <p style="font-size:0.84375rem; line-height:1.6; color:var(--frost-navy); margin:0;">
-                        {escape(marksheet.strength_areas or "No specific strengths highlighted.")}
-                    </p>
-                </div>
-                <div class="feedback-card" style="padding:18px 20px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.65) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                    <div class="feedback-card-title" style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-                        <span>&#9873;</span> Areas for Technical Growth & Optimization
-                    </div>
-                    <p style="font-size:0.84375rem; line-height:1.6; color:var(--frost-navy); margin:0;">
-                        {escape(marksheet.improvement_areas or "No critical weaknesses noted.")}
-                    </p>
-                </div>
+            <div class="ms-section-lbl">Rubric breakdown</div>
+            <div class="ms-crits">{"".join(rows)}
+                <div class="ms-total"><span>Total score</span><span class="ms-total-val">{marksheet.total_marks:.1f} <small>/ 50.0</small></span></div>
             </div>
 
-            <!-- Assessor Synthesis & Recommendation -->
-            <div style="background:linear-gradient(135deg, rgba(234,244,255,0.7) 0%, rgba(255,255,255,0.95) 100%); border-left:4.5px solid var(--deep-frozen-midnight); padding:18px 22px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30); border-left-width:4.5px; box-shadow:0 2px 8px rgba(7,22,41,0.03);">
-                <div style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.6px; margin-bottom:6px;">
-                    {escape(assessor_title)} Synthesis &amp; Recommendation
-                </div>
-                <p style="font-size:0.875rem; color:var(--frost-navy); line-height:1.6; margin:0;">
-                    {escape(marksheet.overall_feedback or "No feedback recorded.")}
-                </p>
+            <div class="ms-feedback">
+                <div class="ms-fb-card is-good"><div class="ms-fb-lbl">{get_icon("check_circle", 15)}<span>Strengths &amp; distinctions</span></div><p>{strengths}</p></div>
+                <div class="ms-fb-card is-grow"><div class="ms-fb-lbl">{get_icon("flag", 15)}<span>Areas for growth</span></div><p>{growth}</p></div>
+            </div>
+
+            <div class="ms-synth">
+                <div class="ms-fb-lbl">{get_icon("clipboard", 15)}<span>{escape(assessor_title)} summary &amp; recommendation</span></div>
+                <p>{synthesis}</p>
             </div>
         </div>
     </div>
@@ -700,7 +717,7 @@ def render_topbar(
 TITLE_HOIST_VIEWS = frozenset({
     "g_badge_approval", "g_mapping", "g_reviews", "g_materials", "g_extensions", "g_announcements", "g_activity",
     "c_submission", "c_results", "c_materials", "c_announcements", "c_extensions", "c_activity",
-    "c_requests", "c_badge_reviews", "c_assessments", "g_mapping_badge_detail",
+    "c_requests", "c_badge_reviews", "g_mapping_badge_detail", "c_badge_review",
 })
 
 _PAGE_HEADING_RE = re.compile(r"<(h1|h2)\b([^>]*)>(.*?)</\1>", re.S | re.I)
@@ -1099,37 +1116,47 @@ def iconize_html(markup: str) -> str:
     return "".join(out)
 
 
-def render_sidebar_profile_footer(current_user, nav_action: str, profile_view: str, active_view: str, subtitle: str = "") -> str:
+def render_sidebar_actions_footer(current_user, nav_action: str, profile_view: str, active_view: str, subtitle: str = "") -> str:
     """
-    Bottom block of EVERY portal sidebar: a standard `nav-link` "View Profile" (highlighted with `active` while the
-    profile page is open) followed by the signed-in user's name and Sign Out. Same markup for Guardian and Cosmonaut.
+    The sidebar footer of EVERY portal (Guardian, Cosmonaut, Reviewer), bottom-left: the signed-in user's name card, and below it TWO buttons side by side -
+    "View Profile" and "Sign Out" (equal-height, View Profile slightly wider). In the narrow 72 px rail the card is hidden and
+    the two buttons stack as icons; when the sidebar expands they sit in one row. View Profile keeps `data-nav-id` + the
+    `nav-link` class so the in-place active-highlight logic in bridge.js still marks it.
     """
     cls = "nav-link active" if active_view == profile_view else "nav-link"
+    signout_ico = (
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'
+        '<polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>'
+    )
     return f"""
         <div class="sidebar-footer">
-            <ul class="sidebar-nav-bottom">
-                <li class="nav-item">
-                    <a class="{cls}" data-nav-id="{profile_view}" onclick="window.StarAppBridge.dispatchAction('{nav_action}', '{profile_view}')">
-                        {get_icon("user", 20)}
-                        <span>View Profile</span>
-                    </a>
-                </li>
-            </ul>
-            <div class="lg-sidebar-profile">
+            <div class="lg-sidebar-profile is-card">
                 <div class="lg-sidebar-profile-meta">
                     <div class="user-name">{escape(current_user.name)}</div>
                     <div class="user-role-text">{escape(subtitle)}</div>
                 </div>
-                <button type="button" class="lg-sidebar-signout-btn" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Sign Out">
-                    Sign Out
-                </button>
             </div>
+            <ul class="sidebar-nav-bottom is-actions">
+                <li class="nav-item is-wide">
+                    <a class="{cls}" data-nav-id="{profile_view}" onclick="window.StarAppBridge.dispatchAction('{nav_action}', '{profile_view}')" title="View Profile">
+                        {get_icon("user", 18)}
+                        <span>View Profile</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link signout-link" role="button" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Sign Out">
+                        {signout_ico}
+                        <span>Sign Out</span>
+                    </a>
+                </li>
+            </ul>
         </div>
     """
 
 
 REVIEWER_BANDS = ("B2", "B3", "B4", "B5", "B6")
-COSMONAUT_REVIEWER_VIEWS = frozenset({"c_badge_reviews", "c_requests", "c_assessments", "c_assessment_detail"})
+COSMONAUT_REVIEWER_VIEWS = frozenset({"c_badge_reviews", "c_requests", "c_badge_review", "c_assessment_detail"})
 
 
 def is_reviewer_band(band) -> bool:

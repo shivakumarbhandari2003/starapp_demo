@@ -23,7 +23,7 @@ Real counts in the committed DB (38 users): 36 cosmonauts, 30 badge reviewers, 3
 
 Two portals, one codebase:
 * **Guardian portal** — views `g_*` (the UI quality bar: icon rail, clean cards, SVG icons).
-* **Cosmonaut portal** — views `c_*`, used by cadets *and* reviewers (reviewer pages: `c_requests`, `c_badge_reviews`, `c_assessments`, `c_assessment_detail`).
+* **Cosmonaut portal** — views `c_*`, used by cadets *and* reviewers (reviewer pages: `c_requests`, `c_badge_review`, `c_badge_reviews`, `c_assessment_detail`; the old `c_assessments` queue was removed - ids from old links resolve to `c_badge_reviews`).
 
 ## 3. Bands, tracks, cycles (committed data)
 
@@ -93,7 +93,7 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | `js/api.js` | REST client `window.StarAppAPI` |
 | `js/starapp_bundle.js` | **generated** offline Pyodide bundle (`scripts/pack_py.py`) — don't hand-edit |
 | `css/` | design tokens (incl. the `--type-*` rem scale) + liquid-glass styles; versioned `?v=N` in `index.html`/`sw.js` |
-| `tests/` | 264 tests; always via `tests/run_tests.py` |
+| `tests/` | 411 tests; always via `tests/run_tests.py` |
 | `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py`, **`e2e_guardian_logic.py`**, **`e2e_guardian_browser.py`** (+ `_miniws.py`, a stdlib websocket client for Chrome DevTools) |
 | `ER diagram/`, `Star Registry Schema.html` | standalone schema viewers |
 | `data/starapp.db` | **the** database (tracked) |

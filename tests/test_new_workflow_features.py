@@ -124,7 +124,7 @@ class TestNewWorkflowFeatures(unittest.TestCase):
         self.ctrl.handle_event("nav_guardian", "g_allotment")
 
         html = self.ctrl.render()
-        self.assertIn("Timeline &amp; Mapping", html)
+        self.assertIn("open_badge_timeline_modal", html)
         self.assertNotIn("Badge Catalog &amp; Allotment Manager", html)
         self.assertNotIn("Active Mapped Badge Allocations", html)
 

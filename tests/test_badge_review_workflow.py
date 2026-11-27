@@ -80,7 +80,7 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.assertNotIn('data-nav-id="c_choose_cycle"', choose_html)  # cycles are switched from the sidebar cycle pill
         self.assertIn('data-nav-id="c_badge_reviews"', choose_html)
         self.assertIn('data-nav-id="c_requests"', choose_html)
-        self.assertIn('data-nav-id="c_assessments"', choose_html)
+        self.assertNotIn('data-nav-id="c_assessments"', choose_html)   # no separate Cosmonaut Assessments page: assessing is in Badge Reviews
         self.assertNotIn('data-nav-id="c_roadmap"', choose_html)
         self.assertNotIn('data-nav-id="c_materials"', choose_html)
 
@@ -96,11 +96,11 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         reqs_html = self.ctrl.render()
         self.assertIn("Review Requests", reqs_html)
         self.assertIn("Intelligent Apps Foundations", reqs_html)
-        self.assertIn("TARGET: BAND B1", reqs_html)
-        self.assertIn("Inspect Badge", reqs_html)
-        self.assertIn("Edit Badge", reqs_html)
-        self.assertIn("Accept & Approve", reqs_html)
-        self.assertIn("Return with Feedback", reqs_html)
+        # the request is a card; the badge is inspected / edited / approved / returned inside its review page
+        self.assertIn("lg-saved-badge-card is-clickable", reqs_html)
+        self.assertIn("Band B1", reqs_html)
+        self.assertIn("Review Badge", reqs_html)
+        self.assertIn("open_reviewer_badge_review", reqs_html)
 
     def test_reviewer_edit_badge_persists_permanently(self):
         """Verify reviewer can edit the badge proposal and edits are permanently saved in SQLite."""
@@ -327,7 +327,7 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.assertIn("lg-sidebar-profile", create_html)
         self.assertIn("Arjun Mehta", create_html)
         self.assertIn("Academy Guardian", create_html)
-        self.assertIn("lg-sidebar-signout-btn", create_html)
+        self.assertIn("signout-link", create_html)
         self.assertNotIn('class="user-avatar"', create_html)
         self.assertIn("lg-saved-badge-card", create_html)
         self.assertIn("lg-hier-tree", create_html)
@@ -351,7 +351,7 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         allot_html = self.ctrl.render()
         self.assertIn("lg-allot-section-header", allot_html)
         self.assertIn("lg-allot-card", allot_html)
-        self.assertIn("lg-allot-meta-cell", allot_html)
+        self.assertIn("lg-allot-view-btn", allot_html)
         self.assertIn("lg-hier-tree", allot_html)
 
         # Clicking Portal Pillars returns from band workspace to 6 Band Cards view

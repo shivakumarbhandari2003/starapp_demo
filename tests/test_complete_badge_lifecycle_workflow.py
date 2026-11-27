@@ -393,7 +393,7 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
           7. Guardian final approval awards badge & uncouples active mapping to Completed/Certified.
         """
         from starapp.views_guardian import render_guardian_badge_allotment
-        from starapp.views_cosmonaut import render_cosmonaut_submission_workspace, render_reviewer_assessment_queue
+        from starapp.views_cosmonaut import render_cosmonaut_submission_workspace
         from starapp.badge_generator import generate_reviewer_project_spec
 
         # 1. Login as Guardian & map badge
@@ -432,8 +432,8 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
             all_band_mappings=store.get_band_mappings(),
             all_timelines=store.timelines
         )
-        self.assertIn("Timeline &amp; Mapping", allotment_html)
-        self.assertIn("Reviewer", allotment_html)
+        self.assertIn("open_badge_mapping_modal", allotment_html)
+        self.assertIn("open_badge_timeline_modal", allotment_html)
 
         # 3. Reviewer logs in & opens timeline modal and project creator modal
         self.ctrl.handle_event("select_demo_account", reviewer_id)
@@ -549,17 +549,13 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
         self.assertIn(target_cosmo_id, m.get("completed_cosmonauts", []))
 
         # Check Reviewer assessment queue reflects uncoupled status
-        asms_by_sub = {a.submission_id: a for a in store.get_all_assessments()}
-        queue_html = render_reviewer_assessment_queue(
-            submissions=store.get_all_submissions(),
-            assessments_by_sub=asms_by_sub,
-            badges_map={badge.id: badge},
-            cosmonauts_map={target_cosmo_id: store.get_user_by_id(target_cosmo_id)},
-            current_user=store.get_user_by_id(reviewer_id),
-            status_filter="all"
-        )
-        self.assertIn("Awarded by Guardian", queue_html)
-        self.assertIn("Your Score: 43.0/50", queue_html)
+        ctrl_rev = StarAppController()
+        ctrl_rev.initialize()
+        ctrl_rev.handle_event("select_demo_account", reviewer_id)
+        ctrl_rev.handle_event("nav_cosmonaut", "c_badge_reviews")
+        schedule_html = ctrl_rev.render()
+        self.assertIn("43.0 / 50", schedule_html)                       # the reviewer's score is on the Badge Review schedule
+        self.assertIn("open_reviewer_assessment_page", schedule_html)
 
 
 if __name__ == "__main__":

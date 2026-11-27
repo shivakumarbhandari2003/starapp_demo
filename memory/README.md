@@ -3,7 +3,7 @@
 > **Audience:** any developer or AI assistant (Claude Code, Cursor, Copilot, ChatGPT, Gemini …) opening this repository on a new machine.
 > **Purpose:** give you the *entire* project context — what it is, how it is built, the business rules, the logic, what was already done,
 > what is left — without having to re-read 35,000 lines of code.
-> **Last verified:** 2026-11-27 · branch `main` · **264 automated tests passing** + **135 end-to-end checks** (77 logic/DB + 58 real-browser, `scripts/e2e_guardian_*.py`) · DB integrity `ok`, 38 tables + 1 view.
+> **Last verified:** 2026-11-27 · branch `main` · **411 automated tests passing** + **225 end-to-end checks** (113 logic/DB + 112 real-browser incl. the Cosmonaut/Reviewer portals, `scripts/e2e_guardian_*.py`) · DB integrity `ok`, 38 tables + 1 view.
 
 ## 0. 60-second summary
 
@@ -50,7 +50,7 @@ The old long-form Stage-1 log, `AGENTS.md` and `docs/` were deleted from the rep
 6. **After editing anything in `css/` or `js/` bump the `?v=N` query string** in `index.html` and `sw.js` (plus the asserts in
    `tests/test_backend_fullstack.py`, `tests/test_ui_remediation.py` and `Report.md`). The server sends versioned assets with
    `Cache-Control: max-age=86400`, so without a bump browsers keep showing the old CSS/JS for up to a day (new markup then renders unstyled).
-   Current value: **`v=57`**, service-worker cache `starapp-runtime-cache-v19`.
+   Current value: **`v=85`**, service-worker cache `starapp-runtime-cache-v42`.
 
 ## 3. Maintaining this memory (everyone, human or AI)
 
@@ -63,6 +63,6 @@ The old long-form Stage-1 log, `AGENTS.md` and `docs/` were deleted from the rep
 
 | What | Command | Covers |
 |:---|:---|:---|
-| Unit / feature suite | `python tests/run_tests.py` | 264 tests on an isolated DB copy |
-| Guardian logic + DB end-to-end | `python scripts/e2e_guardian_logic.py` | 77 checks: every Guardian page renders; approval filters/search; mapping → 24 h requests → accept / expire / resend; calendar (3/5/7/Manual); detail page; Map + save; allotment cards; read-only Timeline; Edit Badge (cosmonauts, reviewer groups, dates, tamper-proof); publish; submission → reviewer marks → Guardian final (retake + approve); Assessment Dashboard; every write re-read from the SQLite **file**; reload-from-DB; integrity + FK check |
-| Real-browser end-to-end | `python scripts/e2e_guardian_browser.py` | 58 checks: live FastAPI server on a temp DB + headless Chrome, **real clicks** through the sidebar, mapping lists, calendar, detail page, allotment modals (glass date picker, add-cosmonaut dropdown, real form submit), assessment tree, marks sheet (decision buttons, no-scroll fit), 1100 px overflow sweep, and zero JS/console errors |
+| Unit / feature suite | `python tests/run_tests.py` | 411 tests on an isolated DB copy |
+| Guardian logic + DB end-to-end | `python scripts/e2e_guardian_logic.py` | 113 checks: every Guardian page renders; approval filters/search; mapping → 24 h requests → accept / expire / resend; calendar (3/5/7/Manual); detail page; Map + save; allotment cards; read-only Timeline; Edit Badge (cosmonauts, reviewer groups, dates, tamper-proof); publish; **reviewer badge review (card → structured page → edit → real badge → Guardian sees it → approve; 48-hour window ends -> badge kept as it is, read-only)**; submission → reviewer marks → Guardian final (retake + approve); Assessment Dashboard; every write re-read from the SQLite **file**; reload-from-DB; integrity + FK check |
+| Real-browser end-to-end | `python scripts/e2e_guardian_browser.py` | 112 checks: live FastAPI server on a temp DB + headless Chrome, **real clicks** through the sidebar, mapping lists, calendar, detail page, **Reviewer Review Requests card → full badge → edit → Apply (DB) → Guardian sees it**, allotment modals (glass date picker, add-cosmonaut dropdown, real form submit), assessment tree, marks sheet (decision buttons, no-scroll fit), Cosmonaut + Reviewer portal page sweep (sidebar brand, View Profile / Sign Out footer, no overflow), 1100 px overflow sweep, and zero JS/console errors |

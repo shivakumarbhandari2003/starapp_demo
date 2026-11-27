@@ -12,14 +12,18 @@ from starapp.models import (
     Announcement, ActivityEvent
 )
 from starapp.views_common import (
-    humanize_internal_ids, is_reviewer_band, render_sidebar_profile_footer,
+    humanize_internal_ids, is_reviewer_band, render_sidebar_actions_footer,
     get_icon,
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
     render_learning_materials_view, render_back_button, render_taxonomy_hierarchy_tree,
-    render_request_timer
+    render_request_timer, render_badge_review_timer, render_project_window_timer, format_utc_stamp, format_short_date,
+    REVIEWER_RECOMMENDATIONS, reviewer_recommendation_key, render_recommendation_chip
 )
 from starapp.roadmap import generate_roadmap_graph
+from starapp.views_badge_document import (
+    render_badge_document, render_badge_edit_controls, render_badge_edit_footer_bar, split_badge_document
+)
 from starapp.assessment import RUBRIC_CRITERIA
 from starapp.analytics import build_astraea_analytics_record, get_guardian_cohort_profiles, get_kpi_popover
 
@@ -71,8 +75,6 @@ def render_cosmonaut_sidebar(
     selected_cycle: Optional[Any] = None
 ) -> str:
     from starapp.storage import store
-    from starapp.views_common import render_sidebar_cycle_pill
-
     # If pending_requests_count was not passed, compute it dynamically
     if pending_requests_count == 0 and hasattr(store, "get_badge_review_requests_for_user"):
         try:
@@ -114,19 +116,13 @@ def render_cosmonaut_sidebar(
                 "id": "c_badge_reviews",
                 "label": "Badge Reviews",
                 "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
-                "badge": pending_project_requests
+                "badge": pending_project_requests + pending_asms_count      # projects to send + deliverables waiting for marks
             },
             {
                 "id": "c_requests",
                 "label": "Review Requests",
                 "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
                 "badge": pending_requests_count
-            },
-            {
-                "id": "c_assessments",
-                "label": "Cosmonaut Assessments",
-                "icon": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>',
-                "badge": pending_asms_count
             }
         ])
 
@@ -140,7 +136,7 @@ def render_cosmonaut_sidebar(
     _by_id = {i["id"]: i for i in nav_items}
     _order = ["c_submission", "c_results", "c_extensions"]
     if is_eligible:
-        _order += ["c_badge_reviews", "c_requests", "c_assessments"]
+        _order += ["c_badge_reviews", "c_requests"]
     # Profile is compulsory for everyone: it is the "View Profile" link pinned to the bottom of the sidebar.
     nav_items = [_by_id[i] for i in _order if i in _by_id]
 
@@ -148,8 +144,9 @@ def render_cosmonaut_sidebar(
     for item in nav_items:
         is_active = (
             (item["id"] == active_view)
-            or (item["id"] == "c_assessments" and active_view == "c_assessment_detail")
-            or (item["id"] == "c_submission" and active_view == "c_badge_detail")
+            or (item["id"] == "c_badge_reviews" and active_view == "c_assessment_detail")
+            or (item["id"] == "c_requests" and active_view == "c_badge_review")
+            or (item["id"] == "c_submission" and active_view in ("c_badge_detail", "c_project"))
         )
         cls = "nav-link active" if is_active else "nav-link"
         badge_html = f'<span class="nav-badge" data-badge-for="{item["id"]}">{item["badge"]}</span>' if item["badge"] > 0 else ""
@@ -163,35 +160,32 @@ def render_cosmonaut_sidebar(
         </li>
         """)
 
-    cycle_pill_html = render_sidebar_cycle_pill(selected_cycle, "nav_cosmonaut", "c_choose_cycle")
     _track = getattr(current_user, "learning_track", "") or ""
-    profile_footer_html = render_sidebar_profile_footer(
+    footer_html = render_sidebar_actions_footer(
         current_user, "nav_cosmonaut", "c_profile", active_view,
         f"Band {getattr(current_user, 'band', 'B1')}" + (f" • {_track}" if _track else "")
     )
+    band_lbl = escape(getattr(current_user, "band", "") or "")
+    cyc_name = escape(getattr(selected_cycle, "name", "") or "")
+    # Header: just the band number (same chip as the Guardian sidebar). It also opens the cycle picker, which replaces the
+    # old "C1 / C1-2026 ACTIVE" pill, so switching cycle is still possible.
+    header_html = (
+        '<div class="sidebar-header">'
+        f'<a class="sidebar-band-chip is-link" role="button" title="Band {band_lbl}{(" · " + cyc_name) if cyc_name else ""} — click to choose a cycle" '
+        "onclick=\"window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_choose_cycle')\">" + band_lbl + "</a>"
+        '<button type="button" class="sidebar-collapse-btn" style="display:none;" onclick="window.StarAppBridge.toggleSidebar()" aria-hidden="true"></button>'
+        "</div>"
+    ) if band_lbl else '<div class="sidebar-header is-empty"></div>'
 
     return f"""
     <aside id="starapp-shell-sidebar" class="app-sidebar" data-portal-role="cosmonaut" data-user-id="{escape(current_user.id)}">
-        <div class="sidebar-header">
-            <div class="brand-text-wrap">
-                <div class="brand-title"><span class="brand-initial">S</span><span class="brand-rest">TARAPP</span></div>
-                <div class="brand-subtitle">COSMONAUT PORTAL</div>
-            </div>
-            <button type="button" class="sidebar-collapse-btn" style="display:none;" onclick="window.StarAppBridge.toggleSidebar()" aria-hidden="true"></button>
-        </div>
-
-        <div class="role-badge-pill">
-            <span class="role-badge-label">Learner</span>
-            <span class="role-badge-val">Band {escape(getattr(current_user, 'band', 'B1'))}</span>
-        </div>
-
-        {cycle_pill_html}
+        {header_html}
 
         <ul class="sidebar-nav">
             {"".join(links_html)}
         </ul>
 
-        {profile_footer_html}
+        {footer_html}
     </aside>
     """
 
@@ -1533,12 +1527,91 @@ def project_brief_content(prompt: Any) -> str:
     return "\n\n".join([c for c in [content] + extras if c])
 
 
+_PJ_SECTION_STYLE = {
+    # key: (icon, accent class / colour)
+    "case_study": ("layers", "accent-emerald", ""),
+    "challenge": ("target", "accent-amber", ""),
+    "details": ("clipboard", "accent-cyan", ""),
+    "deliverables": ("file_text", "", "#2563EB"),
+    "evaluation": ("award", "", "#7C3AED"),
+}
+
+
+def _pj_deliverable_icon(label: str) -> str:
+    low = label.lower()
+    if "github" in low or "repository" in low:
+        return get_icon("github", 20)
+    if "code" in low or "source" in low:
+        return get_icon("code", 20)
+    return get_icon("file_text", 20)
+
+
+def _pj_paragraphs(text: Any) -> str:
+    return "".join(f'<p class="pj-text">{escape(p.strip())}</p>' for p in str(text or "").split("\n\n") if p.strip())
+
+
+def _pj_bullets(items: Any) -> str:
+    items = [str(i).strip() for i in (items or []) if str(i).strip()]
+    return '<ul class="pj-list">' + "".join(f"<li>{escape(i)}</li>" for i in items) + "</ul>" if items else ""
+
+
+def _pj_deliv_card(label: str, text: str, idx: Optional[int] = None) -> str:
+    """One deliverable as an icon card. `idx` adds ids so the Create Project form can update it live."""
+    nid = f' id="rp-del-name-{idx}"' if idx is not None else ""
+    tid = f' id="rp-del-text-{idx}"' if idx is not None else ""
+    return (f'<div class="pj-deliv"><span class="pj-deliv-ico">{_pj_deliverable_icon(label)}</span>'
+            f'<div><div class="pj-deliv-name"{nid}>{escape(label)}</div><div class="pj-deliv-text"{tid}>{escape(text)}</div></div></div>')
+
+
+def _pj_split_deliverable(line: str) -> Any:
+    label, _, rest = str(line).partition(":")
+    return (label.strip(), rest.strip()) if rest else ("Deliverable", str(line).strip())
+
+
 def render_project_brief(title: str, content: str) -> str:
-    """A project as shown to BOTH the reviewer and the cosmonaut: a big bold heading with the content below it."""
-    return f"""
+    """
+    A project as shown to BOTH the reviewer and the cosmonaut: a big bold heading, then its sections as glass cards in the same
+    visual language as the badge (Case Study, Your Challenge, Project Details, Deliverables as cards, Evaluation). Free-text
+    projects written without section headings render as one block, exactly as before.
+    """
+    from starapp.badge_generator import PROJECT_SECTIONS, parse_project_content
+    heading = (f'<h2 style="font-size:1.75rem; font-weight:900; letter-spacing:-0.4px; line-height:1.2; color:var(--frost-navy); '
+               f'margin:0 0 14px 0; word-break:break-word;">{escape(title)}</h2>')
+    parsed = parse_project_content(content)
+    if not parsed:
+        return f"""
     <div class="project-brief">
-        <h2 style="font-size:1.75rem; font-weight:900; letter-spacing:-0.4px; line-height:1.2; color:var(--frost-navy); margin:0 0 14px 0; word-break:break-word;">{escape(title)}</h2>
+        {heading}
         <div style="font-size:0.875rem; line-height:1.7; color:var(--frost-navy); white-space:pre-wrap; word-break:break-word;">{escape(content)}</div>
+    </div>
+    """
+    cards = []
+    for key, sec_title, kind in PROJECT_SECTIONS:
+        if key not in parsed or not parsed[key]:
+            continue
+        icon, accent, color = _PJ_SECTION_STYLE[key]
+        val = parsed[key]
+        if key == "deliverables":
+            body = f'<div class="pj-deliv-grid">{"".join(_pj_deliv_card(*_pj_split_deliverable(line)) for line in val)}</div>'
+        elif kind == "list":
+            body = _pj_bullets(val)
+        else:
+            body = _pj_paragraphs(val)
+        style = f' style="border-left-color:{color};"' if color else ""
+        cards.append(f"""
+        <div class="cb-section-card {accent}"{style}>
+            <div class="cb-section-head pj-head">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="cb-section-icon">{get_icon(icon, 17)}</span>
+                    <span class="cb-section-title">{escape(sec_title)}</span>
+                </div>
+            </div>
+            <div class="pj-body">{body}</div>
+        </div>""")
+    return f"""
+    <div class="project-brief is-structured">
+        {heading}
+        {"".join(cards)}
     </div>
     """
 
@@ -1559,8 +1632,9 @@ def _render_assigned_project_spec_inner(
 
 def _project_cta(badge: Badge, current_user: Optional[User]) -> Dict[str, str]:
     """
-    The "Earn the Badge" action for a cosmonaut, driven by where the project is in its life:
-    none -> Request Project; requested -> waiting for the reviewer; received -> Submit Project Deliverables.
+    The cosmonaut's "Earn the Badge" project action. There is nothing to request: the mapped reviewer creates the project and
+    sends it. Until then the button reads "Project Allocated" and is DISABLED (state "pending"); the moment it arrives it
+    unlocks (state "received") and opens the project, where the Submit Deliverables button lives.
     """
     from starapp.storage import store
     out = {"state": "none", "buttons": "", "text": ""}
@@ -1575,29 +1649,61 @@ def _project_cta(badge: Badge, current_user: Optional[User]) -> Dict[str, str]:
     bid = escape(badge.id)
     if store.get_project_prompt_for_cadet(badge.id, uid):
         out["state"] = "received"
-        out["text"] = f"Your project from <strong>{rev}</strong> has arrived. Submit your PDF report, code and GitHub link to earn this badge."
+        out["text"] = f"Your project from <strong>{rev}</strong> has arrived. Open it to read the brief and submit your deliverables."
         out["buttons"] = (
-            f"<button type=\"button\" class=\"btn-metal btn-sm\" onclick=\"window.StarAppBridge.dispatchAction('open_submission_modal', '{bid}')\" "
-            f"style=\"font-weight:800; font-size:0.78125rem; padding:6px 18px; display:inline-flex; align-items:center; gap:6px;\">"
-            f"{get_icon('rocket', 14)}<span>Submit Project Deliverables</span>{get_icon('arrow_right', 13)}</button>"
-        )
-    elif store.get_project_request(badge.id, uid):
-        out["state"] = "requested"
-        out["text"] = f"Project requested from <strong>{rev}</strong>. You will be notified as soon as it is sent."
-        out["buttons"] = (
-            "<span style=\"display:inline-flex; align-items:center; gap:6px; background:rgba(245,158,11,0.15); color:#92400E; padding:5px 14px; "
-            "border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(245,158,11,0.35);\">"
-            f"{get_icon('clock', 13)}<span>Project Requested</span></span>"
+            f"<button type=\"button\" class=\"pa-btn is-ready\" id=\"btn-project-allocated-{bid}\" "
+            f"onclick=\"window.StarAppBridge.dispatchAction('open_allocated_project_page', '{bid}')\">"
+            f"{get_icon('clipboard', 15)}<span>Project Allocated</span>{get_icon('arrow_right', 13)}</button>"
         )
     else:
-        out["text"] = f"Request the project from your mapped reviewer <strong>{rev}</strong>. Once they send it, you can submit your deliverables."
+        out["state"] = "pending"
+        out["text"] = f"<strong>{rev}</strong> will create your project and send it here. The button unlocks the moment it arrives."
         out["buttons"] = (
-            f"<button type=\"button\" class=\"btn-metal btn-sm\" id=\"btn-request-project-{bid}\" "
-            f"onclick=\"window.StarAppBridge.dispatchAction('request_project', '{bid}')\" "
-            f"style=\"font-weight:800; font-size:0.78125rem; padding:6px 18px; display:inline-flex; align-items:center; gap:6px;\">"
-            f"{get_icon('mail', 14)}<span>Request Project</span></button>"
+            f"<button type=\"button\" class=\"pa-btn is-locked\" id=\"btn-project-allocated-{bid}\" disabled aria-disabled=\"true\" "
+            f"title=\"Your reviewer has not sent the project yet\">"
+            f"{get_icon('lock', 14)}<span>Project Allocated</span></button>"
         )
     return out
+
+
+_EARN_ICO = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+             'stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>'
+             '<rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>')
+
+
+def _earn_inner(title: str, text_html: str, right_html: str) -> str:
+    """Inside of the "Earn the Badge" strip: title + one sentence on the left, the project button / status pills on the right."""
+    return f"""
+                <div class="earn-main">
+                    <span class="earn-ico">{_EARN_ICO}</span>
+                    <div>
+                        <div class="earn-title">{title}</div>
+                        <div class="earn-text">{text_html}</div>
+                    </div>
+                </div>
+                <div class="earn-actions">{right_html}</div>"""
+
+
+def _earn_card(title: str, text_html: str, right_html: str) -> str:
+    """The glass "Earn the Badge" strip as its own card (used where the badge is not rendered by `render_badge_document`)."""
+    return f"""
+            <div id="badge-section-earn" class="earn-card">{_earn_inner(title, text_html, right_html)}
+            </div>
+            """
+
+
+def _project_submit_button(badge_id: str, latest_sub: Optional[ProjectSubmission], is_earned: bool) -> str:
+    """The one place a cosmonaut submits deliverables: inside the allocated project (marksheet link once the badge is earned)."""
+    bid = escape(badge_id)
+    if is_earned:
+        return (f"""<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_badge_marksheet', '{bid}')" """
+                f"""style="display:inline-flex; align-items:center; gap:6px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); border-color:#D97706;">"""
+                f"""{get_icon("award", 14)}<span>View Official Marksheet</span>{get_icon("arrow_right", 13)}</button>""")
+    label = (f'{get_icon("edit", 14)}<span>Edit Deliverables</span>' if latest_sub
+             else f'{get_icon("rocket", 14)}<span>Submit Deliverables</span>')
+    return (f"""<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{bid}')" """
+            f"""style="display:inline-flex; align-items:center; gap:6px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); border-color:#059669;">"""
+            f"""{label}{get_icon("arrow_right", 13)}</button>""")
 
 
 def _render_allocated_project_detail_section(
@@ -1608,9 +1714,10 @@ def _render_allocated_project_detail_section(
     window_str: str = "",
     sub_deadline_str: str = "",
     is_earned: bool = False,
-    existing_sub: Optional[ProjectSubmission] = None
+    existing_sub: Optional[ProjectSubmission] = None,
+    action_html: str = ""
 ) -> str:
-    """Renders the inline Allocated Project card inside the dedicated Badge Detail Page."""
+    """Renders the inline Allocated Project card inside the dedicated Badge Detail Page (the submit button lives inside it)."""
     spec_html = _render_assigned_project_spec_inner(
         assigned_proj=assigned_proj,
         rev_name_str=rev_name_str,
@@ -1623,7 +1730,7 @@ def _render_allocated_project_detail_section(
     )
     return f"""
     <!-- SECTION: ALLOCATED PROJECT SPECIFICATION (FROM MAPPED REVIEWER) -->
-    <div id="badge-section-allocated-project" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #0284C7; overflow:hidden; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%);">
+    <div id="badge-section-allocated-project" class="earn-card is-project">
         <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none;" onclick="window.StarAppBridge.toggleBadgeSection('allocated-project')">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span style="width:28px; height:28px; border-radius:6px; background:rgba(2,132,199,0.14); color:#0284C7; display:flex; align-items:center; justify-content:center;">
@@ -1635,6 +1742,7 @@ def _render_allocated_project_detail_section(
         </div>
         <div id="content-allocated-project" style="padding:0 20px 20px 20px; display:block;">
             {spec_html}
+            {f'<div class="earn-submit-row">{action_html}</div>' if action_html else ''}
         </div>
     </div>
     """
@@ -1828,7 +1936,7 @@ def render_cosmonaut_badge_card_expanded_content(
                 rev_earned_asm = a
             elif a_role == "guardian":
                 grd_earned_asm = a
-            if a.decision == "approve" or a_role == "guardian":
+            if a.decision in ("approve", "approved"):
                 is_earned = True
                 earned_asm = a
         if not earned_asm and existing_sub:
@@ -1847,16 +1955,7 @@ def render_cosmonaut_badge_card_expanded_content(
 
     has_allocated_project = assigned_proj is not None
     _cta = _project_cta(badge, current_user)
-    project_allocated_btn_html = ""
-    if has_allocated_project:
-        project_allocated_btn_html = f"""
-        <button type="button" id="btn-project-allocated-{escape(badge.id)}" class="btn-secondary btn-sm"
-            onclick="window.StarAppBridge.dispatchAction('open_allocated_project_modal', '{escape(badge.id)}')"
-            style="font-weight:800; font-size:0.75rem; padding:6px 14px; background:rgba(2,132,199,0.1); color:#0369A1; border:1.5px solid #0284C7; border-radius:var(--radius-sm); display:inline-flex; align-items:center; gap:5px;">
-            <span>📋</span>
-            <span>Project allocated</span>
-        </button>
-        """
+    project_allocated_btn_html = _cta["buttons"]      # locked "Project Allocated" until the reviewer sends it, then it opens the project
 
     if is_earned:
         top_card_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(254,243,199,0.92) 100%); box-shadow:0 12px 36px rgba(245,158,11,0.25);"
@@ -1985,68 +2084,19 @@ def render_cosmonaut_badge_card_expanded_content(
             meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Badge</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (REVIEWER ASSESSED) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    {project_allocated_btn_html}
-                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
-                        Awaiting Guardian Award
-                    </span>
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card(
+                "Reviewer Evaluation Complete",
+                "Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.",
+                project_allocated_btn_html + '<span class="earn-pill is-cyan">Awaiting Guardian Award</span>',
+            )
         elif existing_sub and getattr(existing_sub, "status", "") in ("pending", "submitted"):
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    {project_allocated_btn_html}
-                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
-                        Pending Reviewer Evaluation
-                    </span>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:700; font-size:0.75rem;">
-                        Edit Deliverables
-                    </button>
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card(
+                "Earn the Badge",
+                f"Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> &mdash; evaluation in progress.",
+                project_allocated_btn_html + '<span class="earn-pill is-amber">Pending Reviewer Evaluation</span>',
+            )
         else:
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px; flex:1; min-width:260px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">{_cta['text']}</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    {_cta['buttons']}
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card("Earn the Badge", _cta["text"], _cta["buttons"])
 
     allocated_project_section_html = ""
     if has_allocated_project:
@@ -2058,7 +2108,8 @@ def render_cosmonaut_badge_card_expanded_content(
             window_str=window_str,
             sub_deadline_str=sub_deadline_str,
             is_earned=is_earned,
-            existing_sub=existing_sub
+            existing_sub=existing_sub,
+            action_html=_project_submit_button(badge.id, existing_sub, is_earned)
         )
 
     retake_banner = ""
@@ -2144,17 +2195,8 @@ def render_cosmonaut_badge_card_expanded_content(
             {get_icon("award", 14)}<span>View Official Marksheet</span>{get_icon("arrow_right", 13)}
         </button>
         """
-    elif existing_sub:
-        footer_right_btn = f"""
-        <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{badge.id}')" style="font-weight:800; padding:9px 20px; display:inline-flex; align-items:center; gap:8px;">
-            {btn_icon}
-            <span>{btn_label}</span>
-            {get_icon("arrow_right", 13)}
-        </button>
-        """
     else:
-        # Request Project / Project Requested / Submit Project Deliverables (same action as "Earn the Badge")
-        footer_right_btn = _cta["buttons"]
+        footer_right_btn = ""      # the project button is in the Earn the Badge strip; Submit Deliverables is inside the project
 
     return f"""
     <div>
@@ -2340,133 +2382,270 @@ def render_cosmonaut_badge_card_expanded_content(
     """
 
 
+def _cosmo_badge_state(badge: Badge, current_user: Optional[User], existing_sub: Optional[ProjectSubmission]) -> Dict[str, Any]:
+    """Where this cosmonaut stands on one badge: earned (and the marksheet behind it), retake, mapped reviewer, project received."""
+    from starapp.storage import store
+    st: Dict[str, Any] = {
+        "is_earned": False, "earned_asm": None, "rev_asm": None, "grd_asm": None, "awarded_on": "",
+        "is_retake": bool(existing_sub and getattr(existing_sub, "status", "") in ("retake_required", "resubmission_requested")),
+        "next_attempt": (getattr(existing_sub, "attempt_number", 1) + 1) if existing_sub else 1,
+        "rev_name": "your mapped reviewer", "tl": None,
+    }
+    if not (current_user and store):
+        return st
+    tl = store.get_timeline(badge.id, current_user.id)
+    st["tl"] = tl
+    if tl and getattr(tl, "status", "") == "completed":
+        st["is_earned"] = True
+    rev_id = store.get_mapped_reviewer_id(badge.id, current_user.id)
+    r_u = store.get_user_by_id(rev_id) if rev_id else None
+    if r_u:
+        st["rev_name"] = r_u.name
+    for a in sorted(store.get_assessments_for_cosmonaut(current_user.id, badge.id),
+                    key=lambda x: (getattr(x, "attempt_number", 1), 1 if getattr(x, "assessor_role", "") == "guardian" else 0, getattr(x, "reviewed_at", ""))):
+        role = getattr(a, "assessor_role", "")
+        if role == "reviewer":
+            st["rev_asm"] = a
+        elif role == "guardian":
+            st["grd_asm"] = a
+        if a.decision in ("approve", "approved"):
+            st["is_earned"] = True
+            st["earned_asm"] = a
+    if not st["earned_asm"] and existing_sub:
+        sub_asm = store.get_assessment_for_submission(existing_sub.id)
+        if existing_sub.status == "approved" or (sub_asm and sub_asm.decision == "approve"):
+            st["is_earned"] = True
+            st["earned_asm"] = sub_asm
+    ea = st["earned_asm"]
+    st["awarded_on"] = (getattr(tl, "actual_award_date", "") if tl else "") or (
+        getattr(ea, "reviewed_at", "")[:10] if ea and getattr(ea, "reviewed_at", "") else "")
+    return st
+
+
+def _render_badge_earned_card(st: Dict[str, Any], project_btn: str, existing_sub: Optional[ProjectSubmission] = None) -> str:
+    """The achievement card on the badge page: gold seal, final score and the five rubric scores with the evaluator's feedback."""
+    ea = st["earned_asm"]
+    tot = ea.total_marks if ea else 0.0
+    pct = ea.percentage if ea else 0.0
+    scores = [("Business understanding", getattr(ea, "business_understanding", 0.0)), ("Architecture", getattr(ea, "architecture_report", 0.0)),
+              ("Technical knowledge", getattr(ea, "technical_knowledge", 0.0)), ("Presentation", getattr(ea, "presentation", 0.0)),
+              ("Q&A defense", getattr(ea, "qa", 0.0))] if ea else []
+    tiles = "".join(
+        f'<div class="mbe-score"><div class="mbe-score-lbl">{escape(n)}</div><div class="mbe-score-val">{v:.1f}<small> / 10</small></div>'
+        f'<div class="mbe-meter"><span style="width:{max(0, min(100, int(round(v * 10))))}%;"></span></div></div>' for n, v in scores)
+    fb = ((getattr(ea, "overall_feedback", "") or getattr(ea, "remarks", "")) if ea else "").strip()
+    strengths = (getattr(ea, "strength_areas", "") if ea else "") or ""
+    improve = (getattr(ea, "improvement_areas", "") if ea else "") or ""
+    fb_html = ""
+    if fb or strengths or improve:
+        fb_html = '<div class="mbe-feedback">' + (f'<div class="mbe-fb-lbl">Evaluator feedback</div><p>{escape(fb)}</p>' if fb else "") + \
+                  (f'<p><b>Key strengths:</b> {escape(strengths)}</p>' if strengths else "") + \
+                  (f'<p><b>Recommendations:</b> {escape(improve)}</p>' if improve else "") + "</div>"
+    return f"""
+    <div id="badge-section-earned" class="mbe-card">
+        <div class="mbe-head">
+            <span class="gold-medal is-xl">{get_icon("award", 34)}</span>
+            <div class="mbe-title-wrap">
+                <div class="mbe-eyebrow">Achievement unlocked</div>
+                <div class="mbe-title">Badge earned &amp; certified</div>
+            </div>
+            <div class="mbe-marks">
+                <span class="mbe-marks-lbl">Final score</span>
+                <span class="mbe-marks-val">{tot:.1f}<small> / 50</small></span>
+                <span class="mbe-marks-pct">{pct:.1f}%</span>
+            </div>
+        </div>
+        {f'<div class="mbe-scores">{tiles}</div>' if tiles else ''}
+        {fb_html}
+    </div>"""
+
+
+def render_cosmonaut_badge_page(badge: Badge, current_user: Optional[User], existing_sub: Optional[ProjectSubmission] = None) -> str:
+    """
+    The cosmonaut's single-badge page, built from the SAME structured badge document the Guardian and the reviewer use
+    (outcomes, practice project, topics, resources, related) in the glass style. The badge name carries two buttons on its right:
+    Reviewer (their mapped reviewer) and Timeline (their schedule); both open live modals. The project itself is never shown on
+    this page: "Project Allocated" (locked until the reviewer sends it) opens it, and Submit Deliverables lives inside it.
+    """
+    from starapp.badge_generator import structured_badge_from_row
+    data = structured_badge_from_row(badge)
+    doc = split_badge_document(data)
+    st = _cosmo_badge_state(badge, current_user, existing_sub)
+    cta = _project_cta(badge, current_user)
+    bid = escape(badge.id)
+
+    if st["is_earned"]:
+        earn_inner = _earn_inner(
+            "Badge earned", "Congratulations - you have earned this badge.",
+            cta["buttons"] + f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'open_badge_marksheet\', \'{bid}\')">{get_icon("award", 14)}<span>Official marksheet</span></button>')
+    elif existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
+        earn_inner = _earn_inner("Reviewer evaluation complete", "Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.",
+                                 cta["buttons"] + f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'open_badge_marksheet\', \'{bid}\')">{get_icon("award", 14)}<span>View marks</span></button><span class="earn-pill is-cyan">Awaiting Guardian award</span>')
+    elif existing_sub and getattr(existing_sub, "status", "") in ("pending", "submitted"):
+        earn_inner = _earn_inner("Earn the Badge", f"Deliverables routed to your reviewer <strong>{escape(st['rev_name'])}</strong> &mdash; evaluation in progress.",
+                                 cta["buttons"] + '<span class="earn-pill is-amber">Pending reviewer evaluation</span>')
+    else:
+        earn_inner = _earn_inner("Earn the Badge", cta["text"] or "This badge is not allotted to you yet.", cta["buttons"])
+
+    title_actions = (
+        f'<button type="button" class="btn-secondary btn-sm cbp-btn" onclick="window.StarAppBridge.dispatchAction(\'open_cosmonaut_reviewer_modal\', \'{bid}\')">'
+        f'{get_icon("shield", 14)}<span>Reviewer</span></button>'
+        f'<button type="button" class="btn-secondary btn-sm cbp-btn" onclick="window.StarAppBridge.dispatchAction(\'open_cosmonaut_timeline_modal\', \'{bid}\')">'
+        f'{get_icon("calendar", 14)}<span>Timeline</span></button>'
+    )
+
+    retake = ""
+    if st["is_retake"] and existing_sub:
+        from starapp.storage import store
+        asm = store.get_assessment_for_submission(existing_sub.id) if store else None
+        score = f"{asm.total_marks:.1f}/50 ({asm.percentage:.1f}%)" if asm else "below the threshold"
+        fb = escape(asm.overall_feedback) if asm and asm.overall_feedback else "Revisions required."
+        retake = f"""
+        <div class="cbp-banner">
+            <div class="cbp-banner-top"><span class="cbp-banner-tag">Retake required</span><b>Attempt #{existing_sub.attempt_number} did not meet the passing threshold</b><span class="cbp-banner-score">Previous score {score}</span></div>
+            <p><b>Guardian feedback:</b> {fb}</p>
+            <p>Improve your deliverables and submit Attempt #{st["next_attempt"]}. Your earlier attempt stays in your record.</p>
+        </div>"""
+
+    earned = _render_badge_earned_card(st, "", existing_sub) if st["is_earned"] else ""
+    document = render_badge_document(
+        title=doc["title"], description=doc["description"], outcomes=doc["outcomes"],
+        practice_prompt=doc["practice_prompt"], resources_prompt=doc["resources_prompt"], topics=doc["topics"],
+        skill=getattr(badge, "skill", ""), capability=getattr(badge, "capability", ""), power=getattr(badge, "power", ""),
+        band=getattr(badge, "target_band", "B1"), is_editing=False, header_actions_html="",
+        earn_strip_html=earn_inner, show_topic_progress=True,
+        location_label="Badge Location", show_description=False, title_actions_html=title_actions, is_gold=bool(st["is_earned"]),
+    )
+    return f"""
+    <div class="cbp-page" data-live-sync="badge" id="badge-card-{bid}" data-badge-id="{bid}">
+        {retake}
+        {earned}
+        {document}
+    </div>
+    """
+
+
 def render_cosmonaut_badge_detail_page(
     badge: Optional[Badge],
     current_user: Optional[User] = None,
     store: Any = None,
     submissions: Optional[List[ProjectSubmission]] = None
 ) -> str:
-    """Renders the dedicated single-badge workspace page with complete curriculum details, allocated project view, and deliverable submission modal trigger."""
+    """Renders the dedicated single-badge page (see `render_cosmonaut_badge_page`)."""
     if not badge:
         return """
         <div class="liquid-glass-card" style="padding:40px; text-align:center;">
             <h3 style="color:var(--frost-navy); margin:0 0 8px 0;">Badge Not Found</h3>
-            <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0 0 16px 0;">The selected milestone badge could not be loaded.</p>
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_submission')">&larr; Back to Badges</button>
+            <p style="font-size:0.8125rem; color:var(--frost-navy); margin:0;">The selected milestone badge could not be loaded.</p>
         </div>
         """
-
     user_subs = submissions if submissions is not None else (
         store.get_submissions_for_cosmonaut(current_user.id, badge.id) if (store and current_user) else []
     )
     badge_subs = sorted([s for s in user_subs if s.badge_id == badge.id], key=lambda s: getattr(s, "attempt_number", 1))
-    latest_sub = badge_subs[-1] if badge_subs else None
-    return render_cosmonaut_badge_card_expanded_content(
-        badge=badge,
-        current_user=current_user,
-        existing_sub=latest_sub,
-        is_standalone_page=True
-    )
+    return render_cosmonaut_badge_page(badge, current_user, badge_subs[-1] if badge_subs else None)
 
 
-def render_cosmonaut_allocated_project_modal(badge: Badge, current_user: User, store: Any) -> str:
-    """Renders the dedicated popup modal showing the project allocated to this cosmonaut by their mapped reviewer."""
-    badge_title = getattr(badge, "title", "Milestone Badge")
-    badge_code = getattr(badge, "code", "")
-    badge_band = getattr(badge, "target_band", "B1")
+def _sub_files_html(sub: Optional[ProjectSubmission]) -> str:
+    """The three deliverables of one submission as glass file chips (PDF report, source code, GitHub repository)."""
+    if not sub:
+        return ""
+    pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if getattr(sub, "submission_type", "") == "pdf" else "")
+    code_name = getattr(sub, "code_name", "") or (sub.file_name if getattr(sub, "submission_type", "") == "code" else "")
+    gh = getattr(sub, "github_url", "") or (sub.payload if getattr(sub, "submission_type", "") == "github" else "") or ""
+    chips = []
+    for icon, label, val in (("file_text", "PDF report", pdf_name), ("code", "Source code", code_name), ("github", "GitHub repository", gh)):
+        if val:
+            shown = val.rstrip("/").split("/")[-1] if label == "GitHub repository" and "/" in val else val
+            chips.append(f'<div class="pjp-file"><span class="pjp-file-ico">{get_icon(icon, 16)}</span>'
+                         f'<div class="pjp-file-txt"><div class="pjp-file-lbl">{label}</div><div class="pjp-file-name">{escape(shown)}</div></div></div>')
+    return f'<div class="pjp-files">{"".join(chips)}</div>' if chips else ""
 
-    selected_tl = store.get_timeline(badge.id, current_user.id) if (store and current_user) else None
-    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else ""
-    if not rev_id and store and current_user:
-        for m in store.get_band_mappings():
-            m_b = m.get("badge_id") or m.get("badge")
-            if current_user.id in m.get("cosmonauts", []) and m.get("reviewers") and m_b in (badge.id, badge.code, badge.title):
-                rev_id = m["reviewers"][0]
-                break
-    if not rev_id:
-        rev_id = getattr(badge, "assigned_reviewer_id", "") or ""
-    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
-    rev_name = rev_user.name if rev_user else (rev_id or "Assigned Reviewer")
-    rev_band = getattr(rev_user, "band", "") if rev_user else ""
 
-    window_str = ""
-    sub_deadline_str = ""
-    if selected_tl and getattr(selected_tl, "review_window_json", None):
-        try:
-            rw_list = json.loads(selected_tl.review_window_json)
-            if isinstance(rw_list, list) and rw_list:
-                window_str = " → ".join(rw_list)
-        except Exception:
-            window_str = ""
-    if selected_tl and getattr(selected_tl, "submission_deadline", ""):
-        sub_deadline_str = selected_tl.submission_deadline
-    elif getattr(badge, "default_timeline", None) and badge.default_timeline.get("submission_deadline"):
-        sub_deadline_str = badge.default_timeline.get("submission_deadline", "")
-
-    assigned_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
-    if not assigned_proj or getattr(assigned_proj, "status", "") not in ("released", "sent"):
+def render_cosmonaut_project_page(badge: Badge, current_user: User, store: Any) -> str:
+    """
+    The allocated project as its OWN PAGE (opened from "Project Allocated"): who sent it and the schedule, the whole project, and the
+    cosmonaut's submission status with the Submit / Edit Deliverables action. When the mapped reviewer has graded it, the marks show here too.
+    """
+    bid = escape(badge.id)
+    proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
+    if not (proj and getattr(proj, "status", "") in ("released", "sent")):
         return f"""
-        <div style="padding:24px; text-align:center;">
-            <div style="font-size:1.75rem; margin-bottom:10px;">⏳</div>
-            <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">Project Not Allocated Yet</h4>
-            <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 18px 0;">
-                Your mapped reviewer <strong>{escape(rev_name)}</strong> has not released the milestone project specification yet.
-            </p>
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close</button>
-        </div>
-        """
+        <div class="pjp-page" data-live-sync="project">
+            <div class="pjp-empty">{get_icon("lock", 28)}<div class="pjp-empty-title" role="heading" aria-level="2">Project not sent yet</div>
+            <p>Your mapped reviewer has not sent the project for <b>{escape(badge.title)}</b>. This page updates by itself the moment it arrives.</p></div>
+        </div>"""
 
-    user_subs = store.get_submissions_for_cosmonaut(current_user.id, badge.id) if (store and current_user) else []
-    latest_sub = user_subs[-1] if user_subs else None
-    is_earned = bool(
-        (selected_tl and getattr(selected_tl, "status", "") == "completed")
-        or (latest_sub and getattr(latest_sub, "status", "") == "approved")
-        or (store and current_user and any(a.decision == "approve" for a in store.get_assessments_for_cosmonaut(current_user.id, badge.id)))
-    )
+    tl = store.get_timeline(badge.id, current_user.id)
+    rev_id = store.get_mapped_reviewer_id(badge.id, current_user.id)
+    rev = store.get_user_by_id(rev_id) if rev_id else None
+    dt, review_days = _timeline_inputs(badge, tl)
+    subs = sorted(store.get_submissions_for_cosmonaut(current_user.id, badge.id) or [], key=lambda s: getattr(s, "attempt_number", 1))
+    latest = subs[-1] if subs else None
+    st = _cosmo_badge_state(badge, current_user, latest)
 
-    spec_html = _render_assigned_project_spec_inner(
-        assigned_proj=assigned_proj,
-        rev_name_str=rev_name,
-        rev_band_str=rev_band,
-        window_str=window_str,
-        sub_deadline_str=sub_deadline_str,
-        is_earned=is_earned,
-        existing_sub=latest_sub,
-        compact=False
-    )
+    first = format_short_date(review_days[0]) if review_days else format_short_date(dt.get("review_date"))
+    last = format_short_date(review_days[-1]) if review_days else ""
+    window = f"{escape(first)} &rarr; {escape(last)}" if (first and last and first != last) else escape(first or "Schedule pending")
+    rev_line = (f'{escape(rev.name)} <span class="pjp-fact-sub">Band {escape(getattr(rev, "band", "") or "")}</span>' if rev else "Your mapped reviewer")
+    facts = f"""
+        <div class="tlv-facts pjp-facts">
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Sent by</div><div class="tlv-fact-val">{rev_line}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Submission deadline</div><div class="tlv-fact-val rv-red">{escape(format_short_date(dt.get("submission_deadline")) or "Not set")}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Review window</div><div class="tlv-fact-val">{window}</div></div>
+        </div>"""
 
-    if is_earned:
-        cta_btn = f"""<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_results')" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; background:linear-gradient(135deg, #F59E0B, #D97706); border-color:#D97706;">{get_icon("award", 14)}<span>View Official Marksheet</span>{get_icon("arrow_right", 13)}</button>"""
+    # --- where the cosmonaut stands -> status pill, the primary action, and the submission card -------------------------------------------
+    status = getattr(latest, "status", "") if latest else ""
+    if st["is_earned"]:
+        pill = f'<span class="rv-pill is-green">{get_icon("award", 12)}<span>Badge earned</span></span>'
+        action = (f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'open_badge_marksheet\', \'{bid}\')">'
+                  f'{get_icon("award", 15)}<span>Open marksheet</span></button>')
+    elif status == "reviewer_assessed":
+        pill = f'<span class="rv-pill is-blue">{get_icon("clock", 12)}<span>Evaluated &middot; awaiting Guardian</span></span>'
+        action = (f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'open_badge_marksheet\', \'{bid}\')">'
+                  f'{get_icon("award", 15)}<span>Open marksheet</span></button>')
+    elif status in ("pending", "submitted"):
+        pill = f'<span class="rv-pill is-amber">{get_icon("clock", 12)}<span>Submitted &middot; with your reviewer</span></span>'
+        action = (f'<button type="button" class="btn-metal pjp-primary" onclick="window.StarAppBridge.dispatchAction(\'open_submission_modal\', \'{bid}\')">'
+                  f'{get_icon("edit", 15)}<span>Edit Deliverables</span></button>')
     else:
-        cta_txt = (
-            f'{get_icon("edit", 14)}<span>Edit Deliverables</span>{get_icon("arrow_right", 13)}'
-            if latest_sub
-            else f'{get_icon("rocket", 14)}<span>Submit Project Deliverables</span>{get_icon("arrow_right", 13)}'
-        )
-        cta_btn = f"""<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_submission_modal', '{escape(badge.id)}')" style="display:inline-flex; align-items:center; gap:6px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); border-color:#059669;">{cta_txt}</button>"""
+        pill = f'<span class="rv-pill is-amber">{get_icon("clock", 12)}<span>{"Retake needed" if st["is_retake"] else "Not submitted yet"}</span></span>'
+        action = (f'<button type="button" class="btn-metal pjp-primary" onclick="window.StarAppBridge.dispatchAction(\'open_submission_modal\', \'{bid}\')">'
+                  f'{get_icon("rocket", 15)}<span>Submit Deliverables</span></button>')
+
+    ea = st["rev_asm"] or st["earned_asm"]
+    marks = ""
+    if ea and (status == "reviewer_assessed" or st["is_earned"] or getattr(ea, "assessor_role", "") == "guardian"):
+        marks = (f'<div class="pjp-marks"><span class="pjp-marks-lbl">{"Final marks" if st["is_earned"] else "Reviewer marks"}</span>'
+                 f'<span class="pjp-marks-val">{ea.total_marks:.1f} / 50 ({ea.percentage:.1f}%)</span></div>')
+
+    if latest:
+        sub_when = (getattr(latest, "submitted_at", "") or "")[:16].replace("T", " ")
+        sub_body = (f'<div class="pjp-sub-meta">Attempt #{latest.attempt_number}'
+                    + (f' &middot; submitted {escape(sub_when)} UTC' if sub_when else "") + f'</div>{_sub_files_html(latest)}')
+    else:
+        sub_body = ('<p class="pjp-sub-empty">You have not submitted anything yet. Use <b>Submit Deliverables</b> to upload your PDF report, '
+                    'source code and GitHub link. They go straight to your mapped reviewer, who assesses them and awards your marks.</p>')
 
     return f"""
-    <div style="padding:6px 4px;">
-        <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:#0284C7; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
-                <span style="font-size:0.78125rem; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
+    <div class="pjp-page" data-live-sync="project" id="project-page-{bid}" data-badge-id="{bid}">
+        <div class="pjp-bar">
+            <div class="pjp-bar-id">
+                <span class="pjp-code">{escape(getattr(badge, "code", ""))}</span>
+                <span class="pjp-badge-title" role="heading" aria-level="2">{escape(badge.title)}</span>
+                <span class="pjp-kind">Project</span>
             </div>
-            <span style="font-size:0.71875rem; color:var(--frost-navy-50);">
-                Mapped Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong>
-            </span>
+            <div class="pjp-bar-actions">{pill}{action}</div>
         </div>
-
-        <div style="background:rgba(234,244,255,0.55); border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:16px 20px; margin-bottom:18px;">
-            {spec_html}
-        </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
-                Close
-            </button>
-            {cta_btn}
+        {facts}
+        {render_project_brief(getattr(proj, "title", "") or "Project", project_brief_content(proj))}
+        <div class="pjp-sub-card" id="project-submission-card">
+            <div class="pjp-sub-head">
+                <div class="pjp-sub-title"><span class="pjp-sub-ico">{get_icon("send", 17)}</span><span>Your submission</span></div>
+                {marks}
+            </div>
+            {sub_body}
         </div>
     </div>
     """
@@ -2517,7 +2696,7 @@ def render_cosmonaut_submission_workspace(
                     ),
                 )
                 for a in asms:
-                    if a.decision == "approve" or getattr(a, "assessor_role", "") == "guardian":
+                    if a.decision in ("approve", "approved"):
                         is_earned = True
                         earned_card_asm = a
 
@@ -2525,19 +2704,20 @@ def render_cosmonaut_submission_workspace(
             has_proj = bool(assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"))
 
             earned_meta_html = ""
+            gold_cls = ""
             if is_earned:
-                sub_chip = f'<span style="background:linear-gradient(135deg, #F59E0B, #D97706); color:#451A03; border:1px solid #D97706; font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; box-shadow:0 2px 6px rgba(245,158,11,0.4);">{get_icon("award", 12)} Badge Earned • Completed</span>'
-                action_btn_txt = "View Feedback & Marks"
-                btn_color_style = "background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#451A03; border-color:#D97706;"
-                card_border_style = "border:2px solid #F59E0B; background:linear-gradient(135deg, rgba(254,243,199,0.98) 0%, rgba(253,230,138,0.6) 50%, rgba(254,243,199,0.98) 100%); box-shadow:0 0 20px rgba(245,158,11,0.35), 0 8px 24px rgba(180,83,9,0.15);"
+                gold_cls = " gold-card"
+                sub_chip = f'<span class="gold-chip">{get_icon("award", 12)}<span>Badge Earned</span></span>'
+                action_btn_txt = "View Feedback &amp; Marks"
+                btn_color_style = "background:linear-gradient(135deg, #b45309 0%, #92400e 100%); color:#ffffff; border-color:#92400e; text-shadow:none; letter-spacing:0.2px;"
+                card_border_style = ""
                 sc_str = f"{earned_card_asm.total_marks:.1f}/50 ({earned_card_asm.percentage:.1f}%)" if earned_card_asm else "Certified"
                 aw_str = (getattr(tl, "actual_award_date", "") if tl else "") or (earned_card_asm.reviewed_at[:10] if earned_card_asm and getattr(earned_card_asm, "reviewed_at", "") else "Awarded")
                 att_str = f"Attempt #{getattr(cadet_sub, 'attempt_number', getattr(earned_card_asm, 'attempt_number', 1))}" if (cadet_sub or earned_card_asm) else ""
                 earned_meta_html = f"""
-                <div style="margin-top:10px; padding:7px 10px; border-radius:8px; background:rgba(255,255,255,0.85); border:1px solid rgba(245,158,11,0.4); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; font-size:0.71875rem; color:#78350F; font-weight:700;">
-                    <span style="font-family:var(--font-family-mono); font-weight:800;">Score: {escape(sc_str)}</span>
-                    <span>&bull; Awarded: {escape(aw_str)}</span>
-                    {f'<span>&bull; {escape(att_str)}</span>' if att_str else ''}
+                <div class="gold-facts">
+                    <span class="gold-fact"><span class="gold-fact-lbl">Score</span><b>{escape(sc_str)}</b></span>
+                    <span class="gold-fact"><span class="gold-fact-lbl">Awarded</span><b>{escape(format_short_date(aw_str) or aw_str)}</b></span>
                 </div>
                 """
             elif cadet_sub and getattr(cadet_sub, "status", "") == "reviewer_assessed":
@@ -2571,26 +2751,17 @@ def render_cosmonaut_submission_workspace(
 
             # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
             badge_cards.append(f"""
-            <div class="liquid-glass-card badge-card-item collapsed-badge-card" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="{open_page_onclick}" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+            <div class="liquid-glass-card badge-card-item collapsed-badge-card{gold_cls}" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="{open_page_onclick}" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
                 <div>
-                    <!-- Meta Row -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs); letter-spacing:0.5px;">BAND {b_band}</span>
-                            {f'<span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 9px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">{b_code}</span>' if b_code else ''}
-                        </div>
-                        {sub_chip}
-                    </div>
-
-                    <!-- Connected Collapsible Taxonomy Lineage -->
-                    <div style="margin-bottom:10px;">
-                        {render_taxonomy_hierarchy_tree(getattr(b, "power", "Tech") or "Tech", getattr(b, "capability", "Data & Machine") or "Data & Machine", getattr(b, "skill", "Curation") or "Curation", compact=True)}
-                    </div>
+                    <div style="margin-bottom:12px;">{sub_chip}</div>
 
                     <!-- Headline Title -->
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
-                        {b_title}
-                    </h3>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        {f'<span class="gold-medal" title="Badge earned">{get_icon("award", 22)}</span>' if is_earned else ''}
+                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
+                            {b_title}
+                        </h3>
+                    </div>
                     {earned_meta_html}
                 </div>
 
@@ -2650,146 +2821,73 @@ def render_cosmonaut_submission_workspace(
     """
 
 
+_UPLOAD_ICO = ('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+               'stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>')
+
+
+def _sd_file_field(field_id: str, label: str, icon: str, accept: str, tone: str, current: str = "") -> str:
+    """One file deliverable as a glass row: type icon tile, its name, the chosen file (or none) and a Browse button (StarAppBridge.showPickedFile)."""
+    name_id = f"sd-name-{field_id}"
+    shown = escape(current) if current else "No file chosen"
+    cls = " is-set" if current else ""
+    return f"""
+        <label class="sd-row sd-drop{cls}" for="{field_id}" id="sd-drop-{field_id}">
+            <span class="sd-ico is-{tone}">{get_icon(icon, 22)}</span>
+            <span class="sd-row-txt"><b>{escape(label)}</b><span class="sd-file-name" id="{name_id}">{shown}</span></span>
+            <span class="sd-drop-btn">{_UPLOAD_ICO}<span class="sd-drop-btn-lbl">{"Replace" if current else "Browse"}</span></span>
+            <input type="file" id="{field_id}" class="sd-file" accept="{escape(accept)}"
+                   onchange="window.StarAppBridge.showPickedFile(this, '{name_id}', 'sd-drop-{field_id}')">
+        </label>"""
+
+
 def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: Any, existing_sub: Optional[ProjectSubmission] = None) -> str:
     """
-    Renders the dedicated Project Deliverable Submission Portal modal popup for a specific badge.
-    Allows Cosmonauts to submit deliverables for formal evaluation, or edit their existing submission.
+    The Submit / Edit Deliverables dialog (opened from the project page): a clean glass form for the three deliverables - PDF report,
+    source code and GitHub link. Submitting routes them to the cosmonaut's mapped reviewer, who then sees and grades them.
     """
-    import json
-    badge_title = getattr(badge, "title", "Milestone Badge")
-    badge_code = getattr(badge, "code", "")
-    badge_band = getattr(badge, "target_band", "B1")
-    badge_power = getattr(badge, "power", "Tech") or "Tech"
-    badge_cap = getattr(badge, "capability", "Data & Machine") or "Data & Machine"
-    badge_skill = getattr(badge, "skill", "Curation") or "Curation"
-
-    # Assigned Reviewer & Window
-    selected_tl = store.get_timeline(badge.id, current_user.id) if (store and current_user) else None
-    rev_id = getattr(selected_tl, "reviewer_id", "") if selected_tl else getattr(badge, "assigned_reviewer_id", "")
-    rev_user = store.get_user_by_id(rev_id) if (store and rev_id) else None
-    rev_name = rev_user.name if rev_user else (rev_id or "Authorized Reviewer")
-    rev_band = getattr(rev_user, "band", "") if rev_user else ""
-    r_window = []
-    if selected_tl and getattr(selected_tl, "review_window_json", None):
-        try:
-            r_window = json.loads(selected_tl.review_window_json)
-        except Exception:
-            r_window = []
-    elif getattr(badge, "default_timeline", None) and badge.default_timeline.get("review_date"):
-        r_window = [badge.default_timeline.get("review_date")]
-    window_str = " &rarr; ".join(r_window) if r_window else "3-Day Review Window"
-
-    # Assigned Project Specification from Reviewer
-    assigned_proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
-    assigned_project_banner = ""
-    if not (assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent")):
-        # Nothing to submit against yet: the project comes from the mapped reviewer on request.
+    proj = store.get_project_prompt_for_cadet(badge.id, current_user.id) if (store and current_user) else None
+    if not (proj and getattr(proj, "status", "") in ("released", "sent")):
         cta = _project_cta(badge, current_user)
         return f"""
-        <div style="padding:24px; text-align:center;">
-            <h4 style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin:0 0 8px 0;">Your project has not been sent yet</h4>
-            <p style="font-size:0.8125rem; color:var(--frost-navy-75); margin:0 0 18px 0;">{cta["text"] or "This badge is not allotted to you."}</p>
-            <div style="display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap;">
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Close</button>
-                {cta["buttons"]}
-            </div>
-        </div>
-        """
-    spec_inner = _render_assigned_project_spec_inner(assigned_proj=assigned_proj)
-    assigned_project_banner = f"""
-    <div style="background:#FFFFFF; border:1.5px solid var(--icy-steel-50); border-radius:var(--radius-sm); padding:20px 24px; margin-bottom:22px; box-shadow:0 4px 14px rgba(7,22,41,0.05);">
-        <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--frost-navy-50); margin-bottom:8px;">Project from {escape(rev_name)}</div>
-        {spec_inner}
-    </div>
-    <div style="font-size:0.71875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--deep-frozen-midnight); margin-bottom:12px;">Your Deliverables</div>
-    """
+        <div class="sd-wrap">
+            <div class="sd-empty">{get_icon("lock", 26)}<div class="sd-empty-title" role="heading" aria-level="3">Your project has not been sent yet</div>
+            <p>{cta["text"] or "This badge is not allotted to you."}</p></div>
+            <div class="sd-footer"><button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Close</button></div>
+        </div>"""
 
-    # Existing submission notice
-    existing_notice = ""
+    rev_id = store.get_mapped_reviewer_id(badge.id, current_user.id)
+    rev = store.get_user_by_id(rev_id) if rev_id else None
+    rev_first = escape(rev.name.split()[0]) if rev else "your reviewer"
+    notice = ""
     if existing_sub:
-        submitted_at_fmt = getattr(existing_sub, "submitted_at", "")[:16].replace("T", " ")
-        existing_notice = f"""
-        <div style="background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.3); border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:#047857; color:#fff; font-size:0.65625rem; font-weight:800; padding:2px 8px; border-radius:10px;">SUBMISSION ACTIVE</span>
-                    <span style="font-size:0.78125rem; font-weight:700; color:#047857;">Submitted on {escape(submitted_at_fmt)}</span>
-                </div>
-                <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy-50);">Status: {escape(getattr(existing_sub, 'status', 'pending').upper())}</span>
-            </div>
-            <div style="font-size:0.71875rem; color:#065F46; margin-top:4px;">
-                You can edit your deliverables below. Updating will replace your active deliverable files for formal evaluation.
-            </div>
-        </div>
-        """
-
-    current_pdf_hint = f'<div style="font-size:0.6875rem; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.pdf_name)}</div>' if (existing_sub and getattr(existing_sub, 'pdf_name', '')) else ''
-    current_code_hint = f'<div style="font-size:0.6875rem; color:#047857; font-weight:700; margin-top:3px;">Current file: {escape(existing_sub.code_name)}</div>' if (existing_sub and getattr(existing_sub, 'code_name', '')) else ''
+        when = (getattr(existing_sub, "submitted_at", "") or "")[:16].replace("T", " ")
+        notice = (f'<div class="sd-notice">{get_icon("check_circle", 16)}<span>Attempt #{existing_sub.attempt_number} submitted'
+                  + (f' on <b>{escape(when)} UTC</b>' if when else "") + '. Saving replaces your current files.</span></div>')
+    pdf_cur = getattr(existing_sub, "pdf_name", "") if existing_sub else ""
+    code_cur = getattr(existing_sub, "code_name", "") if existing_sub else ""
     gh_val = getattr(existing_sub, "github_url", "") if existing_sub else ""
-
-    submit_btn_txt = (
-        f'{get_icon("check_circle", 14)} Update Deliverables {get_icon("arrow_right", 13)}'
-        if existing_sub
-        else f'{get_icon("rocket", 14)} Submit Project {get_icon("arrow_right", 13)}'
-    )
+    submit_label = (f'{get_icon("check_circle", 15)}<span>Update deliverables</span>' if existing_sub
+                    else f'{get_icon("send", 15)}<span>Submit to {rev_first}</span>')
 
     return f"""
-    <div style="padding:4px 0;">
-        <!-- Hierarchy & Context Bar -->
-        <div style="padding:10px 14px; background:rgba(23,52,92,0.04); border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:#06B6D4; color:#fff; padding:2px 7px; border-radius:var(--radius-xs);">BAND {escape(badge_band)}</span>
-                <span style="font-size:0.78125rem; font-weight:800; color:var(--frost-navy);">{escape(badge_title)}</span>
-            </div>
-            <div style="font-size:0.71875rem; color:var(--frost-navy-50);">
-                <span>Assigned Reviewer: <strong style="color:#047857;">{escape(rev_name)}</strong></span>
-            </div>
+    <div class="sd-wrap">
+        <div class="sd-head">
+            <span class="sd-head-ico">{get_icon("rocket", 22)}</span>
+            <div class="sd-heading" role="heading" aria-level="3">{"Edit your deliverables" if existing_sub else "Submit your deliverables"}</div>
         </div>
-
-        {existing_notice}
-        {assigned_project_banner}
-
+        {notice}
         <form id="project-submission-form" onsubmit="event.preventDefault(); window.StarAppBridge.submitCosmonautDeliverables();">
             <input type="hidden" id="submission-badge-id" value="{escape(badge.id)}">
-
-            <!-- 1. PDF Document Deliverable Field -->
-            <div class="liquid-form-group" style="margin-bottom:18px;">
-                <label class="liquid-form-label" for="submission-pdf-file" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    {get_icon("file_text", 14)}<span>PDF Document Deliverable</span>
-                </label>
-                <input type="file" id="submission-pdf-file" class="liquid-glass-file-input" accept=".pdf">
-                {current_pdf_hint}
-                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload design charter, architecture report, or technical documentation (.pdf)</span>
-            </div>
-
-            <!-- 2. Code / Script File Deliverable Field -->
-            <div class="liquid-form-group" style="margin-bottom:18px;">
-                <label class="liquid-form-label" for="submission-code-file" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    {get_icon("code", 14)}<span>Code / Script File Deliverable</span>
-                </label>
-                <input type="file" id="submission-code-file" class="liquid-glass-file-input" accept=".py,.sql,.zip,.js,.json,.tar.gz,.txt">
-                {current_code_hint}
-                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Upload executable script, pipeline package, queries, or zip archive (.py, .sql, .zip)</span>
-            </div>
-
-            <!-- 3. GitHub Repository Link Field -->
-            <div class="liquid-form-group" style="margin-bottom:22px;">
-                <label class="liquid-form-label" for="submission-github-url" style="font-size:0.75rem; font-weight:800; color:var(--frost-navy); display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-                    {get_icon("github", 14)}<span>GitHub Repository Link</span>
-                </label>
-                <input type="url" id="submission-github-url" class="liquid-glass-control" value="{escape(gh_val)}" placeholder="https://github.com/username/project-repo" style="width:100%; font-size:0.78125rem;">
-                <span class="liquid-form-hint" style="font-size:0.6875rem; color:var(--frost-navy-50); display:block; margin-top:2px;">Direct URL to version-controlled repository or pull request</span>
-            </div>
-
-            <!-- Actions Row -->
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:14px; border-top:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
-                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
-                    Cancel
-                </button>
-                <button type="submit" class="btn-metal" style="padding:9px 24px; font-weight:800; background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669; font-size:0.8125rem;">
-                    {submit_btn_txt}
-                </button>
+            {_sd_file_field("submission-pdf-file", "PDF report", "file_text", ".pdf", "red", pdf_cur)}
+            {_sd_file_field("submission-code-file", "Source code", "code", ".py,.sql,.zip,.js,.json,.tar.gz,.txt", "violet", code_cur)}
+            <label class="sd-row sd-link" for="submission-github-url">
+                <span class="sd-ico is-dark">{get_icon("github", 22)}</span>
+                <span class="sd-row-txt"><b>GitHub repository</b>
+                    <input type="url" id="submission-github-url" class="sd-input" value="{escape(gh_val)}" placeholder="https://github.com/your-name/your-project" autocomplete="off"></span>
+            </label>
+            <div class="sd-footer">
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Cancel</button>
+                <button type="submit" class="btn-metal sd-submit">{submit_label}</button>
             </div>
         </form>
     </div>
@@ -2939,7 +3037,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
                 rev_name_str = r_u.name
         asms = store.get_assessments_for_cosmonaut(current_user.id, badge.id)
         for a in reversed(asms):
-            if a.decision == "approve" or getattr(a, "assessor_role", "") == "guardian":
+            if a.decision in ("approve", "approved"):
                 is_earned = True
                 earned_asm = a
                 break
@@ -3028,63 +3126,19 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         meta_chip = '<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Allocated Badge</span>'
 
         if existing_sub and getattr(existing_sub, "status", "") == "reviewer_assessed":
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (REVIEWER ASSESSED) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #06B6D4; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#0891B2;">Reviewer Evaluation Complete</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.</div>
-                    </div>
-                </div>
-                <div>
-                    <span style="background:rgba(6,182,212,0.15); color:#0891B2; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(6,182,212,0.3);">
-                        Awaiting Guardian Award
-                    </span>
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card(
+                "Reviewer Evaluation Complete",
+                "Your assigned reviewer has evaluated your deliverables. Awaiting Guardian final approval and badge award.",
+                project_allocated_btn_html + '<span class="earn-pill is-cyan">Awaiting Guardian Award</span>',
+            )
         elif existing_sub and getattr(existing_sub, "status", "") in ("pending", "submitted"):
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (PENDING REVIEW) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> — evaluation in progress.</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="background:rgba(245,158,11,0.15); color:#B45309; padding:4px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; border:1px solid rgba(245,158,11,0.3);">
-                        Pending Reviewer Evaluation
-                    </span>
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card(
+                "Earn the Badge",
+                f"Deliverables routed to assigned reviewer <strong>{escape(rev_name_str)}</strong> &mdash; evaluation in progress.",
+                project_allocated_btn_html + '<span class="earn-pill is-amber">Pending Reviewer Evaluation</span>',
+            )
         else:
-            earn_section_html = f"""
-            <!-- SECTION 2: EARN THE BADGE (READY TO SUBMIT) -->
-            <div id="badge-section-earn" class="liquid-glass-card" style="margin-bottom:18px; border-radius:var(--radius-lg); border:1.5px solid #3B82F6; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; background:rgba(255,255,255,0.98);">
-                <div style="display:flex; align-items:flex-start; gap:12px;">
-                    <span style="width:28px; height:28px; border-radius:6px; background:rgba(59,130,246,0.12); color:#1D4ED8; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                    </span>
-                    <div>
-                        <div style="font-size:0.9375rem; font-weight:800; color:#1D4ED8;">Earn the Badge</div>
-                        <div style="font-size:0.8125rem; color:var(--frost-navy-75); margin-top:2px;">{_cta['text']}</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    {_cta['buttons']}
-                </div>
-            </div>
-            """
+            earn_section_html = _earn_card("Earn the Badge", _cta["text"], _cta["buttons"])
 
     return f"""
     <div style="padding:4px 0 10px 0;">
@@ -3257,7 +3311,6 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
             <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">
                 Close
             </button>
-            {_cta['buttons']}
         </div>
     </div>
     """
@@ -3266,17 +3319,41 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
 # 6.6 ASSESSMENT RESULTS & MARKSHEETS
 # ==============================================================================
 
+def _results_extension_banner(latest_ext: Any) -> str:
+    """One glass line about the latest deadline-extension request for the selected badge."""
+    if latest_ext.status == "approved":
+        tone, tag = "green", "Deadline Extended"
+        text = f'New submission deadline <b>{escape(latest_ext.proposed_deadline)}</b> (approved by the Guardian).'
+        note = latest_ext.guardian_response or ""
+    elif latest_ext.status == "pending":
+        tone, tag = "amber", "Extension Pending"
+        text = f'Requested <b>{escape(latest_ext.proposed_deadline)}</b> &middot; awaiting Guardian review. Current cutoff {escape(latest_ext.current_deadline)}.'
+        note = ""
+    else:
+        tone, tag = "red", "Extension Rejected"
+        text = f'Original cutoff stays at <b>{escape(latest_ext.current_deadline)}</b>.'
+        note = latest_ext.guardian_response or ""
+    return (f'<div class="ms-ext is-{tone}"><span class="ms-ext-tag">{tag}</span><span class="ms-ext-text">{text}</span>'
+            + (f'<span class="ms-ext-note">{escape(note)}</span>' if note else "") + '</div>')
+
+
 def render_cosmonaut_results(
     assessments: List[AssessmentMarksheet],
     badges_map: Dict[str, Badge],
     selected_badge_id: Optional[str] = None,
     available_badges: Optional[List[Badge]] = None,
-    extensions: Optional[List[DeadlineExtension]] = None
+    extensions: Optional[List[DeadlineExtension]] = None,
+    selected_asm_id: Optional[str] = None,
+    submissions: Optional[List[ProjectSubmission]] = None,
+    project_ready_ids: Optional[Any] = None,
 ) -> str:
-    # 1. Determine list of selectable badges (assigned/published badges + any assessed badges)
+    """
+    Assessment Marksheet page: pick a milestone badge, see its official 50-mark marksheet in glass. Every evaluation (the peer reviewer's
+    marks as soon as they are submitted, then the Guardian's final) is a tab on the marksheet; without one the page says where the work stands.
+    """
+    # 1. selectable badges: allotted/published badges + any assessed badge
     badge_list = list(available_badges) if available_badges else []
     existing_ids = {b.id for b in badge_list}
-    # Also include any badges for which this user has assessments
     for a in assessments:
         if a.badge_id not in existing_ids and a.badge_id in badges_map:
             badge_list.append(badges_map[a.badge_id])
@@ -3288,154 +3365,95 @@ def render_cosmonaut_results(
     for pid in present_4_ids:
         if pid not in existing_ids and pid in badges_map:
             badge_list.append(badges_map[pid])
-
     # Fallback ONLY when caller omitted available_badges (synthetic unit tests)
     if not badge_list and available_badges is None:
         badge_list = list(badges_map.values())
-
-    # Sort badges to put the present badges in logical progression order
-    def badge_order(b: Badge) -> int:
-        if b.id in present_4_ids:
-            return present_4_ids.index(b.id)
-        return 100
-
-    badge_list.sort(key=badge_order)
+    badge_list.sort(key=lambda b: present_4_ids.index(b.id) if b.id in present_4_ids else 100)
 
     if not badge_list and not assessments:
         return f"""
-        <div>
-            <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-                {render_back_button()}
-                <div>
-                    <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
-                </div>
-            </div>
-            <div class="liquid-glass-card" style="padding:48px 32px; text-align:center; border:1.5px dashed var(--icy-steel); background:rgba(255,255,255,0.75);">
-                <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:rgba(23,52,92,0.08); margin-bottom:14px;">
-                    {get_icon("clipboard", 22)}
-                </div>
-                <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0;">No Badges Allocated in This Cycle</h3>
-                <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:520px; margin:0 auto; line-height:1.5;">
-                    You do not have any published milestone badges or evaluation marksheets in the active performance cycle yet.
-                </p>
+        <div class="ms-page">
+            <h2 class="ms-page-title">Official Assessment Marksheets</h2>
+            <div class="ms-empty">
+                <span class="ms-empty-ico">{get_icon("clipboard", 26)}</span>
+                <div class="ms-empty-title" role="heading" aria-level="3">No badges allotted in this cycle</div>
+                <p>You do not have any published milestone badges or evaluation marksheets in the active performance cycle yet.</p>
             </div>
         </div>
         """
 
-    # Validate selected_badge_id
     if not selected_badge_id or (selected_badge_id not in [b.id for b in badge_list]):
         selected_badge_id = badge_list[0].id if badge_list else "badge_gov_101"
 
-    # Build options for top-right dropdown
-    badge_options = []
-    for b in badge_list:
-        sel = " selected" if b.id == selected_badge_id else ""
-        badge_options.append(f'<option value="{b.id}"{sel}>{escape(b.code)}: {escape(b.title)}</option>')
+    badge_options = "".join(
+        f'<option value="{escape(b.id)}"{" selected" if b.id == selected_badge_id else ""}>{escape(b.code)}: {escape(b.title)}</option>'
+        for b in badge_list)
 
-    # Matching assessments for selected_badge_id (Guardian Official Final prioritized over Reviewer preliminary per attempt)
+    # official Guardian final first within an attempt; the newest evaluation is shown by default (or the tab the cosmonaut picked)
     matching_asms = sorted(
         [a for a in assessments if a.badge_id == selected_badge_id],
-        key=lambda a: (
-            getattr(a, "attempt_number", 1),
-            1 if getattr(a, "assessor_role", "") == "guardian" else 0,
-            getattr(a, "reviewed_at", ""),
-        ),
+        key=lambda a: (getattr(a, "attempt_number", 1), 1 if getattr(a, "assessor_role", "") == "guardian" else 0, getattr(a, "reviewed_at", "")),
     )
     current_badge = badges_map.get(selected_badge_id)
     badge_code = current_badge.code if current_badge else selected_badge_id
     badge_title = current_badge.title if current_badge else "Milestone Assessment"
 
-    # Deadline extension reflection banner
     ext_banner = ""
     if extensions:
         badge_exts = [e for e in extensions if e.badge_id == selected_badge_id]
         if badge_exts:
-            latest_ext = badge_exts[-1]
-            if latest_ext.status == "approved":
-                ext_banner = f"""
-                <div style="margin-bottom:20px; padding:12px 18px; background:linear-gradient(135deg, rgba(16,185,129,0.09) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #10B981; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#047857; color:#FFFFFF; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Deadline Extended</span>
-                        <span style="font-size:0.8125rem; font-weight:700; color:var(--deep-frozen-midnight);">
-                            Official Submission Deadline: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> (Approved by Guardian)
-                        </span>
-                    </div>
-                    <div style="font-size:0.75rem; color:var(--frost-navy-50); font-style:italic;">
-                        {escape(latest_ext.guardian_response or "Schedule adjustment approved by mentor.")}
-                    </div>
-                </div>
-                """
-            elif latest_ext.status == "pending":
-                ext_banner = f"""
-                <div style="margin-bottom:20px; padding:12px 18px; background:rgba(245,158,11,0.08); border:1.5px solid #F59E0B; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#F59E0B; color:#451A03; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Pending</span>
-                        <span style="font-size:0.8125rem; font-weight:700; color:var(--deep-frozen-midnight);">
-                            Requested Extension to <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.proposed_deadline)}</span> &bull; Awaiting Guardian Review
-                        </span>
-                    </div>
-                    <span style="font-size:0.75rem; color:var(--frost-navy-50);">Current Cutoff: {escape(latest_ext.current_deadline)}</span>
-                </div>
-                """
-            elif latest_ext.status == "rejected":
-                ext_banner = f"""
-                <div style="margin-bottom:20px; padding:12px 18px; background:rgba(239,68,68,0.06); border:1px solid #EF4444; border-radius:var(--radius-sm); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#EF4444; color:#FFFFFF; font-size:0.6875rem; font-weight:800; padding:3px 9px; border-radius:var(--radius-xs); text-transform:uppercase;">Extension Rejected</span>
-                        <span style="font-size:0.8125rem; font-weight:700; color:var(--frost-navy);">
-                            Original Cutoff Maintained: <span style="font-family:var(--font-family-mono); font-weight:800;">{escape(latest_ext.current_deadline)}</span>
-                        </span>
-                    </div>
-                    <div style="font-size:0.75rem; color:var(--frost-navy-50); font-style:italic;">{escape(latest_ext.guardian_response or "Extension rejected by mentor.")}</div>
-                </div>
-                """
+            ext_banner = _results_extension_banner(badge_exts[-1])
 
-    # Top header with Title on the left and Badge Dropdown on the top right
-    top_header_html = f"""
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
-        <div style="display:flex; align-items:center; gap:12px;">
-            {render_back_button()}
-            <div>
-                <h2 style="font-size:1.55rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">Official Assessment Marksheets</h2>
-            </div>
+    toolbar = f"""
+    <div class="ms-toolbar">
+        <div class="ms-toolbar-lbl">{get_icon("award", 15)}<span>Milestone badge</span></div>
+        <div class="liquid-select-wrapper ms-select">
+            <select id="results-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_results_badge', this.value)">
+                {badge_options}
+            </select>
         </div>
-        <div style="min-width:320px;">
-            <label style="font-size:0.71875rem; font-weight:700; text-transform:uppercase; color:var(--deep-frozen-midnight); letter-spacing:0.5px; display:block; margin-bottom:6px;">Select Milestone Badge</label>
-            <div class="liquid-select-wrapper">
-                <select id="results-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_results_badge', this.value)">
-                    {"".join(badge_options)}
-                </select>
-            </div>
-        </div>
-    </div>
-    """
+    </div>"""
 
     if matching_asms:
-        selected_asm = matching_asms[-1]
-        sheet_content = render_standard_marksheet(selected_asm, current_badge, matching_asms)
+        selected_asm = next((a for a in matching_asms if a.id == selected_asm_id), matching_asms[-1])
+        sheet_content = render_standard_marksheet(selected_asm, current_badge, matching_asms, tab_action="select_results_marksheet")
     else:
+        mine = sorted([s for s in (submissions or []) if s.badge_id == selected_badge_id], key=lambda s: getattr(s, "attempt_number", 1))
+        sid = escape(selected_badge_id)
+        if mine:
+            title, text = "Submitted - waiting for evaluation", (
+                f"Your deliverables for <b>{escape(badge_title)}</b> (attempt #{mine[-1].attempt_number}) are with your mapped reviewer. "
+                "The marks appear here the moment they are submitted.")
+            btn = (f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'open_allocated_project_page\', \'{sid}\')">'
+                   f'{get_icon("clipboard", 15)}<span>View project &amp; submission</span></button>')
+        elif project_ready_ids and selected_badge_id in project_ready_ids:
+            title, text = "Evaluation pending", (
+                f"Your project for <b>{escape(badge_title)}</b> has arrived. Submit your deliverables; your mapped reviewer will assess them "
+                "and the marks appear here.")
+            btn = (f'<button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction(\'open_allocated_project_page\', \'{sid}\')">'
+                   f'{get_icon("rocket", 15)}<span>Open project</span></button>')
+        else:
+            title, text = "Evaluation pending", (
+                f"<b>{escape(badge_title)}</b> has no marks yet. They appear here once you submit your deliverables and your mapped reviewer has assessed them.")
+            btn = (f'<button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction(\'nav_to_submit_badge\', \'{sid}\')">'
+                   f'{get_icon("arrow_right", 15)}<span>Open badge</span></button>')
         sheet_content = f"""
-        <div class="liquid-glass-card" style="padding:48px 32px; text-align:center; border:1.5px dashed var(--icy-steel); background:rgba(255,255,255,0.7);">
-            <div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:rgba(23,52,92,0.08); margin-bottom:16px;">
-                <span style="font-size:1.5rem;">{get_icon("clipboard", 20)}</span>
-            </div>
-            <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">Evaluation Pending for {escape(badge_code)}</h3>
-            <p style="font-size:0.84375rem; color:var(--frost-navy-50); max-width:540px; margin:0 auto 20px auto; line-height:1.5;">
-                <strong>{escape(badge_title)}</strong> has been allocated by your Guardian. Once you submit project deliverables, your Guardian will publish your marksheet across the 50-mark universal rubric.
-            </p>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('nav_to_submit_badge', '{selected_badge_id}')">
-                Open Deliverable Submission Portal →
-            </button>
-        </div>
-        """
+        <div class="ms-empty">
+            <span class="ms-empty-ico">{get_icon("clipboard", 26)}</span>
+            <div class="ms-empty-title" role="heading" aria-level="3">{title} &middot; {escape(badge_code)}</div>
+            <p>{text}</p>
+            {btn}
+        </div>"""
 
     return f"""
-    <div>
-        {top_header_html}
+    <div class="ms-page" data-live-sync="marksheet">
+        <h2 class="ms-page-title">Official Assessment Marksheets</h2>
+        {toolbar}
         {ext_banner}
         {sheet_content}
     </div>
     """
+
 
 # ==============================================================================
 # 6.7 LEARNING MATERIALS (In-App PDF Viewer & Embedded YouTube Player)
@@ -3798,27 +3816,54 @@ def render_cosmonaut_review_requests(
     pending_cnt = len([r for r in requests if r.get("workflow_status") == "pending_review" or r.get("assignment_status") == "pending"])
     approved_cnt = len([r for r in requests if r.get("workflow_status") == "approved" or r.get("assignment_status") == "approved"])
     returned_cnt = len([r for r in requests if r.get("workflow_status") == "returned" or r.get("assignment_status") == "returned"])
+    expired_cnt = len([r for r in requests if r.get("assignment_status") == "expired" and r.get("workflow_status") not in ("approved", "returned")])
 
     history_records = store.get_badge_review_history(reviewer_id=current_user.id) if hasattr(store, "get_badge_review_history") else []
     history_cnt = len(history_records)
 
-    def tab_btn(tab_id: str, label: str, count: int) -> str:
-        is_sel = (tab_id == active_tab)
-        st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:800;" if is_sel else "background:rgba(255,255,255,0.75); color:var(--frost-navy); font-weight:600;"
-        return f"""
-        <button type="button" class="btn-secondary btn-sm" style="{st} padding:7px 16px; border-radius:var(--radius-sm);"
-                onclick="window.StarAppBridge.dispatchAction('filter_cosmo_requests', '{tab_id}')">
-            {label} ({count})
-        </button>
-        """
+    is_history = (active_tab == "history")
+    status_options = [
+        ("all", f"All Requests ({all_cnt})"),
+        ("pending_review", f"Pending Review ({pending_cnt})"),
+        ("approved", f"Approved Badges ({approved_cnt})"),
+        ("returned", f"Returned ({returned_cnt})"),
+        ("expired", f"Expired ({expired_cnt})"),
+    ]
+    status_opts = "".join(
+        f'<option value="{val}"{" selected" if val == active_tab else ""}>{label}</option>' for val, label in status_options
+    )
+    if is_history:
+        # while the history is open the dropdown reads "Review History & Audit"; picking a status leaves the history
+        status_opts = f'<option value="history" selected hidden>Review History &amp; Audit ({history_cnt})</option>' + status_opts
+    history_target = "all" if is_history else "history"
 
-    tabs_html = f"""
-    <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
-        {tab_btn('all', 'All Requests', all_cnt)}
-        {tab_btn('pending_review', 'Pending Review', pending_cnt)}
-        {tab_btn('approved', 'Approved Badges', approved_cnt)}
-        {tab_btn('returned', 'Returned', returned_cnt)}
-        {tab_btn('history', 'Review History & Audit', history_cnt)}
+    tools_html = f"""
+    <div class="rr-tools">
+        <div class="liquid-select-wrapper rr-select-wrap">
+            <select id="rr-status-filter-select" class="liquid-glass-control liquid-glass-select ba-toolbar-select"
+                    aria-label="Filter requests by status"
+                    onchange="window.StarAppBridge.dispatchAction('filter_cosmo_requests', this.value)">
+                {status_opts}
+            </select>
+        </div>
+        <button type="button" id="rr-history-toggle-btn" class="ba-history-btn{" is-active" if is_history else ""}"
+                title="{'Back to the requests' if is_history else 'Every approve / return / edit / expiry you made'}"
+                onclick="window.StarAppBridge.dispatchAction('filter_cosmo_requests', '{history_target}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Review History &amp; Audit ({history_cnt})</span>
+        </button>
+        <div class="ba-search-wrap rr-search-wrap">
+            <span class="ba-search-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+            </span>
+            <input type="text" id="rr-search-input" class="ba-search-input" aria-label="Search requests"
+                   placeholder="Search badge, code, skill" value="{escape(search_query)}"
+                   oninput="window.StarAppBridge.debouncedDispatch('search_cosmo_requests', this.value)">
+        </div>
     </div>
     """
 
@@ -3830,7 +3875,12 @@ def render_cosmonaut_review_requests(
 
     if active_tab == "history":
         history_rows = []
-        for h in history_records:
+        q = (search_query or "").strip().lower()
+        shown_history = [
+            h for h in history_records
+            if not q or any(q in str(h.get(k, "") or "").lower() for k in ("badge_title", "badge_code", "target_band", "taxonomy_tree", "notes", "event_type"))
+        ]
+        for h in shown_history:
             ev_type = h.get("event_type", "")
             if ev_type == "approved":
                 ev_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Authorized & Approved</span>'
@@ -3838,6 +3888,10 @@ def render_cosmonaut_review_requests(
                 ev_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:700;">Returned with Feedback</span>'
             elif ev_type == "edited":
                 ev_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:700;">Badge Edited</span>'
+            elif ev_type == "review_expired":
+                ev_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:700;">Review Window Ended</span>'
+            elif ev_type == "reviewer_cancelled":
+                ev_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:700;">Review Withdrawn</span>'
             else:
                 ev_pill = '<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">Review Dispatched</span>'
 
@@ -3887,157 +3941,73 @@ def render_cosmonaut_review_requests(
                         </tr>
                     </thead>
                     <tbody>
-                        {"".join(history_rows) if history_rows else '<tr><td colspan="7" style="padding:32px; text-align:center; color:var(--frost-navy-50);">No review actions recorded in your history yet.</td></tr>'}
+                        {"".join(history_rows) if history_rows else '<tr><td colspan="7" style="padding:32px; text-align:center; color:var(--frost-navy-50);">' + ('No history matches your search.' if q else 'No review actions recorded in your history yet.') + '</td></tr>'}
                     </tbody>
                 </table>
             </div>
         </div>
         """)
     else:
+        check_ic = get_icon("check", 12)
         for r in filtered:
-            b_id = r.get("id", "")
-            b_code = escape(r.get("code", ""))
-            b_title = escape(r.get("title", ""))
-            target_band = escape(r.get("target_band", "B1"))
-            b_loc = escape(r.get("location", ""))
-            b_desc = escape(r.get("description", ""))
+            b_id = escape(r.get("id", ""))
             wf_status = r.get("workflow_status", "pending_review")
-            assign_status = r.get("assignment_status", "pending")
-            creator_name = escape(r.get("creator_name") or "Guardian")
-            assigned_ts = r.get("assigned_at") or ""
-            assigned_at = assigned_ts[:16].replace("T", " ") if assigned_ts else "2026-11-20"
-            due_ts = r.get("review_due_at") or ""
-            due_date = escape(due_ts[:10] if due_ts else "2026-11-27")
+            a_status = r.get("assignment_status") or ""
             dec_notes = escape(r.get("decision_notes") or "")
-
-            if wf_status == "pending_review":
-                status_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:700;">Pending Review</span>'
-            elif wf_status == "approved":
-                status_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Approved</span>'
-            elif wf_status == "returned":
-                status_pill = '<span class="status-pill status-rejected" style="font-size:0.6875rem; font-weight:700;">Returned for Changes</span>'
+            decided = format_utc_stamp(r.get("decided_at"))
+            if wf_status == "approved" or a_status == "approved":
+                kind = "approved"
+            elif wf_status == "returned" or a_status == "returned":
+                kind = "returned"
+            elif a_status == "expired":
+                kind = "expired"
             else:
-                status_pill = f'<span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">{escape(wf_status.title())}</span>'
+                kind = "pending"
 
-            # Outcomes preview
-            outcomes = r.get("learning_outcomes", [])
-            outcomes_list = []
-            for oc in outcomes[:3]:
-                outcomes_list.append(f'<li style="margin-bottom:4px; font-size:0.75rem; color:var(--frost-navy);">{escape(str(oc))}</li>')
-            outcomes_html = f'<ul style="margin:6px 0 0 16px; padding:0; list-style-type:disc;">{"".join(outcomes_list)}</ul>' if outcomes_list else '<span style="font-size:0.75rem; color:var(--frost-navy-50);">No outcomes specified.</span>'
+            if kind == "approved":
+                state_html = f'<span class="lg-sb-state is-reviewed">{check_ic} Approved</span>'
+                action_label, action_cls = "View Badge", "btn-secondary"
+            elif kind == "returned":
+                state_html = '<span class="lg-sb-state is-returned">Returned</span>'
+                action_label, action_cls = "View Badge", "btn-secondary"
+            elif kind == "expired":
+                state_html = '<span class="lg-sb-state is-expired">Window ended</span>'
+                action_label, action_cls = "View Badge", "btn-secondary"
+            else:
+                state_html = '<span class="lg-sb-state is-pending">Needs your review</span>'
+                action_label, action_cls = "Review Badge", "btn-metal"
 
-            # Topics pills
-            topics = r.get("learning_topics", [])
-            topic_pills = []
-            for t in topics[:6]:
-                t_title = t.get("title") if isinstance(t, dict) else str(t)
-                topic_pills.append(f'<span style="font-size:0.6875rem; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:2px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30); font-weight:600;">{escape(t_title)}</span>')
-            topics_html = f'<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">{"".join(topic_pills)}</div>' if topic_pills else ""
-
-            # Practice Project requirements preview
-            reqs = r.get("project_requirements", "")
-            reqs_html = f"""
-            <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.7); border-left:3px solid var(--deep-frozen-midnight); border-radius:var(--radius-xs); font-size:0.75rem; color:var(--frost-navy-75);">
-                <strong style="color:var(--frost-navy);">Practice Project Specification:</strong> {escape(reqs[:180])}{"..." if len(reqs) > 180 else ""}
-            </div>
-            """ if reqs else ""
-
-            # Decision notes preview if present
-            notes_box = ""
-            if dec_notes:
-                notes_box = f"""
-                <div style="margin-top:10px; padding:8px 12px; background:rgba(239,68,68,0.06); border-left:3px solid #EF4444; border-radius:var(--radius-xs); font-size:0.75rem; color:var(--frost-navy);">
-                    <strong style="color:#DC2626;">Reviewer Feedback Notes:</strong> {dec_notes}
-                </div>
-                """
-
-            # Action Buttons
-            inspect_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700;"
-                    onclick="window.StarAppBridge.dispatchAction('open_badge_for_review', '{b_id}')">
-                Inspect Badge
-            </button>
-            """
-
-            edit_btn = f"""
-            <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700;"
-                    onclick="window.StarAppBridge.dispatchAction('edit_submitted_badge', '{b_id}')">
-                Edit Badge
-            </button>
-            """
-
-            approve_btn = ""
-            return_btn = ""
-            if wf_status == "pending_review":
-                approve_btn = f"""
-                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:800; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;"
-                        onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
-                    Accept & Approve &rarr;
-                </button>
-                """
-                return_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" style="font-size:0.71875rem; font-weight:700; color:#DC2626; border-color:rgba(239,68,68,0.4);"
-                        onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b_id}')">
-                    Return with Feedback
-                </button>
-                """
-            elif wf_status == "returned":
-                approve_btn = f"""
-                <button type="button" class="btn-metal btn-sm" style="font-size:0.71875rem; font-weight:800;"
-                        onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">
-                    Re-evaluate & Approve &rarr;
-                </button>
-                """
+            # The line under the chips: the live countdown while it is open; the decision, like the history rows, once it is not.
+            if kind == "pending":
+                slot = render_badge_review_timer(r.get("review_due_at")) or '<span class="lg-sb-note">Review due ' + escape((r.get("review_due_at") or "")[:10]) + "</span>"
+            else:
+                label = {"approved": "Approved", "returned": "Returned with feedback", "expired": "Review window ended - badge kept as it is"}[kind]
+                slot = f'<div class="lg-sb-decision is-{kind}"><strong>{label}</strong>{(" &middot; " + escape(decided)) if decided else ""}</div>'
+            notes_html = (f'<div class="lg-sb-feedback{" is-ok" if kind == "approved" else ""}"><strong>{"Your notes" if kind == "approved" else "Your feedback"}:</strong> {dec_notes}</div>'
+                          if dec_notes and kind in ("approved", "returned") else "")
+            tree = render_taxonomy_hierarchy_tree(r.get("power"), r.get("capability"), r.get("skill"), compact=True)
 
             cards_html.append(f"""
-            <div class="liquid-glass-card" style="padding:20px; border-radius:var(--radius-md); border:1.5px solid var(--icy-steel-40); margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(240,247,255,0.9) 100%); box-shadow:0 4px 14px rgba(7,22,41,0.04);">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
-                    <div>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
-                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">{b_code}</span>
-                            <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:3px 8px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">TARGET: BAND {target_band}</span>
-                            {status_pill}
-                        </div>
-                        <h3 style="font-size:0.96875rem; font-weight:800; color:var(--frost-navy); margin:0 0 2px 0;">{b_title}</h3>
-                        <div style="font-size:0.75rem; color:var(--frost-navy-75); font-weight:600;">{b_loc}</div>
-                    </div>
-
-                    <div style="text-align:right; font-size:0.71875rem; color:var(--frost-navy-50);">
-                        <div>Assigned by: <strong style="color:var(--frost-navy);">{creator_name}</strong></div>
-                        <div>Assigned: <strong>{assigned_at}</strong> &bull; Due: <strong style="color:#B45309;">{due_date}</strong></div>
-                    </div>
+            <div class="lg-saved-badge-card is-clickable" role="button" tabindex="0"
+                 onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_review', '{b_id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();this.click();}}">
+                <div class="lg-sb-title is-request" role="heading" aria-level="4">{escape(r.get("title", ""))}</div>
+                {state_html}
+                <div class="lg-sb-meta">
+                    {tree}
+                    <span class="lg-sb-chip is-band">Band {escape(r.get("target_band", "B1"))}</span>
                 </div>
-
-                <p style="font-size:0.78125rem; color:var(--frost-navy-75); margin:0 0 10px 0; line-height:1.5;">{b_desc}</p>
-
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:14px; margin-bottom:14px;">
-                    <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        <div style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Key Learning Outcomes</div>
-                        {outcomes_html}
-                    </div>
-
-                    <div style="background:rgba(255,255,255,0.6); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">
-                        <div style="font-size:0.6875rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase; letter-spacing:0.5px;">Curriculum Topics</div>
-                        {topics_html}
-                    </div>
+                <div class="lg-sb-extra">
+                    {slot}
+                    {notes_html}
                 </div>
-
-                {reqs_html}
-                {notes_box}
-
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid var(--icy-steel-25);">
-                    <div style="font-size:0.71875rem; color:var(--frost-navy-50);">
-                        Institutional Reviewer: <strong style="color:var(--deep-frozen-midnight);">{escape(current_user.name)} (Band {user_band})</strong>
-                    </div>
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        {inspect_btn}
-                        {edit_btn}
-                        {return_btn}
-                        {approve_btn}
-                    </div>
+                <div class="lg-sb-actions">
+                    <button type="button" class="{action_cls} btn-sm">{action_label} &rarr;</button>
                 </div>
             </div>
             """)
+        if cards_html:
+            cards_html = [f'<div class="lg-allot-grid">{"".join(cards_html)}</div>']
 
     empty_html = f"""
     <div class="liquid-glass-card" style="padding:48px 24px; text-align:center; border-radius:var(--radius-md); border:1.5px dashed var(--icy-steel-40);">
@@ -4065,13 +4035,6 @@ def render_cosmonaut_review_requests(
         r_status = req.get("status", "pending")
         badge_name = req.get("badge", "Badge")
         band = req.get("band", "B1")
-        cosmo_ids = req.get("cosmonaut_ids", [])
-        cosmo_count = len(cosmo_ids)
-        cosmo_names = []
-        for cid in cosmo_ids:
-            u = store.get_user_by_id(cid)
-            cosmo_names.append(u.name if u else cid)
-        cosmo_names_str = ", ".join(cosmo_names[:4]) + (f" +{len(cosmo_names)-4} more" if len(cosmo_names) > 4 else "")
         dates = req.get("review_dates") or []
         if len(dates) > 3:
             dates_str = f"{dates[0]} → {dates[-1]} ({len(dates)} Working Days)"
@@ -4083,39 +4046,67 @@ def render_cosmonaut_review_requests(
         if r_status == "accepted":
             status_badge = f'<span class="status-pill status-approved" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">{get_icon("check", 12)} Request Accepted</span>'
             action_btns = f'<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction(\'reject_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline / Revoke</button>'
-            card_border = "border:1.5px solid #059669; background:rgba(5,150,105,0.03);"
+            card_cls = "is-accepted"
         elif r_status == "rejected" and req.get("expired"):
             status_badge = f'<span class="status-pill status-rejected" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">{get_icon("clock", 12)} Request Expired</span>'
             action_btns = '<span class="rq-resp is-bad">No reply within 24 hours &mdash; ask the Guardian to resend this request.</span>'
-            card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
+            card_cls = "is-declined"
         elif r_status == "rejected":
             status_badge = f'<span class="status-pill status-rejected" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3);">{get_icon("x", 12)} Request Declined</span>'
             action_btns = f'<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction(\'accept_mapping_request\', \'{r_id}\')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:700;">{get_icon("check", 12)} Accept Request</button>'
-            card_border = "border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.02);"
+            card_cls = "is-declined"
         else:
-            status_badge = f'<span class="status-pill status-pending" style="display:inline-flex; align-items:center; gap:4px; font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">{get_icon("clock", 12)} Awaiting Your Decision</span>'
+            status_badge = ""        # the countdown alone says it is waiting for an answer
             action_btns = f'''<button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('accept_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.71875rem; padding:6px 14px; background:#059669; border-color:#059669; color:#fff; font-weight:800;">{get_icon("check", 12)} Accept & Confirm</button>
             <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('reject_mapping_request', '{r_id}')" style="display:inline-flex; align-items:center; gap:4px; font-size:0.71875rem; padding:6px 12px; color:#DC2626; border-color:rgba(220,38,38,0.3); font-weight:700;">{get_icon("x", 12)} Decline</button>'''
-            card_border = "border:1.5px solid var(--icy-steel-50); background:rgba(255,255,255,0.95);"
+            card_cls = "is-pending"
+
+        # Cosmonauts are not the reviewer's business until they are really theirs: the request is accepted, the Guardian has
+        # completed the mapping for this reviewer AND the badge is published. Until then no name (or count) is rendered at all.
+        people_block = ""
+        inv_badge = store.get_badge(req.get("badge_id", "")) if req.get("badge_id") else None
+        if r_status == "accepted" and inv_badge is not None and getattr(inv_badge, "is_published", False):
+            mapped_ids = sorted(store.get_reviewer_mapped_cosmonaut_ids(current_user.id, inv_badge.id))
+            if mapped_ids:
+                names = []
+                for cid in mapped_ids:
+                    u = store.get_user_by_id(cid)
+                    names.append(u.name if u else cid)
+                people = "".join(
+                    f'<span class="inv-person"><span class="inv-av">{escape(n[:1].upper())}</span>{escape(n)}</span>' for n in names[:3]
+                ) + (f'<span class="inv-person is-more">+{len(names) - 3} more</span>' if len(names) > 3 else "")
+                people_block = f"""
+                <div class="inv-block">
+                    <div class="inv-lbl">{get_icon("users", 14)} Mapped Cosmonauts <span class="inv-count">{len(names)}</span></div>
+                    <div class="inv-people">{people}</div>
+                </div>"""
+        win_start, win_end = format_short_date(dates[0]) if dates else "", format_short_date(dates[-1]) if dates else ""
+        if win_start and win_end and win_start != win_end:
+            window_html = f'<span class="inv-dates">{escape(win_start)} <span class="inv-arrow">&rarr;</span> {escape(win_end)}</span><span class="inv-pill">{len(dates)} working day{"" if len(dates) == 1 else "s"}</span>'
+        elif win_start:
+            window_html = f'<span class="inv-dates">{escape(win_start)}</span><span class="inv-pill">1 working day</span>'
+        else:
+            window_html = '<span class="inv-dates is-muted">Schedule pending</span>'
 
         m_req_cards.append(f"""
-        <div class="liquid-glass-card" style="padding:16px 20px; {card_border} display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
-            <div style="display:flex; flex-direction:column; gap:6px;">
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy);">{escape(badge_name)}</span>
-                    <span style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:900; background:var(--deep-frozen-midnight); color:#fff; padding:2px 7px; border-radius:3px;">BAND {escape(band)}</span>
+        <div class="inv-card {card_cls}">
+            <div class="inv-head">
+                <div class="inv-title-row">
+                    <div class="inv-title" role="heading" aria-level="4">{escape(badge_name)}</div>
+                    <span class="inv-band">BAND {escape(band)}</span>
+                </div>
+                <div class="inv-status-row">
                     {status_badge}
                     {render_request_timer(req, "Respond within")}
                 </div>
-                <div style="font-size:0.75rem; color:var(--frost-navy-75);">
-                    <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("users", 13)} <strong>{cosmo_count}</strong> Assigned Cosmonaut(s): <span style="color:var(--deep-frozen-midnight); font-weight:600;">{escape(cosmo_names_str)}</span></span>
-                </div>
-                <div style="font-size:0.71875rem; color:var(--frost-navy-50); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                    <span style="display:inline-flex; align-items:center; gap:5px;">{get_icon("calendar", 13)} Review Window: <strong style="color:#047857;">{escape(dates_str)}</strong></span>
-                    {f'<span>&bull; Sent: {escape(sent_at)}</span>' if sent_at else ''}
-                </div>
             </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+            <div class="inv-body">
+                <div class="inv-block">
+                    <div class="inv-lbl">{get_icon("calendar", 14)} Review window</div>
+                    <div class="inv-window">{window_html}</div>
+                </div>{people_block}
+            </div>
+            <div class="inv-actions">
                 {action_btns}
             </div>
         </div>
@@ -4137,47 +4128,21 @@ def render_cosmonaut_review_requests(
             </span>
         </div>
         <div>
-            {''.join(m_req_cards) if m_req_cards else "<div style='text-align:center; padding:32px 20px; color:var(--frost-navy-50); font-size:0.8125rem; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No pending reviewer mapping requests. When a Guardian selects you in the Mapping Matrix, assignments will appear here.</div>"}
+            {('<div class="lg-allot-grid">' + ''.join(m_req_cards) + '</div>') if m_req_cards else "<div style='text-align:center; padding:32px 20px; color:var(--frost-navy-50); font-size:0.8125rem; background:rgba(255,255,255,0.6); border:1px dashed var(--icy-steel-50); border-radius:var(--radius-sm);'>No pending reviewer mapping requests. When a Guardian selects you in the Mapping Matrix, assignments will appear here.</div>"}
         </div>
     </div>
     """
 
     return f"""
     <div>
-        <!-- Heading -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {user_band}</span>
-                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">{user_track}</span>
-                </div>
-                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Review Requests</h1>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-                {render_back_button()}
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
-                    &larr; Dashboard
-                </button>
-            </div>
-        </div>
+        <!-- The page title is shown in the Back-button row (hoisted); no band chip / track / Back / Dashboard block here -->
+        <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Review Requests</h1>
 
         <!-- Section 1: Badge Approval Requests -->
         <div class="liquid-glass-card" style="padding:22px; margin-bottom:24px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--icy-steel-30); flex-wrap:wrap; gap:10px;">
-                <div>
-                    <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0;">
-                        Badge Approval Requests
-                    </h3>
-                </div>
-            </div>
-
-            <!-- Filter tabs & Search -->
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
-                {tabs_html}
-                <div style="min-width:240px; max-width:320px; width:100%;">
-                    <input type="text" class="form-input" placeholder="Search request, code, band..." value="{escape(search_query)}" style="font-size:0.75rem; padding:7px 12px;"
-                           oninput="window.StarAppBridge.dispatchAction('search_cosmo_requests', this.value)">
-                </div>
+            <div class="rr-head">
+                <h3 class="rr-head-title">Badge Approval Requests</h3>
+                {tools_html}
             </div>
 
             <!-- Request Cards List -->
@@ -4188,6 +4153,128 @@ def render_cosmonaut_review_requests(
 
         <!-- Section 2: Cadet Evaluation Invitations -->
         {mapping_section_html}
+    </div>
+    """
+
+
+# ==============================================================================
+# 6.12A REVIEWER BADGE REVIEW PAGE (Review Requests -> one badge)
+# ==============================================================================
+
+def render_reviewer_badge_review(
+    badge: Badge,
+    current_user: User,
+    request_row: Optional[Dict[str, Any]] = None,
+    is_editing: bool = False,
+    can_edit: bool = False,
+) -> str:
+    """
+    The page a reviewer lands on when they open a requested badge. It shows the REAL badge in exactly the structured
+    format the Guardian authored it in (views_badge_document.render_badge_document) and lets the reviewer correct it
+    (Edit -> Apply Changes writes straight to the badge, so the Guardian sees the same edits) and then approve it or
+    return it with feedback. `can_edit` is the server's verdict (awaiting review + assigned reviewer); the page only
+    reflects it - every action re-checks on the server.
+    """
+    from starapp.badge_generator import structured_badge_from_row
+
+    request_row = request_row or {}
+    data = structured_badge_from_row(badge)
+    doc = split_badge_document(data)
+    status = getattr(badge, "workflow_status", "") or "pending_review"
+    band = getattr(badge, "target_band", "") or "B1"
+
+    window_ended = (request_row.get("assignment_status") == "expired") and status not in ("approved", "returned")
+    if status == "approved":
+        pill = '<span class="status-pill status-approved">Approved</span>'
+        strip_text = "You approved this badge. It is final - the Guardian can now allot it to Cosmonauts. You are viewing it read-only."
+    elif status == "returned":
+        pill = '<span class="status-pill status-rejected">Returned for Changes</span>'
+        strip_text = "You returned this badge to the Guardian with feedback. You are viewing it read-only."
+    elif window_ended:
+        pill = '<span class="status-pill status-warning">Review Window Ended</span>'
+        strip_text = "The 48-hour review window ended without a decision, so the badge was kept as it is (with any edits you had applied). You are viewing it read-only."
+    else:
+        pill = '<span class="status-pill status-warning">Pending Your Review</span>'
+        strip_text = "Read the badge through for mistakes. Fix anything that is wrong with Edit, then approve it or return it with feedback."
+
+    earn_strip = f"""
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+                <span class="cb-section-icon" style="background:rgba(37,99,235,0.12); color:#1D4ED8;">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                </span>
+                <div>
+                    <div class="cb-section-title">Review This Badge</div>
+                    <div style="font-size:0.90625rem; font-weight:600; color:var(--frost-navy); margin-top:3px;">{escape(strip_text)}</div>
+                </div>
+            </div>
+            <div>{pill}</div>
+    """
+
+    apply_js = "window.StarAppBridge.saveReviewerBadgeEdits()"
+    toggle_js = "window.StarAppBridge.dispatchAction('toggle_reviewer_badge_edit')"
+    cancel_js = toggle_js
+    header_actions = (
+        render_badge_edit_controls(is_editing, toggle_js, apply_js, cancel_js)
+        if (can_edit or is_editing) else ""
+    )
+    footer_bar = (
+        render_badge_edit_footer_bar("Editing the badge \u2014 Apply Changes saves it for you and the Guardian", apply_js, cancel_js)
+        if is_editing else ""
+    )
+
+    b_id = escape(badge.id)
+    decision_bar = ""
+    if can_edit and not is_editing and status == "pending_review":
+        decision_bar = f"""
+        <div class="cb-selection-bar rv-decision-bar" style="margin-bottom:24px; justify-content:flex-end;">
+            <span style="font-size:0.84375rem; font-weight:700; color:var(--frost-navy); margin-right:auto;">Finished checking? Approve the badge, or send it back to the Guardian with feedback.</span>
+            <button type="button" class="btn-secondary btn-sm" style="font-size:0.8125rem; font-weight:700; padding:8px 16px; color:#B91C1C; border-color:rgba(220,38,38,0.4);"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_return_badge', '{b_id}')">Return with Feedback</button>
+            <button type="button" class="btn-metal btn-sm" style="font-size:0.8125rem; font-weight:800; padding:8px 18px; display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg, #10B981 0%, #059669 100%); border-color:#059669; color:#fff;"
+                    onclick="window.StarAppBridge.dispatchAction('confirm_approve_badge', '{b_id}')">{get_icon("check", 14)} Approve Badge</button>
+        </div>
+        """
+
+    creator = escape(request_row.get("creator_name") or "the Guardian")
+    assigned_ts = request_row.get("assigned_at") or ""
+    due_ts = request_row.get("review_due_at") or ""
+    meta_bits = [f"Sent by <strong>{creator}</strong>"]
+    if assigned_ts:
+        meta_bits.append(f"on <strong>{escape(format_short_date(assigned_ts))}</strong>")
+    timer_html = render_badge_review_timer(due_ts) if (status == "pending_review" and not window_ended) else ""
+    decided = format_utc_stamp(request_row.get("decided_at"))
+    if decided and status in ("approved", "returned") or (decided and window_ended):
+        meta_bits.append(f"&bull; {'closed' if window_ended else status} <strong>{escape(decided)}</strong>")
+    read_only_chip = "" if (can_edit or is_editing) else '<span class="rv-readonly-chip">Read-only</span>'
+    notes = request_row.get("decision_notes") or ""
+    notes_html = (f'<div class="lg-sb-feedback" style="margin-top:10px;"><strong>Your feedback:</strong> {escape(notes)}</div>'
+                  if notes and status == "returned" else "")
+
+    document = render_badge_document(
+        title=doc["title"], description=doc["description"], outcomes=doc["outcomes"],
+        practice_prompt=doc["practice_prompt"], resources_prompt=doc["resources_prompt"], topics=doc["topics"],
+        skill=getattr(badge, "skill", ""), capability=getattr(badge, "capability", ""), power=getattr(badge, "power", ""),
+        band=band, is_editing=is_editing,
+        header_actions_html=header_actions, footer_bar_html=footer_bar,
+        earn_strip_html=earn_strip, show_topic_progress=False,
+    )
+
+    return f"""
+    <div class="rv-badge-review" style="max-width:1280px; margin:0 auto;">
+        <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review</h1>
+
+        <div class="liquid-glass-card rv-review-meta" style="padding:14px 20px; margin-bottom:18px; display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px;">
+            <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:4px 10px; border-radius:var(--radius-xs);">{escape(badge.code)}</span>
+            <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; background:var(--frost-mist); color:var(--deep-frozen-midnight); padding:4px 10px; border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">BAND {escape(band)}</span>
+            {pill}
+            {read_only_chip}
+            {timer_html}
+            <span style="font-size:0.8125rem; font-weight:600; color:var(--frost-navy);">{" ".join(meta_bits)}</span>
+            {notes_html}
+        </div>
+
+        {document}
+        {decision_bar}
     </div>
     """
 
@@ -4213,6 +4300,22 @@ def _format_review_window_label(tl_obj: Any, r_dates: Optional[List[str]] = None
     if tl_obj and getattr(tl_obj, "review_date", ""):
         return str(tl_obj.review_date)
     return "Schedule Pending"
+
+
+def _nice_window_label(label: Any) -> str:
+    """'2026-11-18 -> 2026-11-19 -> 2026-11-20' / '2026-11-18 -> 2026-11-24 (5 Days)' -> '18 Nov -> 20 Nov 2026 - 3 days' (anything else as-is)."""
+    import re as _re
+    text = str(label or "")
+    iso = _re.findall(r"\d{4}-\d{2}-\d{2}", text)
+    if not iso:
+        return text
+    m = _re.search(r"\((\d+)\s*Days?\)", text)
+    n = int(m.group(1)) if m else len(iso)
+    if len(iso) == 1:
+        return format_short_date(iso[0])
+    same_year = iso[0][:4] == iso[-1][:4]
+    first = format_short_date(iso[0])[:-5] if same_year else format_short_date(iso[0])
+    return f"{first} → {format_short_date(iso[-1])} · {n} days"
 
 
 def _render_review_deliverables_tray(sub: ProjectSubmission) -> str:
@@ -4576,12 +4679,17 @@ def render_reviewer_badge_schedule(
             }
         badge_groups[b_id]["cadets"].append(item)
 
+    # ---- Upcoming reviews: one glass card per badge, its mapped cosmonauts below it in the same connected-dot tree as the
+    # Assessment Dashboard (asm-tree-cosmo-list / asm-tree-cosmo-branch / asm-elbow).
+    def _pill(tone: str, text: str, ico: str = "") -> str:
+        return f'<span class="rv-pill is-{tone}">{ico}<span>{text}</span></span>'
+
     upcoming_cards_html = []
     for b_id, bg in badge_groups.items():
         cadets_list = bg["cadets"]
         num_cadets = len(cadets_list)
+        badge_obj = bg.get("badge")
 
-        # Show all upcoming cadet cards on initial load so zero data is hidden; still allow explicit focus/collapse toggling
         if expanded_badge_id == b_id:
             is_expanded = True
         elif expanded_badge_id == "":
@@ -4592,29 +4700,9 @@ def render_reviewer_badge_schedule(
             is_expanded = False
 
         b_prompt = store.get_reviewer_project_prompts(badge_id=b_id, reviewer_id=current_user.id) if store else []
-        badge_prompt_status = getattr(b_prompt[0], "status", "none") if b_prompt else "none"
 
-        _req_rows = [r for r in store.get_pending_project_requests(current_user.id) if r.badge_id == b_id] if store else []
-        if _req_rows:
-            badge_proj_pill = (
-                '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">'
-                f'{len(_req_rows)} Project Request{"s" if len(_req_rows) != 1 else ""}</span>'
-            )
-            badge_btn_text = "Create & Send Project"
-        elif badge_prompt_status in ("released", "sent"):
-            badge_proj_pill = '<span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:800; background:rgba(5,150,105,0.12); color:#047857; border:1px solid rgba(5,150,105,0.3);">✓ Project Released</span>'
-            badge_btn_text = "✏️ Edit Project"
-        elif badge_prompt_status == "draft":
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">📝 Draft Project Saved</span>'
-            badge_btn_text = "📝 Continue Project Draft"
-        else:
-            badge_proj_pill = '<span class="status-pill status-warning" style="font-size:0.6875rem; font-weight:800; background:rgba(245,158,11,0.12); color:#B45309; border:1px solid rgba(245,158,11,0.3);">Project Pending</span>'
-            badge_btn_text = "Create Project"
-
-        chevron = "▲" if is_expanded else "▼"
-
-        cadet_cards_html = []
-        roster_summary_chips = []
+        cadet_branches = []
+        n_project_sent = 0
         for item in cadets_list:
             c = item.get("cosmonaut")
             c_actual_id = c.id if c else item.get("cosmonaut_id", "")
@@ -4630,157 +4718,119 @@ def render_reviewer_badge_schedule(
             sub = ctx["latest_sub"]
             rev_asm = ctx["rev_asm"]
             g_asm = ctx["g_asm"]
+            proj_sent = bool(assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"))
+            if proj_sent:
+                n_project_sent += 1
 
+            # The ONE action on a cosmonaut row: Assessment. Disabled until the cosmonaut has submitted (a retake waits for the new attempt);
+            # then it opens the workspace where the reviewer sees the deliverables and allocates the marks.
+            can_assess = bool(sub and getattr(sub, "status", "") not in ("retake_required", "resubmission_requested"))
             if sub and getattr(sub, "status", "") in ("retake_required", "resubmission_requested"):
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B; padding:2px 10px; border-radius:999px;"><span>&bull;</span> Retake Required (Awaiting Cadet)</span>'
-                short_status = "Retake Required"
-                card_action_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    Inspect Submission &amp; History &rarr;
-                </button>
-                """
+                status_pill = _pill("red", "Retake required - waiting for a new submission", get_icon("clock", 12))
             elif rev_asm:
-                card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#EEF2FF; border:1px solid #C7D2FE; color:#4338CA; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> ✓ Evaluated: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
-                short_status = f"Evaluated {rev_asm.total_marks:.1f}/50"
-                card_action_btn = f"""
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id if sub else rev_asm.submission_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    📊 View Marksheet ({rev_asm.total_marks:.1f}/50) &rarr;
-                </button>
-                """
+                status_pill = _pill("indigo", f"Evaluated {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)", get_icon("check", 12))
             elif sub:
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#D1FAE5; border:1px solid #A7F3D0; color:#065F46; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 📥 Deliverables Submitted</span>'
-                short_status = f"Attempt #{getattr(sub, 'attempt_number', 1)} Submitted"
-                card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub.id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    📝 Inspect Deliverables & Allocate Marks &rarr;
-                </button>
-                """
-            elif assigned_proj and getattr(assigned_proj, "status", "") in ("released", "sent"):
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#E0F2FE; border:1px solid #BAE6FD; color:#0284C7; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 🚀 Project Given</span>'
-                short_status = "Project Given"
-                card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    ✏️ Edit Project
-                </button>
-                """
+                status_pill = _pill("green", "Deliverables submitted - ready for marks", get_icon("check", 12))
+            elif proj_sent:
+                status_pill = _pill("blue", "Project sent - waiting for deliverables", get_icon("rocket", 12))
             elif assigned_proj and getattr(assigned_proj, "status", "") == "draft":
-                card_status_pill = '<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> 📝 Draft Project Saved</span>'
-                short_status = "Draft Saved"
-                card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    📝 Continue Project Draft
-                </button>
-                """
+                status_pill = _pill("amber", "Draft saved", get_icon("edit", 12))
             else:
-                _has_req = bool(store and store.get_project_request(b_id, c_actual_id))
-                _pill_lbl = "Project Requested" if _has_req else "Project Pending"
-                card_status_pill = f'<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.71875rem; font-weight:700; background:#FEF3C7; border:1px solid #FDE68A; color:#B45309; padding:2px 10px; border-radius:999px;"><span style="font-size:0.8125rem; line-height:1;">&bull;</span> {_pill_lbl}</span>'
-                short_status = _pill_lbl
-                card_action_btn = f"""
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                    {'Create &amp; Send Project' if _has_req else 'Create Project'}
-                </button>
-                """
+                status_pill = _pill("amber", "Project pending", get_icon("clock", 12))
+            if can_assess:
+                action_btn = (f'<button type="button" class="btn-metal btn-sm rv-act rv-assess" onclick="window.StarAppBridge.dispatchAction(\'open_reviewer_assessment_page\', \'{escape(sub.id)}\')">'
+                              f'{get_icon("award" if rev_asm else "edit", 13)}<span>Assessment</span></button>')
+            else:
+                tip = "Available again once the cosmonaut submits the new attempt" if sub else "Available once the cosmonaut submits their deliverables"
+                action_btn = (f'<button type="button" class="btn-secondary btn-sm rv-act rv-assess is-locked" disabled aria-disabled="true" title="{tip}">'
+                              f'{get_icon("lock", 13)}<span>Assessment</span></button>')
 
-            roster_summary_chips.append(
-                f'<span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:rgba(255,255,255,0.85); border:1px solid var(--icy-steel-40); padding:2px 8px; border-radius:999px;">{escape(c_name)} &bull; <span style="color:#0284C7;">{escape(short_status)}</span></span>'
-            )
-
-            proj_banner_html = ""
-            if assigned_proj and getattr(assigned_proj, "title", ""):
-                proj_st_lbl = "Released Brief" if getattr(assigned_proj, "status", "") in ("released", "sent") else "Draft Brief"
-                proj_banner_html = f"""
-                <div style="font-size:0.75rem; color:#0369A1; background:rgba(224,242,254,0.6); border:1px solid rgba(2,132,199,0.25); border-radius:7px; padding:6px 10px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
-                    <span><strong>Assigned Project ({escape(proj_st_lbl)}):</strong> {escape(assigned_proj.title)}</span>
-                </div>
-                """
-
-            sub_tray_html = _render_review_deliverables_tray(sub) if sub else ""
-
-            eval_note_html = ""
+            proj_line = (f'<div class="rv-sub-line"><span class="rv-sub-lbl">Project</span> {escape(assigned_proj.title)}</div>'
+                         if assigned_proj and getattr(assigned_proj, "title", "") else "")
+            eval_line = ""
             if rev_asm or g_asm:
                 bits = []
                 if rev_asm:
-                    fb_prev = (getattr(rev_asm, "overall_feedback", "") or getattr(rev_asm, "remarks", "") or "").strip()
-                    bits.append(f'<strong>Your Evaluation:</strong> {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%){f" — {escape(fb_prev)}" if fb_prev else ""}')
+                    bits.append(f"Your evaluation <b>{rev_asm.total_marks:.1f}/50</b> " + render_recommendation_chip(reviewer_recommendation_key(rev_asm), "Recommended"))
                 if g_asm:
-                    g_fb = (getattr(g_asm, "overall_feedback", "") or getattr(g_asm, "remarks", "") or "").strip()
-                    bits.append(f'<strong>Guardian Review ({escape(g_asm.decision.replace("_", " ").title())}):</strong> {g_asm.total_marks:.1f}/50{f" — {escape(g_fb)}" if g_fb else ""}')
-                eval_note_html = f'<div style="font-size:0.71875rem; color:#1E293B; background:rgba(238,242,255,0.75); border:1px solid #C7D2FE; border-radius:7px; padding:7px 11px; margin-bottom:10px; line-height:1.45;">{"<br>".join(bits)}</div>'
+                    bits.append(f"Guardian ({escape(g_asm.decision.replace('_', ' ').title())}) <b>{g_asm.total_marks:.1f}/50</b>")
+                eval_line = f'<div class="rv-sub-line">{" &middot; ".join(bits)}</div>'
+            # the badge header already shows the shared schedule; a cosmonaut row only repeats it when theirs differs
+            own_schedule = ""
+            if r_date != bg["review_date"] or deadline != bg["deadline"]:
+                own_schedule = (f'<div class="rv-sub-line"><span class="rv-sub-lbl">Window</span> {escape(_nice_window_label(r_date))}</div>'
+                                f'<div class="rv-sub-line"><span class="rv-sub-lbl">Deadline</span> <b class="rv-red">{escape(format_short_date(deadline) or deadline)}</b></div>')
 
-            cadet_cards_html.append(f"""
-            <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid var(--icy-steel); background:#FFFFFF; border-radius:12px; box-shadow:0 4px 14px rgba(7,22,41,0.05); margin-bottom:12px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                        <div class="user-avatar" style="width:34px; height:34px; font-size:0.71875rem; font-weight:800; border:1px solid var(--icy-steel); flex-shrink:0;">{escape(c_avatar)}</div>
-                        <div style="min-width:0;">
-                            <div style="font-size:0.9375rem; font-weight:800; color:var(--frost-navy); line-height:1.25;">{escape(c_name)}</div>
-                            <div style="font-size:0.78125rem; color:var(--frost-navy-75);">Band {escape(c_band)} &bull; {escape(c_track)}</div>
+            cadet_branches.append(f"""
+                <div class="asm-tree-cosmo-branch">
+                    <span class="asm-elbow" aria-hidden="true"></span>
+                    <div class="asm-cosmonaut-card is-static is-wide">
+                        <div class="asm-cosmo-identity">
+                            <span class="asm-cosmo-avatar rv-avatar">{escape(c_avatar)}</span>
+                            <div style="min-width:0;">
+                                <div class="asm-cosmo-name">{escape(c_name)}</div>
+                                <div class="asm-cosmo-chip-row">
+                                    <span class="asm-cosmo-chip is-band">Band {escape(c_band)}</span>
+                                    <span class="asm-cosmo-chip">{escape(c_track)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="asm-cosmo-progress">
+                            <div>{status_pill}</div>
+                            {proj_line}
+                            {eval_line}
+                            {own_schedule}
+                        </div>
+                        <div class="asm-cosmo-action">
+                            <button type="button" class="btn-secondary btn-sm rv-act" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id)}')">
+                                {get_icon("calendar", 13)}<span>Timeline</span>
+                            </button>
+                            {action_btn}
                         </div>
                     </div>
-                    {card_status_pill}
-                </div>
-                <div style="display:flex; gap:22px; flex-wrap:wrap; font-size:0.78125rem; color:var(--frost-navy); margin-bottom:12px;">
-                    <span>📅 Review Window: <strong style="color:#047857;">{escape(r_date)}</strong></span>
-                    <span>⏰ Submission Deadline: <strong style="color:#B91C1C;">{escape(deadline)}</strong></span>
-                </div>
-                {proj_banner_html}
-                {sub_tray_html}
-                {eval_note_html}
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id)}')" style="display:inline-flex; align-items:center; gap:6px;">
-                        📅 View Timeline
-                    </button>
-                    {card_action_btn}
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="display:inline-flex; align-items:center; gap:6px;">
-                        Cadet Assessments &rarr;
-                    </button>
-                </div>
-            </div>
-            """)
+                </div>""")
 
-        expanded_section_html = f"""
-        <div style="padding:16px 20px; background:rgba(241,245,249,0.5); display:flex; flex-direction:column; gap:12px;">
-            {"".join(cadet_cards_html)}
-        </div>
-        """ if is_expanded else ""
+        n_pending_projects = num_cadets - n_project_sent
+        if n_pending_projects <= 0:
+            create_label, create_ico = "Edit Project", get_icon("edit", 14)
+        else:
+            create_label, create_ico = "Create Project", get_icon("rocket", 14)
+
+        # the 72-hour project window starts when the Guardian publishes the badge
+        timer_html = ""
+        if n_pending_projects > 0 and badge_obj is not None:
+            timer_html = render_project_window_timer(getattr(badge_obj, "published_at", ""), large=True)
+        if n_pending_projects <= 0 and num_cadets:
+            timer_html = f'<span class="rv-sent">{get_icon("check", 14)}<span>All projects sent</span></span>'
+        window_cell = f'<div class="rv-fact is-timer"><div class="rv-fact-lbl">Project window</div><div class="rv-fact-val">{timer_html}</div></div>' if timer_html else ""
+
+        tree_html = (
+            f'<div class="rv-tree"><div class="asm-tree-cosmo-list">{"".join(cadet_branches)}</div></div>'
+            if is_expanded else ""
+        )
+        chevron = get_icon("chevron_up" if is_expanded else "chevron_down", 14)
 
         upcoming_cards_html.append(f"""
-        <div class="liquid-glass-card" style="padding:0; border:1.5px solid var(--deep-frozen-midnight); background:#FFFFFF; border-radius:12px; margin-bottom:18px; box-shadow:0 4px 18px rgba(23,52,92,0.08); overflow:hidden;">
-            <!-- Level 1 Badge Name Card (Clickable Header) -->
-            <div onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')"
-                 style="padding:16px 22px; cursor:pointer; background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.98) 100%); border-bottom:{'1.5px solid var(--icy-steel-30)' if is_expanded else 'none'}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <div style="flex:1; min-width:240px;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:0.71875rem; font-weight:900; background:#0F172A; color:#FFFFFF; padding:2px 8px; border-radius:3px; letter-spacing:0.5px;">{escape(bg["badge_code"])}</span>' if bg["badge_code"] else ''}
-                        <span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:#E2E8F0; color:#1E293B; padding:2px 7px; border-radius:3px;">BAND {escape(bg["badge_band"])}</span>
-                        {f'<span style="font-size:0.75rem; font-weight:600; color:#64748B;">{escape(bg["badge_cat"])}</span>' if bg["badge_cat"] else ''}
-                        <span class="status-pill status-active" style="font-size:0.6875rem; font-weight:700;">Upcoming Review</span>
-                        {badge_proj_pill}
-                    </div>
-                    <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0; letter-spacing:-0.3px;">
-                        {escape(bg["badge_title"])}
-                    </h3>
-                    <div style="font-size:0.75rem; color:var(--frost-navy-50); margin-bottom:8px;">
-                        📅 Review Window: <strong style="color:#047857;">{escape(bg["review_date"])}</strong> &bull; ⏰ Deadline: <strong style="color:#DC2626;">{escape(bg["deadline"])}</strong>
-                    </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-                        {"".join(roster_summary_chips)}
-                    </div>
+        <div class="rv-badge-card">
+            <div class="rv-badge-head" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')">
+                <div class="rv-badge-id">
+                    <div class="rv-badge-title" role="heading" aria-level="3">{escape(bg["badge_title"])}</div>
                 </div>
-
-                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;" onclick="event.stopPropagation();">
-                    <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')" style="font-size:0.71875rem; padding:6px 14px; font-weight:800; background:linear-gradient(135deg, #0284C7, #0369A1); border-color:#0284C7; color:#fff;">
-                        {badge_btn_text}
+                <div class="rv-badge-facts">
+                    <div class="rv-fact"><div class="rv-fact-lbl">Review window</div><div class="rv-fact-val">{escape(_nice_window_label(bg["review_date"]))}</div></div>
+                    <div class="rv-fact"><div class="rv-fact-lbl">Submission deadline</div><div class="rv-fact-val rv-red">{escape(format_short_date(bg["deadline"]) or bg["deadline"])}</div></div>
+                    {window_cell}
+                </div>
+                <div class="rv-badge-actions" onclick="event.stopPropagation();">
+                    <button type="button" class="btn-metal btn-sm rv-create" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')">
+                        {create_ico}<span>{create_label}</span>
                     </button>
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')" style="font-size:0.71875rem; padding:6px 14px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background:#FFFFFF; border:1.5px solid #CBD5E1; color:#1E293B;">
-                        👥 {num_cadets} Mapped Cadet{'s' if num_cadets != 1 else ''} {chevron}
+                    <button type="button" class="btn-secondary btn-sm rv-toggle" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')">
+                        {get_icon("users", 14)}<span>{num_cadets} mapped cosmonaut{'s' if num_cadets != 1 else ''}</span>{chevron}
                     </button>
                 </div>
             </div>
-
-            <!-- Level 2/3 Dedicated Cadet Cards -->
-            {expanded_section_html}
+            {tree_html}
         </div>
         """)
 
@@ -4834,20 +4884,15 @@ def render_reviewer_badge_schedule(
             f'<div style="font-size:0.75rem; color:#0369A1; margin-bottom:8px;"><strong>Allocated Project:</strong> {escape(proj_c.title)}</div>'
             if proj_c and getattr(proj_c, "title", "") else ""
         )
-        deliverables_tray_c = _render_review_deliverables_tray(sub_c) if sub_c else ""
 
         if sub_c:
             view_btn_html = f"""
-            <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub_c.id)}')" style="font-size:0.71875rem; font-weight:800; padding:7px 14px;">
-                📊 Inspect Deliverables &amp; Marksheet &rarr;
+            <button type="button" class="btn-metal btn-sm rv-act rv-assess" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub_c.id)}')">
+                {get_icon("award", 13)}<span>Assessment</span>
             </button>
             """
         else:
-            view_btn_html = """
-            <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-size:0.71875rem; font-weight:700;">
-                View Assessment Record &rarr;
-            </button>
-            """
+            view_btn_html = ""
 
         completed_cards_html.append(f"""
         <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid rgba(16,185,129,0.45); background:rgba(255,255,255,0.94); margin-bottom:12px; border-radius:12px;">
@@ -4880,31 +4925,15 @@ def render_reviewer_badge_schedule(
                 {"".join(score_pills)}
             </div>
             {proj_line_c}
-            {deliverables_tray_c}
+            
             {feedback_preview}
         </div>
         """)
 
     return f"""
     <div>
-        <!-- Top Heading -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {escape(user_band)}</span>
-                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">Project Reviewer</span>
-                </div>
-                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review Schedule</h1>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
-                    &larr; Dashboard
-                </button>
-                <button type="button" class="btn-metal btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')" style="font-weight:700;">
-                    Assessment Queue &rarr;
-                </button>
-            </div>
-        </div>
+        <!-- The page title is shown in the Back-button row (hoisted); no band chip, role label or shortcut buttons here -->
+        <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Badge Review Schedule</h1>
 
         <!-- Upcoming Badge Reviews Section -->
         <div class="liquid-glass-card" style="padding:22px; margin-bottom:28px;">
@@ -4943,259 +4972,6 @@ def render_reviewer_badge_schedule(
 # 6.13 REVIEWER ASSESSMENT OF CADET DELIVERABLES WORKSPACE
 # ==============================================================================
 
-def render_reviewer_assessment_queue(
-    submissions: List[ProjectSubmission],
-    assessments_by_sub: Dict[str, AssessmentMarksheet],
-    badges_map: Dict[str, Badge],
-    cosmonauts_map: Dict[str, User],
-    current_user: User,
-    status_filter: str = "all"
-) -> str:
-    """
-    Renders the Cadet Project Assessments queue for eligible higher-band reviewers.
-    Allows reviewers to view mapped cadets, submitted deliverables, and submit their 50-mark review assessment.
-    """
-    from starapp.storage import store
-
-    # Deduplicate submissions so only ONE submission per cadet per badge is shown
-    deduped_subs = {}
-    for s in submissions:
-        key = (s.cosmonaut_id, s.badge_id)
-        if key not in deduped_subs:
-            deduped_subs[key] = s
-        else:
-            if getattr(s, "attempt_number", 1) >= getattr(deduped_subs[key], "attempt_number", 1):
-                deduped_subs[key] = s
-
-    unique_submissions = list(deduped_subs.values())
-
-    # Find submissions of cadets assigned strictly to this reviewer
-    assigned_subs = []
-    is_guardian = (getattr(current_user, "role", "") == "guardian" or "guardian" in getattr(current_user, "roles", []))
-    _all_band_mappings = store.get_band_mappings() if store else []
-    _mappings_by_badge: Dict[str, List[Dict[str, Any]]] = {}  # computed once per badge, not once per submission
-    for s in unique_submissions:
-        b_obj = badges_map.get(s.badge_id) or (store.get_badge(s.badge_id) if store else None)
-        if s.badge_id not in _mappings_by_badge:
-            _mappings_by_badge[s.badge_id] = [
-                m for m in _all_band_mappings
-                if (m.get("badge_id") == s.badge_id or (b_obj and m.get("badge") in (b_obj.title, b_obj.code, b_obj.id)))
-            ]
-        badge_mappings = _mappings_by_badge[s.badge_id] if store else []
-
-        is_assigned = False
-        if is_guardian:
-            is_assigned = True
-        elif badge_mappings:
-            for m in badge_mappings:
-                if current_user.id in m.get("reviewers", []) and s.cosmonaut_id in m.get("cosmonauts", []):
-                    is_assigned = True
-                    break
-        else:
-            tl = store.get_timeline(s.badge_id, s.cosmonaut_id) if store else None
-            if tl and getattr(tl, "reviewer_id", "") == current_user.id:
-                is_assigned = True
-            elif b_obj and getattr(b_obj, "assigned_reviewer_id", "") == current_user.id and s.cosmonaut_id in getattr(b_obj, "assigned_cosmonaut_ids", []):
-                is_assigned = True
-
-        if is_assigned:
-            assigned_subs.append(s)
-
-    filtered = assigned_subs
-    if status_filter != "all":
-        if status_filter == "pending":
-            filtered = [s for s in assigned_subs if s.status in ("pending", "submitted")]
-        elif status_filter == "reviewed":
-            filtered = [s for s in assigned_subs if s.status == "reviewer_assessed"]
-        elif status_filter == "approved":
-            filtered = [s for s in assigned_subs if s.status == "approved"]
-        elif status_filter == "retake":
-            filtered = [s for s in assigned_subs if s.status in ("retake_required", "resubmission_requested")]
-
-    pending_cnt = len([s for s in assigned_subs if s.status in ("pending", "submitted")])
-    reviewed_cnt = len([s for s in assigned_subs if s.status == "reviewer_assessed"])
-    approved_cnt = len([s for s in assigned_subs if s.status == "approved"])
-    retake_cnt = len([s for s in assigned_subs if s.status in ("retake_required", "resubmission_requested")])
-
-    filter_tabs = [
-        ("all", "All Assigned", len(assigned_subs)),
-        ("pending", "Awaiting Your Review", pending_cnt),
-        ("reviewed", "Assessed by You", reviewed_cnt),
-        ("approved", "Awarded by Guardian", approved_cnt),
-        ("retake", "Retake Required", retake_cnt)
-    ]
-    filter_buttons = []
-    for f_id, f_label, f_count in filter_tabs:
-        is_active = f_id == status_filter
-        st = "background:var(--deep-frozen-midnight); color:var(--snow-white); font-weight:700;" if is_active else "background:rgba(255,255,255,0.7); color:var(--frost-navy); font-weight:600;"
-        filter_buttons.append(
-            f'<button type="button" class="btn-secondary btn-sm" style="{st}" onclick="window.StarAppBridge.dispatchAction(\'filter_reviewer_assessments\', \'{f_id}\')">{f_label} ({f_count})</button>'
-        )
-
-    cards = []
-    for sub in filtered:
-        cosmo = cosmonauts_map.get(sub.cosmonaut_id)
-        badge = badges_map.get(sub.badge_id)
-        cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
-        cosmo_avatar = getattr(cosmo, "avatar", "AN") or "AN"
-        cosmo_band = getattr(cosmo, "band", "B1")
-        badge_code = badge.code if badge else sub.badge_id
-        badge_title = badge.title if badge else "Milestone Deliverable"
-        badge_category = getattr(badge, "category", "Core Engineering")
-
-        tl = store.get_timeline(sub.badge_id, sub.cosmonaut_id)
-        r_window = []
-        if tl and getattr(tl, "review_window_json", None):
-            try:
-                r_window = json.loads(tl.review_window_json)
-            except Exception:
-                r_window = []
-        window_str = " → ".join(r_window) if r_window else "Not scheduled"
-
-        rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
-
-        # File names / payloads
-        pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Deliverable.pdf"
-        code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
-        github_url = getattr(sub, "github_url", "") or (sub.payload if sub.submission_type == "github" else "") or ""
-
-        pdf_ic = get_icon("file_text", 13, "margin-right:4px; color:#D32F2F;")
-        code_ic = get_icon("code", 13, "margin-right:4px; color:var(--deep-frozen-midnight);")
-        gh_ic = get_icon("github", 13, "margin-right:4px; color:var(--frost-navy);")
-        clock_ic = get_icon("clock", 12, "margin-right:4px; opacity:0.7;")
-        arrow_ic = get_icon("arrow_right", 12, "margin-left:5px;")
-
-        card_border = "border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.88) 100%);"
-        if sub.status in ("pending", "submitted"):
-            card_border = "border:2px solid #06B6D4; box-shadow:0 6px 20px rgba(6,182,212,0.15); background:linear-gradient(135deg, rgba(234,244,255,0.98) 0%, rgba(255,255,255,0.95) 100%);"
-
-        submitted_date_str = escape(sub.submitted_at[:16].replace("T", " ")) + " UTC"
-
-        # Assessment status badges
-        if rev_asm:
-            rev_badge = f'<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Your Score: {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)</span>'
-        else:
-            rev_badge = '<span style="font-size:0.71875rem; font-weight:800; color:#B45309; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 10px; border-radius:var(--radius-xs);">Awaiting Your Evaluation</span>'
-
-        cards.append(f"""
-        <div class="liquid-glass-card interactive" style="{card_border} border-radius:var(--radius-md); padding:20px 24px; margin-bottom:16px; cursor:pointer;" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
-            <!-- Top Row: Cadet & Status -->
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--icy-steel-30); padding-bottom:10px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="width:34px; height:34px; border-radius:50%; background:var(--deep-frozen-midnight); color:var(--snow-white); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.75rem; box-shadow:0 2px 6px rgba(7,22,41,0.25);">
-                        {escape(cosmo_avatar)}
-                    </div>
-                    <div>
-                        <div style="font-size:0.90625rem; font-weight:800; color:var(--frost-navy); line-height:1.2;">{escape(cosmo_name)} <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; color:#0E7490;">(Band {escape(cosmo_band)})</span></div>
-                        <div style="font-size:0.6875rem; color:var(--frost-navy-50);">Engineering Cadet &bull; Assigned to You as Peer Reviewer</div>
-                    </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:700; background:rgba(23,52,92,0.06); color:var(--frost-navy); padding:3px 8px; border-radius:var(--radius-xs);">Attempt #{sub.attempt_number}</span>
-                    {render_status_pill(sub.status)}
-                </div>
-            </div>
-
-            <!-- Middle Row: Badge Milestone & Date -->
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                        <span style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge_code)}</span>
-                        <span style="font-size:0.6875rem; font-weight:700; background:rgba(23,52,92,0.08); color:var(--frost-navy); padding:2px 7px; border-radius:var(--radius-xs);">{escape(badge_category)}</span>
-                    </div>
-                    <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); line-height:1.3;">{escape(badge_title)}</div>
-                </div>
-                <div style="font-size:0.71875rem; color:var(--frost-navy-50); font-family:var(--font-family-mono); display:flex; align-items:center;">
-                    {clock_ic} Submitted: {submitted_date_str}
-                </div>
-            </div>
-
-            <!-- Window & Score Row -->
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding:8px 12px; background:rgba(234,244,255,0.6); border-radius:var(--radius-xs); border:1px solid var(--icy-steel-30);">
-                <div style="font-size:0.6875rem; color:var(--frost-navy-75);">
-                    <strong>Assigned Review Window:</strong> <span style="font-family:var(--font-family-mono);">{escape(window_str)}</span>
-                </div>
-                <div>
-                    {rev_badge}
-                </div>
-            </div>
-
-            <!-- Deliverables Files Tray -->
-            <div style="background:rgba(255,255,255,0.7); border:1px solid var(--icy-steel-40); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:14px;">
-                <div style="font-size:0.625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--frost-navy-50); margin-bottom:6px;">Submitted Deliverables:</div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
-                        {pdf_ic} {escape(pdf_name)}
-                    </span>
-                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
-                        {code_ic} {escape(code_name)}
-                    </span>
-                    <span style="display:inline-flex; align-items:center; font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-50); padding:4px 10px; border-radius:var(--radius-xs);">
-                        {gh_ic} {escape(github_url.split('/')[-1] if '/' in github_url else 'GitHub Repo')}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Footer Action Row -->
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                <span style="font-size:0.6875rem; font-weight:600; color:var(--frost-navy-50);">Click to inspect PDF, Code &amp; evaluate against 5-criterion 50-mark rubric</span>
-                <button type="button" class="btn-metal btn-sm" style="font-weight:700; font-size:0.75rem; padding:6px 16px;" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{sub.id}')">
-                    Inspect Deliverables &amp; Evaluate (50 Marks) {arrow_ic}
-                </button>
-            </div>
-        </div>
-        """)
-
-    filter_tray = "".join(filter_buttons)
-    cards_html = "".join(cards) if cards else f"""
-    <div class="liquid-glass-card" style="padding:48px 24px; text-align:center; border-radius:var(--radius-md); border:1.5px dashed var(--icy-steel-40);">
-        <div style="width:48px; height:48px; margin:0 auto 12px; border-radius:50%; background:rgba(6,182,212,0.1); display:flex; align-items:center; justify-content:center; color:#0891B2;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        </div>
-        <h3 style="font-size:1rem; font-weight:800; color:var(--frost-navy); margin:0 0 4px 0;">No Cadet Deliverables in this Queue</h3>
-        <p style="font-size:0.8125rem; color:var(--frost-navy-50); margin:0; max-width:440px; margin:0 auto;">
-            When cadets mapped to you submit project deliverables, they will appear here for your formal technical inspection and 50-mark rubric scoring.
-        </p>
-    </div>
-    """
-
-    return f"""
-    <div>
-        <!-- Heading -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:16px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 8px; border-radius:var(--radius-xs);">BAND {getattr(current_user, 'band', 'B2')}</span>
-                    <span style="font-size:0.6875rem; font-weight:700; color:var(--frost-navy-50);">Authorized Peer Reviewer Workspace</span>
-                </div>
-                <h1 style="font-size:1.85rem; font-weight:800; color:var(--frost-navy); letter-spacing:-0.5px; margin:0 0 4px 0;">Cadet Project Assessments</h1>
-                <p style="font-size:0.84375rem; color:var(--frost-navy-75); margin:0;">
-                    Review incoming project deliverables submitted by mapped cadets. Grade the 5-criterion 50-mark rubric and submit your assessment.
-                </p>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-                {render_back_button()}
-                <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_dashboard')" style="font-weight:700;">
-                    &larr; Dashboard
-                </button>
-            </div>
-        </div>
-
-        <!-- Filter tabs -->
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:16px;">
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                {filter_tray}
-            </div>
-        </div>
-
-        <!-- Cards List -->
-        <div>
-            {cards_html}
-        </div>
-    </div>
-    """
-
-
 def render_reviewer_assessment_detail(
     submission: ProjectSubmission,
     badge: Badge,
@@ -5232,6 +5008,35 @@ def render_reviewer_assessment_detail(
     init_qa = existing_reviewer_asm.qa if existing_reviewer_asm else 9.0
     init_total = init_bu + init_ar + init_tk + init_pr + init_qa
     init_pct = (init_total / 50.0) * 100.0
+
+    # Marks are final per attempt: once submitted the whole panel is read-only (a new attempt opens a new assessment).
+    locked = existing_reviewer_asm is not None
+    thr = float(getattr(badge, "passing_percentage", 70.0) or 70.0) if badge else 70.0
+    rec_key = reviewer_recommendation_key(existing_reviewer_asm) if locked else ""
+    if not rec_key:
+        rec_key = "approve" if init_pct >= thr else "resubmission_requested"
+    dis = " disabled" if locked else ""
+    ro = " readonly" if locked else ""
+    dec_css = {"approve": "is-approve", "resubmission_requested": "is-resubmit", "reject": "is-reject"}
+    dec_buttons = "".join(
+        f'<button type="button" role="radio" class="lg-dec-opt {dec_css[k]}{" is-on" if k == rec_key else ""}" aria-checked="{"true" if k == rec_key else "false"}" '
+        f'data-value="{k}" data-cta="Submit Assessment" data-desc="{escape(REVIEWER_RECOMMENDATIONS[k]["desc"])}"{dis} onclick="window.StarAppBridge.setReviewDecision(this)">'
+        f'<span class="lg-dec-ico">{get_icon(REVIEWER_RECOMMENDATIONS[k]["icon"], 16)}</span><span class="lg-dec-title">{REVIEWER_RECOMMENDATIONS[k]["label"]}</span></button>'
+        for k in ("approve", "resubmission_requested", "reject"))
+    dec_options = "".join(f'<option value="{k}"{" selected" if k == rec_key else ""}>{REVIEWER_RECOMMENDATIONS[k]["label"]}</option>' for k in ("approve", "resubmission_requested", "reject"))
+    decision_block = f"""
+                        <div>
+                            <span class="lg-rubric-field-label" id="rubric-decision-label">Your recommendation to the Guardian</span>
+                            <select id="rubric-decision" hidden data-auto="{0 if locked else 1}" data-thr="{thr:g}" aria-labelledby="rubric-decision-label">{dec_options}</select>
+                            <div class="lg-dec-list" role="radiogroup" aria-labelledby="rubric-decision-label">{dec_buttons}</div>
+                            <div class="lg-dec-desc" id="rubric-decision-desc">{escape(REVIEWER_RECOMMENDATIONS[rec_key]["desc"])}</div>
+                        </div>"""
+    if locked:
+        footer_html = (f'<div class="lg-rubric-locked">{get_icon("lock", 14)}<span>Marks submitted and locked. The Guardian now checks your '
+                       f'recommendation and gives the final decision. A new assessment opens only if the cosmonaut makes a new attempt.</span></div>')
+    else:
+        footer_html = ('<button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.8125rem; font-weight:800; letter-spacing:0.2px;">'
+                       '<span id="rubric-submit-label">Submit Assessment</span> &rarr;</button>')
 
     init_strengths = existing_reviewer_asm.strength_areas if existing_reviewer_asm else "Robust technical architecture patterns and clean modular code."
     init_improvements = existing_reviewer_asm.improvement_areas if existing_reviewer_asm else "Ensure comprehensive unit testing across edge cases."
@@ -5322,8 +5127,8 @@ def render_reviewer_assessment_detail(
             <div class="review-left-column" style="background:#FFFFFF; border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 18px rgba(7,22,41,0.06); display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden;">
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(234,244,255,0.7); border-bottom:1px solid var(--icy-steel-50); flex-shrink:0; height:42px; box-sizing:border-box;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:0.71875rem; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_assessments')">
-                            {get_icon("chevron_left", 14)} Back to Cadet Assessments
+                        <button type="button" class="btn-secondary btn-sm" style="font-weight:700; font-size:0.71875rem; padding:4px 10px; display:inline-flex; align-items:center; gap:4px;" onclick="window.StarAppBridge.dispatchAction('nav_cosmonaut', 'c_badge_reviews')">
+                            {get_icon("chevron_left", 14)} Back to Badge Reviews
                         </button>
                         <div class="asm-deliverable-toolbar-group">
                             <span class="asm-deliverable-icon-badge">{active_tab_icon}</span>
@@ -5351,7 +5156,7 @@ def render_reviewer_assessment_detail(
                     <span id="rubric-total-display" style="display:none;"></span>
                 </div>
 
-                <form id="reviewer-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); window.StarAppBridge.submitReviewerAssessment('{submission.id}');">
+                <form id="reviewer-rubric-form" style="flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; margin:0;" onsubmit="event.preventDefault(); {'' if locked else "window.StarAppBridge.submitReviewerAssessment('" + submission.id + "');"}">
                     <div class="review-rubric-body-fit">
                         <!-- Cadet Details Bar -->
                         <div class="lg-rubric-meta-bar">
@@ -5368,35 +5173,35 @@ def render_reviewer_assessment_detail(
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">1. Business Understanding</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">2. Architecture Report</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">3. Technical Knowledge</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">4. Presentation</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">5. Q&amp;A Technical Defense</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
@@ -5412,24 +5217,23 @@ def render_reviewer_assessment_detail(
                         <div class="lg-rubric-fields-pair">
                             <div>
                                 <label class="lg-rubric-field-label" for="rubric-strengths">Technical Strengths</label>
-                                <textarea id="rubric-strengths" rows="2" class="lg-rubric-textarea">{escape(init_strengths)}</textarea>
+                                <textarea id="rubric-strengths" rows="2" class="lg-rubric-textarea"{ro}>{escape(init_strengths)}</textarea>
                             </div>
                             <div>
                                 <label class="lg-rubric-field-label" for="rubric-improvements">Improvements</label>
-                                <textarea id="rubric-improvements" rows="2" class="lg-rubric-textarea">{escape(init_improvements)}</textarea>
+                                <textarea id="rubric-improvements" rows="2" class="lg-rubric-textarea"{ro}>{escape(init_improvements)}</textarea>
                             </div>
                         </div>
 
                         <div>
                             <label class="lg-rubric-field-label" for="rubric-feedback">Reviewer Remarks &amp; Recommendations</label>
-                            <textarea id="rubric-feedback" rows="2" class="lg-rubric-textarea">{escape(init_feedback)}</textarea>
+                            <textarea id="rubric-feedback" rows="2" class="lg-rubric-textarea"{ro}>{escape(init_feedback)}</textarea>
                         </div>
                     </div>
 
                     <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
-                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.8125rem; font-weight:800; letter-spacing:0.2px;">
-                            Submit Reviewer Assessment &rarr;
-                        </button>
+                        <div class="lg-decision-dock">{decision_block}</div>
+                        {footer_html}
                     </div>
                 </form>
             </div>
@@ -5442,101 +5246,272 @@ def render_reviewer_assessment_detail(
 # 6.13 REVIEWER MODALS: TIMELINE & GEMINI AI PROJECT CREATOR
 # ==============================================================================
 
+def _render_milestone_steps(dt: Dict[str, Any], review_days: List[str], published_at: str, project_step: Dict[str, Any]) -> str:
+    """The vertical timeline of connected dots (`.tlv-*`) shared by the reviewer's and the cosmonaut's Timeline popups."""
+    import datetime as _dt
+    today = _dt.date.today()
+
+    def _d(value: Any) -> Optional[_dt.date]:
+        try:
+            return _dt.date.fromisoformat(str(value)[:10])
+        except Exception:
+            return None
+
+    def _fmt(value: Any) -> str:
+        return format_short_date(value) or ""
+
+    def _range(a: Any, b: Any) -> str:
+        fa, fb = _fmt(a), _fmt(b)
+        if fa and fb and fa != fb:
+            return f'<span class="tlv-nw">{escape(fa)}</span> <span class="tlv-arrow">&rarr;</span> <span class="tlv-nw">{escape(fb)}</span>'
+        return f'<span class="tlv-nw">{escape(fa or fb)}</span>' if (fa or fb) else '<span class="tlv-unset">Not set</span>'
+
+    def _state(start: Any, end: Any = None) -> str:
+        s_, e_ = _d(start), _d(end if end else start)
+        if not s_ and not e_:
+            return "next"
+        s_ = s_ or e_
+        e_ = e_ or s_
+        if not end:                                    # a single-day event is either behind us or ahead of us
+            return "done" if s_ <= today else "next"
+        if e_ < today:
+            return "done"
+        if s_ <= today <= e_:
+            return "now"
+        return "next"
+
+    state_label = {"done": "Done", "now": "In progress", "next": "Upcoming", "late": "Window ended"}
+    steps: List[str] = []
+
+    def _step(title: str, hint: str, when_html: str, state: str, note_html: str = "", tone: str = "") -> None:
+        steps.append(f"""
+            <li class="tlv-step is-{state} {tone}">
+                <span class="tlv-dot" aria-hidden="true"></span>
+                <div class="tlv-card">
+                    <div class="tlv-card-top">
+                        <div class="tlv-title">{escape(title)}</div>
+                        <span class="tlv-state is-{state}">{state_label[state]}</span>
+                    </div>
+                    <div class="tlv-when">{when_html}</div>
+                    <div class="tlv-hint">{escape(hint)}</div>
+                    {note_html}
+                </div>
+            </li>""")
+
+    pub_date = (published_at or "")[:10] or dt.get("publication_date") or dt.get("assignment_date")
+    _step("Allocated & published", "The Guardian published the badge to its mapped cosmonauts.", _range(pub_date, None), _state(pub_date))
+    _step(project_step["title"], project_step["hint"], project_step["when_html"], project_step["state"], project_step.get("note_html", ""))
+    _step("Learning period", "Cosmonauts study the badge's topics.", _range(dt.get("learning_start_date"), dt.get("learning_end_date")),
+          _state(dt.get("learning_start_date"), dt.get("learning_end_date")))
+    _step("Project sprint", "Cosmonauts build the project and prepare their deliverables.", _range(dt.get("project_start_date"), dt.get("project_end_date")),
+          _state(dt.get("project_start_date"), dt.get("project_end_date")))
+    _step("Submission deadline", "Deliverables (PDF, code, GitHub) are due.", _range(dt.get("submission_deadline"), None),
+          _state(dt.get("submission_deadline")), tone="is-deadline")
+    rv_first = review_days[0] if review_days else dt.get("review_date")
+    rv_last = review_days[-1] if review_days else dt.get("review_date")
+    rv_note = f'<span class="tlv-note">{len(review_days)} working days</span>' if len(review_days) > 1 else ""
+    _step("Review window", "The reviewer assesses the deliverables on the 50-mark rubric.", _range(rv_first, rv_last), _state(rv_first, rv_last), rv_note)
+    _step("Certification award", "The Guardian gives the final decision and awards the badge.", _range(dt.get("expected_award_date"), None), _state(dt.get("expected_award_date")))
+    return f'<ol class="tlv-steps">{"".join(steps)}</ol>'
+
+
+def _timeline_inputs(badge: Badge, tl: Any) -> Any:
+    """(schedule dict, review-window days) from a timeline row, falling back to the badge's default timeline."""
+    dt = dict(badge.default_timeline or {})
+    if tl:
+        for k in ("assignment_date", "publication_date", "learning_start_date", "learning_end_date", "project_start_date",
+                  "project_end_date", "submission_deadline", "review_date", "expected_award_date"):
+            v = getattr(tl, k, "")
+            if v:
+                dt[k] = v
+    days: List[str] = []
+    if tl and getattr(tl, "review_window_json", None):
+        try:
+            parsed = json.loads(tl.review_window_json)
+            days = [str(d) for d in parsed if d] if isinstance(parsed, list) else []
+        except Exception:
+            days = []
+    return dt, (days or list(dt.get("review_dates") or []))
+
+
 def render_reviewer_badge_timeline_modal(badge: Optional[Badge], current_user: User, store: Any = None) -> str:
+    """
+    The reviewer's Timeline for one badge: who it is for (mapped cosmonauts, projects sent) and the milestone schedule as a vertical
+    timeline of connected dots - the 72-hour window to send projects, the learning period, the project sprint, the submission
+    deadline, the review window and the award. Each step says whether it is done, running now, or still ahead.
+    """
+    import datetime as _dt
+    from starapp.storage import project_window_seconds_left
     if not badge:
         return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
-    dt = badge.default_timeline or {}
-    tl = store.get_timeline(badge.id, "m_b1_1") if store else None
-    if tl:
-        dt = {
-            "assignment_date": getattr(tl, "assignment_date", "2026-11-10"),
-            "publication_date": getattr(tl, "publication_date", "2026-11-10"),
-            "learning_start_date": getattr(tl, "learning_start_date", "2026-11-11"),
-            "learning_end_date": getattr(tl, "learning_end_date", "2026-11-20"),
-            "project_start_date": getattr(tl, "project_start_date", "2026-11-21"),
-            "project_end_date": getattr(tl, "project_end_date", "2026-12-01"),
-            "submission_deadline": getattr(tl, "submission_deadline", "2026-12-03"),
-            "review_date": getattr(tl, "review_date", "2026-12-06"),
-            "expected_award_date": getattr(tl, "expected_award_date", "2026-12-08")
-        }
-    alloc_date = dt.get("assignment_date", "2026-11-10")
-    learn_start = dt.get("learning_start_date", "2026-11-11")
-    learn_end = dt.get("learning_end_date", "2026-11-20")
-    proj_start = dt.get("project_start_date", "2026-11-21")
-    proj_end = dt.get("project_end_date", "2026-12-01")
-    sub_deadline = dt.get("submission_deadline", "2026-12-03")
-    review_date = dt.get("review_date", "2026-12-06")
-    award_date = dt.get("expected_award_date", "2026-12-08")
+
+    mapped = _mapped_cosmonauts_for_reviewer_badge(store, current_user, badge)
+    tl = store.get_timeline(badge.id, mapped[0].id) if (store and mapped) else None
+    dt, review_days = _timeline_inputs(badge, tl)
+
+    n_total = len(mapped)
+    n_sent = sum(1 for c in mapped if store and store.get_project_prompt_for_cadet(badge.id, c.id))
+    published_at = getattr(badge, "published_at", "") or ""
+    left = project_window_seconds_left(published_at)
+    pw_start = published_at[:10]
+    pw_end = ""
+    if published_at:
+        try:
+            pw_end = (_dt.datetime.fromisoformat(published_at.replace("Z", "+00:00")) + _dt.timedelta(hours=72)).date().isoformat()
+        except Exception:
+            pw_end = ""
+    if n_total and n_sent >= n_total:
+        pw_state, pw_note = "done", f'<span class="tlv-note is-ok">All {n_total} project{"" if n_total == 1 else "s"} sent</span>'
+    elif left is None:
+        pw_state, pw_note = "next", '<span class="tlv-note">Starts when the Guardian publishes the badge</span>'
+    elif left == 0:
+        pw_state, pw_note = "late", f'<span class="tlv-note is-bad">{n_total - n_sent} project{"" if n_total - n_sent == 1 else "s"} still to send</span>'
+    else:
+        pw_state, pw_note = "now", render_project_window_timer(published_at)
+    when = (f'<span class="tlv-nw">{escape(format_short_date(pw_start))}</span> <span class="tlv-arrow">&rarr;</span> <span class="tlv-nw">{escape(format_short_date(pw_end))}</span>'
+            if pw_start and pw_end else '<span class="tlv-unset">Starts at publish</span>')
+    steps_html = _render_milestone_steps(dt, review_days, published_at, {
+        "title": "Project window (72 hours)", "hint": "Create the project and send it to every mapped cosmonaut.",
+        "when_html": when, "state": pw_state, "note_html": pw_note})
+
+    chips = "".join(f'<span class="tlv-person">{escape(c.name)}</span>' for c in mapped[:6])
+    if len(mapped) > 6:
+        chips += f'<span class="tlv-person is-more">+{len(mapped) - 6} more</span>'
+    if not mapped:
+        chips = '<span class="tlv-unset">No cosmonauts are mapped to you for this badge yet.</span>'
 
     return f"""
-    <div style="padding:10px 6px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1.5px solid var(--icy-steel-30); padding-bottom:12px; flex-wrap:wrap; gap:10px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:var(--font-family-mono); font-size:0.71875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:3px;">{escape(badge.code)}</span>
-                    <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(badge.target_band)}</span>
-                    <span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">Milestone Timeline</span>
-                </div>
-                <h3 style="font-size:1.3rem; font-weight:800; color:var(--frost-navy); margin:6px 0 0 0;">{escape(badge.title)}</h3>
+    <div class="tlv-wrap">
+        <div class="tlv-head">
+            <div class="tlv-head-chips">
+                <span class="tlv-code">{escape(badge.code)}</span>
+                <span class="tlv-band">BAND {escape(getattr(badge, "target_band", "B1"))}</span>
+                <span class="rv-pill is-green">Milestone timeline</span>
             </div>
-            <span style="font-size:0.75rem; font-weight:700; color:#047857; background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.25); padding:4px 10px; border-radius:var(--radius-xs);">
-                Reviewer: {escape(current_user.name)}
-            </span>
+            <div class="tlv-badge-title" role="heading" aria-level="3">{escape(badge.title)}</div>
         </div>
 
-        <!-- 3-Day Allocation Window Notice -->
-        <div style="background:linear-gradient(135deg, rgba(2,132,199,0.08) 0%, rgba(234,244,255,0.7) 100%); border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:14px 16px; margin-bottom:20px;">
-            <div style="font-size:0.8125rem; font-weight:800; color:#0369A1; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                <span>⏱️ 3-Day Milestone Preparation Window Active</span>
-            </div>
-            <div style="font-size:0.78125rem; color:var(--frost-navy-75); line-height:1.5;">
-                Both Reviewer and Cadets have an allocated 3-day window:
-                <br>&bull; <strong>Cadets:</strong> Dedicated time for foundational self-study and learning concepts.
-                <br>&bull; <strong>Reviewer ({escape(current_user.name)}):</strong> Dedicated window to author and dispatch the milestone project prompt via Gemini AI.
-            </div>
+        <div class="tlv-facts">
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Reviewer</div><div class="tlv-fact-val">{escape(current_user.name)}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Mapped cosmonauts</div><div class="tlv-fact-val">{n_total}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Projects sent</div><div class="tlv-fact-val">{n_sent} / {n_total}</div></div>
         </div>
+        <div class="tlv-people">{chips}</div>
 
-        <!-- Milestone Steppers Deck -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px;">
-            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">1. Allocation &amp; Publish</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(alloc_date)}</div>
-                <div style="font-size:0.6875rem; color:#047857; margin-top:2px;">Guardian Approved</div>
-            </div>
-            <div style="background:#fff; border:1.5px solid #0284C7; border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:#0284C7; text-transform:uppercase;">2. 3-Day Prep &amp; Learning</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#0369A1; margin-top:4px;">{escape(learn_start)} &rarr; {escape(learn_end)}</div>
-                <div style="font-size:0.6875rem; color:#0284C7; margin-top:2px;">Project Draft &amp; Study</div>
-            </div>
-            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">3. Project Sprint</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(proj_start)} &rarr; {escape(proj_end)}</div>
-                <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:2px;">Code &amp; PDF Implementation</div>
-            </div>
-            <div style="background:rgba(239,68,68,0.05); border:1.5px solid rgba(239,68,68,0.3); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:#DC2626; text-transform:uppercase;">4. Submission Cutoff</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#DC2626; margin-top:4px;">{escape(sub_deadline)}</div>
-                <div style="font-size:0.6875rem; color:#DC2626; margin-top:2px;">Strict Deliverables Due</div>
-            </div>
-            <div style="background:rgba(5,150,105,0.05); border:1.5px solid rgba(5,150,105,0.3); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:#047857; text-transform:uppercase;">5. 3-Day Review Window</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:#047857; margin-top:4px;">{escape(review_date)}</div>
-                <div style="font-size:0.6875rem; color:#047857; margin-top:2px;">50-Mark Rubric Assessment</div>
-            </div>
-            <div style="background:#fff; border:1px solid var(--icy-steel-30); border-radius:var(--radius-sm); padding:12px;">
-                <div style="font-size:0.625rem; font-weight:800; color:var(--frost-navy-50); text-transform:uppercase;">6. Certification Award</div>
-                <div style="font-family:var(--font-family-mono); font-size:0.75rem; font-weight:800; color:var(--frost-navy); margin-top:4px;">{escape(award_date)}</div>
-                <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:2px;">Guardian Final Publication</div>
-            </div>
-        </div>
+        {steps_html}
 
-        <div style="display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--icy-steel-30); padding-top:14px;">
-            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">
-                Close
+        <div class="tlv-footer">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Close</button>
+            <button type="button" class="btn-metal" style="display:inline-flex; align-items:center; gap:8px; font-weight:800;" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(badge.id)}')">
+                {get_icon("rocket", 14)}<span>{"Edit Project" if (n_total and n_sent >= n_total) else "Create Project"}</span>
             </button>
-            <button type="button" class="btn-metal" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(badge.id)}')">
-                ✨ Author Project Specification &rarr;
-            </button>
+        </div>
+    </div>
+    """
+
+
+def render_cosmonaut_timeline_modal(badge: Optional[Badge], current_user: User, store: Any = None) -> str:
+    """The cosmonaut's own schedule for one badge (live: it re-renders while open). Read from THEIR timeline."""
+    import datetime as _dt
+    from starapp.storage import project_window_seconds_left
+    if not badge:
+        return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
+    tl = store.get_timeline(badge.id, current_user.id) if store else None
+    dt, review_days = _timeline_inputs(badge, tl)
+    published_at = getattr(badge, "published_at", "") or ""
+    received = bool(store and store.get_project_prompt_for_cadet(badge.id, current_user.id))
+    rev_id = store.get_mapped_reviewer_id(badge.id, current_user.id) if store else ""
+    rev = store.get_user_by_id(rev_id) if (store and rev_id) else None
+    rev_name = rev.name if rev else "your reviewer"
+    left = project_window_seconds_left(published_at)
+    if received:
+        state, note = "done", '<span class="tlv-note is-ok">Project received - open "Project Allocated" on the badge</span>'
+    elif left is None:
+        state, note = "next", '<span class="tlv-note">Your reviewer starts when the Guardian publishes the badge</span>'
+    elif left == 0:
+        state, note = "late", f'<span class="tlv-note is-bad">{escape(rev_name)} has not sent it yet</span>'
+    else:
+        state, note = "now", render_project_window_timer(published_at, suffix="until your project is sent")
+    pw_end = ""
+    if published_at:
+        try:
+            pw_end = (_dt.datetime.fromisoformat(published_at.replace("Z", "+00:00")) + _dt.timedelta(hours=72)).date().isoformat()
+        except Exception:
+            pw_end = ""
+    when = (f'<span class="tlv-nw">Expected by {escape(format_short_date(pw_end))}</span>' if pw_end else '<span class="tlv-unset">After the badge is published</span>')
+    steps_html = _render_milestone_steps(dt, review_days, published_at, {
+        "title": "Project from your reviewer", "hint": f"{rev_name} creates your project and sends it to you within 72 hours of publishing.",
+        "when_html": when, "state": state, "note_html": note})
+    deadline = format_short_date(dt.get("submission_deadline")) or "Not set"
+    return f"""
+    <div class="tlv-wrap" data-live-sync="timeline">
+        <div class="tlv-head">
+            <div class="tlv-badge-title" role="heading" aria-level="3">{escape(badge.title)}</div>
+            <div class="tlv-sub">Your milestone timeline &middot; updates live</div>
+        </div>
+        <div class="tlv-facts">
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Reviewer</div><div class="tlv-fact-val">{escape(rev.name if rev else "Not mapped yet")}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Project</div><div class="tlv-fact-val">{"Received" if received else "Pending"}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Submission deadline</div><div class="tlv-fact-val rv-red">{escape(deadline)}</div></div>
+        </div>
+        {steps_html}
+        <div class="tlv-footer">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Close</button>
+        </div>
+    </div>
+    """
+
+
+def render_cosmonaut_reviewer_modal(badge: Optional[Badge], current_user: User, store: Any = None) -> str:
+    """The reviewer the Guardian mapped to this cosmonaut for one badge: who, their schedule, and where the project stands (live)."""
+    from starapp.storage import project_window_seconds_left
+    if not badge:
+        return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
+    tl = store.get_timeline(badge.id, current_user.id) if store else None
+    rev_id = store.get_mapped_reviewer_id(badge.id, current_user.id) if store else ""
+    rev = store.get_user_by_id(rev_id) if (store and rev_id) else None
+    dt, review_days = _timeline_inputs(badge, tl)
+    if not rev:
+        return f"""
+        <div class="rvm-wrap" data-live-sync="reviewer">
+            <div class="rvm-empty">{get_icon("shield", 26)}<div class="rvm-empty-title">No reviewer mapped yet</div>
+            <p>The Guardian has not mapped a reviewer to you for <b>{escape(badge.title)}</b> yet. This page updates by itself as soon as they do.</p></div>
+            <div class="tlv-footer"><button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Close</button></div>
+        </div>"""
+    received = bool(store.get_project_prompt_for_cadet(badge.id, current_user.id))
+    left = project_window_seconds_left(getattr(badge, "published_at", "") or "")
+    if received:
+        proj = '<span class="rv-pill is-green">' + get_icon("check", 12) + '<span>Project sent - open "Project Allocated"</span></span>'
+    elif left == 0:
+        proj = '<span class="rv-pill is-red"><span>Project is overdue</span></span>'
+    else:
+        proj = '<span class="rv-pill is-amber">' + get_icon("clock", 12) + '<span>Project pending</span></span>' + (render_project_window_timer(getattr(badge, "published_at", "") or "", suffix="until it is sent") or "")
+    first = format_short_date(review_days[0]) if review_days else format_short_date(dt.get("review_date"))
+    last = format_short_date(review_days[-1]) if review_days else ""
+    window = f'{escape(first)} &rarr; {escape(last)}' if (first and last and first != last) else escape(first or "Schedule pending")
+    initials = "".join(w[0] for w in rev.name.split()[:2]).upper() or "R"
+    return f"""
+    <div class="rvm-wrap" data-live-sync="reviewer">
+        <div class="tlv-head">
+            <div class="tlv-badge-title" role="heading" aria-level="3">{escape(badge.title)}</div>
+            <div class="tlv-sub">Your mapped reviewer &middot; updates live</div>
+        </div>
+        <div class="rvm-card">
+            <span class="rvm-avatar">{escape(initials)}</span>
+            <div class="rvm-who">
+                <div class="rvm-name">{escape(rev.name)}</div>
+                <div class="rvm-meta"><span class="asm-cosmo-chip is-band">Band {escape(getattr(rev, "band", "") or "")}</span><span class="asm-cosmo-chip">{escape(getattr(rev, "learning_track", "") or "Reviewer")}</span></div>
+            </div>
+            <span class="rv-pill is-green">Mapped to you</span>
+        </div>
+        <div class="tlv-facts">
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Review window</div><div class="tlv-fact-val">{window}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Submission deadline</div><div class="tlv-fact-val rv-red">{escape(format_short_date(dt.get("submission_deadline")) or "Not set")}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">Your project</div><div class="tlv-fact-val rvm-proj">{proj}</div></div>
+        </div>
+        <p class="rvm-note">{escape(rev.name)} creates your project, sends it to you, and later assesses your deliverables.</p>
+        <div class="tlv-footer">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Close</button>
         </div>
     </div>
     """
@@ -5571,7 +5546,13 @@ def _mapped_cosmonauts_for_reviewer_badge(store: Any, reviewer: User, badge: Bad
 
 
 def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: User, store: Any = None, project_draft: Optional[Dict[str, Any]] = None) -> str:
-    """Reviewer form: a heading, the content, and the mapped cosmonauts the project is sent to."""
+    """
+    The reviewer's Create Project form. A new project is PRE-FILLED with a synthetic sample built from the badge (heading, case
+    study, challenge, project details, deliverables, evaluation) so the reviewer only edits and sends; an earlier project is shown
+    in the same sections. Sent as heading + one structured content block to the mapped cosmonauts they pick.
+    """
+    import json as _json
+    from starapp.badge_generator import generate_project_brief, parse_project_content
     if not badge:
         return "<p style='padding:24px; text-align:center;'>Badge information not found.</p>"
 
@@ -5588,61 +5569,153 @@ def render_reviewer_project_creator_modal(badge: Optional[Badge], current_user: 
                 given_ids.update(p.cosmonaut_ids)
                 if latest is None:
                     latest = p          # newest first
-    proj_title = getattr(latest, "title", "") if latest else ""
-    proj_content = project_brief_content(latest) if latest else ""
+
+    sample = generate_project_brief(badge)
+    if latest:
+        existing = parse_project_content(project_brief_content(latest))
+        values = {"title": getattr(latest, "title", "") or sample["title"]}
+        if existing:
+            for k in ("case_study", "challenge", "details", "deliverables", "evaluation"):
+                values[k] = existing.get(k, [] if k in ("details", "deliverables", "evaluation") else "")
+        else:                                        # an older free-text project: keep it whole under Case Study
+            values.update(case_study=project_brief_content(latest), challenge="", details=[], deliverables=[], evaluation=[])
+        is_sample = False
+    else:
+        values = dict(sample)
+        is_sample = True
+
+    def _lines(v: Any) -> str:
+        return "\n".join(v) if isinstance(v, list) else str(v or "")
+
+    # the three deliverables are separate inputs (label + description); anything else the reviewer wrote is kept as a 4th line
+    deliv_labels = ("PDF report", "Source code", "GitHub repository")
+    deliv_values = ["", "", ""]
+    extra_deliv = []
+    for line in (values.get("deliverables") or []):
+        placed = False
+        for i, lab in enumerate(deliv_labels):
+            if line.lower().startswith(lab.lower()) and not deliv_values[i]:
+                deliv_values[i] = line
+                placed = True
+                break
+        if not placed:
+            extra_deliv.append(line)
 
     rows = []
     for c in mapped:
         if c.id in requested_ids:
-            tag = '<span style="font-size:0.65625rem; font-weight:800; background:rgba(245,158,11,0.15); color:#92400E; border:1px solid rgba(245,158,11,0.35); padding:1px 8px; border-radius:999px;">Requested</span>'
+            tag = '<span class="rp-tag is-amber">Requested</span>'
         elif c.id in given_ids:
-            tag = '<span style="font-size:0.65625rem; font-weight:800; background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); padding:1px 8px; border-radius:999px;">Project sent</span>'
+            tag = '<span class="rp-tag is-green">Project sent</span>'
         else:
             tag = ""
         checked = (c.id in requested_ids) if requested_ids else (c.id not in given_ids)
         rows.append(f"""
-        <label style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#FFFFFF; border:1px solid var(--icy-steel-30); border-radius:var(--radius-xs); cursor:pointer;">
+        <label class="rp-person">
             <input type="checkbox" class="rev-proj-recipient" value="{escape(c.id)}"{" checked" if checked else ""}>
-            <span style="font-size:0.8125rem; font-weight:700; color:var(--frost-navy);">{escape(c.name)}</span>
-            <span style="font-size:0.71875rem; color:var(--frost-navy-50);">Band {escape(getattr(c, "band", "") or "")}</span>
+            <span class="rp-person-name">{escape(c.name)}</span>
+            <span class="rp-person-meta">Band {escape(getattr(c, "band", "") or "")}</span>
             <span style="margin-left:auto;">{tag}</span>
         </label>
         """)
-    recipients_html = "".join(rows) if rows else '<div style="font-size:0.78125rem; color:var(--frost-navy-50);">No cosmonauts are mapped to you for this badge yet.</div>'
+    recipients_html = "".join(rows) if rows else '<div class="rp-empty">No cosmonauts are mapped to you for this badge yet.</div>'
     send_disabled = "" if rows else " disabled"
 
+    def _section(key: str, icon: str, title: str, hint: str, inner: str, view_html: str, accent: str = "", color: str = "") -> str:
+        """A badge-style section card showing the content FORMATTED; the Edit button swaps in the input fields (and Done swaps back)."""
+        style = f' style="border-left-color:{color};"' if color else ""
+        return f"""
+        <div class="cb-section-card {accent}"{style} data-pj-section="{key}">
+            <div class="cb-section-head pj-head">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span class="cb-section-icon">{get_icon(icon, 17)}</span>
+                    <div><span class="cb-section-title">{title}</span><div class="rp-hint">{hint}</div></div>
+                </div>
+                <button type="button" class="btn-secondary btn-sm rp-edit-btn" data-pj-toggle="{key}" onclick="window.StarAppBridge.toggleProjectSection('{key}')">
+                    {get_icon("edit", 13)}<span>Edit</span>
+                </button>
+            </div>
+            <div class="pj-body">
+                <div class="pj-view" id="rp-view-{key}">{view_html}</div>
+                <div class="pj-edit" id="rp-edit-{key}" hidden>{inner}</div>
+            </div>
+        </div>"""
+
+    def _ta(elem_id: str, value: str, rows_: int, placeholder: str) -> str:
+        return (f'<textarea id="{elem_id}" class="form-input rp-ta" rows="{rows_}" maxlength="6000" placeholder="{escape(placeholder)}">{escape(value)}</textarea>')
+
+    deliv_inner = "".join(
+        f"""<div class="rp-deliv"><span class="pj-deliv-ico">{_pj_deliverable_icon(lab)}</span>
+            <div style="flex:1; min-width:0;"><label class="rp-lbl" for="rev_proj_del_{i}">{escape(lab)}</label>
+            <input type="text" id="rev_proj_del_{i}" class="form-input rp-in" maxlength="600" value="{escape(deliv_values[i])}" placeholder="{escape(lab)}: what the cosmonaut must hand in"></div></div>"""
+        for i, lab in enumerate(deliv_labels)
+    )
+    if extra_deliv:
+        deliv_inner += f'<div class="rp-deliv"><div style="flex:1;"><label class="rp-lbl" for="rev_proj_del_extra">Other deliverables (one per line)</label>{_ta("rev_proj_del_extra", chr(10).join(extra_deliv), 2, "")}</div></div>'
+
+    deliv_view = '<div class="pj-deliv-grid">' + "".join(
+        _pj_deliv_card(*(_pj_split_deliverable(deliv_values[i]) if deliv_values[i] else (lab, "")), idx=i) for i, lab in enumerate(deliv_labels)
+    ) + "</div>" + f'<div id="rp-del-extra-view">{_pj_bullets(extra_deliv)}</div>'
+
+    notice = (
+        '<div class="rp-notice">' + get_icon("rocket", 15) +
+        '<span><b>Sample project ready.</b> It was generated from this badge (its skill, band, outcomes and topics). Edit anything, then send it to your mapped cosmonauts.</span>'
+        '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.resetReviewerProjectSample()">Reset to sample</button></div>'
+        if is_sample else
+        '<div class="rp-notice">' + get_icon("edit", 15) +
+        '<span><b>Editing your earlier project.</b> Changes go to the cosmonauts you tick below.</span>'
+        '<button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.resetReviewerProjectSample()">Load a fresh sample</button></div>'
+    )
+    sample_attr = escape(_json.dumps({
+        "title": sample["title"], "case_study": sample["case_study"], "challenge": sample["challenge"],
+        "details": "\n".join(sample["details"]), "evaluation": "\n".join(sample["evaluation"]),
+        "deliverables": [next((d for d in sample["deliverables"] if d.lower().startswith(l.lower())), "") for l in deliv_labels],
+    }))
+
     return f"""
-    <div style="padding:6px 4px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-            <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(badge.code)}</span>
-            <span style="font-size:0.8125rem; font-weight:800; color:var(--frost-navy);">{escape(badge.title)}</span>
+    <div class="rp-wrap">
+        <div class="rp-head">
+            <span class="rv-code">{escape(badge.code)}</span>
+            <span class="rp-badge-title">{escape(badge.title)}</span>
         </div>
+        {notice}
 
-        <form id="reviewer-project-spec-form" onsubmit="event.preventDefault();">
-            <div style="margin:14px 0 16px 0;">
-                <label for="rev_proj_title" style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--frost-navy-50); display:block; margin-bottom:6px;">Heading</label>
-                <input type="text" id="rev_proj_title" class="form-input" maxlength="200" value="{escape(proj_title)}" placeholder="Project heading"
-                       style="width:100%; font-size:1.5rem; font-weight:900; letter-spacing:-0.3px; padding:10px 14px;">
-            </div>
-
-            <div style="margin-bottom:18px;">
-                <label for="rev_proj_content" style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--frost-navy-50); display:block; margin-bottom:6px;">Content</label>
-                <textarea id="rev_proj_content" rows="12" maxlength="20000" class="form-input" placeholder="Write the project: the case study, the challenge, and what the cosmonaut has to deliver."
-                          style="width:100%; font-size:0.875rem; line-height:1.65; padding:12px 14px; resize:vertical;">{escape(proj_content)}</textarea>
-            </div>
-
-            <div style="margin-bottom:18px;">
-                <div style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--frost-navy-50); margin-bottom:6px;">Send to mapped cosmonauts</div>
-                <div style="display:flex; flex-direction:column; gap:6px;">
-                    {recipients_html}
+        <form id="reviewer-project-spec-form" data-sample="{sample_attr}" onsubmit="event.preventDefault();">
+            <div class="rp-title-box" data-pj-section="title">
+                <div class="rp-title-top">
+                    <label for="rev_proj_title" class="rp-lbl">Heading</label>
+                    <button type="button" class="btn-secondary btn-sm rp-edit-btn" data-pj-toggle="title" onclick="window.StarAppBridge.toggleProjectSection('title')">
+                        {get_icon("edit", 13)}<span>Edit</span>
+                    </button>
+                </div>
+                <h2 class="rp-title-view" id="rp-view-title">{escape(values.get("title", "") or "Untitled project")}</h2>
+                <div id="rp-edit-title" hidden>
+                    <input type="text" id="rev_proj_title" class="form-input rp-title" maxlength="200" value="{escape(values.get("title", ""))}" placeholder="Project heading">
                 </div>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--icy-steel-30); padding-top:14px; flex-wrap:wrap; gap:10px;">
+            <div class="rp-lead">Project Content</div>
+            {_section("case_study", "layers", "Case Study", "The situation: who the client is and what is going wrong.", _ta("rev_proj_case", values.get("case_study", ""), 6, "Describe the client and the situation"), _pj_paragraphs(values.get("case_study", "")), "accent-emerald")}
+            {_section("challenge", "target", "Your Challenge", "What the cosmonaut has to build or solve.", _ta("rev_proj_challenge", values.get("challenge", ""), 4, "State the challenge"), _pj_paragraphs(values.get("challenge", "")), "accent-amber")}
+            {_section("details", "clipboard", "Project Details", "Scope, constraints and what to cover - one point per line.", _ta("rev_proj_details", _lines(values.get("details")), 7, "One requirement per line"), _pj_bullets(values.get("details")), "accent-cyan")}
+            {_section("deliverables", "file_text", "Deliverables", "What has to be handed in.", deliv_inner, deliv_view, "", "#2563EB")}
+            {_section("evaluation", "award", "Evaluation", "How the work is marked (the 50-mark rubric) - one point per line.", _ta("rev_proj_eval", _lines(values.get("evaluation")), 5, "One criterion per line"), _pj_bullets(values.get("evaluation")), "", "#7C3AED")}
+
+            <div class="cb-section-card" style="border-left-color:#059669;">
+                <div class="cb-section-head pj-head">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span class="cb-section-icon">{get_icon("users", 17)}</span>
+                        <div><span class="cb-section-title">Send to mapped cosmonauts</span><div class="rp-hint">Everyone ticked receives this project.</div></div>
+                    </div>
+                </div>
+                <div class="pj-body"><div class="rp-people">{recipients_html}</div></div>
+            </div>
+
+            <div class="rp-footer">
                 <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')">Cancel</button>
-                <button type="button" class="btn-metal" style="padding:9px 24px; font-weight:800;"{send_disabled}
+                <button type="button" class="btn-metal rp-send"{send_disabled}
                         onclick="window.StarAppBridge.submitReviewerProject('{escape(badge.id)}', '{escape(current_user.id)}')">
-                    Send Project to Mapped Cosmonauts &rarr;
+                    {get_icon("rocket", 15)}<span>Send Project to Mapped Cosmonauts</span>{get_icon("arrow_right", 13)}
                 </button>
             </div>
         </form>
