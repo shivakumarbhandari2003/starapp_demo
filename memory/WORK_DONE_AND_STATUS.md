@@ -1,7 +1,7 @@
 # Work Done, Current Status & Backlog
 
-**State as of 2026-11-27 (195 tests passing):** Stage 1 (logic / performance / security) and Stage 2 (Cosmonaut + Reviewer UI brought to the Guardian standard) are
-**implemented, tested (195 tests) and logged**. Changes are in the working tree; whether they are committed depends on the owner — check `git log` / `git status`.
+**State as of 2026-11-27 (215 tests passing):** Stage 1 (logic / performance / security) and Stage 2 (Cosmonaut + Reviewer UI brought to the Guardian standard) are
+**implemented, tested (215 tests) and logged**. Changes are in the working tree; whether they are committed depends on the owner — check `git log` / `git status`.
 
 ## 1. Timeline
 
@@ -38,7 +38,7 @@ Result: **0 emoji, 0 internal ids, 0 console errors, 0 page overflow, 0 fonts < 
 
 ## 4. Verification status
 
-* `python tests/run_tests.py` → **195 tests OK** (~22 s), never touches `data/starapp.db`.
+* `python tests/run_tests.py` → **215 tests OK** (~22 s), never touches `data/starapp.db`.
 * Load test (3,038 users, 60 concurrent, 420 requests): **0 errors, 66–74 req/s, p50 ≈ 0.6 s, ~180 MB**.
 * Browser audit: clean (see Stage 2).
 * `/api/health`: `healthy`, 38 tables, 0 FK violations.
@@ -65,6 +65,9 @@ Format: **date · area · previous logic · new logic · reason** (add a longer 
 | 2026-11-26 | Stage 1 (A–I) & Stage 2 (S2-1…S2-8) | see section 2/3 and the full log | see log | scale to thousands of users, correctness, security, professional UI |
 | 2026-11-26 | Repo hygiene | 15 generated audit/report `.md` tracked in git | ignored via `.gitignore` (files kept locally), untracked with `git rm --cached` | not needed to run the project |
 | 2026-11-27 | Cosmonaut portal navigation | Sidebar had a separate "Past Cycle & Performance" page (`c_cycles`) plus a "Past Performance →" button | Item removed; the per-cycle appraisal cards (dual-role scores, tier, compensation, promotion, remarks) render under the cycle cards on **Choose Cycle**; `c_cycles` resolves to `c_choose_cycle`; topbar link renamed "Cycles & Appraisals"; finalisation notification points to Choose Cycle | one place for cycles and appraisals, less navigation |
+| 2026-11-27 | Project request workflow | "Earn the Badge" showed `Allocated Milestone` + `Submit Deliverables`; the reviewer filled a long AI form (outcomes, requirements, deliverables); submissions needed no project (demo mode even invented one); `_collect_cadet_review_context` showed one cosmonaut's project on every card | Cosmonaut taps **Request Project** -> request to the mapped reviewer (notification, count on Badge Reviews) -> reviewer's **Create Project** = Heading + Content + recipient checklist -> **Send Project to Mapped Cosmonauts** -> button becomes **Submit Project Deliverables** (project shown first, then PDF/code/GitHub) -> reviewer's **Cosmonaut Assessments**; server refuses submission without a sent project; one record per send; reviewer card state per cosmonaut; reviewer queue/notification use `get_mapped_reviewer_id`; fixed literal `&rarr;` in the assessment queue; chip "Allocated Project" renamed "Allocated Badge" | the requested cosmonaut <-> reviewer project hand-off |
+| 2026-11-27 | View Profile (all portals) | Cosmonaut: "Profile" nav item + clickable name card; Guardian: no profile page at all. Cosmonaut profile showed hard-coded text ("Cadre Orion-24", "Tier-1 Certified", "ING-104", a canned bio, placeholder guardian credentials) | "View Profile" `nav-link` pinned at the bottom of every sidebar (active on the profile page); new `g_profile` page (identity, role access, band, manager, cycle, live academy overview); cosmonaut profile now shows real band/roles/manager/guardian/cohort/cycle standing/badges earned/average/rank/current milestone; footer CSS (`.sidebar-footer` 164 px) updated | profile is compulsory for everyone and must show the person's real data |
+| 2026-11-27 | Cosmonaut sidebar order & reviewer bands | Choose Cycle first and the landing page; reviewer items shown to any B2–B6 **or** badge_reviewer role **or** anyone with a pending request; label "Cadet Assessments" | Order Badges (home) → Marksheet → Deadline Extension → Badge Reviews → Review Requests → Cosmonaut Assessments (Band 2+ only) → Profile last; Choose Cycle reached from the cycle pill; band-only eligibility enforced in `nav_cosmonaut` + render | reviewers must be in a higher band than B1; consistent navigation |
 | 2026-11-27 | Cosmonaut portal wording | mixed "Cadet" / "Cosmonaut" text, partly stored in the DB | `cosmonaut_terms()` normalises all Cosmonaut-portal output (see LOGICS C) | consistent terminology without touching ids/handlers |
 | 2026-11-27 | DB hygiene | `INSERT OR REPLACE INTO schema_version` re-stamped `installed_at` on every start → tracked `data/starapp.db` always showed as modified | `INSERT OR IGNORE` | clean `git status` for both collaborators |
 | 2026-11-26 | Documentation | scattered, partly outdated docs | `memory/` folder (this set) + root `CLAUDE.md` pointer | any AI/dev on a new machine gets full context |

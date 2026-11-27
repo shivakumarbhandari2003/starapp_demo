@@ -50,6 +50,8 @@ Short "previous → new → reason" history: [WORK_DONE_AND_STATUS.md](WORK_DONE
 
 ## E. Workflow-logic details worth remembering
 
+* **Project requests reuse `reviewer_project_prompts`** (no schema change): status `requested` / `fulfilled` rows are hidden from every project list (`get_reviewer_project_prompts(include_requests=False)`, `get_project_prompt_for_cadet`); `get_project_request`, `get_pending_project_requests(reviewer_id)` and `get_mapped_reviewer_id` are the accessors. One shared renderer `render_project_brief(title, content)` shows a project (big bold heading + pre-wrapped content) to both reviewer and cosmonaut; `_project_cta` decides Request Project / Project Requested / Submit Project Deliverables.
+
 * **Allotment uncoupling:** after a pass, `store.uncouple_cadet_badge_mapping(badge, cadet)` removes the cadet from the active band mapping so the schedule shows them under *completed*, not *upcoming*.
 * **Reviewer's cadets for a badge** (`_reviewer_cadets_for_badge`): union of timelines (`reviewer_id`), `band_mappings` containing the reviewer, and `badge.assigned_reviewer_id`. With several reviewers on a mapping, cadets are distributed round-robin (`rev_list[idx % len]`).
 * **Roadmap state** (`roadmap.compute_milestone_state`): `completed` if approved; `active` if all prerequisites approved (or none); else `locked`. 25-milestone canonical order in `roadmap.CANONICAL_ORDER`.
@@ -70,7 +72,7 @@ Synthetic DB with **3,038 users** (scratch tooling, not in repo), real server, P
 | `c_dashboard` | 68 s (9.8 MB) | ~200 ms (92 KB) |
 | Avg cadet page | 48 ms | 8.7 ms |
 | Throughput (60 concurrent users) | 18 req/s | 66–74 req/s, p50 ≈ 0.6 s, 0 errors |
-| Test suite | 149 tests ≈ 32 s | 195 tests ≈ 22 s |
+| Test suite | 149 tests ≈ 32 s | 215 tests ≈ 22 s |
 
 Reproduce the idea (scratch scripts were not committed): build a DB by cloning users/enrollments to ~3,000, start `uvicorn` against it via
 `DATABASE_URL`/`STARAPP_DB_PATH`, time each view with `StarAppController().handle_event("select_demo_account", uid)` + `ctrl.current_view = …; ctrl.render()`.

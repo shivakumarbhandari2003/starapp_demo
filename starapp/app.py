@@ -7,6 +7,7 @@ Works seamlessly in browser Pyodide runtime and in local Python test suites.
 import datetime
 import json
 import time
+import uuid
 from typing import Optional, Dict, Any, Tuple, List
 from starapp.models import (
     DEFAULT_CYCLE_ID, User, Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet,
@@ -36,7 +37,8 @@ from starapp.analytics import (
 from starapp.views_common import (
     get_icon, render_global_back_bar,
     render_cycle_context_bar, render_topbar, render_liquid_card, render_metal_button, escape,
-    render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html, cosmonaut_terms
+    render_status_pill, render_standard_marksheet, render_9point_timeline, iconize_html, cosmonaut_terms,
+    is_reviewer_band, COSMONAUT_REVIEWER_VIEWS
 )
 from starapp.views_guardian import (
     render_guardian_sidebar, render_guardian_dashboard,
@@ -45,7 +47,7 @@ from starapp.views_guardian import (
     render_guardian_review_queue, render_guardian_review_detail,
     render_assessment_modal_content, render_guardian_materials,
     render_guardian_activity_feed, render_guardian_extensions,
-    render_guardian_announcements,
+    render_guardian_announcements, render_guardian_profile,
     render_guardian_create_badge, render_guardian_badge_approval_queue,
     render_badge_creation_preview_modal, render_badge_review_inspect_modal,
     render_badge_reviewer_edit_modal, render_badge_approval_confirm_modal,
@@ -218,12 +220,15 @@ class StarAppController:
         self.cycle_band_filter: str = "all"
         self.cycle_role_filter: str = "all"
 
+    # Landing page of the Cosmonaut portal (first sidebar item).
+    COSMONAUT_HOME_VIEW = "c_submission"
+
     # Valid view ids per role to prevent arbitrary injection
     _GUARDIAN_VIEWS = {
         "g_learning", "g_earning", "g_contribution",
         "g_create_badge", "g_badge_approval",
         "g_dashboard", "g_roadmap", "g_cosmonauts", "g_allotment", "g_badge_allotment", "g_mapping", "g_mapping_badge_detail", "g_reviews", "g_review_detail",
-        "g_materials", "g_extensions", "g_announcements", "g_activity", "g_cycles"
+        "g_materials", "g_extensions", "g_announcements", "g_activity", "g_cycles", "g_profile"
     }
     _COSMONAUT_VIEWS = {
         "c_choose_cycle", "c_dashboard", "c_roadmap", "c_submission", "c_badge_detail", "c_results",
@@ -265,7 +270,7 @@ class StarAppController:
                         elif saved_view in self._COSMONAUT_VIEWS:
                             self.current_view = saved_view
                         else:
-                            self.current_view = "g_cycles" if is_guardian_user else "c_choose_cycle"
+                            self.current_view = "g_cycles" if is_guardian_user else self.COSMONAUT_HOME_VIEW
             except Exception as e:
                 print(f"[Controller] Session restore error: {e}")
 
@@ -863,7 +868,7 @@ class StarAppController:
                     self.current_view = "g_cycles"
                     self.create_badge_band = None
                 else:
-                    self.current_view = "c_choose_cycle"
+                    self.current_view = self.COSMONAUT_HOME_VIEW
                 self.set_flash(f"Welcome back, {user.name}!", "success")
             else:
                 self.current_user = None
@@ -890,7 +895,7 @@ class StarAppController:
                     self.current_view = "g_cycles"
                     self.create_badge_band = None
                 else:
-                    self.current_view = "c_choose_cycle"
+                    self.current_view = self.COSMONAUT_HOME_VIEW
                 self.set_flash(f"Logged in as {user.name} ({', '.join(user_roles).replace('_', ' ').title()})", "success")
 
         # --- Create Badge & Reviewer Approval Workflow ---
@@ -1848,7 +1853,7 @@ class StarAppController:
                     self.create_badge_band = None
                 else:
                     is_guard = (self.current_user and (self.current_user.id == "guardian_1" or self.current_user.role == "guardian" or self.current_user.has_role("guardian")))
-                    self.current_view = "g_cycles" if is_guard else "c_choose_cycle"
+                    self.current_view = "g_cycles" if is_guard else self.COSMONAUT_HOME_VIEW
             else:
                 if self.current_view == "g_create_badge" and self.create_badge_band:
                     self.create_badge_band = None
@@ -1857,8 +1862,8 @@ class StarAppController:
                     if is_guard and self.current_view != "g_cycles":
                         self.current_view = "g_cycles"
                         self.create_badge_band = None
-                    elif not is_guard and self.current_view != "c_choose_cycle":
-                        self.current_view = "c_choose_cycle"
+                    elif not is_guard and self.current_view != self.COSMONAUT_HOME_VIEW:
+                        self.current_view = self.COSMONAUT_HOME_VIEW
 
         elif action == "nav_guardian":
             view_id = payload if isinstance(payload, str) else payload.get("view_id")
@@ -1885,6 +1890,8 @@ class StarAppController:
                 raise ActionDenied("That page does not exist.")
             if view_id == "c_cycles":
                 view_id = "c_choose_cycle"  # past cycles & appraisals live on the Choose Cycle page
+            if view_id in COSMONAUT_REVIEWER_VIEWS and not is_reviewer_band(getattr(self.current_user, "band", "")):
+                raise ActionDenied("Reviewer tools are available from Band 2 upwards.")
             self._push_history()
             self.current_view = view_id
             if view_id == "c_submission":
@@ -3355,8 +3362,13 @@ class StarAppController:
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
             b_id = str(b_id).strip().replace('"', '') or getattr(self, "cosmonaut_submission_badge_id", "")
             self.cosmonaut_submission_badge_id = b_id
-            self.active_modal = "submission_portal_modal"
-            self.modal_payload = {"badge_id": b_id}
+            if (self.current_user and b_id and not self._is_guardian_user()
+                    and not store.get_project_prompt_for_cadet(b_id, self.current_user.id)):
+                # Deliverables are only collected for a project the mapped reviewer has sent.
+                self.set_flash("Your project has not been sent yet. Use \"Request Project\" and your mapped reviewer will send it.", "info")
+            else:
+                self.active_modal = "submission_portal_modal"
+                self.modal_payload = {"badge_id": b_id}
 
         elif action in ("open_allocated_project_modal", "view_allocated_project"):
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
@@ -3383,6 +3395,10 @@ class StarAppController:
             self.active_modal = "reviewer_project_creator"
             self.modal_payload = {"badge_id": b_id}
 
+        elif action == "request_project":
+            b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
+            self.execute_request_project(str(b_id).strip().replace('"', ''))
+
         elif action in ("send_reviewer_project", "save_reviewer_project_prompt"):
             if isinstance(payload, str) and payload.strip():
                 try:
@@ -3393,7 +3409,7 @@ class StarAppController:
                 payload = {}
             badge_id = payload.get("badge_id", "")
             title = payload.get("title", "")
-            objective = payload.get("objective") or payload.get("scenario") or payload.get("description") or ""
+            objective = payload.get("content") or payload.get("objective") or payload.get("scenario") or payload.get("description") or ""
             tech_reqs = payload.get("technical_requirements") or payload.get("requirements") or []
             eval_crit = payload.get("evaluation_criteria") or payload.get("rubric_guidelines") or []
             sub_deadline = payload.get("submission_deadline", "")
@@ -3458,7 +3474,21 @@ class StarAppController:
                                 if cid not in cosmonaut_ids:
                                     cosmonaut_ids.append(cid)
 
+            title = str(title or "").strip()
+            objective = str(objective or "").strip()
+            if status != "draft":
+                if not title:
+                    raise ActionDenied("Give the project a heading before sending it.")
+                if not objective:
+                    raise ActionDenied("Write the project content before sending it.")
+            if len(title) > 200 or len(objective) > 20000:
+                raise ActionDenied("The project heading (200 characters) or content (20,000 characters) is too long.")
+            if status != "draft" and not cosmonaut_ids:
+                raise ActionDenied("Select at least one mapped cosmonaut to send the project to.")
+            # Every send is its own record (history is kept; a later project never silently rewrites an earlier one).
+            prompt_id = f"proj_{badge_id}_{rev_id}" if status == "draft" else f"proj_{badge_id}_{rev_id}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
             prompt = ReviewerProjectPrompt(
+                id=prompt_id,
                 badge_id=badge_id,
                 reviewer_id=rev_id,
                 reviewer_name=rev_name,
@@ -3479,6 +3509,12 @@ class StarAppController:
 
             badge = store.get_badge(badge_id)
             b_title = badge.title if badge else "Assigned Milestone"
+            if status != "draft":
+                for cid in cosmonaut_ids:   # their open requests are answered by this project
+                    req = store.get_project_request(badge_id, cid)
+                    if req:
+                        req.status = "fulfilled"
+                        store.save_reviewer_project_prompt(req)
 
             if status == "draft":
                 store.add_activity(
@@ -3495,8 +3531,8 @@ class StarAppController:
                 for cid in cosmonaut_ids:
                     store.add_notification(
                         recipient_id=cid,
-                        title=f"🚀 New Project Assigned: {title}",
-                        message=f"{rev_name} has assigned milestone project '{title}' for '{b_title}'. Review project details, outcomes & deliverables in your Badges portal.",
+                        title=f"Project received: {title}",
+                        message=f"{rev_name} sent you the project '{title}' for '{b_title}'. Open the badge and choose Submit Project Deliverables.",
                         event_type="milestone",
                         link_section="c_submission"
                     )
@@ -3519,7 +3555,7 @@ class StarAppController:
                         summary=f"Project Released: '{title}' by {rev_name}",
                         details=f"{rev_name} released project '{title}' for {b_title}."
                     )
-                self.set_flash(f"Project '{title}' successfully submitted and assigned to {len(cosmonaut_ids)} mapped cadets!", "success")
+                self.set_flash(f"Project '{title}' sent to {len(cosmonaut_ids)} mapped cosmonaut{'s' if len(cosmonaut_ids) != 1 else ''}.", "success")
 
             self.active_modal = None
             self.modal_payload = {}
@@ -3852,6 +3888,64 @@ class StarAppController:
         except Exception as e:
             self.set_flash(f"Assessment error: {e}", "error")
 
+    def execute_request_project(self, badge_id: str):
+        """A cosmonaut asks the reviewer they are mapped to for the project of an allotted badge."""
+        user = self.current_user
+        if not user:
+            return
+        badge = store.get_badge(badge_id) if badge_id else None
+        if not badge:
+            raise ActionDenied("Badge not found.")
+        my_tl = store.get_timeline(badge_id, user.id)
+        if not my_tl and badge_id not in {b.id for b in store.get_badges_for_cosmonaut(user.id)}:
+            raise ActionDenied("This badge is not allotted to you, so you cannot request its project.")
+        if (my_tl and getattr(my_tl, "status", "") == "completed") or any(
+                s.status == "approved" for s in store.get_submissions_for_cosmonaut(user.id, badge_id)):
+            self.set_flash(f"{badge.code} has already been earned.", "info")
+            return
+        if store.get_project_prompt_for_cadet(badge_id, user.id):
+            self.set_flash("Your project has already been sent. Use Submit Project Deliverables.", "info")
+            return
+        if store.get_project_request(badge_id, user.id):
+            self.set_flash("You have already requested this project. Your reviewer has been notified.", "info")
+            return
+        reviewer_id = store.get_mapped_reviewer_id(badge_id, user.id)
+        reviewer = store.get_user_by_id(reviewer_id) if reviewer_id else None
+        if not reviewer:
+            self.set_flash("No reviewer is mapped to you for this badge yet. Please ask your Guardian.", "error")
+            return
+        now = current_iso_timestamp()
+        store.save_reviewer_project_prompt(ReviewerProjectPrompt(
+            id=f"projreq_{badge_id}_{user.id}",
+            badge_id=badge_id,
+            reviewer_id=reviewer_id,
+            reviewer_name=reviewer.name,
+            cosmonaut_ids=[user.id],
+            title="",
+            description="",
+            status="requested",
+            created_at=now,
+            sent_at=None,
+        ))
+        store.add_notification(
+            recipient_id=reviewer_id,
+            title=f"Project requested: {badge.code}",
+            message=f"{user.name} asked you for the project of '{badge.title}'. Open Badge Reviews to create and send it.",
+            event_type="project_request",
+            related_badge_id=badge_id,
+            link_section="c_badge_reviews",
+        )
+        store.add_activity(
+            event_type="project_requested",
+            actor_id=user.id,
+            actor_name=user.name,
+            cosmonaut_id=user.id,
+            badge_id=badge_id,
+            summary=f"Project requested for {badge.code} from {reviewer.name}",
+            details=f"{user.name} requested the project for {badge.title} from mapped reviewer {reviewer.name}.",
+        )
+        self.set_flash(f"Project requested from {reviewer.name}. You will be notified when it arrives.", "success")
+
     def execute_submit_project(self, payload_dict: Any = None):
         if not self.current_user:
             return
@@ -3891,6 +3985,11 @@ class StarAppController:
             my_badge_ids = {b.id for b in store.get_badges_for_cosmonaut(self.current_user.id)}
             if not my_tl and badge_id not in my_badge_ids:
                 self.set_flash("This milestone is not allotted to you, so deliverables cannot be submitted for it.", "error")
+                return
+
+            # The deliverables answer the project the mapped reviewer sent; without it there is nothing to submit.
+            if not store.get_project_prompt_for_cadet(badge_id, self.current_user.id):
+                self.set_flash("Your project has not been sent yet. Use \"Request Project\" first; your mapped reviewer will send it.", "error")
                 return
 
             # Determine single submission / edit vs new submission
@@ -4055,18 +4154,13 @@ if __name__ == "__main__":
             )
 
             # Route deliverable strictly to assigned reviewer (not guardian)
-            assigned_rev_id = getattr(tl, "reviewer_id", "") if tl else ""
-            if not assigned_rev_id:
-                for mp in store.get_band_mappings():
-                    if self.current_user.id in mp.get("cosmonauts", []) and mp.get("reviewers"):
-                        assigned_rev_id = mp["reviewers"][0]
-                        break
+            assigned_rev_id = store.get_mapped_reviewer_id(badge_id, self.current_user.id)
 
             if assigned_rev_id:
                 store.add_notification(
                     recipient_id=assigned_rev_id,
-                    title=f"Cadet Deliverable Assigned: {self.current_user.name}",
-                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. 3-Day review window active.{late_note}",
+                    title=f"Project submitted: {self.current_user.name}",
+                    message=f"{self.current_user.name} submitted Attempt #{attempt_num} for {badge.code}: {badge.title}. Open Cosmonaut Assessments to review it.{late_note}",
                     link_section="c_assessments"
                 )
 
@@ -5161,13 +5255,13 @@ if __name__ == "__main__":
         elif self.active_modal == "reviewer_project_creator":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
-            title = f"AI Project Creation Engine — {badge.code if badge else ''}"
+            title = f"Create Project — {badge.code if badge else ''}"
             body = render_reviewer_project_creator_modal(badge, self.current_user, store) if badge else "<p style='padding:20px; text-align:center;'>Badge not found.</p>"
 
         elif self.active_modal == "allocated_project_modal":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
-            title = f"Allocated Milestone Project — {badge.code if badge else ''}"
+            title = f"Project — {badge.code if badge else ''}"
             if badge and self.current_user:
                 body = render_cosmonaut_allocated_project_modal(badge, self.current_user, store)
             else:
@@ -5176,7 +5270,7 @@ if __name__ == "__main__":
         elif self.active_modal == "submission_portal_modal":
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
-            title = f"Project Deliverable Submission Portal — {badge.code if badge else ''}"
+            title = f"Submit Project Deliverables — {badge.code if badge else ''}"
             if badge and self.current_user:
                 existing_subs = store.get_submissions_for_cosmonaut(self.current_user.id, b_id)
                 latest_sub = existing_subs[-1] if existing_subs else None
@@ -5398,7 +5492,7 @@ if __name__ == "__main__":
         # Defence in depth: whatever put the controller on a Guardian page (a stale session snapshot, a
         # crafted action, a role change), a non-guardian can never be RENDERED a g_* page.
         if self.current_view.startswith("g_") and not self._is_guardian_user():
-            self.current_view = "c_choose_cycle"
+            self.current_view = self.COSMONAUT_HOME_VIEW
             self.active_modal = None
         effective_cid = self._get_effective_cycle_id()
         page_token = bind_page_state(self.list_pages)
@@ -5412,6 +5506,11 @@ if __name__ == "__main__":
         # "Past Cycle & Performance" is part of the Choose Cycle page now; old links / saved sessions still resolve.
         if self.current_view == "c_cycles":
             self.current_view = "c_choose_cycle"
+        # Defence in depth: reviewer pages exist only from Band 2 up (a stale session / crafted view id gets Badges).
+        if (self.current_view in COSMONAUT_REVIEWER_VIEWS and not self._is_guardian_user()
+                and not is_reviewer_band(getattr(self.current_user, "band", ""))):
+            self.current_view = self.COSMONAUT_HOME_VIEW
+            self.active_modal = None
         # Common data calculations (scoped to effective_cid)
         badges = store.get_all_badges()
         cosmonauts = store.get_all_cosmonauts()
@@ -5706,6 +5805,21 @@ if __name__ == "__main__":
                 page_title = "Academy Activity & Audit Stream"
                 main_content_html = render_guardian_activity_feed(store.get_activities(), cosmonauts)
 
+            elif self.current_view == "g_profile":
+                page_title = "My Profile — StarApp"
+                _uid = self.current_user.id
+                main_content_html = render_guardian_profile(self.current_user, {
+                    "cohort_size": len(cosmonauts),
+                    "badges_authored": len([b for b in badges if getattr(b, "creator_id", "") == _uid]),
+                    "badges_total": len(badges),
+                    "badges_published": len([b for b in badges if getattr(b, "is_published", False)]),
+                    "pending_approvals": pending_badge_approvals,
+                    "pending_reviews": pending_reviews,
+                    "pending_extensions": pending_exts,
+                    "cycle_name": getattr(selected_cycle_obj, "name", "") or "",
+                    "cycle_status": (getattr(selected_cycle_obj, "status", "") or "").title(),
+                })
+
             elif self.current_view == "g_cycles":
                 page_title = "6-Month Performance Cycles & Appraisals"
                 all_cycles = store.get_all_cycles()
@@ -5830,7 +5944,13 @@ if __name__ == "__main__":
 
             elif self.current_view == "c_profile":
                 page_title = "Cosmonaut Profile & Competency Matrix"
-                main_content_html = render_cosmonaut_profile(self.current_user, profile)
+                _cyc_rows = compute_cycle_candidate_performance(effective_cid, store, users_override=[self.current_user])
+                main_content_html = render_cosmonaut_profile(
+                    self.current_user, profile,
+                    assigned_badges=assigned_badges, summary=summary, leaderboard=leaderboard,
+                    cycle_row=(_cyc_rows[0] if _cyc_rows else None),
+                    cycle_name=getattr(selected_cycle_obj, "name", "") or ""
+                )
 
             elif self.current_view == "c_announcements":
                 page_title = "Academy Announcement Center"

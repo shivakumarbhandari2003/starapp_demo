@@ -1271,6 +1271,9 @@ class DataStore:
         """
         target_cid = self.get_effective_read_cycle_id(cycle_id)
         pairs = {(t.badge_id, t.cosmonaut_id) for t in self.get_timelines_for_reviewer(reviewer_id, cycle_id=target_cid)}
+        for b in self.get_all_badges():     # cadets assigned straight on the badge, the same fallback used for project requests
+            if getattr(b, "assigned_reviewer_id", "") == reviewer_id:
+                pairs.update((b.id, cid) for cid in (getattr(b, "assigned_cosmonaut_ids", None) or []))
         mapped_cadets = set()
         for m in self.get_band_mappings(cycle_id=target_cid):
             if reviewer_id in (m.get("reviewers") or []):
@@ -2071,7 +2074,16 @@ class DataStore:
             self._write_failed("saving reviewer_project_prompt", e)
         self.mark_dirty()
 
-    def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Any]:
+    # Statuses of a project REQUEST made by a cosmonaut (not yet a project): hidden from every project list.
+    PROJECT_REQUEST_STATUSES = ("requested", "fulfilled")
+
+    def get_reviewer_project_prompts(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None, include_requests: bool = False) -> List[Any]:
+        results = self._get_reviewer_project_prompts_raw(badge_id, reviewer_id, cycle_id)
+        if include_requests:
+            return results
+        return [p for p in results if getattr(p, "status", "") not in self.PROJECT_REQUEST_STATUSES]
+
+    def _get_reviewer_project_prompts_raw(self, badge_id: Optional[str] = None, reviewer_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[Any]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
         results = []
         try:
@@ -2128,14 +2140,14 @@ class DataStore:
         prompts = self.get_reviewer_project_prompts(badge_id=badge_id)
         # 1. First priority: Prompt specifically addressed to this cadet (must be released/sent)
         for p in prompts:
-            if getattr(p, "status", "") in ("draft",):
+            if getattr(p, "status", "") in ("draft",) + self.PROJECT_REQUEST_STATUSES:
                 continue
             c_ids = getattr(p, "cosmonaut_ids", [])
             if cosmonaut_id in c_ids:
                 return p
         # 2. Second priority: General prompt with no restricted cosmonaut_ids, ONLY if created by cadet's assigned reviewer or guardian
         for p in prompts:
-            if getattr(p, "status", "") in ("draft",):
+            if getattr(p, "status", "") in ("draft",) + self.PROJECT_REQUEST_STATUSES:
                 continue
             c_ids = getattr(p, "cosmonaut_ids", [])
             if not c_ids:
@@ -2144,6 +2156,34 @@ class DataStore:
                     return p
         # Do not leak prompts addressed to other cadets
         return None
+
+    def get_mapped_reviewer_id(self, badge_id: str, cosmonaut_id: str) -> str:
+        """The reviewer a cosmonaut is mapped to for a badge: timeline -> band mapping -> badge assignment ('' if none)."""
+        tl = self.get_timeline(badge_id, cosmonaut_id)
+        if tl and getattr(tl, "reviewer_id", ""):
+            return tl.reviewer_id
+        b_obj = self.get_badge(badge_id)
+        for m in self.get_band_mappings():
+            m_b = m.get("badge_id") or m.get("badge")
+            if cosmonaut_id in (m.get("cosmonauts") or []) and m.get("reviewers") and (
+                m_b == badge_id or (b_obj and m_b in (b_obj.title, b_obj.code, b_obj.id))
+            ):
+                return m["reviewers"][0]
+        return (getattr(b_obj, "assigned_reviewer_id", "") or "") if b_obj else ""
+
+    def get_project_request(self, badge_id: str, cosmonaut_id: str) -> Optional[Any]:
+        """The open (not yet answered) project request of a cosmonaut for a badge, if any."""
+        for p in self.get_reviewer_project_prompts(badge_id=badge_id, include_requests=True):
+            if getattr(p, "status", "") == "requested" and cosmonaut_id in getattr(p, "cosmonaut_ids", []):
+                return p
+        return None
+
+    def get_pending_project_requests(self, reviewer_id: str) -> List[Any]:
+        """Open project requests addressed to a reviewer (oldest first)."""
+        rows = [p for p in self.get_reviewer_project_prompts(reviewer_id=reviewer_id, include_requests=True)
+                if getattr(p, "status", "") == "requested"]
+        rows.sort(key=lambda p: getattr(p, "created_at", ""))
+        return rows
 
     def uncouple_cadet_badge_mapping(self, badge_id: str, cosmonaut_id: str):
         """

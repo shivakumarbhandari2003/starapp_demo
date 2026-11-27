@@ -9,6 +9,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from starapp.storage import store
+from project_helpers import give_project
 from starapp.app import StarAppController
 from starapp.models import ProjectSubmission, AssessmentMarksheet, BadgeTimeline
 
@@ -95,6 +96,7 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
 
         # Clear notifications before submitting to verify routing
         store.notifications = []
+        give_project(store, self.badge.id, self.cosmonaut.id, reviewer_id=self.reviewer.id)
         self.app.handle_event("open_submission_modal", self.badge.id)
         self.app.handle_event("submit_project_deliverables", submit_payload)
 
@@ -269,77 +271,64 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         details/outcomes/deliverables, deliverable submission, reviewer 50-mark grading reflected
         in Cosmonaut marksheet, and Guardian Earn Badge gold award.
         """
-        # STEP 1: Reviewer views mapped badge in c_badge_reviews
+        # STEP 1: the cosmonaut asks the mapped reviewer for the project
+        self.app.handle_event("select_demo_account", self.cosmonaut.id)
+        self.app.current_view = "c_submission"
+        self.app.handle_event("toggle_cosmonaut_badge_card", self.badge.id)
+        self.assertIn("Request Project", self.app.render())
+        self.app.handle_event("request_project", self.badge.id)
+        requested_html = self.app.render()
+        self.assertIn("Project Requested", requested_html)
+        self.assertNotIn("Submit Project Deliverables", requested_html)
+
+        # STEP 2: the reviewer sees the request, creates the project (heading + content) and sends it
         self.app.handle_event("select_demo_account", self.reviewer.id)
         self.app.current_view = "c_badge_reviews"
         rev_html = self.app.render()
-        self.assertIn("Create Project (AI)", rev_html)
+        self.assertIn("1 Project Request", rev_html)
+        self.assertIn("Create &amp; Send Project", rev_html)
 
-        # Open project creator modal
         self.app.handle_event("open_create_reviewer_project_modal", self.badge.id)
         self.assertEqual(self.app.active_modal, "reviewer_project_creator")
         modal_html = self.app.render_active_modal()
-        self.assertIn("AI Project Creation Engine", modal_html)
-        self.assertIn("Expected Project Outcomes", modal_html)
-        self.assertIn("Save Draft", modal_html)
-        self.assertIn("Submit & Send Project to Mapped Cadets", modal_html)
+        for expected in ("Heading", "Content", "Send Project to Mapped Cosmonauts", "Requested"):
+            self.assertIn(expected, modal_html)
+        self.assertNotIn("Expected Project Outcomes", modal_html)
+        self.assertNotIn("Mandatory Deliverables", modal_html)
 
-        # Reviewer saves a DRAFT project
-        draft_payload = {
+        project = {
             "badge_id": self.badge.id,
             "reviewer_id": self.reviewer.id,
             "title": "High-Throughput Signal Streamer",
-            "description": "Design and build an asynchronous signal ingestion engine.",
-            "outcomes": [
-                "Can recognize appropriate data streaming formats for high-velocity signal ingestion",
-                "Can explain backpressure handling and buffer saturation policies"
-            ],
-            "requirements": [
-                "Implement asyncio consumer with buffer saturation limits",
-                "Include unit tests achieving 85%+ coverage"
-            ],
-            "deliverables": {
-                "code": {"name": "streamer_pipeline.py", "description": "Python source code"},
-                "pdf": {"name": "streamer_arch.pdf", "description": "Architecture blueprint"},
-                "github": {"name": "GitHub Repo", "description": "Public or enterprise git repo"}
-            },
+            "content": "Case Study\nA signal platform ingests telemetry from many sources.\n\nYour Challenge\nDesign the ingestion engine and explain your choices.",
             "cosmonaut_ids": [self.cosmonaut.id],
-            "status": "draft"
+            "status": "released",
         }
-        self.app.handle_event("send_reviewer_project", draft_payload)
-        self.assertIn("draft", self.app.last_flash_message.lower())
+        self.app.handle_event("send_reviewer_project", dict(project, title=""))      # a project needs a heading
+        self.assertIsNone(store.get_project_prompt_for_cadet(self.badge.id, self.cosmonaut.id))
+        self.app.handle_event("send_reviewer_project", dict(project, content=""))    # ... and content
+        self.assertIsNone(store.get_project_prompt_for_cadet(self.badge.id, self.cosmonaut.id))
+        self.app.handle_event("send_reviewer_project", project)
+        self.assertIn("sent", self.app.last_flash_message.lower())
 
-        # Verify Cosmonaut CANNOT see draft project yet
-        self.app.handle_event("select_demo_account", self.cosmonaut.id)
-        self.app.current_view = "c_submission"
-        cosmo_html = self.app.render()
-        self.assertNotIn("High-Throughput Signal Streamer", cosmo_html)
-
-        # STEP 2: Reviewer submits/releases the project
-        self.app.handle_event("select_demo_account", self.reviewer.id)
-        release_payload = dict(draft_payload)
-        release_payload["status"] = "released"
-        self.app.handle_event("send_reviewer_project", release_payload)
-        self.assertIn("submitted", self.app.last_flash_message.lower())
-
-        # Verify Cosmonaut receives notification and sees project banner
+        # STEP 3: the cosmonaut receives it; Request Project is replaced by Submit Project Deliverables
+        self.assertIsNone(store.get_project_request(self.badge.id, self.cosmonaut.id))   # the request is answered
         self.app.handle_event("select_demo_account", self.cosmonaut.id)
         notifs = store.get_notifications(self.cosmonaut.id)
-        proj_notif = next((n for n in notifs if "High-Throughput Signal Streamer" in n.title), None)
-        self.assertIsNotNone(proj_notif, "Cosmonaut must receive project assigned notification")
-
+        self.assertTrue(any("High-Throughput Signal Streamer" in n.title for n in notifs), "Cosmonaut must be notified")
         self.app.current_view = "c_submission"
         self.app.handle_event("toggle_cosmonaut_badge_card", self.badge.id)
-        cosmo_html_released = self.app.render()
-        self.assertIn("High-Throughput Signal Streamer", cosmo_html_released)
-        self.assertIn("Expected Project Outcomes", cosmo_html_released)
-        self.assertIn("streamer_pipeline.py", cosmo_html_released)
-        self.assertIn("streamer_arch.pdf", cosmo_html_released)
+        received_html = self.app.render()
+        self.assertIn("Submit Project Deliverables", received_html)
+        self.assertNotIn("Request Project", received_html)
 
-        # STEP 3: Cosmonaut submits deliverables
+        # STEP 4: opening it shows the project first (big heading + content), then PDF / code / GitHub
         self.app.handle_event("open_submission_modal", self.badge.id)
         modal_submit_html = self.app.render_active_modal()
         self.assertIn("High-Throughput Signal Streamer", modal_submit_html)
+        self.assertIn("Design the ingestion engine", modal_submit_html)
+        for field in ("submission-pdf-file", "submission-code-file", "submission-github-url"):
+            self.assertGreater(modal_submit_html.index(field), modal_submit_html.index("High-Throughput Signal Streamer"))
         submit_payload = {
             "badge_id": self.badge.id,
             "github_url": "https://github.com/starapp/streamer-pipeline",

@@ -1,6 +1,7 @@
 import unittest, sys, os
 sys.path.insert(0, os.path.abspath("."))
 from starapp.app import store, StarAppController
+from project_helpers import give_project
 
 class TestGuardianReviewFlow(unittest.TestCase):
     def setUp(self):
@@ -27,6 +28,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
             "code_payload": "def my_consumer():\n    print('Idempotent Kafka Consumer')\n",
             "github_url": "https://github.com/starapp-cosmonauts/custom-ingestion"
         }
+        give_project(store, "b1_int_01", "cosmo_1")
         self.app.handle_event("submit_project_deliverable", sub_payload)
         subs = store.get_submissions_for_cosmonaut("cosmo_1", "b1_int_01")
         latest_sub = subs[-1]

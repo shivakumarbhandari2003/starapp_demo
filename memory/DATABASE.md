@@ -41,7 +41,7 @@ SQLite 3 · WAL · `foreign_keys=ON` · `busy_timeout=5000`. **38 tables + 1 vie
 | `band_mappings` (10) | Guardian's cadets+reviewers↔badge pairing | `data_json` holds `cosmonauts[]`, `reviewers[]`, `badge_id`, review window |
 | `mapping_requests` (11) | invitation to reviewers | `status` pending/accepted/rejected |
 | `badge_timelines` (35) | per cadet+badge calendar | PK (`badge_id`,`cosmonaut_id`); `status` active/reviewer_assessed/completed/retake_required; `reviewer_id`, `submission_deadline`, `actual_award_date`, `review_window_json` |
-| `reviewer_project_prompts` (8) | project brief released to cadets | `cosmonaut_ids_json`, `deliverables_json`, `outcomes_json`, `status` |
+| `reviewer_project_prompts` (8+) | the project a reviewer sent (**Heading = `title`, Content = `description`**; `deliverables_json`/`outcomes_json`/`requirements_text` are legacy, folded into the content on display) AND the cosmonaut's project *request* | `cosmonaut_ids_json`, `status` = `requested` (id `projreq_<badge>_<cosmo>`) / `fulfilled` / `draft` / `sent` / `released` (id `proj_<badge>_<reviewer>_<ms>_<id>`, one record per send) |
 | `project_submissions` (24) | attempts | `attempt_number`, `status`, `pdf_payload`/`payload`/`code_payload` (**base64 blobs — lazy loaded**), `github_url` |
 | `assessment_marksheets` (43) | graded attempts | 5 criteria columns, `total_marks`, `percentage`, `assessor_role`, `decision` |
 | `deadline_extensions` (3) | extension requests | `status` pending/approved/rejected |

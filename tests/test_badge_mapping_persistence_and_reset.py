@@ -18,6 +18,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
 from starapp.app import StarAppController
+from project_helpers import give_project
 from starapp.storage import store
 from starapp.models import Badge, current_iso_timestamp
 
@@ -127,7 +128,7 @@ class TestBadgeMappingPersistenceAndReset(unittest.TestCase):
         rev_ctrl.handle_event("nav_cosmonaut", "c_badge_reviews")
         rev_html = rev_ctrl.render()
         self.assertIn("Cloud Solutions Architecture Test", rev_html)
-        self.assertIn("Create Project (AI)", rev_html)
+        self.assertIn("Create Project", rev_html)
 
         # VERIFY 6: Cosmonaut view has unlocked milestone
         cosmo_ctrl = StarAppController()

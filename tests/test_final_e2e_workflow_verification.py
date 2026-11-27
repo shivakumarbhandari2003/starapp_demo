@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from starapp.app import StarAppController
+from project_helpers import give_project
 from starapp.storage import store
 from starapp.models import (
     Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet,
@@ -262,7 +263,7 @@ class TestFinalE2EWorkflowVerification(unittest.TestCase):
             store=store,
             expanded_badge_id=badge1.id
         )
-        self.assertIn("ASSIGNED PROJECT SPECIFICATION", sub_workspace_html)
+        self.assertIn("Project Allocated", sub_workspace_html)
 
         # Cadet 1 submits all 3 deliverables
         self.ctrl.handle_event("submit_project_deliverable", json.dumps({

@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from starapp.storage import store
+from project_helpers import give_project
 from starapp.app import StarAppController
 from starapp.models import Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet
 
@@ -117,12 +118,12 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
             self.assertNotIn(c_user.name, html_expanded, f"Cadet {c_user.name} must NOT appear in Reviewer A schedule")
 
         # Dedicated cadet card: one compact row per cadet (the badge header is not repeated inside it)
-        self.assertIn("3-Day Project Preparation", html_expanded)
+        self.assertIn("Project Pending", html_expanded)
         self.assertIn("Review Window:", html_expanded)
         self.assertIn("Submission Deadline:", html_expanded)
         self.assertNotIn("Reviewer creates project, Cadet learns concepts", html_expanded)  # removed boilerplate
         self.assertIn("View Timeline", html_expanded)
-        self.assertIn("Create Project (AI)", html_expanded)
+        self.assertIn("Create Project", html_expanded)
         self.assertIn("Cosmonaut Assessments", html_expanded)
 
         # 3. Reviewer B logs in: must see strictly 3 cadets, none from cadets_a
@@ -141,13 +142,13 @@ class TestReviewerCosmonautIsolationAndSchedule(unittest.TestCase):
             self.assertNotIn(c_user.name, html_b, f"Cadet {c_user.name} must NOT appear in Reviewer B schedule")
 
     def test_lifecycle_progression_in_reviewer_schedule(self):
-        # 1. Start: Reviewer A sees 3-Day Prep & Create Project (AI)
+        # 1. Start: Reviewer A sees Project Pending & Create Project
         self.app.handle_event("select_demo_account", self.rev_a.id)
         self.app.handle_event("nav_cosmonaut", "c_badge_reviews")
         self.app.handle_event("toggle_reviewer_badge_expand", self.badge.id)
         html1 = self.app.render()
-        self.assertIn("3-Day Project Preparation", html1)
-        self.assertIn("Create Project (AI)", html1)
+        self.assertIn("Project Pending", html1)
+        self.assertIn("Create Project", html1)
 
         # 2. Reviewer A authors and releases project
         create_payload = {

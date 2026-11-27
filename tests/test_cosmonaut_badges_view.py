@@ -4,7 +4,7 @@ Tests for Cosmonaut Badges View and Dedicated Badge Detail Page:
 2. Initial allocated badge card in 3x3 grid showing strictly:
    - BAND B1
    - B1-SIG-01
-   - Allocated Project (or Project Allocated once reviewer creates project)
+   - Allocated Badge (or Project Allocated once the reviewer sends the project)
    - Tech › Data & Machine › Signals
    - Signals Foundations
    - And NOT 'Target Learning Outcomes', 'ASSIGNED PROJECT SPECIFICATION', or embedded Submission Portal.
@@ -95,7 +95,7 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # Check Initial Card specific elements
         self.assertIn("BAND B1", html)
         self.assertIn("B1-SIG-01", html)
-        self.assertIn("Allocated Project", html)
+        self.assertIn("Allocated Badge", html)
         self.assertIn("Signals Foundations", html)
         self.assertIn("Signals", html)
         self.assertIn("Data &amp; Machine", html)
@@ -117,7 +117,7 @@ class TestCosmonautBadgesView(unittest.TestCase):
             html = self.ctrl.render()
             self.assertIn("Signals Foundations", html, f"Cosmonaut {cid} should see allocated Signals Foundations badge")
             self.assertIn("BAND B1", html)
-            self.assertIn("Allocated Project", html)
+            self.assertIn("Allocated Badge", html)
             self.assertNotIn("Target Learning Outcomes", html)
 
     def test_clicking_badge_opens_dedicated_badge_page_with_project_and_deliverables_modal(self):
@@ -158,7 +158,9 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # Section 2: Earn the Badge (before project allocation)
         self.assertIn("badge-section-earn", html)
         self.assertIn("Earn the Badge", html)
-        self.assertIn("Allocated Milestone", html)
+        self.assertIn("Request Project", html)                      # no project yet: the cosmonaut asks for it
+        self.assertNotIn("Allocated Milestone", html)
+        self.assertNotIn("Submit Project Deliverables", html)
         self.assertNotIn("btn-project-allocated-badge_b1_signals", html)
 
         # Section 3-6: Curriculum sections
@@ -176,8 +178,14 @@ class TestCosmonautBadgesView(unittest.TestCase):
 
         # Page footer navigation & deliverable popup trigger
         self.assertIn("Back to All Badges", html)
-        self.assertIn("Submit Deliverables for this Badge", html)
+        self.assertNotIn("Submit Deliverables for this Badge", html)
         self.assertNotIn("Project Deliverable Submission Portal", html)
+
+        # The cosmonaut requests the project: the request goes to the mapped reviewer
+        self.ctrl.handle_event("request_project", "badge_b1_signals")
+        self.assertEqual(self.ctrl.flash_type, "success")
+        self.assertIn("Project Requested", self.ctrl.render())
+        self.assertEqual([r.badge_id for r in store.get_pending_project_requests("m_b2_1")], ["badge_b1_signals"])
 
         # Now mapped reviewer creates & releases a project for this badge
         rev = store.get_user_by_id("m_b2_1")
@@ -210,27 +218,26 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # Inside dedicated badge page (c_badge_detail): 'Project allocated' button is shown in Earn the Badge section + project view renders
         self.ctrl.handle_event("open_cosmonaut_badge_page", "badge_b1_signals")
         detail_with_proj_html = self.ctrl.render()
-        self.assertIn("btn-project-allocated-badge_b1_signals", detail_with_proj_html)
-        self.assertIn("Project allocated", detail_with_proj_html)
-        self.assertIn("Allocated Milestone", detail_with_proj_html)
+        self.assertIn("Submit Project Deliverables", detail_with_proj_html)      # Request Project became Submit
+        self.assertNotIn("Request Project", detail_with_proj_html)
         self.assertIn("Real-Time Telemetry FFT Analyzer", detail_with_proj_html)
-        self.assertIn("fft_analyzer.py", detail_with_proj_html)
+        self.assertIn("Implement an enterprise FFT pipeline", detail_with_proj_html)
 
         # Clicking 'Project allocated' opens the allocated project popup showing reviewer's allocated project
         self.ctrl.handle_event("open_allocated_project_modal", "badge_b1_signals")
         self.assertEqual(self.ctrl.active_modal, "allocated_project_modal")
         proj_modal_html = self.ctrl.render()
-        self.assertIn("Allocated Milestone Project", proj_modal_html)
         self.assertIn("Real-Time Telemetry FFT Analyzer", proj_modal_html)
         self.assertIn("Compute normalized FFT power spectra", proj_modal_html)
-        self.assertIn("Allocated by Reviewer:", proj_modal_html)
-        self.assertIn("Submit Deliverables", proj_modal_html)
+        self.assertIn("Mapped Reviewer:", proj_modal_html)
+        self.assertIn("Submit Project Deliverables", proj_modal_html)
 
         # Clicking 'Submit Deliverables' opens the deliverable submission popup window
         self.ctrl.handle_event("open_submission_modal", "badge_b1_signals")
         self.assertEqual(self.ctrl.active_modal, "submission_portal_modal")
         modal_html = self.ctrl.render()
-        self.assertIn("Project Deliverable Submission Portal", modal_html)
+        self.assertIn("Submit Project Deliverables", modal_html)
+        self.assertLess(modal_html.index("Real-Time Telemetry FFT Analyzer"), modal_html.index("submission-pdf-file"))  # project first, then the fields
 
         # Submitting deliverables closes modal, stays on badge page, routes to reviewer, and transitions status
         self.ctrl.handle_event("submit_project_deliverable", json.dumps({

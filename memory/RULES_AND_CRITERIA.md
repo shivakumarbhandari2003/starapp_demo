@@ -47,6 +47,8 @@ Each decision writes a `badge_review_events` row with a **unique** id (no overwr
 
 ## 5. Submission rules (`execute_submit_project`)
 
+* **Project first:** *Request Project* -> reviewer sends **Heading + Content** -> *Submit Project Deliverables* (the modal shows the project, then PDF / code / GitHub). The submission is routed to the reviewer from `store.get_mapped_reviewer_id` (timeline -> band mapping -> badge assignment) and appears in their **Cosmonaut Assessments**.
+
 * **Multi-attempt history is sacred:** never overwrite a graded attempt. New attempt = new row, `attempt_number = previous + 1`. Only a latest attempt that is still `pending`/`draft` is edited in place.
 * A cadet may submit only if: all `prerequisites` of the badge are approved; the badge is allotted to them (timeline exists or badge in their list); the badge is not already earned; the latest attempt is not waiting for the Guardian's final decision.
 * Deliverables: PDF architecture report (`.pdf`), a source-code file, and an `http(s)` GitHub URL. Anything missing is inherited from the previous attempt. **Only in demo mode** may placeholders be generated; in real mode a missing deliverable is an error.
@@ -84,7 +86,8 @@ composite      = ((cosmo × cw) + (reviewer × rw)) / (cw + rw)   with cw = 0.55
 | **Guardian-only actions** (37) — badge authoring/publish, mapping, allotment, materials, extension decisions, announcements, final assessment, cycles & salaries, reset | `StarAppController._GUARDIAN_ONLY_ACTIONS`, checked at the top of `handle_event` |
 | Guardian views are only reachable by guardians; any user is limited to `_COSMONAUT_VIEWS` otherwise | `nav_*` handlers + render-time gate |
 | A mapping request may be accepted/rejected/deleted only by the addressed reviewer or a guardian | `accept/reject/delete_mapping_request` |
-| Only the mapped reviewer (or guardian) may author/release a project brief, only to their cadets | `send_reviewer_project` |
+| Only the mapped reviewer (or guardian) may send a project, only to their cosmonauts; heading and content are mandatory (heading <= 200, content <= 20,000 chars) | `send_reviewer_project` |
+| A cosmonaut may request a project only for an allotted, not-yet-earned badge with a mapped reviewer (one open request); **deliverables can be submitted only for a project that was sent** (`open_submission_modal` and `execute_submit_project` both refuse otherwise) | `execute_request_project`, `execute_submit_project` |
 | Extension request: only for an allotted, not-completed milestone, one pending per badge, ≥ 10-char reason, proposed date later than the current deadline | `execute_submit_extension_request`, `validation.py` |
 | Login: the selected role must be a role the user holds | `auth/service.py`, controller login |
 | REST: `require_roles` with aliases from `user_role_assignments`; cycles mutations guardian-only; actor from session | `dependencies.py`, `cycles/router.py` |
@@ -104,6 +107,7 @@ composite      = ((cosmo × cw) + (reviewer × rw)) / (cw + rw)   with cw = 0.55
 5. New aggregate used on many pages ⇒ memoise with `store._memoized(key, builder, extra, scope)`; never recompute cohort-wide data per request.
 6. UI: show names/badge codes, **not internal ids** (`humanize_internal_ids`); icons are SVG (no emoji glyphs in new code); text contrast ≥ WCAG AA; no font < 10 px; reuse `btn-metal` / `btn-secondary`; no sub-title boilerplate under headings.
 7. Terminology: the Cosmonaut portal (any `c_*` view, incl. reviewer pages, modals, flash messages, page titles) says **"Cosmonaut", never "Cadet"**. It is enforced centrally by `views_common.cosmonaut_terms()` (text nodes + `placeholder/title/aria-label/alt` only; ids, classes, handlers, scripts untouched) applied in `_render_workspace_scoped`; Guardian pages keep their wording. New text may be written either way, but test `test_no_cadet_wording_on_any_cosmonaut_or_reviewer_page` must pass.
+7a. **Cosmonaut sidebar order** (`views_cosmonaut.render_cosmonaut_sidebar`): Badges (`c_submission`, the landing page = `StarAppController.COSMONAUT_HOME_VIEW`) → Assessment Marksheet → Deadline Extension → *(Band 2+ only)* Badge Reviews → Review Requests → Cosmonaut Assessments. **Profile is compulsory for every user in every portal and is not in the nav list: it is the standard `nav-link` "View Profile" pinned in the sidebar footer (`views_common.render_sidebar_profile_footer`, `data-nav-id` = `c_profile` / `g_profile`), highlighted with `active` while the profile page is open, above the user name + Sign Out.** Reviewer tools exist only for bands B2–B6 (`views_common.is_reviewer_band`, `COSMONAUT_REVIEWER_VIEWS`) because Reviewer_Band > Badge_Band; this is enforced in `nav_cosmonaut` (ActionDenied) **and** at render time (stale sessions fall back to Badges), not just by hiding the links. The Choose Cycle page has no sidebar item; it opens from the cycle pill at the top of the sidebar and the top-bar "Cycles & Appraisals" link.
 7b. Don't regress flicker fixes: keep `_sidebarSignature()` ignoring the active class; keep one render per action; keep `full_html` omitted when `regions` exist.
 8. After touching `starapp/*.py`: `python scripts/pack_py.py`.
 9. Keep `data/starapp.db` untouched unless the task is a DB change; record schema changes in `memory/DATABASE.md` and the change log.

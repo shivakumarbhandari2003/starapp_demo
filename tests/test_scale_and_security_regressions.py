@@ -16,6 +16,7 @@ from backend.app.main import app
 import backend.app.main as main_mod
 import backend.app.core.dependencies as deps_mod
 from starapp.storage import store
+from project_helpers import give_project
 from starapp.app import StarAppController
 from starapp.models import ProjectSubmission
 from starapp.pagination import paginate, render_pager, page_slice, bind_page_state, reset_page_state
@@ -331,6 +332,8 @@ class TestWorkflowAuthorizationAndRules(unittest.TestCase):
         badge.is_published = True
         badge.assigned_cosmonaut_ids = list(cadet_ids)
         store.save_badge(badge)
+        for cid in cadet_ids:      # the mapped reviewer has sent each of them the project
+            give_project(store, badge_id, cid)
         return badge
 
     PAYLOAD = {"badge_id": "b1_int_01", "pdf_name": "r.pdf", "pdf_payload": "data:application/pdf;base64,AAAA",
@@ -555,6 +558,275 @@ class TestStage2UiPolish(unittest.TestCase):
         self.assertNotIn("renderState.sidebarHtml !== payload.sidebarHtml", js)
 
 
+class TestCosmonautSidebarOrderAndReviewerBands(unittest.TestCase):
+    """Badges -> Marksheet -> Deadline Extension -> reviewer tools (Band 2+) -> Profile; reviewers only above Band 1."""
+
+    def setUp(self):
+        store.reset_to_seed()
+
+    def _nav_ids(self, uid):
+        import re
+        c = StarAppController()
+        c.initialize()
+        c.handle_event("select_demo_account", uid)
+        return c, re.findall(r'data-nav-id="([a-z_]+)"', c.render())
+
+    def test_b1_sidebar_has_four_items_and_lands_on_badges(self):
+        c, ids = self._nav_ids("m_b1_1")
+        self.assertEqual(c.current_view, "c_submission")
+        self.assertEqual(ids, ["c_submission", "c_results", "c_extensions", "c_profile"])
+
+    def test_every_higher_band_gets_the_reviewer_tools_and_profile_last(self):
+        for band in ("B2", "B3", "B4", "B5", "B6"):
+            uid = f"m_{band.lower()}_1"
+            c, ids = self._nav_ids(uid)
+            self.assertEqual(ids, ["c_submission", "c_results", "c_extensions",
+                                   "c_badge_reviews", "c_requests", "c_assessments", "c_profile"], band)
+
+    def test_reviewer_pages_are_refused_server_side_for_band_1(self):
+        c, _ = self._nav_ids("m_b1_1")
+        for view in ("c_badge_reviews", "c_requests", "c_assessments", "c_assessment_detail"):
+            c.current_view = "c_submission"
+            c.handle_event("nav_cosmonaut", view)
+            self.assertEqual(c.current_view, "c_submission", view)
+        c.current_view = "c_requests"          # a stale / crafted session must not render the page either
+        c.render()
+        self.assertEqual(c.current_view, "c_submission")
+
+    def test_reviewer_label_says_cosmonaut_assessments(self):
+        c, _ = self._nav_ids("m_b2_1")
+        html = c.render()
+        self.assertIn("Cosmonaut Assessments", html)
+        self.assertNotIn("Cadet Assessments", html)
+
+
+class TestProjectRequestWorkflow(unittest.TestCase):
+    """Request Project -> mapped reviewer creates (heading + content) and sends -> Submit Project Deliverables -> reviewer's
+    Cosmonaut Assessments."""
+
+    BADGE = "b1_int_01"
+    SUBMISSION = {"badge_id": "b1_int_01", "pdf_name": "r.pdf", "pdf_payload": "data:application/pdf;base64,AAAA",
+                  "code_name": "a.py", "code_payload": "print(1)", "github_url": "https://github.com/o/r"}
+    PROJECT_TITLE = "SmartFit: The Member Intelligence Challenge"
+    PROJECT_BODY = "Case Study\nSmartFit is a digital fitness platform.\n\nYour Challenge\nRecommend how SmartFit should organise its information."
+
+    def setUp(self):
+        store.reset_to_seed()
+        badge = store.get_badge(self.BADGE)
+        badge.is_published = True
+        badge.assigned_cosmonaut_ids = ["m_b1_1", "m_b1_2"]
+        badge.assigned_reviewer_id = "m_b2_1"
+        store.save_badge(badge)
+
+    def _login(self, uid):
+        c = StarAppController()
+        c.initialize()
+        c.handle_event("select_demo_account", uid)
+        return c
+
+    def _send(self, reviewer, cosmonaut_ids, **over):
+        payload = {"badge_id": self.BADGE, "title": self.PROJECT_TITLE, "content": self.PROJECT_BODY,
+                   "cosmonaut_ids": cosmonaut_ids, "status": "released"}
+        payload.update(over)
+        reviewer.handle_event("send_reviewer_project", json.dumps(payload))
+
+    def test_earn_the_badge_offers_request_project_instead_of_submit_deliverables(self):
+        c = self._login("m_b1_1")
+        c.handle_event("open_cosmonaut_badge_page", self.BADGE)
+        html = c.render()
+        self.assertIn("Request Project", html)
+        for gone in ("Allocated Milestone", "Submit Deliverables &rarr;", "Submit Project Deliverables"):
+            self.assertNotIn(gone, html)
+
+    def test_request_goes_to_the_mapped_reviewer_and_is_not_a_project(self):
+        c = self._login("m_b1_1")
+        c.handle_event("request_project", self.BADGE)
+        self.assertEqual(c.flash_type, "success")
+        req = store.get_project_request(self.BADGE, "m_b1_1")
+        self.assertIsNotNone(req)
+        self.assertEqual(req.reviewer_id, "m_b2_1")
+        self.assertIsNone(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1"))       # a request is not a project
+        self.assertEqual(store.get_reviewer_project_prompts(badge_id=self.BADGE), [])
+        self.assertTrue(any("Project requested" in n.title for n in store.get_notifications("m_b2_1")))
+        c.handle_event("open_cosmonaut_badge_page", self.BADGE)
+        self.assertIn("Project Requested", c.render())
+        c.handle_event("request_project", self.BADGE)                                      # no duplicate requests
+        self.assertEqual(len(store.get_pending_project_requests("m_b2_1")), 1)
+
+    def test_request_needs_an_allotted_badge_and_a_mapped_reviewer(self):
+        outsider = self._login("m_b1_3")                                                   # badge not allotted to this cosmonaut
+        outsider.handle_event("request_project", self.BADGE)
+        self.assertIsNone(store.get_project_request(self.BADGE, "m_b1_3"))
+        badge = store.get_badge(self.BADGE)
+        badge.assigned_reviewer_id = ""
+        store.save_badge(badge)
+        c = self._login("m_b1_1")
+        c.handle_event("request_project", self.BADGE)
+        self.assertEqual(c.flash_type, "error")
+        self.assertIsNone(store.get_project_request(self.BADGE, "m_b1_1"))
+
+    def test_deliverables_cannot_be_submitted_before_the_project_is_sent(self):
+        c = self._login("m_b1_1")
+        c.handle_event("open_submission_modal", self.BADGE)
+        self.assertIsNone(c.active_modal)
+        c.handle_event("submit_project_deliverable", json.dumps(self.SUBMISSION))
+        self.assertEqual(c.flash_type, "error")
+        self.assertEqual(store.get_submissions_for_cosmonaut("m_b1_1", self.BADGE), [])
+
+    def test_reviewer_sends_a_heading_and_content_project_and_the_request_is_answered(self):
+        self._login("m_b1_1").handle_event("request_project", self.BADGE)
+        rev = self._login("m_b2_1")
+        rev.current_view = "c_badge_reviews"
+        html = rev.render()
+        self.assertIn("1 Project Request", html)
+        self.assertIn("Create &amp; Send Project", html)
+        rev.handle_event("open_create_reviewer_project_modal", self.BADGE)
+        modal = rev.render_active_modal()
+        for expected in ("Heading", "Content", "Send Project to Mapped Cosmonauts", "Requested"):
+            self.assertIn(expected, modal)
+        for old in ("Expected Project Outcomes", "Mandatory Deliverables", "Save Draft"):
+            self.assertNotIn(old, modal)
+        self._send(rev, ["m_b1_1"])
+        self.assertEqual(rev.flash_type, "success")
+        proj = store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1")
+        self.assertEqual((proj.title, proj.description), (self.PROJECT_TITLE, self.PROJECT_BODY))
+        self.assertIsNone(store.get_project_request(self.BADGE, "m_b1_1"))
+        self.assertTrue(any(n.title.startswith("Project received") for n in store.get_notifications("m_b1_1")))
+
+    def test_sending_needs_a_heading_content_and_a_recipient(self):
+        rev = self._login("m_b2_1")
+        for bad in ({"title": ""}, {"title": "   "}, {"content": ""}, {"title": "x" * 201}, {"content": "x" * 20001}):
+            self._send(rev, bad.get("cosmonaut_ids", ["m_b1_1"]), **{k: v for k, v in bad.items() if k != "cosmonaut_ids"})
+            self.assertIsNone(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1"), bad)
+
+    def test_only_the_mapped_reviewer_can_send_and_only_to_their_cosmonauts(self):
+        other = self._login("m_b3_1")                                                      # a B3 reviewer, not mapped to this badge
+        self._send(other, ["m_b1_1"])
+        self.assertIsNone(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1"))
+        rev = self._login("m_b2_1")
+        self._send(rev, ["m_b1_1", "m_b1_9"])                                              # m_b1_9 is not mapped to this reviewer
+        self.assertIsNotNone(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1"))
+        self.assertIsNone(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_9"))
+
+    def test_each_send_is_its_own_record_so_an_earlier_project_is_never_rewritten(self):
+        rev = self._login("m_b2_1")
+        self._send(rev, ["m_b1_1"], title="First project")
+        self._send(rev, ["m_b1_2"], title="Second project")
+        self.assertEqual(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_1").title, "First project")
+        self.assertEqual(store.get_project_prompt_for_cadet(self.BADGE, "m_b1_2").title, "Second project")
+
+    def test_project_is_shown_as_big_heading_plus_content_to_both_sides(self):
+        self._send(self._login("m_b2_1"), ["m_b1_1"])
+        c = self._login("m_b1_1")
+        c.handle_event("open_cosmonaut_badge_page", self.BADGE)
+        page = c.render()
+        self.assertIn("Submit Project Deliverables", page)
+        self.assertNotIn("Request Project", page)
+        for html in (page, ):
+            self.assertIn(self.PROJECT_TITLE, html)
+            self.assertIn("font-size:1.75rem; font-weight:900", html)                      # the heading is big and bold
+            self.assertIn("Your Challenge", html)
+        for gone in ("Mandatory Deliverable Files", "Detailed Project Requirements", "Expected Project Outcomes"):
+            self.assertNotIn(gone, page)
+        c.handle_event("open_submission_modal", self.BADGE)
+        modal = c.render_active_modal()
+        self.assertLess(modal.index(self.PROJECT_TITLE), modal.index("submission-pdf-file"))
+        self.assertLess(modal.index("submission-pdf-file"), modal.index("submission-code-file"))
+        self.assertLess(modal.index("submission-code-file"), modal.index("submission-github-url"))
+
+    def test_submitted_project_lands_in_the_reviewers_cosmonaut_assessments(self):
+        self._send(self._login("m_b2_1"), ["m_b1_1"])
+        c = self._login("m_b1_1")
+        c.handle_event("submit_project_deliverable", json.dumps(self.SUBMISSION))
+        self.assertEqual(c.flash_type, "success")
+        sub = store.get_submissions_for_cosmonaut("m_b1_1", self.BADGE)[-1]
+        self.assertTrue(any("submitted" in n.message.lower() for n in store.get_notifications("m_b2_1")))
+        rev = self._login("m_b2_1")
+        rev.handle_event("nav_cosmonaut", "c_assessments")
+        html = rev.render()
+        self.assertIn(store.get_user_by_id("m_b1_1").name, html)
+        self.assertIn(store.get_badge(self.BADGE).code, html)
+        self.assertIn("Cosmonaut Assessments", html)
+        rev.handle_event("open_reviewer_assessment_page", sub.id)                         # and the reviewer can open it to grade
+        self.assertEqual(rev.current_view, "c_assessment_detail")
+
+    def test_badge_reviews_sidebar_counts_open_project_requests(self):
+        self._login("m_b1_1").handle_event("request_project", self.BADGE)
+        self._login("m_b1_2").handle_event("request_project", self.BADGE)
+        rev = self._login("m_b2_1")
+        html = rev.render()
+        self.assertRegex(html, r'data-badge-for="c_badge_reviews">2<')
+
+
+class TestViewProfileFooterAndProfilePages(unittest.TestCase):
+    """Every portal pins a "View Profile" nav-link at the bottom of the sidebar; the pages show real data."""
+
+    FAKE_TEXT = ("Orion-24", "Tier-1 Certified", "ING-104", "Cadre ", "Data systems apprentice")
+
+    def setUp(self):
+        store.reset_to_seed()
+
+    def _login(self, uid):
+        c = StarAppController()
+        c.initialize()
+        c.handle_event("select_demo_account", uid)
+        return c
+
+    def test_view_profile_link_is_pinned_at_the_bottom_for_every_role(self):
+        for uid, view in (("guardian_1", "g_profile"), ("m_b1_1", "c_profile"), ("m_b2_1", "c_profile"), ("m_b6_1", "c_profile")):
+            c = self._login(uid)
+            html = c.render()
+            self.assertIn("View Profile", html, uid)
+            link = f'data-nav-id="{view}"'
+            self.assertEqual(html.count(link), 1, uid)
+            footer = html.split('<div class="sidebar-footer">')[1].split("</aside>")[0]
+            self.assertIn(link, footer, uid)                       # the link lives in the footer, below the nav list
+            self.assertIn("Sign Out", footer, uid)
+            nav_part = html.split('<ul class="sidebar-nav">')[1].split("</ul>")[0]
+            self.assertNotIn(link, nav_part, uid)                  # ... and not inside the main nav list
+            self.assertNotIn(f'class="nav-link active" {link}', html, uid)
+
+    def test_profile_link_is_highlighted_on_the_profile_page(self):
+        c = self._login("m_b2_1")
+        c.handle_event("nav_cosmonaut", "c_profile")
+        self.assertEqual(c.current_view, "c_profile")
+        self.assertIn('class="nav-link active" data-nav-id="c_profile"', c.render())
+        g = self._login("guardian_1")
+        g.handle_event("nav_guardian", "g_profile")
+        self.assertEqual(g.current_view, "g_profile")
+        ghtml = g.render()
+        self.assertIn('class="nav-link active" data-nav-id="g_profile"', ghtml)
+        self.assertIn('data-pillar-mode="pillars"', ghtml)
+
+    def test_cosmonaut_profile_shows_the_users_real_details_and_no_demo_text(self):
+        c = self._login("m_b2_1")
+        user = store.get_user_by_id("m_b2_1")
+        c.handle_event("nav_cosmonaut", "c_profile")
+        html = c.render()
+        for expected in (user.name, user.email, "Specialist", "Badges Earned", "Reporting Manager", "Current Cycle Standing", "Reviewer"):
+            self.assertIn(expected, html)
+        for fake in self.FAKE_TEXT:
+            self.assertNotIn(fake, html)
+        self.assertNotRegex(html, r"(?i)\bcadets?\b")
+
+    def test_guardian_profile_shows_real_identity_and_live_overview(self):
+        g = self._login("guardian_1")
+        user = store.get_user_by_id("guardian_1")
+        g.handle_event("nav_guardian", "g_profile")
+        html = g.render()
+        for expected in (user.name, user.email, "Academy Overview", "Cosmonauts in cohort", "Badges awaiting approval", "Role Access"):
+            self.assertIn(expected, html)
+        self.assertIn(str(len(store.get_all_cosmonauts())), html)
+
+    def test_guardian_profile_page_is_not_reachable_by_a_cosmonaut(self):
+        c = self._login("m_b1_1")
+        c.handle_event("nav_guardian", "g_profile")
+        self.assertNotEqual(c.current_view, "g_profile")
+        c.current_view = "g_profile"      # stale / crafted session
+        self.assertNotIn("Academy Overview", c.render())
+        self.assertFalse(c.current_view.startswith("g_"))
+
+
 class TestCosmonautPortalCycleMergeAndTerminology(unittest.TestCase):
     """Past cycles & appraisals live inside Choose Cycle; the Cosmonaut portal never says "Cadet"."""
 
@@ -588,7 +860,8 @@ class TestCosmonautPortalCycleMergeAndTerminology(unittest.TestCase):
             html = c.render()
             self.assertNotIn('data-nav-id="c_cycles"', html, uid)
             self.assertNotIn("Past Cycle", html, uid)
-            self.assertIn('data-nav-id="c_choose_cycle"', html, uid)
+            self.assertNotIn('data-nav-id="c_choose_cycle"', html, uid)
+            self.assertIn("starapp-sidebar-cycle-pill", html, uid)  # cycles are still reachable from the pill
 
     def test_choose_cycle_page_contains_the_appraisal_section_and_legacy_route_resolves(self):
         c = StarAppController()

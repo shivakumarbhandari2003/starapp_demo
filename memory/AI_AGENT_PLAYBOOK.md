@@ -79,4 +79,4 @@ Match Guardian styling; check contrast (≥ 4.5:1), min font 10 px, no overflow 
 * Reviewer must be in a strictly higher band; B6 badges have no peer reviewers (Guardian oversees).
 * Flow: create → approve → map → reviewer accepts → allot → publish → brief → submit → reviewer grades → guardian finalises → badge earned / retake.
 * Cycle score: cosmo (marks 70 % + completion 30 %) and reviewer execution blended 80/20; tiers 90/80/70/1; promotion at ≥ 85 with ≥ 1 badge.
-* 195 tests; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).
+* 215 tests; `data/starapp.db` = 38 tables + 1 view; 38 users (36 cadets, 2 guardians).

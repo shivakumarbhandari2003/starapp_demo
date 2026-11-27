@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from starapp.app import StarAppController
+from project_helpers import give_project
 from starapp.storage import store
 from starapp.models import Badge, BadgeTimeline, ProjectSubmission, AssessmentMarksheet, current_iso_timestamp
 
@@ -196,6 +197,9 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
         # =========================================================================
         self.ctrl.handle_event("select_demo_account", target_cosmonaut_id)
         self.assertEqual(self.ctrl.current_user.id, target_cosmonaut_id)
+
+        # The mapped reviewer has sent the project (request -> send is covered in test_scale_and_security_regressions)
+        give_project(store, published_badge.id, target_cosmonaut_id)
 
         # Submit deliverable for Attempt #1
         self.ctrl.handle_event("submit_project_deliverable", json.dumps({
@@ -447,8 +451,8 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
         self.ctrl.handle_event("open_create_reviewer_project_modal", badge.id)
         self.assertEqual(self.ctrl.active_modal, "reviewer_project_creator")
         proj_modal_html = self.ctrl.render_active_modal()
-        self.assertIn("AI Project Creation Engine", proj_modal_html)
-        self.assertIn("Send Project to Mapped Cadets", proj_modal_html)
+        self.assertIn("Create Project", proj_modal_html)
+        self.assertIn("Send Project to Mapped Cosmonauts", proj_modal_html)
 
         # Reviewer generates and releases project specification
         ai_spec = generate_reviewer_project_spec(
@@ -487,8 +491,7 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
             store=store,
             expanded_badge_id=badge.id
         )
-        self.assertIn("ASSIGNED PROJECT SPECIFICATION", sub_workspace_html)
-        self.assertIn("Ready for Submission", sub_workspace_html)
+        self.assertIn("Project Allocated", sub_workspace_html)
 
         # Cosmonaut submits deliverables
         self.ctrl.handle_event("submit_project_deliverable", json.dumps({

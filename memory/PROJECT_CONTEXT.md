@@ -59,7 +59,7 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | Badge | a curriculum milestone with outcomes, topics, project requirements, pass %, target band |
 | Band mapping | Guardian's pairing "cadets of band X + reviewers (higher band) ↔ badge" (`band_mappings`, `mapping_requests`) |
 | Allotment / timeline | per-cadet-per-badge calendar (`badge_timelines`): learning window, project window, submission deadline, review date |
-| Reviewer project prompt | the project brief a Reviewer writes and releases to the cadets they review (`reviewer_project_prompts`) |
+| Project request / project | a Cosmonaut taps **Request Project** on an allotted badge; the mapped Reviewer answers with a project = **Heading + Content** and sends it to their mapped Cosmonauts (`reviewer_project_prompts`); only then can the Cosmonaut submit deliverables |
 | Marksheet | one graded attempt (`assessment_marksheets`): reviewer's first assessment, then Guardian's final |
 | Attempt | one submission try; retakes create a new row with `attempt_number + 1` (history is never overwritten) |
 | Cycle | 6-month performance period; appraisals are computed per cycle |
@@ -93,7 +93,7 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | `js/api.js` | REST client `window.StarAppAPI` |
 | `js/starapp_bundle.js` | **generated** offline Pyodide bundle (`scripts/pack_py.py`) — don't hand-edit |
 | `css/` | design tokens + liquid-glass styles |
-| `tests/` | 195 tests; always via `tests/run_tests.py` |
+| `tests/` | 215 tests; always via `tests/run_tests.py` |
 | `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py` |
 | `ER diagram/`, `Star Registry Schema.html` | standalone schema viewers |
 | `data/starapp.db` | **the** database (tracked) |

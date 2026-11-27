@@ -69,15 +69,15 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         # Guardian assigns b1_int_01 to Nisha Menon (B2, m_b2_4)
         store.assign_and_request_badge_review("b1_int_01", "m_b2_4", "guardian_1")
 
-        # Log in as Nisha Menon -> opens Choose Cycle global filter with ordered sidebar
+        # Log in as Nisha Menon -> lands on Badges (first sidebar item) with the ordered sidebar
         self.ctrl.handle_event("select_demo_account", "m_b2_4")
         self.assertEqual(self.ctrl.current_user.id, "m_b2_4")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        self.assertEqual(self.ctrl.current_view, "c_submission")
 
         # Sidebar contains exact ordered items (Learning Roadmap & Study Materials omitted from sidebar)
         choose_html = self.ctrl.render()
-        self.assertIn("Choose Cycle", choose_html)
-        self.assertIn('data-nav-id="c_choose_cycle"', choose_html)
+        self.assertIn('data-nav-id="c_submission"', choose_html)
+        self.assertNotIn('data-nav-id="c_choose_cycle"', choose_html)  # cycles are switched from the sidebar cycle pill
         self.assertIn('data-nav-id="c_badge_reviews"', choose_html)
         self.assertIn('data-nav-id="c_requests"', choose_html)
         self.assertIn('data-nav-id="c_assessments"', choose_html)
@@ -261,13 +261,13 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
             self.ctrl.handle_event("login", json.dumps({"email": test_email, "password": "123456789", "require_password": True}))
             self.assertIsNotNone(self.ctrl.current_user, f"Failed shared password login for {test_email}")
             self.assertEqual(self.ctrl.current_user.id, expected_id)
-            self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+            self.assertEqual(self.ctrl.current_view, "c_submission")
 
         # 8. Quick Login pill login (Band B6 & CEO Guardian)
         self.ctrl.handle_event("logout", "{}")
         self.ctrl.handle_event("select_demo_account", "m_b6_1")
         self.assertEqual(self.ctrl.current_user.id, "m_b6_1")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        self.assertEqual(self.ctrl.current_view, "c_submission")
         self.ctrl.handle_event("logout", "{}")
         self.ctrl.handle_event("select_demo_account", "guardian_1")
         self.assertEqual(self.ctrl.current_user.id, "guardian_1")
@@ -300,14 +300,14 @@ class TestBadgeReviewWorkflow(unittest.TestCase):
         self.ctrl.handle_event("go_back")
         self.assertEqual(self.ctrl.current_view, "g_create_badge")
 
-        # 5. Cosmonaut navigation: c_choose_cycle -> c_submission -> go_back -> c_choose_cycle
+        # 5. Cosmonaut navigation: c_submission (home) -> c_results -> go_back -> c_submission
         self.ctrl.handle_event("select_demo_account", "m_b1_2")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
-        self.ctrl.handle_event("nav_cosmonaut", "c_submission")
         self.assertEqual(self.ctrl.current_view, "c_submission")
+        self.ctrl.handle_event("nav_cosmonaut", "c_results")
+        self.assertEqual(self.ctrl.current_view, "c_results")
         self.assertNotIn("Guardian Window", self.ctrl.render())
         self.ctrl.handle_event("go_back")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        self.assertEqual(self.ctrl.current_view, "c_submission")
 
     def test_ui_polish_vertical_hierarchy_sidebar_mapping_allotment(self):
         """Verify enlarged STARAPP header, Liquid-Glass sidebar profile without icons, vertical taxonomy trees, Saved Badges, Mapping & Allotment cards."""

@@ -3,7 +3,7 @@
 > **Audience:** any developer or AI assistant (Claude Code, Cursor, Copilot, ChatGPT, Gemini …) opening this repository on a new machine.
 > **Purpose:** give you the *entire* project context — what it is, how it is built, the business rules, the logic, what was already done,
 > what is left — without having to re-read 35,000 lines of code.
-> **Last verified:** 2026-11-26 · branch `main` · **195 automated tests passing** · DB integrity `ok`, 38 tables + 1 view.
+> **Last verified:** 2026-11-26 · branch `main` · **215 automated tests passing** · DB integrity `ok`, 38 tables + 1 view.
 
 ## 0. 60-second summary
 

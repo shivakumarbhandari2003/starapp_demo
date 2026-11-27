@@ -75,7 +75,7 @@ def render_guardian_sidebar(
     selected_cycle: Optional[Any] = None
 ) -> str:
     from starapp.storage import store
-    from starapp.views_common import render_sidebar_cycle_pill
+    from starapp.views_common import render_sidebar_cycle_pill, render_sidebar_profile_footer
 
     if selected_cycle is None and hasattr(store, "get_cycle"):
         try:
@@ -83,7 +83,7 @@ def render_guardian_sidebar(
         except Exception:
             selected_cycle = None
 
-    is_pillar_home = active_view in ("g_cycles", "g_earning", "g_contribution")
+    is_pillar_home = active_view in ("g_cycles", "g_earning", "g_contribution", "g_profile")
 
     if is_pillar_home:
         nav_items = [
@@ -189,6 +189,8 @@ def render_guardian_sidebar(
         else (f"Band {current_user.band} • {current_user.learning_track or 'Reviewer'}" if getattr(current_user, "band", None) else "Academy Guardian")
     )
 
+    profile_footer_html = render_sidebar_profile_footer(current_user, "nav_guardian", "g_profile", active_view, user_sub_desc)
+
     sidebar_hidden_attr = ' class="app-sidebar band-selection-hidden" style="display:none !important;" aria-hidden="true"' if hidden else ' class="app-sidebar"'
     cycle_pill_html = ""
 
@@ -235,17 +237,7 @@ def render_guardian_sidebar(
             {"".join(links_html)}
         </ul>
 
-        <div class="sidebar-footer">
-            <div class="lg-sidebar-profile">
-                <div class="lg-sidebar-profile-meta">
-                    <div class="user-name">{escape(current_user.name)}</div>
-                    <div class="user-role-text">{escape(user_sub_desc)}</div>
-                </div>
-                <button type="button" class="lg-sidebar-signout-btn" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Sign Out">
-                    Sign Out
-                </button>
-            </div>
-        </div>
+        {profile_footer_html}
     </aside>
     """
 
@@ -3065,6 +3057,91 @@ def _feed_badge_label(badge_id: str) -> str:
     from starapp.storage import store as _store_ref
     b = _store_ref.get_badge(badge_id)
     return b.code if b else badge_id
+
+
+def render_guardian_profile(current_user: User, stats: Dict[str, Any]) -> str:
+    """Guardian / reviewer-in-guardian-portal profile page: identity, role access and live academy overview (real data only)."""
+    role_labels = {"guardian": "Guardian", "badge_reviewer": "Badge Reviewer",
+                   "project_reviewer": "Project Reviewer", "cosmonaut": "Cosmonaut", "admin": "Administrator"}
+    roles = [r for r in (getattr(current_user, "roles", None) or [current_user.role]) if r]
+    roles_text = ", ".join(role_labels.get(r, r.replace("_", " ").title()) for r in roles)
+    band = getattr(current_user, "band", "") or ""
+    band_title = next((b["title"] for b in BANDS if b["code"] == band), "")
+    track = getattr(current_user, "learning_track", "") or ""
+    status = (getattr(current_user, "status", "") or "active").title()
+    mgr = getattr(current_user, "reporting_manager_name", "") or ""
+    mgr_band = getattr(current_user, "reporting_manager_band", "") or ""
+
+    def tile(label: str, value: str, sub: str = "") -> str:
+        sub_html = f'<div style="font-size:11px; color:var(--frost-navy-50); margin-top:1px;">{escape(sub)}</div>' if sub else ""
+        return (
+            '<div style="background:rgba(255,255,255,0.9); padding:12px 16px; border-radius:var(--radius-sm); border:1px solid var(--icy-steel-30);">'
+            f'<div style="font-size:11px; text-transform:uppercase; color:var(--frost-navy-50); font-weight:700; letter-spacing:0.5px;">{escape(label)}</div>'
+            f'<div style="font-size:13.5px; font-weight:800; color:var(--deep-frozen-midnight); margin-top:2px;">{escape(value)}</div>'
+            f'{sub_html}</div>'
+        )
+
+    def stat(icon: str, label: str, value: Any, nav_view: str = "") -> str:
+        click = (
+            f""" onclick="window.StarAppBridge.dispatchAction('nav_guardian', '{nav_view}')" style="cursor:pointer;"""
+            if nav_view else ' style="'
+        )
+        return (
+            f'<div class="liquid-glass-card"{click} padding:16px 18px; display:flex; align-items:center; gap:14px;">'
+            f'<div style="width:40px; height:40px; border-radius:var(--radius-sm); background:rgba(23,52,92,0.08); display:flex; align-items:center; justify-content:center; color:var(--deep-frozen-midnight); flex-shrink:0;">{get_icon(icon, 20)}</div>'
+            f'<div><div style="font-family:var(--font-family-mono); font-size:1.35rem; font-weight:900; color:var(--deep-frozen-midnight); line-height:1.1;">{escape(str(value))}</div>'
+            f'<div style="font-size:11.5px; font-weight:700; color:var(--frost-navy-50); margin-top:2px;">{escape(label)}</div></div></div>'
+        )
+
+    tiles = "".join([
+        tile("Role Access", roles_text or "Guardian"),
+        tile("Band", f"{band} • {band_title}" if band_title else (band or "-"), track),
+        tile("Reporting Manager", mgr or "None (top of hierarchy)", f"Band {mgr_band}" if mgr_band else ""),
+        tile("Active Cycle", stats.get("cycle_name") or "-", stats.get("cycle_status") or ""),
+    ])
+    stats_html = "".join([
+        stat("users", "Cosmonauts in cohort", stats.get("cohort_size", 0), "g_cosmonauts"),
+        stat("award", "Badges authored by you", stats.get("badges_authored", 0), "g_create_badge"),
+        stat("book", f"Published of {stats.get('badges_total', 0)} badges", stats.get("badges_published", 0), "g_create_badge"),
+        stat("clipboard", "Badges awaiting approval", stats.get("pending_approvals", 0), "g_badge_approval"),
+        stat("edit", "Marksheets awaiting final review", stats.get("pending_reviews", 0), "g_reviews"),
+        stat("clock", "Deadline extensions pending", stats.get("pending_extensions", 0), "g_extensions"),
+    ])
+
+    return f"""
+    <div style="max-width:1100px; margin:0 auto;">
+        <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:20px;">
+                    <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; width:72px; height:72px; border-radius:50%; font-size:26px; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white);">{escape(current_user.avatar)}</div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <h2 style="font-size:1.75rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.4px;">{escape(current_user.name)}</h2>
+                            <span class="status-pill status-approved" style="font-size:11px; padding:3px 10px;">{escape(status)}</span>
+                        </div>
+                        <div style="font-size:13px; color:var(--deep-frozen-midnight); font-weight:700; margin-top:3px;">
+                            Academy Guardian Portal &bull; ID: <span style="font-family:var(--font-family-mono);">{escape(current_user.id)}</span>
+                        </div>
+                        <div style="font-size:12.5px; color:var(--frost-navy-50); margin-top:2px;">Email: <strong style="color:var(--frost-navy);">{escape(current_user.email)}</strong></div>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" style="display:inline-flex; align-items:center; gap:8px; font-weight:700; color:var(--deep-frozen-midnight);">
+                    <span>Sign Out of Session</span>
+                </button>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap:14px;">
+                {tiles}
+            </div>
+        </div>
+
+        <h3 style="display:flex; align-items:center; gap:8px; font-size:1.1rem; font-weight:800; color:var(--frost-navy); margin:0 0 14px 0;">
+            {get_icon("analytics", 18)}<span>Academy Overview</span>
+        </h3>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap:14px;">
+            {stats_html}
+        </div>
+    </div>
+    """
 
 
 def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: List[User]) -> str:

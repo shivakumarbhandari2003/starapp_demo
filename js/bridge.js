@@ -417,50 +417,22 @@
       window.StarAppBridge.dispatchAction("submit_reviewer_assessment", JSON.stringify(payload));
     },
 
-    // Submit or save reviewer project specification for mapped cadets
-    submitReviewerProject(badgeId, reviewerId, status = "released") {
-      const title = document.getElementById("rev_proj_title")?.value?.trim() || "Milestone Implementation Project";
-      const scenario = document.getElementById("rev_proj_scenario")?.value?.trim() || "";
-      const outcomesRaw = document.getElementById("rev_proj_outcomes")?.value || "";
-      const reqsRaw = document.getElementById("rev_proj_reqs")?.value || "";
-      const codeDesc = document.getElementById("rev_proj_code_desc")?.value?.trim() || "Source code implementation";
-      const pdfDesc = document.getElementById("rev_proj_pdf_desc")?.value?.trim() || "Architecture specification report";
-      const ghDesc = document.getElementById("rev_proj_gh_desc")?.value?.trim() || "GitHub repository link";
-
-      const codeName = document.getElementById("rev_proj_code_name")?.value?.trim() || "script.py";
-      const pdfName = document.getElementById("rev_proj_pdf_name")?.value?.trim() || "report.pdf";
-
-      let cadetIds = [];
-      try {
-        const cadetIdsRaw = document.getElementById("rev_proj_cadet_ids")?.value;
-        if (cadetIdsRaw) {
-          const parsed = JSON.parse(cadetIdsRaw);
-          if (Array.isArray(parsed)) cadetIds = parsed;
-        }
-      } catch (e) {}
-
-      const outcomes = outcomesRaw.split("\n").map(s => s.trim()).filter(Boolean);
-      const requirements = reqsRaw.split("\n").map(s => s.trim()).filter(Boolean);
-
-      const payload = {
+    // Send a reviewer project (heading + content) to the selected mapped cosmonauts
+    submitReviewerProject(badgeId, reviewerId) {
+      const title = document.getElementById("rev_proj_title")?.value?.trim() || "";
+      const content = document.getElementById("rev_proj_content")?.value?.trim() || "";
+      const cosmonautIds = Array.from(document.querySelectorAll(".rev-proj-recipient:checked")).map((el) => el.value);
+      if (!title) { alert("Please give the project a heading."); return; }
+      if (!content) { alert("Please write the project content."); return; }
+      if (!cosmonautIds.length) { alert("Select at least one mapped cosmonaut to send the project to."); return; }
+      window.StarAppBridge.dispatchAction("send_reviewer_project", JSON.stringify({
         badge_id: badgeId,
         reviewer_id: reviewerId,
         title: title,
-        objective: scenario,
-        description: scenario,
-        outcomes: outcomes,
-        requirements: requirements,
-        technical_requirements: requirements,
-        deliverables: {
-          code: { name: codeName, description: codeDesc },
-          pdf: { name: pdfName, description: pdfDesc },
-          github: { name: "GitHub Repository", description: ghDesc }
-        },
-        cosmonaut_ids: cadetIds,
-        status: status
-      };
-
-      window.StarAppBridge.dispatchAction("send_reviewer_project", JSON.stringify(payload));
+        content: content,
+        cosmonaut_ids: cosmonautIds,
+        status: "released"
+      }));
     },
 
     // Submit Guardian final assessment marksheet & badge award determination

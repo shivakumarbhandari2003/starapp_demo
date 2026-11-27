@@ -381,15 +381,29 @@ body::before {
   opacity: 1;
 }
 
-/* Sidebar footer: Fixed height slot so profile reveal never shifts nav items */
+/* Sidebar footer: "View Profile" nav-link pinned at the bottom + user card (fixed slot, never shifts nav items) */
 .sidebar-footer {
-  height: 110px;
-  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 164px;
+  min-height: 164px;
   flex-shrink: 0;
-  padding: 10px 12px;
+  padding: 10px;
   border-top: 1px solid rgba(157, 183, 213, 0.32);
   background: rgba(236, 245, 255, 0.72);
   overflow: hidden;
+}
+
+.sidebar-nav-bottom {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-bottom .nav-item {
+  margin-bottom: 0;
 }
 
 .lg-sidebar-profile {
@@ -397,7 +411,8 @@ body::before {
   flex-direction: column;
   justify-content: space-between;
   gap: 8px;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.9);

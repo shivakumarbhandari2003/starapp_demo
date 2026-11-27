@@ -22,6 +22,7 @@ from backend.app.main import app
 from starapp.app import StarAppController
 from starapp.models import add_six_months_iso
 from starapp.storage import store
+from project_helpers import give_project
 from starapp.cycles import compute_cycle_candidate_performance
 
 
@@ -296,17 +297,19 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
 
         # Reviewer-eligible Cosmonaut sidebar order
         self.ctrl.handle_event("select_demo_account", "m_b2_1")
-        self.assertEqual(self.ctrl.current_view, "c_choose_cycle")
+        self.assertEqual(self.ctrl.current_view, "c_submission")
         c_html = self.ctrl.render()
         self.assertNotIn("starapp-cycle-topbar", c_html)
+        # Badges (home) -> Assessment Marksheet -> Deadline Extension -> reviewer tools -> Profile (always last)
         ids = [
-            "c_choose_cycle", "c_badge_reviews", "c_requests", "c_assessments",
-            "c_submission", "c_results", "c_profile", "c_extensions"
+            "c_submission", "c_results", "c_extensions",
+            "c_badge_reviews", "c_requests", "c_assessments", "c_profile"
         ]
         positions = [c_html.find(f'data-nav-id="{nid}"') for nid in ids]
         self.assertTrue(all(p > 0 for p in positions), f"Missing cosmonaut nav ids: {positions}")
         self.assertEqual(positions, sorted(positions), "Cosmonaut/Reviewer sidebar order mismatch")
         self.assertNotIn('data-nav-id="c_cycles"', c_html)  # merged into Choose Cycle
+        self.assertNotIn('data-nav-id="c_choose_cycle"', c_html)  # reached through the sidebar cycle pill
         self.assertNotIn('data-nav-id="c_roadmap"', c_html)
         self.assertNotIn('data-nav-id="c_materials"', c_html)
 
@@ -316,7 +319,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.assertNotIn('data-nav-id="c_badge_reviews"', b1_html)
         self.assertNotIn('data-nav-id="c_requests"', b1_html)
         self.assertNotIn('data-nav-id="c_assessments"', b1_html)
-        b1_ids = ["c_choose_cycle", "c_submission", "c_results", "c_profile", "c_extensions"]
+        b1_ids = ["c_submission", "c_results", "c_extensions", "c_profile"]
         b1_pos = [b1_html.find(f'data-nav-id="{nid}"') for nid in b1_ids]
         self.assertEqual(b1_pos, sorted(b1_pos))
 
@@ -545,6 +548,7 @@ class TestSixMonthCyclesAndAppraisals(unittest.TestCase):
         self.ctrl.mapping_selected_reviewers = []
         self.ctrl.handle_event("save_band_mapping", "{}")
         self.ctrl.handle_event("publish_badge", b6.id)
+        give_project(store, b6.id, "m_b6_1")
         b6_c = StarAppController()
         b6_c.handle_event("select_demo_account", "m_b6_1")
         b6_c.handle_event("submit_project_deliverables", _json.dumps({

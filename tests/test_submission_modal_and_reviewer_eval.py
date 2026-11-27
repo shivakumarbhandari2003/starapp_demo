@@ -1,6 +1,7 @@
 import unittest
 import json
 from starapp.app import StarAppController
+from project_helpers import give_project
 from starapp.storage import store
 
 class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
@@ -10,6 +11,7 @@ class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
         self.cadet_id = "m_b1_1"
         self.badge_id = "badge_b1_signals"
         self.reviewer_id = "m_b2_1"
+        give_project(store, self.badge_id, self.cadet_id)   # the mapped reviewer has sent the project
 
     def _ensure_clean_state(self):
         cur = store.db.conn.cursor()
@@ -35,7 +37,8 @@ class TestSubmissionModalAndReviewerEvaluation(unittest.TestCase):
         self.assertEqual(self.ctrl.modal_payload.get("badge_id"), self.badge_id)
 
         modal_html = self.ctrl.render()
-        self.assertIn("Project Deliverable Submission Portal", modal_html)
+        self.assertIn("Submit Project Deliverables", modal_html)
+        self.assertIn("SmartFit: The Member Intelligence Challenge", modal_html)  # the reviewer's project is shown first
         self.assertIn("submission-pdf-file", modal_html)
         self.assertIn("submission-code-file", modal_html)
         self.assertIn("submission-github-url", modal_html)

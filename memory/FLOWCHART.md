@@ -42,32 +42,46 @@ Action names in `monospace` are controller actions you can grep.
 │    (unpublish_badge / revoke_badge reverse it). Learning materials: g_materials             │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
-┌─ PROJECT REVIEWER ───────────────────────────────────────────────────────────────────────┐
-│ 7. PROJECT BRIEF  c_badge_reviews : write title/description/deliverables/requirements      │
-│    send_reviewer_project → reviewer_project_prompts (status from payload, default           │
-│    "released"; data also holds "sent"). Only the mapped reviewer or a guardian may release, │
-│    and only to cadets mapped to that reviewer; cadets are notified                          │
-└───────────────┬──────────────────────────────────────────────────────────────────────────┘
-                ▼
 ┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 8. LEARN  c_roadmap / c_badge_detail / c_materials (milestone state: completed|active|locked)│
-│    optional: submit_extension_request (once pending at a time) → guardian approves/rejects  │
-│ 9. SUBMIT c_submission  submit_project_deliverable                                          │
-│    checks: prerequisites approved · badge allotted to me · not already earned · not awaiting│
-│    final decision · deliverables present (PDF report + code file + https GitHub URL; demo    │
-│    mode may fill placeholders) · size ≤ ~9 MB                                               │
-│    new row in project_submissions, attempt_number = previous+1 (edit if latest is pending)  │
+│ 7. REQUEST PROJECT  c_submission → open the allotted badge → "Earn the Badge"              │
+│    request_project (only for an allotted badge with a mapped reviewer, not yet earned, one  │
+│    open request) → reviewer_project_prompts row id projreq_<badge>_<cosmo>, status          │
+│    "requested", reviewer_id = mapped reviewer; notification + activity "project_requested"  │
+│    (button shows "Project Requested" meanwhile; no deliverables can be submitted yet)       │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐
-│ 10. FIRST ASSESSMENT  c_assessment_detail  submit_reviewer_assessment                      │
+│ 8. CREATE + SEND PROJECT  c_badge_reviews ("N Project Requests", sidebar count)            │
+│    modal "Create Project": a big Heading + Content (nothing else) and a checklist of the    │
+│    mapped cosmonauts (requesters pre-ticked) → "Send Project to Mapped Cosmonauts"          │
+│    send_reviewer_project → NEW row proj_<badge>_<reviewer>_<ms>_<id> status "released";     │
+│    the recipients' requests become "fulfilled"; each recipient is notified                   │
+│    heading required (≤200 chars), content required (≤20,000), only the mapped reviewer or   │
+│    a guardian, only to cosmonauts mapped to that reviewer                                   │
+└───────────────┬──────────────────────────────────────────────────────────────────────────┘
+                ▼
+┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
+│ 9. LEARN  c_submission (Badges, landing page) / c_roadmap / c_badge_detail / c_materials (milestone state: completed|active|locked)│
+│    optional: submit_extension_request (once pending at a time) → guardian approves/rejects  │
+│    The button becomes "Submit Project Deliverables" → modal shows the project (Heading +    │
+│    Content) first, then PDF · code · GitHub link                                            │
+│ 10. SUBMIT  submit_project_deliverable                                                      │
+│    checks: a project was SENT to me · prerequisites approved · badge allotted to me · not   │
+│    already earned · not awaiting final decision · deliverables present (PDF report + code   │
+│    file + https GitHub URL; demo mode may fill placeholders) · size ≤ ~9 MB                 │
+│    new row in project_submissions, attempt_number = previous+1 (edit if latest is pending); │
+│    the mapped reviewer is notified and it appears in their "Cosmonaut Assessments"          │
+└───────────────┬──────────────────────────────────────────────────────────────────────────┘
+                ▼
+┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐
+│ 11. FIRST ASSESSMENT  c_assessment_detail  submit_reviewer_assessment                      │
 │     5 criteria × 10 = 50 marks → marksheet asm_rev_<sub>_<attempt> (decision               │
 │     "reviewer_assessed"); submission.status = timeline.status = "reviewer_assessed";        │
 │     cadet + guardian notified                                                               │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ GUARDIAN ───────────────────────────────────────────────────────────────────────────────┐
-│ 11. FINAL ASSESSMENT  g_reviews / g_review_detail  submit_guardian_final_assessment        │
+│ 12. FINAL ASSESSMENT  g_reviews / g_review_detail  submit_guardian_final_assessment        │
 │     defaults to the reviewer's marks (guardian can adjust)                                  │
 │     pct = total/50 × 100                                                                    │
 │        ├── pct ≥ badge.passing_percentage (default 70) ──► PASS                             │
@@ -80,7 +94,7 @@ Action names in `monospace` are controller actions you can grep.
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 12. BADGE EARNED  c_results (marksheet), c_roadmap (milestone completed, next unlocks),    │
+│ 13. BADGE EARNED  c_results (marksheet), c_roadmap (milestone completed, next unlocks),    │
 │     c_profile, leaderboard rank; counts toward the cycle appraisal                          │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -97,9 +111,10 @@ flowchart TD
     E -- reject --> D
     E -- accept --> F[Guardian allots timeline<br/>badge_timelines active]
     F --> G[Guardian publishes badge]
-    G --> H[Reviewer writes + releases project brief]
+    G --> H0[Cosmonaut requests the project]
+    H0 --> H[Reviewer creates Heading + Content and sends it]
     H --> I[Cosmonaut learns, may request extension]
-    I --> J[Cosmonaut submits deliverables<br/>attempt N]
+    I --> J[Submit Project Deliverables: PDF, code, GitHub<br/>attempt N]
     J --> K[Reviewer grades 50 marks<br/>reviewer_assessed]
     K --> L{Guardian final<br/>pct >= pass %}
     L -- yes --> M[Badge earned<br/>timeline completed]
@@ -112,6 +127,8 @@ flowchart TD
 **Badge (`badges.workflow_status`)**: `pending_review → approved | returned`; `returned → pending_review` (resubmit). Flags: `is_published`, `is_allocated`. Only `approved` badges can be mapped/published.
 
 **Mapping request (`mapping_requests.status`)**: `pending → accepted | rejected`; a guardian may delete a request.
+
+**Project REQUEST** (same table, `reviewer_project_prompts`): `requested` -> `fulfilled` (when the reviewer sends a project to that cosmonaut). Requests never count as projects (`get_reviewer_project_prompts(include_requests=False)` hides them).
 
 **Reviewer project prompt (`reviewer_project_prompts.status`)**: saved by `send_reviewer_project` / `save_reviewer_project_prompt`; the status comes from the payload (default `"released"`; committed data holds `sent` and `released`). Cadets are resolved from the mapping (timelines / band_mappings / badge assignment) when not passed, and filtered to the cadets mapped to *this* reviewer.
 

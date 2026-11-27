@@ -1016,6 +1016,44 @@ def iconize_html(markup: str) -> str:
     return "".join(out)
 
 
+def render_sidebar_profile_footer(current_user, nav_action: str, profile_view: str, active_view: str, subtitle: str = "") -> str:
+    """
+    Bottom block of EVERY portal sidebar: a standard `nav-link` "View Profile" (highlighted with `active` while the
+    profile page is open) followed by the signed-in user's name and Sign Out. Same markup for Guardian and Cosmonaut.
+    """
+    cls = "nav-link active" if active_view == profile_view else "nav-link"
+    return f"""
+        <div class="sidebar-footer">
+            <ul class="sidebar-nav-bottom">
+                <li class="nav-item">
+                    <a class="{cls}" data-nav-id="{profile_view}" onclick="window.StarAppBridge.dispatchAction('{nav_action}', '{profile_view}')">
+                        {get_icon("user", 20)}
+                        <span>View Profile</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="lg-sidebar-profile">
+                <div class="lg-sidebar-profile-meta">
+                    <div class="user-name">{escape(current_user.name)}</div>
+                    <div class="user-role-text">{escape(subtitle)}</div>
+                </div>
+                <button type="button" class="lg-sidebar-signout-btn" onclick="window.StarAppBridge.dispatchAction('logout', '{{}}')" title="Sign Out">
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    """
+
+
+REVIEWER_BANDS = ("B2", "B3", "B4", "B5", "B6")
+COSMONAUT_REVIEWER_VIEWS = frozenset({"c_badge_reviews", "c_requests", "c_assessments", "c_assessment_detail"})
+
+
+def is_reviewer_band(band) -> bool:
+    """Reviewer_Band > Badge_Band: nobody in Band 1 can review anything, so reviewer tools start at Band 2."""
+    return str(band or "").upper() in REVIEWER_BANDS
+
+
 # ==============================================================================
 # COSMONAUT PORTAL TERMINOLOGY: "Cadet" -> "Cosmonaut"
 # ==============================================================================

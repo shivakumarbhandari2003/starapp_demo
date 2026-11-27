@@ -38,7 +38,7 @@ class TestDashboardEnhancements(unittest.TestCase):
         """Verify Aarav Sharma sees his actual data and zero fake demo data."""
         self.app.handle_event("select_demo_account", "cosmo_1")
         self.assertEqual(self.app.current_user.id, "cosmo_1")
-        self.assertEqual(self.app.current_view, "c_choose_cycle")
+        self.assertEqual(self.app.current_view, "c_submission")
         self.app.handle_event("nav_cosmonaut", "c_dashboard")
         self.assertEqual(self.app.current_view, "c_dashboard")
 
