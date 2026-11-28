@@ -383,6 +383,23 @@ app.include_router(cycles_router, prefix=api_v1_prefix)
 app.include_router(gemini_router, prefix=api_v1_prefix)
 
 
+# Live-sync polls (a page / popup that carries `data-live-sync` asks every few seconds). When nothing but a ticking countdown changed since the
+# last response to this session, the answer is a few bytes ("unchanged") instead of the whole page - the browser keeps what it has.
+_LIVE_SYNC_ACTIONS = frozenset({"sync_badge_reviews", "sync_mapping_requests"})
+
+
+def _regions_signature(regions: Dict[str, Any]) -> str:
+    from starapp.views_common import stable_html_signature
+    h = hashlib.blake2b(digest_size=16)
+    for key in sorted(regions):
+        if key in ("generation", "isCrossTabReload"):          # change on every render without being content
+            continue
+        val = regions[key]
+        h.update(key.encode("utf-8"))
+        h.update((stable_html_signature(val) if isinstance(val, str) else json.dumps(val, sort_keys=True, default=str)).encode("utf-8"))
+    return h.hexdigest()
+
+
 def _run_dispatch(req: "ActionDispatchRequest", header_sid: Optional[str]) -> Dict[str, Any]:
     """Synchronous body of the dispatcher; executed in a worker thread under `_dispatch_lock`."""
     _reload_starapp_if_changed()
@@ -438,6 +455,14 @@ def _run_dispatch(req: "ActionDispatchRequest", header_sid: Optional[str]) -> Di
     regions = getattr(ctrl, "last_rendered_regions", None)
 
     state = _extract_controller_state(ctrl)
+    if regions:
+        sig = _regions_signature(regions)
+        unchanged = action in _LIVE_SYNC_ACTIONS and getattr(ctrl, "_sent_regions_sig", None) == sig
+        ctrl._sent_regions_sig = sig
+        if unchanged:
+            return {"success": True, "action": action, "unchanged": True, "regions": None, "full_html": None, "session_id": sid,
+                    "current_view": getattr(ctrl, "current_view", "login"),
+                    "session_state": _sign_session_state(state) if state.get("user_id") else state}
     return {
         "success": True,
         "action": action,

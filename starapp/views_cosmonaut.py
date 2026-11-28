@@ -17,7 +17,7 @@ from starapp.views_common import (
     escape, render_liquid_card, render_metal_button, render_liquid_button,
     render_status_pill, render_standard_marksheet, render_9point_timeline,
     render_learning_materials_view, render_back_button, render_taxonomy_hierarchy_tree,
-    render_request_timer, render_badge_review_timer, render_project_window_timer, format_utc_stamp, format_short_date,
+    render_request_timer, render_badge_review_timer, render_project_window_timer, format_utc_stamp, format_short_date, format_ist, ist_plain,
     REVIEWER_RECOMMENDATIONS, reviewer_recommendation_key, render_recommendation_chip
 )
 from starapp.roadmap import generate_roadmap_graph
@@ -733,7 +733,7 @@ def render_cosmonaut_dashboard(
     <div>
         {review_alert_banner}
         <!-- SECTION A: Personal Welcome / Dossier Header -->
-        <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
+        <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.91); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                 <div style="display:flex; align-items:center; gap:16px;">
                     <div class="user-avatar" style="width:52px; height:52px; font-size:1.125rem; font-weight:800; border:2px solid var(--icy-steel);">{escape(current_user.avatar)}</div>
@@ -827,7 +827,7 @@ def render_cosmonaut_dashboard(
         </div>
 
         <!-- SECTION C: Personalized Next Action Card -->
-        <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.06);">
+        <div class="liquid-glass-card" style="padding:22px 28px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.94); box-shadow:0 6px 20px rgba(7,22,41,0.06);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span style="font-size:0.6875rem; font-weight:800; text-transform:uppercase; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 9px; border-radius:var(--radius-xs);">YOUR NEXT ACTION</span>
@@ -1042,7 +1042,7 @@ def render_cosmonaut_profile(
     return f"""
     <div style="max-width:1100px; margin:0 auto;">
         <!-- 1. Identity & Credentials Header Banner -->
-        <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
+        <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.79);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:20px;">
                     <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; border-radius:50%; width:72px; height:72px; font-size:1.625rem; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white); border:2.5px solid var(--icy-steel); box-shadow:0 4px 16px rgba(7,22,41,0.18);">
@@ -1078,7 +1078,7 @@ def render_cosmonaut_profile(
         </div>
 
         <!-- 2. Technical Competencies & Skills Section -->
-        <div class="liquid-glass-card" style="padding:26px 30px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(234,244,255,0.55) 100%);">
+        <div class="liquid-glass-card" style="padding:26px 30px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.73);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <div>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 3px 0;">Technical Competencies & Skills</h3>
@@ -1107,7 +1107,7 @@ def render_cosmonaut_profile(
         </div>
 
         <!-- 3. Industry Certifications Section -->
-        <div class="liquid-glass-card" style="padding:26px 30px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(234,244,255,0.55) 100%);">
+        <div class="liquid-glass-card" style="padding:26px 30px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.73);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <div>
                     <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0 0 3px 0;">Verified Industry Certifications</h3>
@@ -1839,7 +1839,7 @@ def render_cosmonaut_badge_card_expanded_content(
         is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
 
         border_color = "#10B981" if is_comp else "rgba(6,182,212,0.3)"
-        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);"
+        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:rgba(244, 250, 255, 0.90);"
         status_text = "Completed" if is_comp else "In Progress"
         status_bg = "rgba(16,185,129,0.15)" if is_comp else "rgba(157,183,213,0.18)"
         status_color = "#10B981" if is_comp else "var(--frost-navy-50)"
@@ -1997,7 +1997,7 @@ def render_cosmonaut_badge_card_expanded_content(
             p_name = getattr(existing_sub, "pdf_name", "") or (existing_sub.file_name if getattr(existing_sub, "submission_type", "") == "pdf" else "") or "Report.pdf"
             c_name = getattr(existing_sub, "code_name", "") or (existing_sub.file_name if getattr(existing_sub, "submission_type", "") == "code" else "") or "solution.py"
             g_url = getattr(existing_sub, "github_url", "") or (existing_sub.payload if getattr(existing_sub, "submission_type", "") == "github" else "") or ""
-            s_dt = (getattr(existing_sub, "submitted_at", "") or "")[:16].replace("T", " ")
+            s_dt = format_ist(getattr(existing_sub, "submitted_at", "") or "")
             g_chip = (
                 f'<span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("github", 12)} {escape(g_url.split("/")[-1] if "/" in g_url else g_url)}</span>'
                 if g_url else ""
@@ -2005,7 +2005,7 @@ def render_cosmonaut_badge_card_expanded_content(
             sub_rec_html = f"""
             <div style="background:rgba(255,255,255,0.92); border:1px solid rgba(245,158,11,0.35); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:12px;">
                 <div style="font-size:0.65625rem; font-weight:800; color:#92400E; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
-                    Certified Submission Artifacts &bull; Attempt #{getattr(existing_sub, 'attempt_number', 1)} {f'({escape(s_dt)} UTC)' if s_dt else ''}
+                    Certified Submission Artifacts &bull; Attempt #{getattr(existing_sub, 'attempt_number', 1)} {f'({escape(s_dt)})' if s_dt else ''}
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                     <span style="font-size:0.71875rem; font-weight:700; color:var(--frost-navy); background:rgba(234,244,255,0.9); border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{get_icon("file_text", 12)} {escape(p_name)}</span>
@@ -2075,7 +2075,7 @@ def render_cosmonaut_badge_card_expanded_content(
         </div>
         """
     else:
-        top_card_style = "border:2px solid var(--deep-frozen-midnight); background:linear-gradient(135deg, rgba(255,255,255,0.99) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 12px 36px rgba(7,22,41,0.12);"
+        top_card_style = "border:2px solid var(--deep-frozen-midnight); background:rgba(244, 250, 255, 0.96); box-shadow:0 12px 36px rgba(7,22,41,0.12);"
         top_icon_style = "background:linear-gradient(135deg, rgba(234,244,255,1) 0%, rgba(157,183,213,0.3) 100%); border:1.5px solid var(--icy-steel); color:var(--deep-frozen-midnight);"
         top_icon_svg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>'
         if has_allocated_project:
@@ -2621,9 +2621,9 @@ def render_cosmonaut_project_page(badge: Badge, current_user: User, store: Any) 
                  f'<span class="pjp-marks-val">{ea.total_marks:.1f} / 50 ({ea.percentage:.1f}%)</span></div>')
 
     if latest:
-        sub_when = (getattr(latest, "submitted_at", "") or "")[:16].replace("T", " ")
+        sub_when = format_ist(getattr(latest, "submitted_at", "") or "")
         sub_body = (f'<div class="pjp-sub-meta">Attempt #{latest.attempt_number}'
-                    + (f' &middot; submitted {escape(sub_when)} UTC' if sub_when else "") + f'</div>{_sub_files_html(latest)}')
+                    + (f' &middot; submitted {escape(sub_when)}' if sub_when else "") + f'</div>{_sub_files_html(latest)}')
     else:
         sub_body = ('<p class="pjp-sub-empty">You have not submitted anything yet. Use <b>Submit Deliverables</b> to upload your PDF report, '
                     'source code and GitHub link. They go straight to your mapped reviewer, who assesses them and awards your marks.</p>')
@@ -2714,17 +2714,12 @@ def render_cosmonaut_submission_workspace(
                 sc_str = f"{earned_card_asm.total_marks:.1f}/50 ({earned_card_asm.percentage:.1f}%)" if earned_card_asm else "Certified"
                 aw_str = (getattr(tl, "actual_award_date", "") if tl else "") or (earned_card_asm.reviewed_at[:10] if earned_card_asm and getattr(earned_card_asm, "reviewed_at", "") else "Awarded")
                 att_str = f"Attempt #{getattr(cadet_sub, 'attempt_number', getattr(earned_card_asm, 'attempt_number', 1))}" if (cadet_sub or earned_card_asm) else ""
-                earned_meta_html = f"""
-                <div class="gold-facts">
-                    <span class="gold-fact"><span class="gold-fact-lbl">Score</span><b>{escape(sc_str)}</b></span>
-                    <span class="gold-fact"><span class="gold-fact-lbl">Awarded</span><b>{escape(format_short_date(aw_str) or aw_str)}</b></span>
-                </div>
-                """
+                earned_meta_html = ""          # the score / award date live inside the badge, not on the card
             elif cadet_sub and getattr(cadet_sub, "status", "") == "reviewer_assessed":
                 sub_chip = '<span style="background:rgba(6,182,212,0.12); color:#0891B2; border:1px solid rgba(6,182,212,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Awaiting Guardian Award</span>'
                 action_btn_txt = "View Assessment Status"
                 btn_color_style = "background:linear-gradient(135deg, #0891B2 0%, #0e7490 100%); color:#fff; border-color:#0891B2;"
-                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:rgba(244, 250, 255, 0.94); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
             elif cadet_sub and getattr(cadet_sub, "status", "") in ("retake_required", "resubmission_requested"):
                 sub_chip = f'<span style="background:rgba(239,68,68,0.12); color:#DC2626; border:1px solid rgba(239,68,68,0.3); font-size:0.6875rem; font-weight:800; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("alert_triangle", 12)} Retake Required</span>'
                 action_btn_txt = "Open Badge & Resubmit"
@@ -2734,35 +2729,44 @@ def render_cosmonaut_submission_workspace(
                 sub_chip = f'<span style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.3); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("check", 12)} Submitted</span>'
                 action_btn_txt = "View Badge & Submission"
                 btn_color_style = "background:linear-gradient(135deg, #059669 0%, #047857 100%); color:#fff; border-color:#059669;"
-                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:rgba(244, 250, 255, 0.94); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
             elif has_proj:
                 sub_chip = f'<span class="status-pill status-active" style="background:rgba(2,132,199,0.12); color:#0284C7; border:1px solid rgba(2,132,199,0.3); font-size:0.6875rem; font-weight:800; padding:3px 12px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">{get_icon("rocket", 12)} Project Allocated</span>'
                 action_btn_txt = "View Badge & Project"
                 btn_color_style = "background:linear-gradient(135deg, #0284C7 0%, #0369A1 100%); color:#fff; border-color:#0284C7;"
-                card_border_style = "border:1.5px solid rgba(2,132,199,0.4); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.92) 100%); box-shadow:0 6px 24px rgba(2,132,199,0.08);"
+                card_border_style = "border:1.5px solid rgba(2,132,199,0.4); background:rgba(244, 250, 255, 0.95); box-shadow:0 6px 24px rgba(2,132,199,0.08);"
             else:
                 sub_chip = '<span style="background:rgba(234,244,255,0.8); color:var(--deep-frozen-midnight); border:1px solid var(--icy-steel-40); font-size:0.6875rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">Allocated Project</span>'
                 action_btn_txt = "Open Badge Details"
                 btn_color_style = ""
-                card_border_style = "border:1.5px solid var(--icy-steel-40); background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(234,244,255,0.9) 100%); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
+                card_border_style = "border:1.5px solid var(--icy-steel-40); background:rgba(244, 250, 255, 0.94); box-shadow:0 6px 24px rgba(7,22,41,0.06);"
 
             open_page_onclick = f"window.StarAppBridge.dispatchAction('open_cosmonaut_badge_page', '{b.id}')"
+            # Reviewer / Timeline on every card (an earned badge keeps them: its timeline shows when it was submitted, evaluated and earned)
+            card_actions_html = (
+                f'<div class="bc-actions">'
+                f'<button type="button" class="btn-secondary btn-sm cbp-btn" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction(\'open_cosmonaut_reviewer_modal\', \'{b.id}\')">{get_icon("shield", 14)}<span>Reviewer</span></button>'
+                f'<button type="button" class="btn-secondary btn-sm cbp-btn" onclick="event.stopPropagation(); window.StarAppBridge.dispatchAction(\'open_cosmonaut_timeline_modal\', \'{b.id}\')">{get_icon("calendar", 14)}<span>Timeline</span></button>'
+                f'</div>'
+            )
             open_btn_onclick = f"event.stopPropagation(); window.StarAppBridge.dispatchAction('open_cosmonaut_badge_page', '{b.id}')"
 
             # Initial collapsed card: strictly BAND, code, Allocated Project, hierarchy, and title
             badge_cards.append(f"""
             <div class="liquid-glass-card badge-card-item collapsed-badge-card{gold_cls}" id="badge-card-{b.id}" data-badge-id="{b.id}" onclick="{open_page_onclick}" role="button" tabindex="0" style="padding:22px; border-radius:var(--radius-lg); {card_border_style} display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
                 <div>
-                    <div style="margin-bottom:12px;">{sub_chip}</div>
-
-                    <!-- Headline Title -->
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        {f'<span class="gold-medal" title="Badge earned">{get_icon("award", 22)}</span>' if is_earned else ''}
-                        <h3 style="font-size:1.25rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.2px; line-height:1.35;">
-                            {b_title}
-                        </h3>
+                    <!-- Badge name first (left), status chip on the top-right -->
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+                        <div style="display:flex; align-items:center; gap:12px; flex:1 1 0; min-width:0;">
+                            {f'<span class="gold-medal" style="flex-shrink:0;" title="Badge earned">{get_icon("award", 22)}</span>' if is_earned else ''}
+                            <div role="heading" aria-level="3" style="font-size:1.5rem; font-weight:800; color:var(--frost-navy); margin:0; letter-spacing:-0.3px; line-height:1.25; min-width:0;">
+                                {b_title}
+                            </div>
+                        </div>
+                        {f'<div style="flex-shrink:0; margin-top:2px;">{sub_chip}</div>' if is_earned else ''}
                     </div>
                     {earned_meta_html}
+                    {card_actions_html}
                 </div>
 
                 <!-- Navigation to Dedicated Badge Detail Page -->
@@ -2783,7 +2787,7 @@ def render_cosmonaut_submission_workspace(
         """
     else:
         badges_grid_html = """
-        <div class="liquid-glass-card" style="padding:32px 24px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel-30); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.7) 100%); margin-bottom:32px;">
+        <div class="liquid-glass-card" style="padding:32px 24px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel-30); background:rgba(244, 250, 255, 0.81); margin-bottom:32px;">
             <div style="width:48px; height:48px; border-radius:50%; background:rgba(6,182,212,0.12); color:#0891B2; display:flex; align-items:center; justify-content:center; margin:0 auto 12px auto;">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                     <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
@@ -2807,10 +2811,6 @@ def render_cosmonaut_submission_workspace(
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <div>
                     <h2 style="font-size:1.6rem; font-weight:800; color:var(--frost-navy); margin:0 0 6px 0; letter-spacing:-0.3px;">Allocated Badges &amp; Milestone Projects</h2>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:0.75rem; font-weight:700; color:var(--frost-navy-50);">Allocated Badges:</span>
-                    <span style="font-size:0.75rem; font-weight:800; background:var(--deep-frozen-midnight); color:var(--snow-white); padding:3px 12px; border-radius:12px;">{len(badges)}</span>
                 </div>
             </div>
         </div>
@@ -2860,9 +2860,9 @@ def render_cosmonaut_submission_modal(badge: Badge, current_user: User, store: A
     rev_first = escape(rev.name.split()[0]) if rev else "your reviewer"
     notice = ""
     if existing_sub:
-        when = (getattr(existing_sub, "submitted_at", "") or "")[:16].replace("T", " ")
+        when = format_ist(getattr(existing_sub, "submitted_at", "") or "")
         notice = (f'<div class="sd-notice">{get_icon("check_circle", 16)}<span>Attempt #{existing_sub.attempt_number} submitted'
-                  + (f' on <b>{escape(when)} UTC</b>' if when else "") + '. Saving replaces your current files.</span></div>')
+                  + (f' on <b>{escape(when)}</b>' if when else "") + '. Saving replaces your current files.</span></div>')
     pdf_cur = getattr(existing_sub, "pdf_name", "") if existing_sub else ""
     code_cur = getattr(existing_sub, "code_name", "") if existing_sub else ""
     gh_val = getattr(existing_sub, "github_url", "") if existing_sub else ""
@@ -2985,7 +2985,7 @@ def render_cosmonaut_badge_preview_modal(badge: Badge, current_user: Optional[Us
         is_comp = t.get("completed", False) or t.get("status", "").lower() == "completed"
 
         border_color = "#10B981" if is_comp else "rgba(6,182,212,0.3)"
-        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(234,244,255,0.85) 100%);"
+        bg_style = "background:linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(236,253,245,0.7) 100%);" if is_comp else "background:rgba(244, 250, 255, 0.90);"
         status_text = "Completed" if is_comp else "In Progress"
         status_bg = "rgba(16,185,129,0.15)" if is_comp else "rgba(157,183,213,0.18)"
         status_color = "#10B981" if is_comp else "var(--frost-navy-50)"
@@ -3406,7 +3406,6 @@ def render_cosmonaut_results(
 
     toolbar = f"""
     <div class="ms-toolbar">
-        <div class="ms-toolbar-lbl">{get_icon("award", 15)}<span>Milestone badge</span></div>
         <div class="liquid-select-wrapper ms-select">
             <select id="results-badge-select" class="liquid-glass-control liquid-glass-select" onchange="window.StarAppBridge.dispatchAction('change_results_badge', this.value)">
                 {badge_options}
@@ -3734,7 +3733,7 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
         _badge = _store_ref.get_badge(act.badge_id) if act.badge_id else None
         rows.append(f"""
         <tr>
-            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
+            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(ist_plain(act.timestamp, True))}</td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
                 <div style="font-weight:700;">{escape(humanize_internal_ids(act.summary))}</div>
@@ -3759,7 +3758,7 @@ def render_cosmonaut_activity_stream(activities: List[ActivityEvent]) -> str:
             <table class="star-table">
                 <thead>
                     <tr>
-                        <th>Timestamp (UTC)</th>
+                        <th>Timestamp (IST)</th>
                         <th>Event</th>
                         <th>Progress Milestone Summary</th>
                         <th>Badge</th>
@@ -4324,7 +4323,7 @@ def _render_review_deliverables_tray(sub: ProjectSubmission) -> str:
     code_name = getattr(sub, "code_name", "") or (sub.file_name if getattr(sub, "submission_type", "") == "code" else "") or "solution.py"
     github_url = getattr(sub, "github_url", "") or (sub.payload if getattr(sub, "submission_type", "") == "github" else "") or ""
     repo_lbl = github_url.split("/")[-1] if "/" in github_url else (github_url or "GitHub Repo")
-    sub_dt = (getattr(sub, "submitted_at", "") or "")[:16].replace("T", " ")
+    sub_dt = format_ist(getattr(sub, "submitted_at", "") or "")
 
     pdf_ic = get_icon("file_text", 12, "margin-right:4px; color:#D32F2F;")
     code_ic = get_icon("code", 12, "margin-right:4px; color:var(--deep-frozen-midnight);")
@@ -4338,7 +4337,7 @@ def _render_review_deliverables_tray(sub: ProjectSubmission) -> str:
     <div style="background:rgba(241,245,249,0.75); border:1px solid var(--icy-steel-30); border-radius:8px; padding:8px 12px; margin-bottom:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:5px;">
             <span style="font-size:0.625rem; font-weight:800; text-transform:uppercase; letter-spacing:0.45px; color:var(--frost-navy-50);">Submitted Deliverables &bull; Attempt #{getattr(sub, 'attempt_number', 1)}</span>
-            {f'<span style="font-size:0.65625rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(sub_dt)} UTC</span>' if sub_dt else ''}
+            {f'<span style="font-size:0.65625rem; font-family:var(--font-family-mono); color:var(--frost-navy-50);">{escape(sub_dt)}</span>' if sub_dt else ''}
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <span style="display:inline-flex; align-items:center; font-size:0.6875rem; font-weight:700; color:var(--frost-navy); background:#FFFFFF; border:1px solid var(--icy-steel-40); padding:3px 9px; border-radius:6px;">{pdf_ic}{escape(pdf_name)}</span>
@@ -4661,8 +4660,10 @@ def render_reviewer_badge_schedule(
         pass
 
     # Group upcoming entries by Badge
+    for done_item in completed_entries:
+        done_item["_done"] = True
     badge_groups = {}
-    for item in upcoming_entries:
+    for item in upcoming_entries + completed_entries:
         b = item.get("badge")
         b_id = b.id if b else item.get("badge_id", "")
         if b_id not in badge_groups:
@@ -4685,6 +4686,7 @@ def render_reviewer_badge_schedule(
         return f'<span class="rv-pill is-{tone}">{ico}<span>{text}</span></span>'
 
     upcoming_cards_html = []
+    completed_cards_html = []
     for b_id, bg in badge_groups.items():
         cadets_list = bg["cadets"]
         num_cadets = len(cadets_list)
@@ -4725,7 +4727,11 @@ def render_reviewer_badge_schedule(
             # The ONE action on a cosmonaut row: Assessment. Disabled until the cosmonaut has submitted (a retake waits for the new attempt);
             # then it opens the workspace where the reviewer sees the deliverables and allocates the marks.
             can_assess = bool(sub and getattr(sub, "status", "") not in ("retake_required", "resubmission_requested"))
-            if sub and getattr(sub, "status", "") in ("retake_required", "resubmission_requested"):
+            earned_row = bool(item.get("_done") or (g_asm and g_asm.decision in ("approve", "approved")))
+            if earned_row:
+                final_asm = g_asm or rev_asm
+                status_pill = _pill("green", "Badge earned" + (f" - {final_asm.total_marks:.1f}/50 ({final_asm.percentage:.1f}%)" if final_asm else ""), get_icon("award", 12))
+            elif sub and getattr(sub, "status", "") in ("retake_required", "resubmission_requested"):
                 status_pill = _pill("red", "Retake required - waiting for a new submission", get_icon("clock", 12))
             elif rev_asm:
                 status_pill = _pill("indigo", f"Evaluated {rev_asm.total_marks:.1f}/50 ({rev_asm.percentage:.1f}%)", get_icon("check", 12))
@@ -4748,7 +4754,7 @@ def render_reviewer_badge_schedule(
             proj_line = (f'<div class="rv-sub-line"><span class="rv-sub-lbl">Project</span> {escape(assigned_proj.title)}</div>'
                          if assigned_proj and getattr(assigned_proj, "title", "") else "")
             eval_line = ""
-            if rev_asm or g_asm:
+            if (rev_asm or g_asm) and not earned_row:      # an earned row's pill already carries the final score
                 bits = []
                 if rev_asm:
                     bits.append(f"Your evaluation <b>{rev_asm.total_marks:.1f}/50</b> " + render_recommendation_chip(reviewer_recommendation_key(rev_asm), "Recommended"))
@@ -4791,6 +4797,7 @@ def render_reviewer_badge_schedule(
                 </div>""")
 
         n_pending_projects = num_cadets - n_project_sent
+        group_done = bool(cadets_list) and all(i.get("_done") for i in cadets_list)
         if n_pending_projects <= 0:
             create_label, create_ico = "Edit Project", get_icon("edit", 14)
         else:
@@ -4803,6 +4810,11 @@ def render_reviewer_badge_schedule(
         if n_pending_projects <= 0 and num_cadets:
             timer_html = f'<span class="rv-sent">{get_icon("check", 14)}<span>All projects sent</span></span>'
         window_cell = f'<div class="rv-fact is-timer"><div class="rv-fact-lbl">Project window</div><div class="rv-fact-val">{timer_html}</div></div>' if timer_html else ""
+        if group_done:
+            window_cell = f'<div class="rv-fact"><div class="rv-fact-lbl">Status</div><div class="rv-fact-val"><span class="rv-sent">{get_icon("award", 14)}<span>All badges earned</span></span></div></div>'
+        create_btn_html = "" if group_done else (
+            f'<button type="button" class="btn-metal btn-sm rv-create" onclick="window.StarAppBridge.dispatchAction(\'open_create_reviewer_project_modal\', \'{escape(b_id)}\')">'
+            f'{create_ico}<span>{create_label}</span></button>')
 
         tree_html = (
             f'<div class="rv-tree"><div class="asm-tree-cosmo-list">{"".join(cadet_branches)}</div></div>'
@@ -4810,7 +4822,7 @@ def render_reviewer_badge_schedule(
         )
         chevron = get_icon("chevron_up" if is_expanded else "chevron_down", 14)
 
-        upcoming_cards_html.append(f"""
+        (completed_cards_html if group_done else upcoming_cards_html).append(f"""
         <div class="rv-badge-card">
             <div class="rv-badge-head" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')">
                 <div class="rv-badge-id">
@@ -4822,111 +4834,13 @@ def render_reviewer_badge_schedule(
                     {window_cell}
                 </div>
                 <div class="rv-badge-actions" onclick="event.stopPropagation();">
-                    <button type="button" class="btn-metal btn-sm rv-create" onclick="window.StarAppBridge.dispatchAction('open_create_reviewer_project_modal', '{escape(b_id)}')">
-                        {create_ico}<span>{create_label}</span>
-                    </button>
+                    {create_btn_html}
                     <button type="button" class="btn-secondary btn-sm rv-toggle" onclick="window.StarAppBridge.dispatchAction('toggle_reviewer_badge_expand', '{escape(b_id)}')">
                         {get_icon("users", 14)}<span>{num_cadets} mapped cosmonaut{'s' if num_cadets != 1 else ''}</span>{chevron}
                     </button>
                 </div>
             </div>
             {tree_html}
-        </div>
-        """)
-
-    completed_cards_html = []
-    for item in completed_entries:
-        b = item.get("badge")
-        c = item.get("cosmonaut")
-        b_id_c = b.id if b else item.get("badge_id", "")
-        b_title = b.title if b else item.get("badge_title", item.get("badge_id", "Milestone"))
-        b_code = b.code if b else ""
-        b_band = getattr(b, "target_band", "B1") if b else ""
-        b_cat = (getattr(b, "category", "") or getattr(b, "skill", "")) if b else ""
-        c_actual_id = c.id if c else item.get("cosmonaut_id", "")
-        c_name = c.name if c else c_actual_id
-        c_band = getattr(c, "band", "B1") if c else "B1"
-        c_track = getattr(c, "learning_track", getattr(c, "role", "Cosmonaut")) if c else "Cosmonaut"
-        c_email = getattr(c, "email", "") if c else ""
-        c_avatar = getattr(c, "avatar", (c_name[:2].upper() if c_name else "CO"))
-
-        b_prompt_c = store.get_reviewer_project_prompts(badge_id=b_id_c, reviewer_id=current_user.id) if (store and b_id_c) else []
-        ctx_c = _collect_cadet_review_context(store, b_id_c, c_actual_id, b_prompt_c, tl_obj=item.get("timeline"))
-        sub_c = ctx_c["latest_sub"]
-        rev_asm_c = ctx_c["rev_asm"]
-        g_asm_c = ctx_c["g_asm"]
-        proj_c = ctx_c["assigned_proj"]
-        award_date = item.get("award_date") or ctx_c["award_date"] or "Completed"
-        r_win_c = item.get("review_date", "Schedule Recorded")
-
-        score_pills = []
-        if rev_asm_c:
-            score_pills.append(
-                f'<span style="font-size:0.71875rem; font-weight:800; color:#0369A1; background:rgba(224,242,254,0.9); border:1px solid rgba(2,132,199,0.3); padding:3px 10px; border-radius:999px;">Reviewer Score: <strong>{rev_asm_c.total_marks:.1f} / 50 ({rev_asm_c.percentage:.1f}%)</strong></span>'
-            )
-        if g_asm_c:
-            score_pills.append(
-                f'<span style="font-size:0.71875rem; font-weight:800; color:#047857; background:rgba(209,250,229,0.9); border:1px solid rgba(16,185,129,0.35); padding:3px 10px; border-radius:999px;">Guardian Final: <strong>{g_asm_c.total_marks:.1f} / 50 ({g_asm_c.percentage:.1f}%)</strong></span>'
-            )
-        if not score_pills:
-            score_pills.append(
-                '<span style="font-size:0.71875rem; font-weight:700; color:#047857; background:rgba(209,250,229,0.75); border:1px solid rgba(16,185,129,0.3); padding:3px 10px; border-radius:999px;">Certified Cohort Record</span>'
-            )
-
-        feedback_preview = ""
-        best_asm = g_asm_c or rev_asm_c
-        if best_asm:
-            fb_str = (getattr(best_asm, "overall_feedback", "") or getattr(best_asm, "remarks", "") or "").strip()
-            if fb_str:
-                feedback_preview = f'<div style="font-size:0.75rem; color:#334155; background:rgba(248,250,252,0.9); border-left:3px solid #10B981; padding:6px 10px; border-radius:4px; margin-bottom:10px;"><strong>Evaluation Remarks:</strong> {escape(fb_str)}</div>'
-
-        proj_line_c = (
-            f'<div style="font-size:0.75rem; color:#0369A1; margin-bottom:8px;"><strong>Allocated Project:</strong> {escape(proj_c.title)}</div>'
-            if proj_c and getattr(proj_c, "title", "") else ""
-        )
-
-        if sub_c:
-            view_btn_html = f"""
-            <button type="button" class="btn-metal btn-sm rv-act rv-assess" onclick="window.StarAppBridge.dispatchAction('open_reviewer_assessment_page', '{escape(sub_c.id)}')">
-                {get_icon("award", 13)}<span>Assessment</span>
-            </button>
-            """
-        else:
-            view_btn_html = ""
-
-        completed_cards_html.append(f"""
-        <div class="liquid-glass-card" style="padding:18px 22px; border:1.5px solid rgba(16,185,129,0.45); background:rgba(255,255,255,0.94); margin-bottom:12px; border-radius:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                        {f'<span style="font-family:var(--font-family-mono); font-size:0.65625rem; font-weight:800; background:#0F172A; color:#FFFFFF; padding:2px 7px; border-radius:3px;">{escape(b_code)}</span>' if b_code else ''}
-                        <span style="font-family:var(--font-family-mono); font-size:0.625rem; font-weight:800; background:rgba(23,52,92,0.08); color:var(--deep-frozen-midnight); padding:2px 6px; border-radius:3px;">BAND {escape(b_band)}</span>
-                        {f'<span style="font-size:0.71875rem; font-weight:600; color:#64748B;">{escape(b_cat)}</span>' if b_cat else ''}
-                        <span class="status-pill status-approved" style="font-size:0.6875rem; font-weight:700;">✓ Completed &amp; Certified</span>
-                    </div>
-                    <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:4px;">{escape(b_title)}</div>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.75rem; color:var(--frost-navy-75);">
-                        <span style="width:22px; height:22px; border-radius:50%; background:#CBD5E1; color:#1E293B; display:inline-flex; align-items:center; justify-content:center; font-size:0.625rem; font-weight:800;">{escape(c_avatar)}</span>
-                        <span>Cadet: <strong>{escape(c_name)}</strong> (Band {escape(c_band)} &bull; {escape(c_track)}{f' &bull; {escape(c_email)}' if c_email else ''})</span>
-                        <span style="color:#94A3B8;">&bull;</span>
-                        <span>📅 Window: <strong>{escape(r_win_c)}</strong></span>
-                        <span style="color:#94A3B8;">&bull;</span>
-                        <span>🏆 Awarded: <strong style="color:#047857;">{escape(award_date)}</strong></span>
-                    </div>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="btn-secondary btn-sm" onclick="window.StarAppBridge.dispatchAction('open_reviewer_badge_timeline_modal', '{escape(b_id_c)}')" style="font-size:0.71875rem; font-weight:700;">
-                        📅 Timeline
-                    </button>
-                    {view_btn_html}
-                </div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
-                {"".join(score_pills)}
-            </div>
-            {proj_line_c}
-            
-            {feedback_preview}
         </div>
         """)
 
@@ -5029,7 +4943,6 @@ def render_reviewer_assessment_detail(
                             <span class="lg-rubric-field-label" id="rubric-decision-label">Your recommendation to the Guardian</span>
                             <select id="rubric-decision" hidden data-auto="{0 if locked else 1}" data-thr="{thr:g}" aria-labelledby="rubric-decision-label">{dec_options}</select>
                             <div class="lg-dec-list" role="radiogroup" aria-labelledby="rubric-decision-label">{dec_buttons}</div>
-                            <div class="lg-dec-desc" id="rubric-decision-desc">{escape(REVIEWER_RECOMMENDATIONS[rec_key]["desc"])}</div>
                         </div>"""
     if locked:
         footer_html = (f'<div class="lg-rubric-locked">{get_icon("lock", 14)}<span>Marks submitted and locked. The Guardian now checks your '
@@ -5224,14 +5137,9 @@ def render_reviewer_assessment_detail(
                                 <textarea id="rubric-improvements" rows="2" class="lg-rubric-textarea"{ro}>{escape(init_improvements)}</textarea>
                             </div>
                         </div>
-
-                        <div>
-                            <label class="lg-rubric-field-label" for="rubric-feedback">Reviewer Remarks &amp; Recommendations</label>
-                            <textarea id="rubric-feedback" rows="2" class="lg-rubric-textarea"{ro}>{escape(init_feedback)}</textarea>
-                        </div>
                     </div>
 
-                    <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
+                    <div style="padding:10px 14px 12px; background:rgba(255,255,255,0.96); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
                         <div class="lg-decision-dock">{decision_block}</div>
                         {footer_html}
                     </div>
@@ -5246,7 +5154,8 @@ def render_reviewer_assessment_detail(
 # 6.13 REVIEWER MODALS: TIMELINE & GEMINI AI PROJECT CREATOR
 # ==============================================================================
 
-def _render_milestone_steps(dt: Dict[str, Any], review_days: List[str], published_at: str, project_step: Dict[str, Any]) -> str:
+def _render_milestone_steps(dt: Dict[str, Any], review_days: List[str], published_at: str, project_step: Dict[str, Any],
+                            actuals: Optional[Dict[str, Any]] = None) -> str:
     """The vertical timeline of connected dots (`.tlv-*`) shared by the reviewer's and the cosmonaut's Timeline popups."""
     import datetime as _dt
     today = _dt.date.today()
@@ -5305,13 +5214,22 @@ def _render_milestone_steps(dt: Dict[str, Any], review_days: List[str], publishe
           _state(dt.get("learning_start_date"), dt.get("learning_end_date")))
     _step("Project sprint", "Cosmonauts build the project and prepare their deliverables.", _range(dt.get("project_start_date"), dt.get("project_end_date")),
           _state(dt.get("project_start_date"), dt.get("project_end_date")))
-    _step("Submission deadline", "Deliverables (PDF, code, GitHub) are due.", _range(dt.get("submission_deadline"), None),
-          _state(dt.get("submission_deadline")), tone="is-deadline")
+    act = actuals or {}
+    sub_notes = "".join(f'<span class="tlv-note is-ok">{n}</span>' for n in act.get("submitted", []))
+    _step("Submission deadline" if not sub_notes else "Submission", "Deliverables (PDF, code, GitHub) are due." if not sub_notes else "Your deliverables were submitted.",
+          _range(dt.get("submission_deadline"), None), "done" if sub_notes else _state(dt.get("submission_deadline")), sub_notes, tone="is-deadline")
     rv_first = review_days[0] if review_days else dt.get("review_date")
     rv_last = review_days[-1] if review_days else dt.get("review_date")
     rv_note = f'<span class="tlv-note">{len(review_days)} working days</span>' if len(review_days) > 1 else ""
-    _step("Review window", "The reviewer assesses the deliverables on the 50-mark rubric.", _range(rv_first, rv_last), _state(rv_first, rv_last), rv_note)
-    _step("Certification award", "The Guardian gives the final decision and awards the badge.", _range(dt.get("expected_award_date"), None), _state(dt.get("expected_award_date")))
+    rev_notes = "".join(f'<span class="tlv-note is-ok">{n}</span>' for n in act.get("reviewed", []))
+    _step("Review window", "The reviewer assesses the deliverables on the 50-mark rubric.", _range(rv_first, rv_last),
+          "done" if rev_notes else _state(rv_first, rv_last), rev_notes or rv_note)
+    if act.get("awarded"):
+        _step("Badge earned", "The Guardian approved your project and awarded the badge.", f'<span class="tlv-nw">{escape(act["awarded"]["when"])}</span>', "done",
+              f'<span class="tlv-note is-ok">{act["awarded"]["note"]}</span>')
+    else:
+        _step("Certification award", "The Guardian gives the final decision and awards the badge.", _range(dt.get("expected_award_date"), None), _state(dt.get("expected_award_date")),
+              "".join(f'<span class="tlv-note">{n}</span>' for n in act.get("decided", [])))
     return f'<ol class="tlv-steps">{"".join(steps)}</ol>'
 
 
@@ -5439,9 +5357,30 @@ def render_cosmonaut_timeline_modal(badge: Optional[Badge], current_user: User, 
         except Exception:
             pw_end = ""
     when = (f'<span class="tlv-nw">Expected by {escape(format_short_date(pw_end))}</span>' if pw_end else '<span class="tlv-unset">After the badge is published</span>')
+    # what really happened (IST): every submitted attempt, the reviewer's evaluation, the Guardian's decision, the award
+    actuals: Dict[str, Any] = {"submitted": [], "reviewed": [], "decided": []}
+    if store:
+        for sub in sorted(store.get_submissions_for_cosmonaut(current_user.id, badge.id) or [], key=lambda x: getattr(x, "attempt_number", 1)):
+            at = format_ist(getattr(sub, "submitted_at", "") or "")
+            if at:
+                actuals["submitted"].append(f"Attempt #{sub.attempt_number} submitted on <b>{escape(at)}</b>")
+        for a in sorted(store.get_assessments_for_cosmonaut(current_user.id, badge.id) or [], key=lambda x: (getattr(x, "attempt_number", 1), getattr(x, "reviewed_at", ""))):
+            at = format_ist(getattr(a, "reviewed_at", "") or "")
+            if not at:
+                continue
+            if getattr(a, "assessor_role", "") == "reviewer":
+                actuals["reviewed"].append(f"Attempt #{a.attempt_number} evaluated by {escape(a.reviewer_name)} on <b>{escape(at)}</b> &middot; {a.total_marks:.1f}/50")
+            else:
+                dec = (getattr(a, "decision", "") or "").lower()
+                label = "badge awarded" if dec in ("approve", "approved") else ("rejected" if dec in ("rejected", "reject") else "re-attempt requested")
+                if dec in ("approve", "approved"):
+                    actuals["awarded"] = {"when": format_short_date(getattr(tl, "actual_award_date", "") or a.reviewed_at) or at,
+                                          "note": f"Attempt #{a.attempt_number}: {label} on <b>{escape(at)}</b> &middot; final score {a.total_marks:.1f}/50 ({a.percentage:.1f}%)"}
+                else:
+                    actuals["decided"].append(f"Attempt #{a.attempt_number}: {label} on {escape(at)}")
     steps_html = _render_milestone_steps(dt, review_days, published_at, {
         "title": "Project from your reviewer", "hint": f"{rev_name} creates your project and sends it to you within 72 hours of publishing.",
-        "when_html": when, "state": state, "note_html": note})
+        "when_html": when, "state": state, "note_html": note}, actuals)
     deadline = format_short_date(dt.get("submission_deadline")) or "Not set"
     return f"""
     <div class="tlv-wrap" data-live-sync="timeline">
@@ -5452,7 +5391,7 @@ def render_cosmonaut_timeline_modal(badge: Optional[Badge], current_user: User, 
         <div class="tlv-facts">
             <div class="tlv-fact"><div class="tlv-fact-lbl">Reviewer</div><div class="tlv-fact-val">{escape(rev.name if rev else "Not mapped yet")}</div></div>
             <div class="tlv-fact"><div class="tlv-fact-lbl">Project</div><div class="tlv-fact-val">{"Received" if received else "Pending"}</div></div>
-            <div class="tlv-fact"><div class="tlv-fact-lbl">Submission deadline</div><div class="tlv-fact-val rv-red">{escape(deadline)}</div></div>
+            <div class="tlv-fact"><div class="tlv-fact-lbl">{"Badge earned" if actuals.get("awarded") else "Submission deadline"}</div><div class="tlv-fact-val{"" if actuals.get("awarded") else " rv-red"}">{escape(actuals["awarded"]["when"] if actuals.get("awarded") else deadline)}</div></div>
         </div>
         {steps_html}
         <div class="tlv-footer">
@@ -5480,7 +5419,11 @@ def render_cosmonaut_reviewer_modal(badge: Optional[Badge], current_user: User, 
         </div>"""
     received = bool(store.get_project_prompt_for_cadet(badge.id, current_user.id))
     left = project_window_seconds_left(getattr(badge, "published_at", "") or "")
-    if received:
+    earned = bool(tl and getattr(tl, "status", "") == "completed") or any(
+        a.decision in ("approve", "approved") for a in (store.get_assessments_for_cosmonaut(current_user.id, badge.id) or []))
+    if earned:
+        proj = '<span class="rv-pill is-green">' + get_icon("award", 12) + '<span>Badge earned</span></span>'
+    elif received:
         proj = '<span class="rv-pill is-green">' + get_icon("check", 12) + '<span>Project sent - open "Project Allocated"</span></span>'
     elif left == 0:
         proj = '<span class="rv-pill is-red"><span>Project is overdue</span></span>'

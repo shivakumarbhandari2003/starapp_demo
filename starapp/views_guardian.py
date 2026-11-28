@@ -16,7 +16,7 @@ from starapp.views_common import (
     render_status_pill, render_standard_marksheet, render_9point_timeline,
     REVIEWER_RECOMMENDATIONS, reviewer_recommendation_key, render_recommendation_chip,
     render_learning_materials_view, render_taxonomy_hierarchy_tree,
-    render_request_timer, format_utc_stamp
+    render_request_timer, format_utc_stamp, format_ist, ist_plain
 )
 from starapp.views_badge_document import (
     render_badge_document, render_badge_edit_controls, render_badge_edit_footer_bar
@@ -264,7 +264,7 @@ def render_guardian_dashboard(
 
     selector_bar = f"""
     <!-- SECTION A: Header and Scope Selector -->
-    <div class="liquid-glass-card" style="padding:18px 24px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
+    <div class="liquid-glass-card" style="padding:18px 24px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.91); box-shadow:0 6px 20px rgba(7,22,41,0.05);">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
             <div>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
@@ -1218,7 +1218,7 @@ def render_individual_cosmo_dossier(
         </div>
 
         <!-- Cadet Dossier Header -->
-        <div class="liquid-glass-card" style="padding:22px 26px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%);">
+        <div class="liquid-glass-card" style="padding:22px 26px; margin-bottom:24px; border-radius:var(--radius-lg); border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.91);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                 <div style="display:flex; align-items:center; gap:16px;">
                     <div class="user-avatar" style="width:52px; height:52px; font-size:1.125rem; font-weight:800; border:2px solid var(--icy-steel);">{escape(avatar)}</div>
@@ -2249,11 +2249,7 @@ def render_guardian_review_queue(
             rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
             g_asm = store.get_guardian_assessment_for_submission(sub.id)
             pill = render_status_pill(sub.status)
-            try:
-                _sub_dt = datetime.datetime.fromisoformat(str(sub.submitted_at).replace("Z", "+00:00"))
-                submitted_date_str = escape(_sub_dt.strftime("%d %b %Y, %H:%M UTC").lstrip("0"))
-            except Exception:
-                submitted_date_str = escape(str(sub.submitted_at)[:16].replace("T", " ")) + " UTC"
+            submitted_date_str = escape(format_ist(sub.submitted_at) or ist_plain(sub.submitted_at))
 
             pdf_name = getattr(sub, "pdf_name", "") or (sub.file_name if sub.submission_type == "pdf" else "") or "Deliverable.pdf"
             code_name = getattr(sub, "code_name", "") or (sub.file_name if sub.submission_type == "code" else "") or "script.py"
@@ -2462,6 +2458,9 @@ def render_guardian_review_queue(
                     rev_asm = store.get_reviewer_assessment_for_submission(latest.id)
                     g_asm = store.get_guardian_assessment_for_submission(latest.id)
                     status_pill = render_status_pill(latest.status)
+                    needs_decision = latest.status == "reviewer_assessed"
+                    if needs_decision:
+                        status_pill = f'<span class="asm-attn-pill">{get_icon("bell", 13)}<span>Decide now</span></span>'
                     att_badge = f'<span class="asm-cosmo-attempts-pill">Attempt #{latest.attempt_number}</span>'
                     if g_asm:
                         score_summary = f'{award_ic}<span>Final: {g_asm.total_marks:.1f}/50 ({g_asm.percentage:.1f}%)</span>'
@@ -2473,6 +2472,7 @@ def render_guardian_review_queue(
                         score_summary = f'{clock_ic}<span>Submitted &bull; Pending Evaluation</span>'
                         score_color = "#B45309"
                 else:
+                    needs_decision = False
                     status_pill = '<span class="status-pill status-locked" style="font-size:0.71875rem; font-weight:800;">Not Submitted</span>'
                     att_badge = '<span class="asm-cosmo-attempts-pill">0 Attempts</span>'
                     score_summary = f'{clock_ic}<span>Awaiting Cadet Deliverable</span>'
@@ -2482,7 +2482,7 @@ def render_guardian_review_queue(
                 cosmo_branches.append(f"""
                 <div class="asm-tree-cosmo-branch">
                     <span class="asm-elbow" aria-hidden="true"></span>
-                    <button type="button" class="asm-cosmonaut-card" onclick="window.StarAppBridge.dispatchAction('open_assessment_cosmonaut', '{cosmo_payload}')">
+                    <button type="button" class="asm-cosmonaut-card{' is-attention' if needs_decision else ''}" onclick="window.StarAppBridge.dispatchAction('open_assessment_cosmonaut', '{cosmo_payload}')">
                         <div class="asm-cosmo-identity">
                             <span class="asm-cosmo-avatar">{user_ic}</span>
                             <div style="min-width:0;">
@@ -2661,8 +2661,9 @@ def render_guardian_review_queue(
         approved_cnt = len([s for s in badge_subs if s.status == "approved"])
         pending_cnt = len([s for s in badge_subs if s.status in ("pending", "submitted")])
 
-        if rev_assessed_cnt > 0:
-            card_status_pill = f'<span class="status-pill status-warning" style="font-size:0.75rem; font-weight:800;">{rev_assessed_cnt} Ready for Sign-off</span>'
+        attn = rev_assessed_cnt > 0
+        if attn:
+            card_status_pill = f'<span class="asm-attn-pill">{get_icon("bell", 13)}<span>{rev_assessed_cnt} awaiting your decision</span></span>'
         elif approved_cnt > 0:
             card_status_pill = f'<span class="status-pill status-approved" style="font-size:0.75rem; font-weight:800;">{approved_cnt} Certified</span>'
         elif pending_cnt > 0:
@@ -2671,7 +2672,7 @@ def render_guardian_review_queue(
             card_status_pill = '<span class="status-pill status-locked" style="font-size:0.75rem; font-weight:800;">Mapped</span>'
 
         badge_cards_html.append(f"""
-        <button type="button" class="asm-badge-card" onclick="window.StarAppBridge.dispatchAction('open_assessment_badge', '{b.id}')">
+        <button type="button" class="asm-badge-card{' is-attention' if attn else ''}"{' data-attn="1"' if attn else ''} onclick="window.StarAppBridge.dispatchAction('open_assessment_badge', '{b.id}')">
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
                     <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
@@ -2710,6 +2711,7 @@ def render_guardian_review_queue(
         </button>
         """)
 
+    badge_cards_html.sort(key=lambda h: 0 if 'data-attn="1"' in h[:300] else 1)      # badges that need the Guardian come first (stable)
     grid_html = f'<div class="asm-badge-grid">{"".join(badge_cards_html)}</div>' if badge_cards_html else """
     <div class="liquid-glass-card" style="padding:44px 24px; text-align:center;">
         <div style="font-size:1.15rem; font-weight:800; color:var(--frost-navy); margin-bottom:6px;">No Matching Badges</div>
@@ -2795,11 +2797,28 @@ def run():
     init_improvements = active_eval.improvement_areas if active_eval else "Consider configuring exponential backoff with jitter for DLQ retries."
     init_feedback = active_eval.overall_feedback if active_eval else "Exemplary architecture spec and implementation. Enterprise-grade pipeline approved."
     rec_key = reviewer_recommendation_key(rev_asm)
+    # once the Guardian has decided, the sheet is read-only until THEY revoke the decision
+    g_final = store.get_guardian_assessment_for_submission(submission.id)
+    locked = bool(g_final) and submission.status in ("approved", "retake_required", "resubmission_requested")
+    dis = " disabled" if locked else ""
+    ro = " readonly" if locked else ""
     if g_asm:
         init_decision = normalize_decision_value(g_asm.decision) or "resubmission_requested"
     else:
         # the Guardian starts from the reviewer's recommendation (when there is one), else from the pass mark
         init_decision = rec_key or ("approve" if init_pct >= badge_thresh else "resubmission_requested")
+
+    if locked:
+        g_dec = (g_final.decision or "").lower()
+        g_label = {"approve": "Badge earned", "approved": "Badge earned", "rejected": "Rejected"}.get(g_dec, "Re-attempt requested")
+        footer_action = (f'<div class="lg-rubric-locked">{get_icon("lock", 14)}<span><b>Decision saved: {g_label}</b> on {escape(format_ist(g_final.reviewed_at))}. '
+                         f'It stays final until you revoke it.</span></div>'
+                         f'<button type="button" class="btn-secondary" style="width:100%; margin-top:6px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; gap:8px;" '
+                         f'onclick="window.StarAppBridge.dispatchAction(\'open_revoke_decision_confirm\', \'{escape(submission.id)}\')">{get_icon("revoke", 15)}<span>Revoke decision</span></button>')
+    else:
+        footer_action = f'''<button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.84375rem; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
+                            <span id="rubric-submit-label">{"Earn the Badge" if init_decision == "approve" else ("Request Resubmission" if init_decision == "resubmission_requested" else "Reject Deliverable")}</span> &rarr;
+                        </button>'''
 
     # what the reviewer recommended, shown above the marks so the Guardian can check it before deciding
     if rev_asm:
@@ -2956,35 +2975,35 @@ def run():
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">1. Business Understanding</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-bu" step="0.5" min="0" max="10" value="{init_bu}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">2. Architecture Report</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-ar" step="0.5" min="0" max="10" value="{init_ar}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">3. Technical Knowledge</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-tk" step="0.5" min="0" max="10" value="{init_tk}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">4. Presentation</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-pr" step="0.5" min="0" max="10" value="{init_pr}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
                             <div class="lg-rubric-row">
                                 <span class="lg-rubric-crit-title">5. Q&amp;A Technical Defense</span>
                                 <span class="lg-rubric-score-box">
-                                    <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="lg-rubric-num-input" oninput="window.StarAppBridge.recalcRubricTotal();">
+                                    <input type="number" id="rubric-qa" step="0.5" min="0" max="10" value="{init_qa}" class="lg-rubric-num-input"{ro} oninput="window.StarAppBridge.recalcRubricTotal();">
                                     <span class="lg-rubric-max-tag">Max 10</span>
                                 </span>
                             </div>
@@ -3000,21 +3019,21 @@ def run():
                         <div class="lg-fb">
                             <div class="lg-fb-field is-strengths">
                                 <label class="lg-fb-label" for="rubric-strengths">Technical Strengths</label>
-                                <textarea id="rubric-strengths" rows="2" class="lg-fb-textarea" placeholder="What the deliverable did well">{escape(init_strengths)}</textarea>
+                                <textarea id="rubric-strengths" rows="2" class="lg-fb-textarea"{ro} placeholder="What the deliverable did well">{escape(init_strengths)}</textarea>
                             </div>
                             <div class="lg-fb-field is-improve">
                                 <label class="lg-fb-label" for="rubric-improvements">Improvements</label>
-                                <textarea id="rubric-improvements" rows="2" class="lg-fb-textarea" placeholder="What to work on next">{escape(init_improvements)}</textarea>
+                                <textarea id="rubric-improvements" rows="2" class="lg-fb-textarea"{ro} placeholder="What to work on next">{escape(init_improvements)}</textarea>
                             </div>
                             <div class="lg-fb-field is-remarks">
                                 <label class="lg-fb-label" for="rubric-feedback">Overall Remarks</label>
-                                <textarea id="rubric-feedback" rows="2" class="lg-fb-textarea" placeholder="Summary for the cosmonaut">{escape(init_feedback)}</textarea>
+                                <textarea id="rubric-feedback" rows="2" class="lg-fb-textarea"{ro} placeholder="Summary for the cosmonaut">{escape(init_feedback)}</textarea>
                             </div>
                         </div>
                     </div>
 
                     <!-- Pinned Bottom Action Footer -->
-                    <div style="padding:8px 14px; background:rgba(234,244,255,0.9); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
+                    <div style="padding:10px 14px 12px; background:rgba(255,255,255,0.96); border-top:1px solid var(--icy-steel-30); flex-shrink:0;">
                         <div class="lg-decision-dock">
                             <div class="lg-fb-field">
                                 <span class="lg-fb-label" id="rubric-decision-label">Assessment Decision</span>
@@ -3024,15 +3043,15 @@ def run():
                                     <option value="reject"{" selected" if init_decision == "reject" else ""}>Reject Deliverable</option>
                                 </select>
                                 <div class="lg-dec-list" role="radiogroup" aria-labelledby="rubric-decision-label">
-                                    <button type="button" role="radio" class="lg-dec-opt is-approve{' is-on' if init_decision == 'approve' else ''}" aria-checked="{'true' if init_decision == 'approve' else 'false'}" data-value="approve" data-cta="Earn the Badge" data-desc="Approve and certify the milestone." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                    <button type="button" role="radio" class="lg-dec-opt is-approve{' is-on' if init_decision == 'approve' else ''}" aria-checked="{'true' if init_decision == 'approve' else 'false'}" data-value="approve" data-cta="Earn the Badge" data-desc="Approve and certify the milestone." {dis} onclick="window.StarAppBridge.setReviewDecision(this)">
                                         <span class="lg-dec-ico">{get_icon("award", 16)}</span>
                                         <span class="lg-dec-title">Earn Badge</span>
                                     </button>
-                                    <button type="button" role="radio" class="lg-dec-opt is-resubmit{' is-on' if init_decision == 'resubmission_requested' else ''}" aria-checked="{'true' if init_decision == 'resubmission_requested' else 'false'}" data-value="resubmission_requested" data-cta="Request Resubmission" data-desc="Keep this attempt on record and ask for a new one." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                    <button type="button" role="radio" class="lg-dec-opt is-resubmit{' is-on' if init_decision == 'resubmission_requested' else ''}" aria-checked="{'true' if init_decision == 'resubmission_requested' else 'false'}" data-value="resubmission_requested" data-cta="Request Resubmission" data-desc="Keep this attempt on record and ask for a new one." {dis} onclick="window.StarAppBridge.setReviewDecision(this)">
                                         <span class="lg-dec-ico">{get_icon("refresh", 16)}</span>
                                         <span class="lg-dec-title">Resubmit</span>
                                     </button>
-                                    <button type="button" role="radio" class="lg-dec-opt is-reject{' is-on' if init_decision == 'reject' else ''}" aria-checked="{'true' if init_decision == 'reject' else 'false'}" data-value="reject" data-cta="Reject Deliverable" data-desc="Reject the deliverable." onclick="window.StarAppBridge.setReviewDecision(this)">
+                                    <button type="button" role="radio" class="lg-dec-opt is-reject{' is-on' if init_decision == 'reject' else ''}" aria-checked="{'true' if init_decision == 'reject' else 'false'}" data-value="reject" data-cta="Reject Deliverable" data-desc="Reject the deliverable." {dis} onclick="window.StarAppBridge.setReviewDecision(this)">
                                         <span class="lg-dec-ico">{get_icon("x", 16)}</span>
                                         <span class="lg-dec-title">Reject</span>
                                     </button>
@@ -3040,9 +3059,7 @@ def run():
                                 <div class="lg-dec-desc" id="rubric-decision-desc">{"Approve and certify the milestone." if init_decision == "approve" else ("Keep this attempt on record and ask for a new one." if init_decision == "resubmission_requested" else "Reject the deliverable.")}</div>
                             </div>
                         </div>
-                        <button type="submit" class="btn-metal" style="width:100%; height:38px; font-size:0.84375rem; font-weight:800; letter-spacing:0.2px; background:linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color:#FFFFFF; border:1.5px solid #D97706; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
-                            <span id="rubric-submit-label">{"Earn the Badge" if init_decision == "approve" else ("Request Resubmission" if init_decision == "resubmission_requested" else "Reject Deliverable")}</span> &rarr;
-                        </button>
+                        {footer_action}
                     </div>
                 </form>
             </div>
@@ -3295,7 +3312,7 @@ def render_guardian_profile(current_user: User, stats: Dict[str, Any]) -> str:
 
     return f"""
     <div style="max-width:1100px; margin:0 auto;">
-        <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.65) 100%);">
+        <div class="liquid-glass-card" style="padding:28px 32px; margin-bottom:24px; border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.79);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:18px; margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:20px;">
                     <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; width:72px; height:72px; border-radius:50%; font-size:1.625rem; font-weight:800; background:linear-gradient(135deg, var(--deep-frozen-midnight) 0%, var(--frost-navy) 100%); color:var(--snow-white);">{escape(current_user.avatar)}</div>
@@ -3335,7 +3352,7 @@ def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: L
     for act in page_acts:
         rows.append(f"""
         <tr>
-            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(act.timestamp[:19].replace('T', ' '))}</td>
+            <td style="font-family:var(--font-family-mono); font-size:0.75rem; white-space:nowrap;">{escape(ist_plain(act.timestamp, True))}</td>
             <td><strong style="color:var(--deep-frozen-midnight);">{escape(act.actor_name or act.actor_id)}</strong></td>
             <td>{render_status_pill(act.event_type)}</td>
             <td>
@@ -3351,7 +3368,7 @@ def render_guardian_activity_feed(activities: List[ActivityEvent], cosmonauts: L
         <table class="star-table">
             <thead>
                 <tr>
-                    <th>Timestamp (UTC)</th>
+                    <th>Timestamp (IST)</th>
                     <th>Actor</th>
                     <th>Event Type</th>
                     <th>Audit Summary</th>
@@ -3418,7 +3435,7 @@ def render_guardian_extensions(extensions: List[DeadlineExtension], cosmonauts_m
             status_pill = '<span class="status-pill" style="font-size:0.6875rem; font-weight:800; padding:4px 10px; background:#F59E0B; color:#FFFFFF; border-radius:var(--radius-xs); display:inline-flex; align-items:center; gap:4px;">&#9203; Pending Review</span>'
 
         items.append(f"""
-        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:16px; background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.85) 100%); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 16px rgba(7,22,41,0.05);">
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:16px; background:rgba(244, 250, 255, 0.91); border:1.5px solid var(--icy-steel); border-radius:var(--radius-md); box-shadow:0 4px 16px rgba(7,22,41,0.05);">
             <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
@@ -5018,7 +5035,7 @@ def render_guardian_create_badge(
         )
     else:
         badge_result_area_html = f"""
-        <div id="badge-empty-guidance-card" class="liquid-glass-card" style="padding:34px 26px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(234,244,255,0.78) 100%); margin-bottom:28px;">
+        <div id="badge-empty-guidance-card" class="liquid-glass-card" style="padding:34px 26px; text-align:center; border-radius:var(--radius-lg); border:1.5px dashed var(--icy-steel); background:rgba(244, 250, 255, 0.86); margin-bottom:28px;">
             <div style="width:52px; height:52px; border-radius:50%; background:rgba(8,145,178,0.12); color:#0E7490; display:flex; align-items:center; justify-content:center; margin:0 auto 14px auto;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                     <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
@@ -5314,14 +5331,13 @@ def render_badge_creation_preview_modal(badge_data: Dict[str, Any], reviewer: Op
 # ==============================================================================
 
 def format_badge_timestamp(ts: Optional[str]) -> str:
+    """Badge history stamp 'YYYY-MM-DD HH:MM' in IST (a bare date stays a date)."""
     if not ts:
         return "2026-11-20"
     try:
-        clean = str(ts).replace("Z", "").split("+")[0]
-        if "T" in clean:
-            d_part, t_part = clean.split("T", 1)
-            return f"{d_part} {t_part[:5]}"
-        return clean[:16]
+        if "T" not in str(ts):
+            return str(ts)[:16]
+        return ist_plain(ts) or str(ts)[:16]
     except Exception:
         return str(ts)[:16]
 
@@ -6421,6 +6437,36 @@ def render_badge_reviewer_edit_modal(
 # 7.13 BADGE APPROVAL CONFIRMATION MODAL
 # ==============================================================================
 
+def render_decision_revoke_confirm_modal(sub: Any, badge: Any, cosmonaut: Any, g_asm: Any) -> str:
+    """Glass confirmation for revoking the Guardian's final decision on one submission."""
+    dec = (getattr(g_asm, "decision", "") or "").lower()
+    label = {"approve": "Badge earned", "approved": "Badge earned", "rejected": "Rejected"}.get(dec, "Re-attempt requested")
+    extra = ("The badge is taken back from the cosmonaut (their gold badge reverts)." if dec in ("approve", "approved")
+             else "The cosmonaut's re-attempt request is withdrawn.")
+    sid = escape(sub.id)
+    return f"""
+    <div class="rc-modal is-revoke">
+        <div class="rc-head">
+            <span class="rc-ico">{get_icon("revoke", 24)}</span>
+            <div>
+                <div class="rc-heading" role="heading" aria-level="2">Revoke this decision?</div>
+                <div class="rc-sub">{escape(getattr(cosmonaut, "name", sub.cosmonaut_id))} &middot; Attempt #{sub.attempt_number}</div>
+            </div>
+        </div>
+        <div class="rc-badge">
+            <div class="rc-badge-top"><span class="rc-code">{escape(getattr(badge, "code", sub.badge_id))}</span></div>
+            <div class="rc-badge-title">{escape(getattr(badge, "title", ""))}</div>
+            <div class="rc-badge-meta"><span class="rc-officer">Decision: <b>{label}</b> &middot; {g_asm.total_marks:.1f} / 50 ({g_asm.percentage:.1f}%) &middot; {escape(format_ist(g_asm.reviewed_at))}</span></div>
+        </div>
+        <div class="rc-note is-warn"><strong>What happens</strong><span>{escape(extra)} The submission returns to <b>Ready for sign-off</b> with the reviewer's marks and recommendation untouched, and you can make a new decision. The cosmonaut and the reviewer are notified.</span></div>
+        <div class="rc-footer">
+            <button type="button" class="btn-secondary" onclick="window.StarAppBridge.dispatchAction('close_modal', '{{}}')" style="font-weight:700;">Keep decision</button>
+            <button type="button" class="btn-metal rc-confirm is-revoke" onclick="window.StarAppBridge.dispatchAction('revoke_guardian_decision', '{sid}')">{get_icon("revoke", 16)}<span>Revoke decision</span></button>
+        </div>
+    </div>
+    """
+
+
 def _review_confirm_shell(kind: str, heading: str, sub: str, badge: Badge, reviewer: Optional[User], body_html: str, footer_html: str,
                           who_label: str = "Reviewing officer") -> str:
     """Shared frame of the decision dialogs (approve / return / publish / revoke): tone icon + heading, a badge summary card, a body, a footer."""
@@ -7165,7 +7211,7 @@ def render_guardian_pillar_placeholder(
 
     return f"""
     <div id="guardian-pillar-{escape(p_lower)}" style="max-width:1100px; margin:0 auto; padding:8px 4px 32px 4px;">
-        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(234,244,255,0.88) 100%); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+        <div class="liquid-glass-card" style="padding:20px 24px; margin-bottom:20px; border:1.5px solid var(--icy-steel); background:rgba(244, 250, 255, 0.92); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
             <div>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <span style="font-family:var(--font-family-mono); font-size:0.6875rem; font-weight:800; background:var(--deep-frozen-midnight); color:#fff; padding:2px 8px; border-radius:var(--radius-xs);">{escape(c_code)}</span>

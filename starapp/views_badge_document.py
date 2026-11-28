@@ -167,7 +167,7 @@ def _topics_block(topics: List[Dict[str, Any]], is_editing: bool, show_progress:
         is_comp = show_progress and (t.get("completed", False) or str(t.get("status", "")).lower() == "completed")
         border_color = "#059669" if is_comp else "rgba(8,145,178,0.34)"
         bg_style = ("background:linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(236,253,245,0.75) 100%);" if is_comp
-                    else "background:linear-gradient(135deg, rgba(255,255,255,0.94) 0%, rgba(234,244,255,0.82) 100%);")
+                    else "background:rgba(244, 250, 255, 0.88);")
         progress_html = ""
         if show_progress:
             status_text = "Completed" if is_comp else "In Progress"

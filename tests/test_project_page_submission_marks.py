@@ -157,7 +157,7 @@ class TestSubmitDialog(Base):
         js = open(os.path.join(root, "js", "bridge.js"), encoding="utf-8").read()
         css = open(os.path.join(root, "css", "components.css"), encoding="utf-8").read()
         self.assertIn("showPickedFile(input, nameId, dropId)", js)
-        for rule in (".sd-drop", ".sd-wrap", ".pjp-page", ".ms-sheet", ".ms-ring", ".ms-crit"):
+        for rule in (".sd-drop", ".sd-wrap", ".pjp-page", ".ms-sheet", ".ms-title", ".ms-crit"):
             self.assertIn(rule, css, rule)
 
 
@@ -242,11 +242,11 @@ class TestMarksReachCosmonautAndGuardian(Base):
         c = _login(CID)
         c.handle_event("nav_cosmonaut", "c_results")
         m = _main(c)
-        for part in ("ms-sheet", "ms-ring", "39.5", "79.0%", "Awaiting Guardian", "Peer Reviewer", "Rohan Deshmukh", "Business Understanding",
-                     "8.5", "Clean modular design.", "More tests.", "Solid, production-minded delivery.", 'data-live-sync="marksheet"'):
+        for part in ("ms-sheet", "39.5", "79.0%", "Reviewer", "Rohan Deshmukh", "Business Understanding",
+                     "8.5", "Clean modular design.", "More tests.", 'data-live-sync="marksheet"'):
             self.assertIn(part, m, part)
         self.assertEqual(m.count('class="ms-crit"'), 5)
-        self.assertNotIn("Badge earned", m.split("ms-head")[1].split("ms-body")[0])        # not final yet
+        self.assertNotIn("Badge earned", m.split("ms-hero")[1].split("ms-body")[0])        # not final yet
 
     def test_marksheet_opens_on_the_newest_evaluated_badge_and_page_updates_live(self):
         self.send_project()
@@ -263,7 +263,7 @@ class TestMarksReachCosmonautAndGuardian(Base):
         g = _login("guardian_1")
         self.assertTrue(any("Reviewer Assessed" in n.title for n in store.get_notifications("guardian_1")))
         g.handle_event("nav_guardian", "g_reviews")
-        self.assertIn("1 Ready for Sign-off", _main(g))                                    # the badge card flags it
+        self.assertIn("1 awaiting your decision", _main(g))                                    # the badge card flags it
         g.handle_event("open_assessment_badge", BADGE)
         g.handle_event("open_assessment_cosmonaut", CID)
         drill = _main(g)
@@ -277,13 +277,13 @@ class TestMarksReachCosmonautAndGuardian(Base):
         c = _login(CID)
         c.handle_event("nav_cosmonaut", "c_results")
         m = _main(c)
-        for part in ("Badge earned", "45.0", "Guardian Official", "Peer Reviewer", "ms-tab"):
+        for part in ("45.0", "Reviewer", "Attempt"):
             self.assertIn(part, m, part)
+        self.assertNotIn("ms-tab", m)                                                      # one marksheet only (the latest evaluation)
         asm = next(a for a in store.get_assessments_for_cosmonaut(CID, BADGE) if a.assessor_role == "reviewer")
         c.handle_event("select_results_marksheet", json.dumps({"marksheet_id": asm.id}))
         m2 = _main(c)
         self.assertIn("39.5", m2)
-        self.assertIn("Awaiting Guardian", m2)                                             # the reviewer tab is selectable
 
     def test_a_cosmonaut_cannot_select_someone_elses_marksheet(self):
         self.grade()
@@ -314,7 +314,7 @@ class TestMarksheetGlass(unittest.TestCase):
                                 reviewed_at="2026-11-27T10:00:00", decision="resubmission_requested", business_understanding=4, architecture_report=5,
                                 technical_knowledge=6, presentation=7, qa=8, strength_areas="s", improvement_areas="i", overall_feedback="f", assessor_role="guardian")
         html = render_standard_marksheet(a)
-        self.assertIn("Re-attempt", html)
+        self.assertNotIn("Re-attempt", html)                                              # the marksheet shows the marks only, no outcome pill
         self.assertIn("ms-meter-fill is-low", html)
         self.assertIn("ms-meter-fill is-high", html)
         for gone in ("<table", "linear-gradient(135deg, #071629", "marksheet-rubric-table"):

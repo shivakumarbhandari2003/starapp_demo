@@ -162,7 +162,7 @@ class TestGuardianReviewFlow(unittest.TestCase):
         self.assertIn("Official Assessment Marksheets", html_results)
         self.assertIn("47.5", html_results)
         self.assertIn("Flawless Kafka idempotency", html_results)
-        self.assertIn("Outstanding engineering achievement", html_results)
+        self.assertNotIn("Outstanding engineering achievement", html_results)      # the summary block is no longer on the marksheet
 
 if __name__ == "__main__":
     unittest.main()

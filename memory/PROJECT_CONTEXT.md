@@ -4,8 +4,8 @@
 
 A training-and-recognition platform for an engineering organisation. People sit in **bands B1…B6** (plus an Executive/CEO band) and
 in **learning tracks**. Growth is measured through **badges**: a badge is a curriculum milestone (learning outcomes, topics, a practice
-project, a pass threshold). Cadets earn badges by submitting a real project that a *higher-band colleague* grades on a fixed
-50-mark rubric. Badge results feed a **6-month performance cycle** that produces appraisal scores, tiers, hike % and promotion
+project, a pass threshold). Cadets earn badges by submitting a real project that a *higher-band colleague* assesses on a fixed
+50-mark rubric and **recommends** on; the **Guardian decides** (the decision is locked and only the Guardian can revoke it). Badge results feed a **6-month performance cycle** that produces appraisal scores, tiers, hike % and promotion
 recommendations.
 
 ## 2. Roles (people can hold several)
@@ -14,8 +14,8 @@ recommendations.
 |:---|:---|:---|
 | `guardian` | Guardian (admin, mentor, curriculum owner) | Creates badges (AI-assisted), maps cadets+reviewers, allots calendars, publishes/unpublishes, uploads learning materials, decides extensions, gives the **final** assessment, runs cycles & appraisals, broadcasts announcements. Sees every badge. |
 | `badge_reviewer` | Badge Reviewer | Approves / returns a *proposed badge* of a lower band (Reviewer_Band > Badge_Band). Cannot review a badge they authored. |
-| `project_reviewer` | Project Reviewer (shown as "Reviewer") | Accepts mapping invitations, writes & releases the **project brief** to mapped cadets, grades submissions on the rubric (the first assessment). |
-| `cosmonaut` | Cosmonaut (cadet / learner) | Sees allotted badges & roadmap, studies materials, submits deliverables (multi-attempt), requests deadline extensions, sees marksheets/leaderboard/profile. |
+| `project_reviewer` | Project Reviewer (shown as "Reviewer") | Accepts mapping invitations, writes & releases the **project brief** to mapped cadets (72 h after publish), assesses submissions on the rubric from the **Assessment** button on the Badge Review schedule and **recommends** Give Badge / Re-attempt / Reject. Marks lock after one submission per attempt. Never awards a badge. |
+| `cosmonaut` | Cosmonaut (cadet / learner) | Sees allotted badges & roadmap, studies materials, opens the project **page** and submits deliverables (multi-attempt), requests deadline extensions, sees the marksheet (marks only) / leaderboard / profile. An earned badge shows in gold. |
 
 Real counts in the committed DB (38 users): 36 cosmonauts, 30 badge reviewers, 30 project reviewers, 2 guardians (`guardian_1` Arjun Mehta – band CEO,
 `admin` "Guardian Admin" – B6). A reviewer is *also* a cadet (dual role): the app is built around that. The `admin` account is **not** a cadet
@@ -23,7 +23,8 @@ Real counts in the committed DB (38 users): 36 cosmonauts, 30 badge reviewers, 3
 
 Two portals, one codebase:
 * **Guardian portal** — views `g_*` (the UI quality bar: icon rail, clean cards, SVG icons).
-* **Cosmonaut portal** — views `c_*`, used by cadets *and* reviewers (reviewer pages: `c_requests`, `c_badge_review`, `c_badge_reviews`, `c_assessment_detail`; the old `c_assessments` queue was removed - ids from old links resolve to `c_badge_reviews`).
+* **Cosmonaut portal** — views `c_*`, used by cadets *and* reviewers (reviewer pages: `c_requests`, `c_badge_review`, `c_badge_reviews`, `c_assessment_detail`; the old `c_assessments` queue/sidebar item was removed - ids from old links resolve to `c_badge_reviews`; the cosmonaut's project is its own page `c_project`).
+* All user-visible times are **IST** (UTC+5:30); the database stores UTC.
 
 ## 3. Bands, tracks, cycles (committed data)
 
@@ -40,8 +41,8 @@ Two portals, one codebase:
 Users per band: B1 7, B2–B6 6 each, CEO 1 (38). Cycles: `cycle_0` "Previous Cycle (Jan–Jun 2026)" **closed**, `cycle_1` "Cycle 1 (Jul–Dec 2026)" **active**
 (`DEFAULT_CYCLE_ID = "cycle_1"`). Both have 38 enrollments; 36 finalized appraisals exist.
 
-Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned; 8 published), 35 badge timelines (7 active, 28 completed),
-24 submissions, 43 marksheets, 11 mapping requests, 8 reviewer project prompts, 3 deadline extensions.
+Snapshot of the committed `data/starapp.db` (git `HEAD` = `ccc3156`; it drifts as the owner uses the app, tests use their own seed): 13 badges (10 approved, 2 pending_review, 1 returned),
+40 badge timelines (11 active, 29 completed), 25 submissions, 45 marksheets, 14 mapping requests, 12 band mappings, 9 reviewer project prompts, 3 deadline extensions.
 
 ## 4. Demo accounts / sign-in
 
@@ -59,8 +60,11 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | Badge | a curriculum milestone with outcomes, topics, project requirements, pass %, target band |
 | Band mapping | Guardian's pairing "cadets of band X + reviewers (higher band) ↔ badge" (`band_mappings`, `mapping_requests`) |
 | Allotment / timeline | per-cadet-per-badge calendar (`badge_timelines`): learning window, project window, submission deadline, review date |
-| Project request / project | a Cosmonaut taps **Request Project** on an allotted badge; the mapped Reviewer answers with a project = **Heading + Content** and sends it to their mapped Cosmonauts (`reviewer_project_prompts`); only then can the Cosmonaut submit deliverables |
-| Marksheet | one graded attempt (`assessment_marksheets`): reviewer's first assessment, then Guardian's final |
+| Project request / project | the mapped Reviewer sends a project = **Heading + Content** to their mapped Cosmonauts (`reviewer_project_prompts`; 72 h window from publish); only then can the Cosmonaut open the project page (`c_project`) and submit deliverables. The server action `request_project` still exists (legacy/tests) but no screen offers it any more |
+| Marksheet | one graded attempt (`assessment_marksheets`): the reviewer's assessment + recommendation, then the Guardian's final decision. The cosmonaut sees ONE sheet: the latest evaluation (Guardian's once decided, else the reviewer's) |
+| Recommendation | the reviewer's advice on a marksheet: `recommend_approve` / `recommend_resubmit` / `recommend_reject`, shown as Give Badge / Re-attempt / Reject |
+| Revoke | only the Guardian can undo their saved decision on the latest attempt; the submission returns to `reviewer_assessed` |
+| Mapping completed | `band_mappings.status = completed` once ALL mapped cosmonauts have earned the badge (each earned cosmonaut is "uncoupled" earlier) |
 | Attempt | one submission try; retakes create a new row with `attempt_number + 1` (history is never overwritten) |
 | Cycle | 6-month performance period; appraisals are computed per cycle |
 | Cosmo score / Reviewer score / Composite | the two halves of the dual-role appraisal and their blend (see RULES_AND_CRITERIA §6) |
@@ -85,15 +89,15 @@ Snapshot of seeded activity: 11 badges (9 approved, 1 pending_review, 1 returned
 | `starapp/cycles.py` | cycle creation/activation/closure + dual-role appraisal maths |
 | `starapp/analytics.py` | cohort profiles, leaderboards, dashboard numbers (all computed from real data) |
 | `starapp/assessment.py`, `roadmap.py` | rubric helpers; roadmap/prerequisite state (`completed / active / locked`) |
-| `starapp/views_common.py`, `views_guardian.py`, `views_cosmonaut.py` | HTML renderers, icon system (`iconize_html`), id→name humaniser |
+| `starapp/views_common.py`, `views_guardian.py`, `views_cosmonaut.py`, `views_badge_document.py` | HTML renderers, icon system (`iconize_html`), id→name humaniser, IST helpers (`format_ist`…), the shared marksheet (`render_standard_marksheet`) and recommendation helpers |
 | `starapp/pagination.py` | server-side list pagination |
 | `starapp/repositories/` | small per-aggregate repository helpers |
 | `starapp/seed_data.py`, `mapping_data.py`, `previous_cycle_seed.py` | seed catalogues/users and the closed previous cycle |
 | `js/bridge.js` | browser bridge: dispatch, region patching (`updateRegions`), sidebar signature, modals, 24 h countdown ticker, glass date picker, Edit-Badge assignee helpers, decision list |
 | `js/api.js` | REST client `window.StarAppAPI` |
-| `js/starapp_bundle.js` | **generated** offline Pyodide bundle (`scripts/pack_py.py`) — don't hand-edit |
-| `css/` | design tokens (incl. the `--type-*` rem scale) + liquid-glass styles; versioned `?v=N` in `index.html`/`sw.js` |
-| `tests/` | 411 tests; always via `tests/run_tests.py` |
-| `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py`, **`e2e_guardian_logic.py`**, **`e2e_guardian_browser.py`** (+ `_miniws.py`, a stdlib websocket client for Chrome DevTools) |
+| `js/starapp_bundle.js` | **generated** offline Pyodide bundle (30 modules + the embedded DB as base64; `scripts/pack_py.py`) — don't hand-edit; rebuild from a clean `data/starapp.db` |
+| `css/` | design tokens (incl. the `--type-*` rem scale) + liquid-glass styles; versioned `?v=N` in `index.html`/`sw.js` (now 116 / SW cache v73) |
+| `tests/` | 432 tests; always via `tests/run_tests.py` |
+| `scripts/` | `pack_py.py`, `seed_previous_cycle.py`, `clear_*.py`, `verify_e2e_workflow.py`, **`e2e_guardian_logic.py`**, **`e2e_guardian_browser.py`** (+ `_miniws.py`, a stdlib websocket client for Chrome DevTools), **`e2e_full_lifecycle.py`** (whole cycle→badge→earn→revoke flow on a temp DB copy) |
 | `ER diagram/`, `Star Registry Schema.html` | standalone schema viewers |
 | `data/starapp.db` | **the** database (tracked) |

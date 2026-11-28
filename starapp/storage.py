@@ -1627,6 +1627,23 @@ class DataStore:
             self._write_failed("saving assessment", e)
         self.mark_dirty()
 
+    def delete_assessment(self, asm_id: str) -> bool:
+        """Removes one marksheet (used when the Guardian revokes their final decision)."""
+        asm = self.assessments.pop(asm_id, None)
+        if asm is None:
+            return False
+        ix = self._ensure_ix()
+        ix["asms_by_cosmo"].get(asm.cosmonaut_id, {}).pop(asm_id, None)
+        ix["asms_by_sub"].get(asm.submission_id, {}).pop(asm_id, None)
+        self._ix_commit()
+        try:
+            with self.db.conn:
+                self.db.conn.execute("DELETE FROM assessment_marksheets WHERE id = ?", (asm_id,))
+        except Exception as e:
+            self._write_failed("deleting assessment", e)
+        self.mark_dirty()
+        return True
+
     # --- Materials ---
     def get_materials(self, badge_id: Optional[str] = None, cycle_id: Optional[str] = None) -> List[LearningMaterial]:
         target_cid = self.get_effective_read_cycle_id(cycle_id)
@@ -1750,9 +1767,13 @@ class DataStore:
         with self.db.conn:
             self.db.conn.execute(
                 """
-                INSERT OR REPLACE INTO announcements (
+                INSERT INTO announcements (
                     id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date, cycle_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title, message = excluded.message, author_id = excluded.author_id, author_name = excluded.author_name,
+                    target_type = excluded.target_type, badge_id = excluded.badge_id, published_at = excluded.published_at,
+                    expiry_date = excluded.expiry_date, cycle_id = excluded.cycle_id
                 """,
                 (
                     ann.id,
@@ -2339,6 +2360,19 @@ class DataStore:
             if not tl.actual_award_date:
                 tl.actual_award_date = current_iso_timestamp()[:10]
             self.save_timeline(tl)
+
+    def recouple_cadet_badge_mapping(self, badge_id: str, cosmonaut_id: str):
+        """Reverse of `uncouple_cadet_badge_mapping`: the badge is no longer earned (the Guardian revoked the award), so the mapping is active again."""
+        b_obj = self.get_badge(badge_id)
+        for m in self.get_band_mappings():
+            m_badge = m.get("badge_id") or m.get("badge")
+            if ((m_badge == badge_id) or (b_obj and m_badge in (b_obj.title, b_obj.code, b_obj.id))) and cosmonaut_id in m.get("cosmonauts", []):
+                m["completed_cosmonauts"] = [c for c in m.get("completed_cosmonauts", []) if c != cosmonaut_id]
+                m["uncoupled_cadets"] = [c for c in m.get("uncoupled_cadets", []) if c != cosmonaut_id]
+                if m.get("status") == "completed":
+                    m["status"] = "active"
+                self.save_band_mapping(m)
+                break
 
     # ==========================================================================
     # CUSTOM CAPABILITIES & SKILLS

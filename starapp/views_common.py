@@ -87,16 +87,38 @@ def format_hms(total_seconds: int) -> str:
     return f"{h:02d}:{m:02d}:{sec:02d}"
 
 
-def format_utc_stamp(iso_value: Any) -> str:
-    """'2026-11-27T14:05:09+00:00' -> '27 Nov, 14:05 UTC' ('' when empty / malformed)."""
+IST_OFFSET = (5, 30)          # every timestamp shown to a user is Indian Standard Time (UTC+5:30); storage stays UTC
+
+
+def to_ist(iso_value: Any) -> Any:
+    """Parse a stored timestamp (UTC ISO, 'Z' or naive = UTC) into an aware datetime in IST, or None when empty / malformed."""
     import datetime as _dt
     try:
         dt = _dt.datetime.fromisoformat(str(iso_value or "").replace("Z", "+00:00"))
     except Exception:
-        return ""
-    if dt.tzinfo is not None:
-        dt = dt.astimezone(_dt.timezone.utc)
-    return dt.strftime("%d %b, %H:%M UTC")
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_dt.timezone.utc)
+    return dt.astimezone(_dt.timezone(_dt.timedelta(hours=IST_OFFSET[0], minutes=IST_OFFSET[1])))
+
+
+def format_ist(iso_value: Any, *, year: bool = True) -> str:
+    """'2026-11-27T14:05:09+00:00' -> '27 Nov 2026, 19:35 IST' (year=False: '27 Nov, 19:35 IST'; '' when empty / malformed)."""
+    dt = to_ist(iso_value)
+    return dt.strftime("%d %b %Y, %H:%M IST" if year else "%d %b, %H:%M IST") if dt else ""
+
+
+def ist_plain(iso_value: Any, seconds: bool = False) -> str:
+    """'2026-11-27T14:05:09+00:00' -> '2026-11-27 19:35' (or ':09' with seconds) in IST, for tables whose header says IST; falls back to the raw text."""
+    dt = to_ist(iso_value)
+    if dt is None:
+        return str(iso_value or "")[:19 if seconds else 16].replace("T", " ")
+    return dt.strftime("%Y-%m-%d %H:%M:%S" if seconds else "%Y-%m-%d %H:%M")
+
+
+def format_utc_stamp(iso_value: Any) -> str:
+    """Kept for existing callers: '27 Nov, 19:35 IST' (the name is historical - nothing is shown in UTC any more)."""
+    return format_ist(iso_value, year=False)
 
 
 def render_countdown(
@@ -298,6 +320,17 @@ def render_metal_button(
     </div>
     """
 
+# Countdowns are rendered with the seconds left, so two renders of an unchanged page differ every second. That must never cause a repaint:
+# the browser (bridge.js `_stableHtml`) and the server (`stable_html_signature`, used to answer a live-sync poll with "unchanged") compare
+# HTML with those values blanked out. The timers tick on their own in the browser.
+_VOLATILE_TIMER_RE = re.compile(r'data-remaining="\d+"|(?<=<span class="rq-timer-text">)[\d:]+')
+
+
+def stable_html_signature(html: str) -> str:
+    """HTML with the ticking countdown values removed (identical for two renders of an unchanged page)."""
+    return _VOLATILE_TIMER_RE.sub("", html or "")
+
+
 def render_back_button(
     target_action: str = "go_back",
     payload_json: str = "{}",
@@ -388,13 +421,31 @@ def _ms_outcome(marksheet: AssessmentMarksheet) -> Dict[str, str]:
     if is_reviewer:
         rec = reviewer_recommendation_key(marksheet)
         said = f" and recommends <b>{REVIEWER_RECOMMENDATIONS[rec]['label']}</b>" if rec else ""
-        return {"tone": "blue", "label": "Awaiting Guardian",
+        return {"tone": "blue", "label": "Awaiting Guardian", "icon": "clock",
                 "note": f"Evaluated by your peer reviewer{said}. The Guardian gives the final decision.", "note_is_html": "1"}
     if decision in ("approve", "approved"):
-        return {"tone": "green", "label": "Badge earned", "note": "Approved by the Guardian - the badge is certified."}
+        return {"tone": "green", "label": "Badge earned", "icon": "award", "note": "Approved by the Guardian - the badge is certified."}
     if decision in ("rejected", "reject"):
-        return {"tone": "red", "label": "Rejected", "note": "This attempt was rejected. Review the feedback and start a new attempt."}
-    return {"tone": "red", "label": "Re-attempt", "note": "Below the passing threshold or a new attempt was requested. Review the feedback and resubmit."}
+        return {"tone": "red", "label": "Rejected", "icon": "x", "note": "This attempt was rejected. Review the feedback and start a new attempt."}
+    return {"tone": "red", "label": "Re-attempt", "icon": "refresh", "note": "Below the passing threshold or a new attempt was requested. Review the feedback and resubmit."}
+
+
+def _ms_reviewer_name(marksheet: AssessmentMarksheet) -> str:
+    """The real peer reviewer of this attempt (their own marksheet, else the mapped reviewer) - never the Guardian who signed it off."""
+    from starapp.storage import store
+    if getattr(marksheet, "assessor_role", "") == "reviewer":
+        return str(marksheet.reviewer_name or "")
+    try:
+        for a in store.get_assessments_for_cosmonaut(marksheet.cosmonaut_id, marksheet.badge_id):
+            if getattr(a, "assessor_role", "") == "reviewer" and a.attempt_number == marksheet.attempt_number and a.reviewer_name:
+                return str(a.reviewer_name)
+        rid = store.get_mapped_reviewer_id(marksheet.badge_id, marksheet.cosmonaut_id)
+        u = store.get_user_by_id(rid) if rid else None
+        if u:
+            return u.name
+    except Exception:
+        pass
+    return str(marksheet.reviewer_name or "")
 
 
 def render_standard_marksheet(
@@ -404,9 +455,9 @@ def render_standard_marksheet(
     tab_action: str = "view_marksheet",
 ) -> str:
     """
-    The official 50-mark marksheet in the glass style: header (badge, attempt, evaluator) with the score ring, the five rubric criteria as
-    meter rows, strengths / growth areas, and the evaluator's synthesis. When there is more than one evaluation (attempts, reviewer +
-    Guardian) a tab strip switches between them via `tab_action` (the modal re-opens, the page re-selects).
+    The official 50-mark marksheet (glass): a hero with the badge, attempt, evaluator and the score ring; four result tiles (total,
+    percentage, pass mark, result); the evaluation tabs (every attempt x reviewer / Guardian, via `tab_action`); the five criteria in ONE
+    card (name + scope, meter, score with a one-word rating); strengths / growth areas and the evaluator's summary.
     """
     badge_title = badge.title if badge else "Project Assessment"
     badge_code = badge.code if badge else "STAR-RUBRIC"
@@ -414,84 +465,57 @@ def render_standard_marksheet(
     assessor_title = "Peer Reviewer" if is_reviewer else "Guardian"
     out = _ms_outcome(marksheet)
     pct_val = max(0.0, min(100.0, float(marksheet.percentage or 0.0)))
-
-    tabs = ""
-    if all_attempts and len(all_attempts) > 1:
-        buttons = []
-        for att in all_attempts:
-            role = "Peer Reviewer" if getattr(att, "assessor_role", "") == "reviewer" else "Guardian Official"
-            payload = f'{{"marksheet_id": "{att.id}"}}'
-            active = " is-active" if att.id == marksheet.id else ""
-            buttons.append(
-                f'<button type="button" class="ms-tab{active}" onclick="window.StarAppBridge.dispatchAction(\'{escape(tab_action)}\', \'{escape(payload)}\')">'
-                f'<span class="ms-tab-top">Attempt #{att.attempt_number} &middot; {role}</span>'
-                f'<span class="ms-tab-score">{att.total_marks:.1f} / 50</span></button>')
-        tabs = f'<div class="ms-tabs" role="tablist" aria-label="Evaluation history">{"".join(buttons)}</div>'
-
+    thr = float(getattr(badge, "passing_percentage", 70.0) or 70.0) if badge else 70.0
+    met = pct_val >= thr
+    name = _ms_reviewer_name(marksheet)
     rows = []
-    for idx, (name, scope, attr) in enumerate(_MS_CRITERIA, 1):
+    for idx, (cname, scope, attr) in enumerate(_MS_CRITERIA, 1):
         score = float(getattr(marksheet, attr, 0.0) or 0.0)
         pct = max(0, min(100, int(round(score / 10.0 * 100))))
         level = "high" if score >= 8 else ("mid" if score >= 6 else "low")
         rows.append(f"""
             <div class="ms-crit">
                 <span class="ms-crit-num">{idx}</span>
-                <div class="ms-crit-main">
-                    <div class="ms-crit-name">{escape(name)}</div>
-                    <div class="ms-crit-scope">{escape(scope)}</div>
-                    <div class="ms-meter"><span class="ms-meter-fill is-{level}" style="width:{pct}%;"></span></div>
-                </div>
+                <div class="ms-crit-name">{escape(cname)}</div>
+                <div class="ms-meter"><span class="ms-meter-fill is-{level}" style="width:{pct}%;"></span></div>
                 <div class="ms-crit-score"><b>{score:.1f}</b><small>/ 10</small></div>
             </div>""")
 
     strengths = escape(marksheet.strength_areas or "No specific strengths highlighted.")
     growth = escape(marksheet.improvement_areas or "No critical weaknesses noted.")
     synthesis = escape(marksheet.overall_feedback or "No feedback recorded.")
-    when = escape((marksheet.reviewed_at or "")[:10])
 
     return f"""
     <div class="marksheet-view ms-sheet">
-        <div class="ms-head">
-            <div class="ms-head-main">
-                <div class="ms-eyebrow"><span class="ms-code">{escape(badge_code)}</span><span>Official evaluation marksheet &middot; Attempt #{marksheet.attempt_number}</span></div>
+        <div class="ms-hero">
+            <div class="ms-hero-main">
                 <div class="ms-title" role="heading" aria-level="2">{escape(badge_title)}</div>
-                <div class="ms-evaluator">
-                    <span class="ms-ev-ico">{get_icon("shield", 14)}</span>
-                    <span>Evaluated by <b>{escape(marksheet.reviewer_name)}</b></span>
-                    <span class="ms-role">{assessor_title}</span>
-                    {f'<span class="ms-when">{get_icon("calendar", 13)} {when}</span>' if when else ''}
-                </div>
-            </div>
-            <div class="ms-score">
-                <div class="ms-ring" style="--ms-pct:{pct_val:.1f};"><div class="ms-ring-in"><b>{marksheet.total_marks:.1f}</b><small>/ 50</small></div></div>
-                <div class="ms-score-side">
-                    <div class="ms-pct">{marksheet.percentage:.1f}%</div>
-                    <span class="ms-outcome is-{out['tone']}">{out['label']}</span>
-                </div>
             </div>
         </div>
 
         <div class="ms-body">
-            <div class="ms-note is-{out['tone']}">{out['note'] if out.get('note_is_html') else escape(out['note'])}</div>
-            {tabs}
+            <div class="ms-stats">
+                <div class="ms-stat"><div class="ms-stat-lbl">Reviewer</div><div class="ms-stat-val is-text">{escape(name)}</div></div>
+                <div class="ms-stat"><div class="ms-stat-lbl">Attempt</div><div class="ms-stat-val">#{marksheet.attempt_number}</div></div>
+                <div class="ms-stat"><div class="ms-stat-lbl">Total score</div><div class="ms-stat-val">{marksheet.total_marks:.1f}<small> / 50</small></div></div>
+                <div class="ms-stat"><div class="ms-stat-lbl">Percentage</div><div class="ms-stat-val">{marksheet.percentage:.1f}%</div></div>
+                <div class="ms-stat"><div class="ms-stat-lbl">Pass mark</div><div class="ms-stat-val">{thr:.0f}%</div></div>
+            </div>
 
-            <div class="ms-section-lbl">Rubric breakdown</div>
-            <div class="ms-crits">{"".join(rows)}
-                <div class="ms-total"><span>Total score</span><span class="ms-total-val">{marksheet.total_marks:.1f} <small>/ 50.0</small></span></div>
+            <div class="ms-card">
+                <div class="ms-card-head"><span class="ms-card-title">{get_icon("clipboard", 16)}<span>Rubric breakdown</span></span><span class="ms-card-hint">5 criteria &middot; 10 marks each</span></div>
+                {"".join(rows)}
+                <div class="ms-total"><span>Total</span><span class="ms-total-val">{marksheet.total_marks:.1f} <small>/ 50.0</small></span></div>
             </div>
 
             <div class="ms-feedback">
                 <div class="ms-fb-card is-good"><div class="ms-fb-lbl">{get_icon("check_circle", 15)}<span>Strengths &amp; distinctions</span></div><p>{strengths}</p></div>
                 <div class="ms-fb-card is-grow"><div class="ms-fb-lbl">{get_icon("flag", 15)}<span>Areas for growth</span></div><p>{growth}</p></div>
             </div>
-
-            <div class="ms-synth">
-                <div class="ms-fb-lbl">{get_icon("clipboard", 15)}<span>{escape(assessor_title)} summary &amp; recommendation</span></div>
-                <p>{synthesis}</p>
-            </div>
         </div>
     </div>
     """
+
 
 def render_9point_timeline(timeline: BadgeTimeline, badge: Optional[Badge] = None) -> str:
     """Renders the comprehensive 9-point milestone timeline for a badge."""
@@ -588,7 +612,7 @@ def render_cycle_context_bar(
         """
 
     return f"""
-    <div id="starapp-cycle-topbar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:10px 16px; border-radius:var(--radius-md); background:linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(234,244,255,0.82) 100%); border:1px solid var(--icy-steel-50); box-shadow:0 3px 12px rgba(7,22,41,0.04);">
+    <div id="starapp-cycle-topbar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:10px 16px; border-radius:var(--radius-md); background:rgba(244, 250, 255, 0.87); border:1px solid var(--icy-steel-50); box-shadow:0 3px 12px rgba(7,22,41,0.04);">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:800; color:var(--deep-frozen-midnight);">
                 {get_icon("calendar", 14)}

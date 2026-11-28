@@ -35,6 +35,7 @@ from starapp.analytics import (
     get_cosmonaut_individual_dossier
 )
 from starapp.views_common import (
+    ist_plain,
     normalize_decision, REVIEWER_RECOMMENDATIONS,
     get_icon, render_global_back_bar, hoist_page_title, TITLE_HOIST_VIEWS,
     render_cycle_context_bar, render_topbar, render_liquid_card, render_metal_button, escape,
@@ -42,6 +43,7 @@ from starapp.views_common import (
     is_reviewer_band, COSMONAUT_REVIEWER_VIEWS
 )
 from starapp.views_guardian import (
+    render_decision_revoke_confirm_modal,
     _bi_render_raw_prompt, _fmt_nice_date, render_badge_edit_assignees, _extract_badge_mapping_details,
     render_guardian_sidebar, render_guardian_dashboard,
     render_guardian_badge_allotment, render_guardian_mapping, render_guardian_mapping_badge_detail,
@@ -713,6 +715,8 @@ class StarAppController:
     # allotments, cycles, salaries, announcements, final marks) and are Guardian-only.
     # ------------------------------------------------------------------------------------------
     _GUARDIAN_ONLY_ACTIONS = frozenset({
+        # the Guardian's final decision on a submission can be undone only by the Guardian
+        "open_revoke_decision_confirm", "revoke_guardian_decision",
         # cycles & appraisals (salary / hike / promotion)
         "activate_cycle", "create_six_month_cycle", "calculate_cycle_appraisals",
         "update_cycle_appraisal", "finalize_and_close_cycle", "reset_demo_data",
@@ -3188,6 +3192,19 @@ class StarAppController:
                 )
                 self.set_flash(f"Published and unlocked {badge.code}: {badge.title} across Guardian & Cosmonaut roadmaps!", "success")
 
+        elif action == "open_revoke_decision_confirm":
+            sub_id = payload if isinstance(payload, str) else (payload.get("submission_id", "") if isinstance(payload, dict) else "")
+            sub_id = str(sub_id).strip().replace('"', '')
+            if store.get_submission(sub_id) and store.get_guardian_assessment_for_submission(sub_id):
+                self.active_modal = "decision_revoke_confirm"
+                self.modal_payload = {"submission_id": sub_id}
+            else:
+                self.set_flash("There is no final decision to revoke on this submission.", "warning")
+
+        elif action == "revoke_guardian_decision":
+            sub_id = payload if isinstance(payload, str) else (payload.get("submission_id", "") if isinstance(payload, dict) else "")
+            self.execute_revoke_guardian_decision(str(sub_id).strip().replace('"', ''))
+
         elif action in ("confirm_publish_badge", "confirm_revoke_badge"):
             b_id = payload if isinstance(payload, str) else (payload.get("badge_id", "") if isinstance(payload, dict) else "")
             b_id = str(b_id).strip().replace('"', '')
@@ -3963,6 +3980,8 @@ class StarAppController:
                 default_improvements = "Maintain consistent logging and extend test coverage."
                 default_feedback = "Approved milestone deliverables."
 
+            if assessor_role == "reviewer" and not feedback:
+                feedback = " ".join(t for t in (strengths, improvements) if t).strip()      # the reviewer panel has no separate remarks box
             bu = default_bu if bu is None else bu
             ar = default_ar if ar is None else ar
             tk = default_tk if tk is None else tk
@@ -4172,6 +4191,58 @@ class StarAppController:
             self.active_modal = None
         except Exception as e:
             self.set_flash(f"Assessment error: {e}", "error")
+
+    def execute_revoke_guardian_decision(self, sub_id: str):
+        """
+        The Guardian undoes their final decision (badge earned / re-attempt / rejected) on a submission. The submission goes back to
+        "ready for sign-off" with the reviewer's marks and recommendation untouched, and the Guardian can decide again. Only the
+        CURRENT attempt can be revoked (once the cosmonaut has started a newer attempt the old decision is history).
+        """
+        self.active_modal = None
+        self.modal_payload = {}
+        sub = store.get_submission(sub_id) if sub_id else None
+        g_asm = store.get_guardian_assessment_for_submission(sub_id) if sub else None
+        if not (sub and g_asm and sub.status in ("approved", "retake_required", "resubmission_requested")):
+            self.set_flash("There is no final decision to revoke on this submission.", "warning")
+            return
+        newest = (store.get_submissions_for_cosmonaut(sub.cosmonaut_id, sub.badge_id) or [sub])[-1]
+        if newest.id != sub.id:
+            self.set_flash("The cosmonaut has already started a newer attempt, so this earlier decision cannot be revoked.", "warning")
+            return
+        badge = store.get_badge(sub.badge_id)
+        b_name = badge.code if badge else sub.badge_id
+        cosmo = store.get_user_by_id(sub.cosmonaut_id)
+        cosmo_name = cosmo.name if cosmo else sub.cosmonaut_id
+        was = {"approve": "badge earned", "approved": "badge earned", "rejected": "rejected"}.get((g_asm.decision or "").lower(), "re-attempt requested")
+        had_badge = sub.status == "approved"
+        store.delete_assessment(g_asm.id)
+        rev_asm = store.get_reviewer_assessment_for_submission(sub.id)
+        sub.status = "reviewer_assessed" if rev_asm else "pending"
+        store.save_submission(sub)
+        tl = store.get_timeline(sub.badge_id, sub.cosmonaut_id)
+        if tl:
+            tl.status = "reviewer_assessed" if rev_asm else "awaiting_review"
+            if had_badge:
+                tl.actual_award_date = ""
+            store.save_timeline(tl)
+        if had_badge:
+            store.recouple_cadet_badge_mapping(sub.badge_id, sub.cosmonaut_id)
+        store.add_activity(
+            event_type="guardian_decision_revoked", actor_id=self.current_user.id, actor_name=self.current_user.name,
+            cosmonaut_id=sub.cosmonaut_id, badge_id=sub.badge_id,
+            summary=f"Guardian decision revoked ({was}) for {cosmo_name}",
+            details=f"{self.current_user.name} revoked the final decision on Attempt #{sub.attempt_number} (was: {was}, {g_asm.total_marks:.1f}/50). It is back with the Guardian for a new decision.")
+        store.add_notification(
+            recipient_id=sub.cosmonaut_id, title=f"Decision under review: {b_name}",
+            message=f"The Guardian revoked the earlier decision on your Attempt #{sub.attempt_number} ({was}). It is being reconsidered; you will be notified of the new decision.",
+            link_section="c_results")
+        rev_id = store.get_mapped_reviewer_id(sub.badge_id, sub.cosmonaut_id)
+        if rev_id:
+            store.add_notification(
+                recipient_id=rev_id, title=f"Guardian revoked a decision: {cosmo_name}",
+                message=f"The Guardian revoked the final decision on {cosmo_name}'s Attempt #{sub.attempt_number} for {b_name}. Your marks and recommendation are unchanged.",
+                link_section="c_badge_reviews")
+        self.set_flash(f"Decision revoked for {cosmo_name} ({b_name}, Attempt #{sub.attempt_number}). You can decide again.", "success")
 
     def execute_request_project(self, badge_id: str):
         """A cosmonaut asks the reviewer they are mapped to for the project of an allotted badge."""
@@ -5099,7 +5170,7 @@ if __name__ == "__main__":
                 <div style="padding:12px; border-radius:var(--radius-sm); background:rgba(234,244,255,0.7); margin-bottom:8px; border-left:4px solid var(--deep-frozen-midnight);">
                     <div style="font-weight:700; color:var(--frost-navy); font-size:0.8125rem;">{escape(n.title)}</div>
                     <div style="font-size:0.78125rem; color:var(--frost-navy); margin-top:2px;">{escape(n.message)}</div>
-                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:4px;">{escape(n.created_at[:16].replace('T', ' '))}</div>
+                    <div style="font-size:0.6875rem; color:var(--frost-navy-50); margin-top:4px;">{escape(ist_plain(n.created_at))}</div>
                 </div>
                 """)
             body = "".join(items) if items else "<p style='padding:20px; text-align:center; color:var(--frost-navy-50);'>No notifications.</p>"
@@ -5698,6 +5769,14 @@ if __name__ == "__main__":
             else:
                 body = render_cosmonaut_timeline_modal(badge, self.current_user, store)
 
+        elif self.active_modal == "decision_revoke_confirm":
+            sid = self.modal_payload.get("submission_id", "")
+            sub_o = store.get_submission(sid)
+            g_o = store.get_guardian_assessment_for_submission(sid) if sub_o else None
+            title = "Revoke Decision"
+            body = (render_decision_revoke_confirm_modal(sub_o, store.get_badge(sub_o.badge_id), store.get_user_by_id(sub_o.cosmonaut_id), g_o)
+                    if (sub_o and g_o) else "<p style='padding:20px; text-align:center;'>There is no final decision to revoke.</p>")
+
         elif self.active_modal in ("badge_publish_confirm", "badge_revoke_confirm"):
             b_id = self.modal_payload.get("badge_id", "")
             badge = store.get_badge(b_id)
@@ -5790,7 +5869,7 @@ if __name__ == "__main__":
         modal_dialog_class = "liquid-glass-modal modal-dialog"
         if self.active_modal in ["material_preview", "badge_creation_preview", "badge_reviewer_edit", "badge_inspect", "cosmonaut_badge_preview", "reviewer_timeline_modal", "badge_timeline_mapping", "badge_mapping_view", "badge_timeline_view", "cosmonaut_reviewer_view", "cosmonaut_timeline_view", "reviewer_project_creator", "cycle_candidate_detail_modal", "create_badge", "edit_badge"]:
             modal_dialog_class += " modal-xl modal-lg"
-        elif self.active_modal in ["marksheet_modal", "add_material", "edit_material", "badge_approval_confirm", "badge_publish_confirm", "badge_revoke_confirm", "badge_activity_log", "badge_reviewer_manage", "badge_reviewer_return", "create_cycle_modal"]:
+        elif self.active_modal in ["marksheet_modal", "decision_revoke_confirm", "add_material", "edit_material", "badge_approval_confirm", "badge_publish_confirm", "badge_revoke_confirm", "badge_activity_log", "badge_reviewer_manage", "badge_reviewer_return", "create_cycle_modal"]:
             modal_dialog_class += " modal-lg"
         elif self.active_modal == "submission_portal_modal":
             modal_dialog_class += " modal-form"

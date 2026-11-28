@@ -377,7 +377,7 @@ class TestSubmissionReviewEarnFlow(unittest.TestCase):
         self.app.handle_event("select_demo_account", self.cosmonaut.id)
         self.app.current_view = "c_results"
         cosmo_results_html = self.app.render()
-        self.assertIn("Peer Reviewer", cosmo_results_html)
+        self.assertIn("Reviewer", cosmo_results_html)
         self.assertIn("45.0", cosmo_results_html)
         self.assertIn("Exceptional backpressure handling", cosmo_results_html)
 

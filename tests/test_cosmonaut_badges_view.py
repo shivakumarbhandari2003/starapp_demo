@@ -217,7 +217,7 @@ class TestCosmonautBadgesView(unittest.TestCase):
         # On c_submission grid: badge card shows 'Project Allocated', but full project view stays inside that badge only
         self.ctrl.handle_event("nav_cosmonaut", "c_submission")
         grid_html = self.ctrl.render()
-        self.assertIn("Project Allocated", grid_html)
+        self.assertNotIn("Project Allocated", grid_html)                 # no status chip on in-progress cards
         self.assertNotIn("Real-Time Telemetry FFT Analyzer", grid_html)
 
         # Inside dedicated badge page (c_badge_detail): 'Project allocated' button is shown in Earn the Badge section + project view renders

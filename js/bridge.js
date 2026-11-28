@@ -45,9 +45,11 @@
     pageContainerClass: null,
     flashHtml: null,
     mainHtml: null,
+    mainSig: null,        // mainHtml with the ticking countdown values blanked: a repaint happens only when this changes
     modalKind: "",
     modalKey: "",
     modalHtml: "",
+    modalSig: "",
     appliedGeneration: 0,
     regionSkipCounts: {
       sidebarSkipped: 0,
@@ -1814,12 +1816,17 @@ Return ONLY valid JSON matching this exact schema:
 
     // Dispatch UI click/action event to Python controller (Native FastAPI Backend or in-browser Pyodide)
     dispatchAction(action, payloadJson = "{}") {
-      localActionSeq += 1;
-      pendingDeferredReload = false;
+      // A background live-sync poll is not a user action: it must not supersede an in-flight search / click, and its (possibly stale)
+      // answer is dropped when the user has done something since it was sent.
+      const isSyncPoll = /^sync_/.test(String(action));
+      if (!isSyncPoll) {
+        localActionSeq += 1;
+        pendingDeferredReload = false;
+      }
       const seqAtDispatch = localActionSeq;
       // Filters / search / paging responses can arrive out of order or while the user is still typing:
       // only the newest one may repaint (each response renders the full cumulative state, so nothing is lost).
-      const isTypeAheadAction = /^(search_|filter_|set_list_page)/.test(String(action));
+      const isTypeAheadAction = isSyncPoll || /^(search_|filter_|set_list_page)/.test(String(action));
 
       // Track active band in tab session storage
       if (action === "select_create_badge_band") {
@@ -1836,7 +1843,7 @@ Return ONLY valid JSON matching this exact schema:
         // Native FastAPI Full-Stack Backend dispatch with tab-isolated session ID
         const sid = this.getWindowSessionId();
         const payloadStr = typeof payloadJson === "string" ? payloadJson : JSON.stringify(payloadJson);
-        fetch("/api/v1/dispatch", {
+        return fetch("/api/v1/dispatch", {
           method: "POST",
           cache: "no-store",
           headers: {
@@ -1858,6 +1865,9 @@ Return ONLY valid JSON matching this exact schema:
           }
           if (isTypeAheadAction && (localActionSeq !== seqAtDispatch || debounceTimers[action])) {
             return; // a newer action (or a pending keystroke) supersedes this response
+          }
+          if (data && data.unchanged) {
+            return;               // the server says nothing but a countdown changed: keep the page exactly as it is
           }
           if (data && data.regions) {
             window.StarAppBridge.updateRegions(JSON.stringify(data.regions));
@@ -1982,6 +1992,11 @@ Return ONLY valid JSON matching this exact schema:
       }
     },
 
+    // Countdowns are rendered with the seconds left, so an unchanged page differs every second; compare HTML without them (same rule as the server).
+    _stableHtml(html) {
+      return String(html || "").replace(/data-remaining="\d+"|(<span class="rq-timer-text">)[\d:]+/g, "$1");
+    },
+
     // 3-Region incremental renderer: Persistent Sidebar + Main Page Slot + Modal Root
     updateRegions(regionsJson) {
       const root = document.getElementById("app-root");
@@ -2068,13 +2083,17 @@ Return ONLY valid JSON matching this exact schema:
         renderState.pageContainerClass = payload.pageContainerClass;
         renderState.flashHtml = payload.flashHtml || "";
         renderState.mainHtml = payload.mainContentHtml;
+        renderState.mainSig = this._stableHtml(payload.mainContentHtml);
         renderState.modalKind = payload.activeModal || "";
         renderState.modalKey = payload.modalKey || "";
         renderState.modalHtml = payload.modalHtml || "";
+        renderState.modalSig = this._stableHtml(payload.modalHtml || "");
         this.applyPersistedSidebarState();
         this.initCycleWidgets();
         return;
       }
+
+      let painted = false;      // widgets (calendar, auto-grow textareas) are only re-initialised when something was really repainted
 
       // Region 1: Persistent Sidebar (update active link + badge counts in place, or replace when sidebarHtml changes)
       const nextSidebarSig = this._sidebarSignature(payload.sidebarHtml);
@@ -2108,7 +2127,9 @@ Return ONLY valid JSON matching this exact schema:
         renderState.flashHtml = nextFlash;
       }
 
-      if (renderState.mainHtml !== payload.mainContentHtml) {
+      const nextMainSig = this._stableHtml(payload.mainContentHtml);
+      if (renderState.mainSig !== nextMainSig) {
+        painted = true;
         const sameRoute = (renderState.routeKey === payload.routeKey);
         const focusSnap = sameRoute ? this._captureFocus() : null;
         const scrollSnaps = sameRoute ? this._captureScrolls(existingViewport) : [];
@@ -2135,6 +2156,7 @@ Return ONLY valid JSON matching this exact schema:
         }
 
         renderState.mainHtml = payload.mainContentHtml;
+        renderState.mainSig = nextMainSig;
         renderState.routeKey = payload.routeKey;
 
         if (sameRoute) {
@@ -2154,6 +2176,7 @@ Return ONLY valid JSON matching this exact schema:
       const nextModalKind = payload.activeModal || "";
       const nextModalKey = payload.modalKey || "";
       const nextModalHtml = payload.modalHtml || "";
+      const nextModalSig = this._stableHtml(nextModalHtml);
 
       if (!nextModalKind) {
         if (renderState.modalKind) {
@@ -2164,9 +2187,11 @@ Return ONLY valid JSON matching this exact schema:
         renderState.modalKind = "";
         renderState.modalKey = "";
         renderState.modalHtml = "";
-      } else if (renderState.modalHtml === nextModalHtml) {
+        renderState.modalSig = "";
+      } else if (renderState.modalSig === nextModalSig) {
         renderState.regionSkipCounts.modalSkipped += 1;
       } else if (renderState.modalKind === nextModalKind && renderState.modalKey === nextModalKey) {
+        painted = true;
         // Same open modal updated (e.g. live BroadcastChannel sync): update title & body without restarting .modal-backdrop fade!
         const existingTitle = existingModalRoot.querySelector(".modal-title");
         const existingBody = existingModalRoot.querySelector(".modal-body");
@@ -2186,6 +2211,7 @@ Return ONLY valid JSON matching this exact schema:
             existingBody.scrollTop = modalScrollTop;
             this._restoreFocus(modalFocus);
             renderState.modalHtml = nextModalHtml;
+            renderState.modalSig = nextModalSig;
             renderState.regionSkipCounts.modalPatchedInPlace += 1;
             this.initCycleWidgets();
             return;
@@ -2193,13 +2219,16 @@ Return ONLY valid JSON matching this exact schema:
         }
         existingModalRoot.innerHTML = nextModalHtml;
         renderState.modalHtml = nextModalHtml;
+        renderState.modalSig = nextModalSig;
       } else {
         existingModalRoot.innerHTML = nextModalHtml;
         renderState.modalKind = nextModalKind;
         renderState.modalKey = nextModalKey;
         renderState.modalHtml = nextModalHtml;
+        renderState.modalSig = nextModalSig;
+        painted = true;
       }
-      this.initCycleWidgets();
+      if (painted) this.initCycleWidgets();
     },
 
     // Fallback atomic DOM update (with .app-main scroll support)
@@ -2800,14 +2829,24 @@ Return ONLY valid JSON matching this exact schema:
   // (e.g. the reviewer sends the project and "Project Allocated" unlocks, or the Guardian changes the mapped reviewer).
   // ------------------------------------------------------------------
   (function startLiveSync() {
-    const LIVE_EVERY_MS = 6000;
+    const LIVE_EVERY_MS = 6000;        // while the user is active
+    const IDLE_AFTER_MS = 120000;      // no mouse / key / touch for 2 minutes -> poll 4x less often
+    let busy = false;                  // single flight: never queue a second poll behind a slow one
+    let lastInput = Date.now();
+    let idleTicks = 0;
+    ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => window.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true }));
     setInterval(() => {
-      if (document.hidden || !window.StarAppBridge || !window.StarAppBridge.dispatchAction) return;
+      if (busy || document.hidden || !window.StarAppBridge || !window.StarAppBridge.dispatchAction) return;
+      if (Date.now() - lastInput > IDLE_AFTER_MS && (++idleTicks % 4) !== 0) return;
       const modalOpen = !!document.querySelector(".modal-backdrop");
       const liveModal = !!document.querySelector(".modal-backdrop [data-live-sync]");
       const livePage = !!document.querySelector("#starapp-page-body [data-live-sync]");
       if (modalOpen ? !liveModal : !livePage) return;       // never repaint under a form the user may be typing in
-      window.StarAppBridge.dispatchAction("sync_badge_reviews", "{}");
+      const pending = window.StarAppBridge.dispatchAction("sync_badge_reviews", "{}");
+      if (pending && typeof pending.finally === "function") {
+        busy = true;
+        pending.finally(() => { busy = false; });
+      }
     }, LIVE_EVERY_MS);
   })();
 
@@ -2821,6 +2860,7 @@ Return ONLY valid JSON matching this exact schema:
     let lastSyncAt = 0;
 
     function tick() {
+      if (document.hidden) return;
       const timers = document.querySelectorAll(".rq-timer[data-remaining]");
       if (!timers.length) return;
       const now = Date.now();
@@ -2846,4 +2886,37 @@ Return ONLY valid JSON matching this exact schema:
 
     setInterval(tick, 1000);
   })();
+  // ------------------------------------------------------------------
+  // Phones (<= 768 px): a slim top bar with a hamburger opens the sidebar as a drawer (CSS: responsive.css section 11).
+  // The two elements are created once and live outside the server-rendered regions, so a re-render never touches them;
+  // the open state is a class on <body> (`m-nav-open`).
+  // ------------------------------------------------------------------
+  function initMobileMenu() {
+    if (!document.body || document.getElementById("starapp-mobile-bar")) return;
+    const bar = document.createElement("div");
+    bar.id = "starapp-mobile-bar";
+    bar.innerHTML =
+      '<button type="button" id="starapp-menu-btn" aria-label="Open menu" aria-controls="starapp-shell-sidebar" aria-expanded="false">' +
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>' +
+      '<span class="msb-title">StarApp</span>';
+    const backdrop = document.createElement("div");
+    backdrop.id = "starapp-menu-backdrop";
+    document.body.appendChild(bar);
+    document.body.appendChild(backdrop);
+    const btn = bar.querySelector("#starapp-menu-btn");
+    function setOpen(open) {
+      document.body.classList.toggle("m-nav-open", !!open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    }
+    btn.addEventListener("click", function () { setOpen(!document.body.classList.contains("m-nav-open")); });
+    backdrop.addEventListener("click", function () { setOpen(false); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
+    // choosing a page (or the band chip) closes the drawer; the click itself still reaches its own handler
+    document.addEventListener("click", function (e) {
+      if (document.body.classList.contains("m-nav-open") && e.target.closest && e.target.closest(".app-sidebar .nav-link, .app-sidebar .sidebar-band-chip")) setOpen(false);
+    }, true);
+    window.addEventListener("resize", function () { if (window.innerWidth > 768) setOpen(false); }, { passive: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initMobileMenu); else initMobileMenu();
 })();

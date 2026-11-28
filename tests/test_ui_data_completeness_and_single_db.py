@@ -128,17 +128,15 @@ class TestUIDataCompletenessAndSingleDB(unittest.TestCase):
 
         # Upcoming review shows Ananya Iyer by default + multi-day window + project title
         self.assertIn("Ananya Iyer", html)
-        self.assertIn("2026-11-18 \u2192 2026-11-19 \u2192 2026-11-20", html)
+        self.assertIn("18 Nov \u2192 20 Nov 2026", html)              # the multi-day window, formatted
         self.assertIn("Signal Audit Enterprise Brief", html)
 
         # Completed review shows Aarav Sharma's scores, files, remarks & direct marksheet button
-        self.assertIn("Reviewer Score:", html)
-        self.assertIn("45.0 / 50 (90.0%)", html)
-        self.assertIn("Guardian Final:", html)
-        self.assertIn("46.0 / 50 (92.0%)", html)
+        self.assertIn("Completed Reviews (0)", html)                    # Ananya has not earned it yet, so the badge stays under Upcoming ...
+        self.assertNotIn("All badges earned", html)                     # ... and moves to Completed only when EVERY mapped cosmonaut has
+        self.assertIn("Badge earned - 46.0/50 (92.0%)", html)           # the cosmonaut's row carries the final score
         self.assertNotIn("Aarav_Audit_Report.pdf", html)                # the files are in the Assessment workspace, not on the card
         self.assertNotIn("audit_sim.py", html)
-        self.assertIn("Guardian Official Award confirmed.", html)
         self.assertIn(f"open_reviewer_assessment_page', '{sub1.id}'", html)
 
     def test_03_unpublished_isolation_completed_badge_and_marksheet_priority(self):
@@ -192,7 +190,7 @@ class TestUIDataCompletenessAndSingleDB(unittest.TestCase):
         sub_html = self.ctrl.render()
         self.assertIn("Published Audit Badge", sub_html)
         self.assertNotIn("Hidden Draft Badge", sub_html)
-        self.assertIn("46.0/50 (92.0%)", sub_html)
+        self.assertNotIn("46.0/50 (92.0%)", sub_html)                  # no score on the badge card (it is inside the badge)
 
         # 2. c_badge_detail for completed badge shows Peer Reviewer + Guardian marks & Deliverables
         self.ctrl.handle_event("open_cosmonaut_badge_page", b_pub.id)
@@ -205,9 +203,8 @@ class TestUIDataCompletenessAndSingleDB(unittest.TestCase):
         self.ctrl.cosmonaut_results_badge_id = b_pub.id
         self.ctrl.handle_event("nav_cosmonaut", "c_results")
         res_html = self.ctrl.render()
-        self.assertIn("Arjun Mehta", res_html)
-        self.assertIn("Guardian Official", res_html)
-        self.assertIn("Peer Reviewer", res_html)
+        self.assertIn("Rohan Deshmukh", res_html)                     # the mapped peer reviewer is named, not the Guardian who signed off
+        self.assertNotIn("ms-tab", res_html)                           # one marksheet only, no tab strip
 
         # 4. c_dashboard does NOT double-count (no 2 / 1)
         self.ctrl.handle_event("nav_cosmonaut", "c_dashboard")

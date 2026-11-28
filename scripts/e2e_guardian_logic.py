@@ -319,8 +319,8 @@ def run():
     ev("select_demo_account", cid)
     ev("nav_cosmonaut", "c_results")
     h = page()
-    check("cosmonaut marksheet shows the reviewer's marks as soon as they are submitted (glass sheet, 5 criteria, awaiting Guardian)",
-          "ms-sheet" in h and "30.0" in h and "Awaiting Guardian" in h and h.count('class="ms-crit"') == 5 and "<table" not in h)
+    check("cosmonaut marksheet shows the reviewer's marks as soon as they are submitted (glass sheet, 5 criteria, named reviewer)",
+          "ms-sheet" in h and "30.0" in h and (store.get_user_by_id(owner_rev).name in h) and h.count('class="ms-crit"') == 5 and "<table" not in h)
     ev("select_demo_account", "guardian_1")
     ev("select_demo_account", "guardian_1")
     ev("nav_guardian", "g_reviews")

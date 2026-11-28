@@ -180,7 +180,7 @@ class TestGuardianSeesAndDecides(Base):
         self.assertGreaterEqual(page.count("gold-medal"), 2)                                 # ... beside the badge name and on the earned card
         self.assertIn("gold-medal is-lg", page)
         c2.handle_event("nav_cosmonaut", "c_results")
-        self.assertIn("Badge earned", _main(c2))
+        self.assertIn("ms-sheet", _main(c2))
         css = open("css/components.css", encoding="utf-8").read()
         self.assertIn(".gold-medal", css)
         self.assertIn("#fcd34d", css)
@@ -197,7 +197,7 @@ class TestLoopRestarts(Base):
         c = _login(CID)
         c.handle_event("nav_cosmonaut", "c_results")
         m = _main(c)
-        self.assertIn(label, m)
+        self.assertIn("ms-sheet", m)
         c.handle_event("open_allocated_project_page", BADGE)
         self.assertIn("Submit Deliverables", _main(c))                                       # the cosmonaut can start a new attempt
         rev = _login(REV)

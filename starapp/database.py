@@ -1540,9 +1540,13 @@ class DatabaseManager:
                 ann_id = ann["id"]
                 c.execute(
                     """
-                    INSERT OR REPLACE INTO announcements (
+                    INSERT INTO announcements (
                         id, title, message, author_id, author_name, target_type, badge_id, published_at, expiry_date, cycle_id
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title, message = excluded.message, author_id = excluded.author_id, author_name = excluded.author_name,
+                        target_type = excluded.target_type, badge_id = excluded.badge_id, published_at = excluded.published_at,
+                        expiry_date = excluded.expiry_date, cycle_id = excluded.cycle_id
                     """,
                     (
                         ann_id,

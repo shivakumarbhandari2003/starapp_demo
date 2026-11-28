@@ -554,7 +554,7 @@ class TestCompleteBadgeLifecycleWorkflow(unittest.TestCase):
         ctrl_rev.handle_event("select_demo_account", reviewer_id)
         ctrl_rev.handle_event("nav_cosmonaut", "c_badge_reviews")
         schedule_html = ctrl_rev.render()
-        self.assertIn("43.0 / 50", schedule_html)                       # the reviewer's score is on the Badge Review schedule
+        self.assertIn("Badge earned - 44.0/50", schedule_html)          # the earned cosmonaut's row (final score) on the Badge Review schedule
         self.assertIn("open_reviewer_assessment_page", schedule_html)
 
 

@@ -7,14 +7,14 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' fill='%2317345C'/></svg>">
 
   <!-- StarApp Design System & Liquid-Glass Styling -->
-  <link rel="stylesheet" href="css/design_tokens.css?v=85">
-  <link rel="stylesheet" href="css/liquid_glass.css?v=85">
-  <link rel="stylesheet" href="css/layout.css?v=85">
-  <link rel="stylesheet" href="css/components.css?v=85">
-  <link rel="stylesheet" href="css/responsive.css?v=85">
+  <link rel="stylesheet" href="css/design_tokens.css?v=121">
+  <link rel="stylesheet" href="css/liquid_glass.css?v=121">
+  <link rel="stylesheet" href="css/layout.css?v=121">
+  <link rel="stylesheet" href="css/components.css?v=121">
+  <link rel="stylesheet" href="css/responsive.css?v=121">
 
   <!-- App Configuration & Backend API Client -->
-  <script src="js/api.js?v=85"></script>
+  <script src="js/api.js?v=121"></script>
   <script>
     window.__STARAPP_CONFIG__ = window.__STARAPP_CONFIG__ || {};
     window.__STARAPP_CONFIG__.USE_BACKEND_API = true;
@@ -29,7 +29,7 @@
   <style>html.starapp-restoring-session #app-root { opacity: 0; }</style>
 
   <!-- StarApp UI Bridge (Pyodide & starapp_bundle.js are lazy-loaded only in offline/static mode) -->
-  <script src="js/bridge.js?v=85"></script>
+  <script src="js/bridge.js?v=121"></script>
 </head>
 <body>
 
@@ -64,7 +64,7 @@
        ======================================================================== -->
   <script>
     const STARAPP_OFFLINE_PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js";
-    const STARAPP_OFFLINE_BUNDLE_URL = "js/starapp_bundle.js?v=85";
+    const STARAPP_OFFLINE_BUNDLE_URL = "js/starapp_bundle.js?v=121";
 
     function loadScriptOnce(src) {
       return new Promise((resolve, reject) => {

@@ -1,6 +1,6 @@
 # Flowcharts & State Machines
 
-All flows below describe the **real implemented behaviour** (verified against `starapp/app.py`, `database.py`, `cycles.py`).
+All flows below describe the **real implemented behaviour** as of 2026-11-28 (verified against `starapp/app.py`, `storage.py`, `database.py`, `cycles.py`).
 Action names in `monospace` are controller actions you can grep.
 
 ## 1. End-to-end badge lifecycle (text flowchart)
@@ -48,60 +48,75 @@ Action names in `monospace` are controller actions you can grep.
 │    (unpublish_badge / revoke_badge reverse it). Learning materials: g_materials             │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
-┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 7. REQUEST PROJECT  c_submission → open the allotted badge → "Earn the Badge"              │
-│    request_project (only for an allotted badge with a mapped reviewer, not yet earned, one  │
-│    open request) → reviewer_project_prompts row id projreq_<badge>_<cosmo>, status          │
-│    "requested", reviewer_id = mapped reviewer; notification + activity "project_requested"  │
-│    (UI: no request button any more - "Project Allocated" stays disabled until the reviewer sends; 72 h window from publish)       │
-└───────────────┬──────────────────────────────────────────────────────────────────────────┘
-                ▼
-┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐
-│ 8. CREATE + SEND PROJECT  c_badge_reviews ("N Project Requests", sidebar count)            │
-│    modal "Create Project": a big Heading + Content (nothing else) and a checklist of the    │
-│    mapped cosmonauts (requesters pre-ticked) → "Send Project to Mapped Cosmonauts"          │
-│    send_reviewer_project → NEW row proj_<badge>_<reviewer>_<ms>_<id> status "released";     │
-│    the recipients' requests become "fulfilled"; each recipient is notified                   │
+┌─ GUARDIAN → PROJECT REVIEWER (the mapped one) ───────────────────────────────────────────┐
+│ 7. 72-HOUR PROJECT WINDOW  publish_badge stamps badge.published_at; each mapped reviewer    │
+│    has 72 h to create + send the project (live countdown on the Badge Review card).         │
+│    The cosmonaut has NO "Request Project" button any more ("Project Allocated" stays        │
+│    disabled until the reviewer sends; the server action request_project is legacy only)     │
+│ 8. CREATE + SEND PROJECT  c_badge_reviews → "Create Project" modal (pre-filled sample):     │
+│    Heading + Content + checklist of the mapped cosmonauts → send_reviewer_project           │
+│    → NEW row proj_<badge>_<reviewer>_<ms>_<id> status "released"; each recipient notified   │
 │    heading required (≤200 chars), content required (≤20,000), only the mapped reviewer or   │
 │    a guardian, only to cosmonauts mapped to that reviewer                                   │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
 ┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 9. LEARN  c_submission (Badges, landing page) / c_roadmap / c_badge_detail / c_project / c_materials (milestone state: completed|active|locked)│
-│    optional: submit_extension_request (once pending at a time) → guardian approves/rejects  │
-│    The button becomes "Submit Project Deliverables" → modal shows the project (Heading +    │
-│    Content) first, then PDF · code · GitHub link                                            │
-│ 10. SUBMIT  submit_project_deliverable                                                      │
-│    checks: a project was SENT to me · prerequisites approved · badge allotted to me · not   │
-│    already earned · not awaiting final decision · deliverables present (PDF report + code   │
-│    file + https GitHub URL; demo mode may fill placeholders) · size ≤ ~9 MB                 │
-│    new row in project_submissions, attempt_number = previous+1 (edit if latest is pending); │
-│    the mapped reviewer is notified and its "Assessment" button (Badge Reviews) unlocks             │
+│ 9. LEARN  c_submission (Badges, landing page) / c_roadmap / c_badge_detail / c_materials     │
+│    (milestone state: completed|active|locked); every card has Reviewer + Timeline buttons;   │
+│    optional: submit_extension_request (once pending at a time) → guardian approves/rejects   │
+│    "Project Allocated" unlocks → open_allocated_project_page → view c_project (its own PAGE; │
+│    server guard _allocated_project_denied: badge allotted to me AND my project was sent)     │
+│ 10. SUBMIT  glass "Submit Deliverables" dialog (render_cosmonaut_submission_modal):          │
+│    submit_project_deliverable  — checks: a project was SENT to me · prerequisites approved   │
+│    · badge allotted to me · not already earned · not awaiting the Guardian's decision ·      │
+│    deliverables present (PDF report + code file + https GitHub URL; demo mode may fill       │
+│    placeholders) · size ≤ ~9 MB. New row in project_submissions, attempt_number = previous+1 │
+│    (edit in place only while the latest is pending); the mapped reviewer is notified and the │
+│    reviewer's "Assessment" button (rv-assess) on Badge Review UNLOCKS                        │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
-┌─ PROJECT REVIEWER (the mapped one) ──────────────────────────────────────────────────────┐
-│ 11. FIRST ASSESSMENT  c_assessment_detail  submit_reviewer_assessment                      │
-│     5 criteria × 10 = 50 marks → marksheet asm_rev_<sub>_<attempt> (decision               │
-│     "reviewer_assessed"); submission.status = timeline.status = "reviewer_assessed";        │
-│     cadet + guardian notified                                                               │
+┌─ PROJECT REVIEWER (the mapped one) — RECOMMENDS ONLY ────────────────────────────────────┐
+│ 11. ASSESS  c_badge_reviews → Assessment button (disabled/locked `rv-assess is-locked`       │
+│     until this cosmonaut submitted) → open_reviewer_assessment_page → c_assessment_detail    │
+│     (deliverables + 50-mark rubric)   submit_reviewer_assessment                             │
+│     5 criteria × 10 = 50 marks + recommendation Give Badge / Re-attempt / Reject             │
+│     → marksheet asm_rev_<sub>_<attempt>, decision recommend_approve | recommend_resubmit |   │
+│       recommend_reject (never "approve"); Give Badge refused below the badge pass mark       │
+│     submission.status = timeline.status = "reviewer_assessed"; marks reach the cosmonaut's   │
+│     marksheet AND the Guardian at once (notifications); marks are LOCKED for this attempt —  │
+│     a second submit is refused, a new assessment exists only for a new attempt               │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
-┌─ GUARDIAN ───────────────────────────────────────────────────────────────────────────────┐
-│ 12. FINAL ASSESSMENT  g_reviews / g_review_detail  submit_guardian_final_assessment        │
-│     defaults to the reviewer's marks (guardian can adjust)                                  │
-│     pct = total/50 × 100                                                                    │
-│        ├── pct ≥ badge.passing_percentage (default 70) ──► PASS                             │
-│        │      submission "approved", timeline "completed", actual_award_date = today,       │
-│        │      marksheet asm_g_… decision "approve", uncouple_cadet_badge_mapping,           │
-│        │      activity "badge_awarded", notification "Badge Earned"                         │
-│        └── below ──► submission "retake_required", timeline "retake_required",              │
-│               marksheet decision "resubmission_requested" → cadet submits attempt N+1 (→ 9) │
-│     A finalised attempt is immutable (no re-grading).                                       │
+┌─ GUARDIAN — DECIDES ─────────────────────────────────────────────────────────────────────┐
+│ 12. FINAL DECISION  g_reviews (Assessment Dashboard: cards with an assessed reviewer are     │
+│     highlighted "N awaiting your decision" / "Decide now") → g_review_detail                 │
+│     submit_guardian_final_assessment — pre-filled from the reviewer's marks + recommendation │
+│        ├── Earn Badge (score ≥ badge.passing_percentage, default 70, else refused) ──► PASS  │
+│        │     submission "approved", timeline "completed", actual_award_date set,             │
+│        │     marksheet asm_g_… decision "approve", uncouple_cadet_badge_mapping,             │
+│        │     activity "badge_awarded", notification "Badge Earned"                           │
+│        ├── Re-attempt ──► marksheet decision "resubmission_requested"                       │
+│        └── Reject     ──► marksheet decision "rejected"                                     │
+│              (both: submission + timeline "retake_required" → cosmonaut submits attempt N+1  │
+│               → back to step 10; attempt N's marksheets stay on record: attempts append-only)│
+│     The saved decision is LOCKED (panel read-only: "Decision saved: …" + Revoke button); a   │
+│     second decision without revoking is refused ("already received a final decision")        │
+│ 12b. REVOKE  open_revoke_decision_confirm → revoke_guardian_decision (Guardian-only; only    │
+│     the LATEST attempt): deletes the Guardian marksheet (store.delete_assessment), submission│
+│     → "reviewer_assessed" (reviewer marks untouched), timeline award date cleared, mapping   │
+│     re-coupled (recouple_cadet_badge_mapping), cosmonaut + reviewer notified, activity       │
+│     "guardian_decision_revoked" → the Guardian can decide again                              │
 └───────────────┬──────────────────────────────────────────────────────────────────────────┘
                 ▼
-┌─ COSMONAUT ──────────────────────────────────────────────────────────────────────────────┐
-│ 13. BADGE EARNED  c_results (marksheet), c_roadmap (milestone completed, next unlocks),    │
-│     c_profile, leaderboard rank; counts toward the cycle appraisal                          │
+┌─ COSMONAUT / MAPPING ────────────────────────────────────────────────────────────────────┐
+│ 13. BADGE EARNED  gold badge on the Badges card + badge page (`.gold-*`, `.mbe-card`),      │
+│     c_results (ONE marksheet: latest evaluation, marks only), c_roadmap (milestone           │
+│     completed, next unlocks), c_profile, leaderboard rank; counts toward the cycle appraisal│
+│ 14. MAPPING END RULE  each earned cosmonaut is uncoupled from the mapping (added to          │
+│     completed_cosmonauts, timeline "completed"); band_mappings.status becomes "completed"    │
+│     only when ALL mapped cosmonauts have earned. On the reviewer's Badge Review schedule     │
+│     the badge then moves from Upcoming Reviews to Completed Reviews ("All badges earned");   │
+│     a revoke re-opens it                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -118,14 +133,16 @@ flowchart TD
     E -- reject --> D
     E -- accept --> F[Guardian allots timeline<br/>badge_timelines active]
     F --> G[Guardian publishes badge]
-    G --> H0[Cosmonaut requests the project]
-    H0 --> H[Reviewer creates Heading + Content and sends it]
-    H --> I[Cosmonaut learns, may request extension]
-    I --> J[Submit Project Deliverables: PDF, code, GitHub<br/>attempt N]
-    J --> K[Reviewer grades 50 marks<br/>reviewer_assessed]
-    K --> L{Guardian final<br/>pct >= pass %}
-    L -- yes --> M[Badge earned<br/>timeline completed]
-    L -- no --> N[retake_required] --> J
+    G --> H[Reviewer creates Heading + Content and sends it<br/>within 72 h of publish]
+    H --> I[Cosmonaut learns, may request extension<br/>opens project page c_project]
+    I --> J[Submit Deliverables: PDF, code, GitHub<br/>attempt N]
+    J --> K[Reviewer assesses 50 marks and RECOMMENDS<br/>Give Badge / Re-attempt / Reject<br/>reviewer_assessed, marks locked]
+    K --> L{Guardian DECIDES}
+    L -- Earn Badge, score >= pass mark --> M[Badge earned - gold<br/>timeline completed, cosmonaut uncoupled]
+    L -- Re-attempt or Reject --> N[retake_required] --> J
+    M -- Guardian revokes latest decision --> K
+    M --> P{All mapped cosmonauts earned?}
+    P -- yes --> Q[mapping status completed]
     M --> O[Cycle appraisal: score → tier → hike / promotion]
 ```
 
@@ -139,12 +156,24 @@ flowchart TD
 
 **Reviewer project prompt (`reviewer_project_prompts.status`)**: saved by `send_reviewer_project` / `save_reviewer_project_prompt`; the status comes from the payload (default `"released"`; committed data holds `sent` and `released`). Cadets are resolved from the mapping (timelines / band_mappings / badge assignment) when not passed, and filtered to the cadets mapped to *this* reviewer.
 
-**Badge timeline (`badge_timelines.status`)**: `active → reviewer_assessed → completed | retake_required`; `retake_required → reviewer_assessed` after the next attempt.
+**Badge timeline (`badge_timelines.status`)**: `active → reviewer_assessed → completed | retake_required`; `retake_required → reviewer_assessed` after the next attempt; **revoke**: `completed | retake_required → reviewer_assessed` (award date cleared).
 
 **Submission (`project_submissions.status`)**: `draft|pending → reviewer_assessed → approved | retake_required` (code also recognises `resubmission_requested` as final).
-New attempts are *new rows*. Rows with `approved` block further attempts.
+New attempts are *new rows*. Rows with `approved` block further attempts. **Revoke** (Guardian only, latest attempt only): `approved | retake_required → reviewer_assessed`.
 
-**Marksheet (`assessment_marksheets.decision`)**: reviewer → `reviewer_assessed`; guardian → `approve` | `resubmission_requested` (legacy data also has `request_revision`).
+```mermaid
+flowchart LR
+    P[pending / draft] -- cosmonaut submits attempt N --> R[reviewer_assessed<br/>reviewer marks + recommendation, LOCKED]
+    R -- Guardian: Earn Badge --> A[approved<br/>badge earned]
+    R -- Guardian: Re-attempt / Reject --> T[retake_required]
+    T -- cosmonaut submits attempt N+1 = new row --> P
+    A -- Guardian revokes --> R
+    T -- Guardian revokes (latest attempt only) --> R
+```
+
+**Marksheet (`assessment_marksheets.decision`)**: reviewer → `recommend_approve | recommend_resubmit | recommend_reject` (legacy `reviewer_assessed` / `approve` / `request_revision` rows still exist and are read); guardian → `approve` | `resubmission_requested` | `rejected` (`approved` is also read as earned). A reviewer row is written once per attempt (`asm_rev_<sub>_<attempt>`); a Guardian row (`asm_g_<sub>_<attempt>`) is deleted only by a revoke.
+
+**Band mapping (`band_mappings.data_json.status`)**: `active → completed` when every cosmonaut in the mapping is in `completed_cosmonauts` (each earned cosmonaut is added by `store.uncouple_cadet_badge_mapping`; a revoke removes them again and returns `completed → active`).
 
 **Deadline extension**: `pending → approved | rejected` (guardian only).
 

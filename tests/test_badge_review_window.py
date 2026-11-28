@@ -207,7 +207,7 @@ class TestReviewedBadgesStayAsCards(ReviewWindowBase):
         html = _main(self.rev)
         card = html.split("lg-saved-badge-card")[1].split("Cosmonaut Evaluation")[0]
         self.assertIn("Returned with feedback", card)
-        self.assertIn("UTC", card)                                    # the decision time, formatted like the history table
+        self.assertIn("IST", card)                                    # the decision time, formatted like the history table
         self.assertIn("Outcomes too vague.", card)
         self.assertNotIn("rq-timer", card)
         self.rev.handle_event("filter_cosmo_requests", "returned")

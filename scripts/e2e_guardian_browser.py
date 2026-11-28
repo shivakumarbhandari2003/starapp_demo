@@ -282,6 +282,12 @@ try:
     check("cosmonaut: badge page has no back rows / chips / reviewer banner", all(x not in bp for x in ("Back to Badges", "Back to All Badges", "Badge Workspace", "Assigned Peer Reviewer")) and "cbp-page" in bp)
     check("cosmonaut: Reviewer + Timeline buttons on the badge name line", js("document.querySelectorAll('.cb-title-actions button').length") == 2)
     check("cosmonaut: Reviewer button opens the mapped reviewer popup", click_text(".cb-title-actions button", "Reviewer") and "Mapped to you" in modal() and "rvm-card" in modal())
+    # live sync must be invisible while nothing changed: the popup's DOM node survives several polls (no repaint, no flicker)
+    js("(function(){performance.clearResourceTimings();performance.setResourceTimingBufferSize(2000);window.__rvmNode=document.querySelector('.rvm-wrap');window.__rvmNode.__tag='same'})()")
+    wait(13.5)
+    polls = js("performance.getEntriesByType('resource').filter(function(e){return e.name.indexOf('/api/v1/dispatch')>-1}).length")
+    check("live sync polls the server (>= 2 polls in 13 s) ...", (polls or 0) >= 2, polls)
+    check("... and an unchanged popup is NOT repainted (same DOM node, nothing replaced)", js("document.querySelector('.rvm-wrap') === window.__rvmNode && window.__rvmNode.__tag === 'same'"))
     click(".modal-close-btn")
     check("cosmonaut: Timeline button opens the connected-dot timeline", click_text(".cb-title-actions button", "Timeline") and js("document.querySelectorAll('.tlv-step').length") == 7)
     click(".modal-close-btn")
@@ -421,7 +427,7 @@ try:
         var body=document.querySelector('.review-rubric-body-fit').getBoundingClientRect();
         var fields=Array.from(document.querySelectorAll('.review-rubric-body-fit .lg-fb-field')), ok=true;
         for(var i=1;i<fields.length;i++){ if(fields[i].getBoundingClientRect().top < fields[i-1].getBoundingClientRect().bottom - 0.5) ok=false; }   // no label sits on the box above it
-        var tas=Array.from(document.querySelectorAll('.lg-fb-textarea')).every(function(t){return t.getBoundingClientRect().height>=60});            // no squashed text boxes
+        var tas=Array.from(document.querySelectorAll('.lg-fb-textarea')).every(function(t){return t.getBoundingClientRect().height>=32});            // no squashed text boxes (the tiered panel keeps a 34px floor on short windows)
         return [ok && tas, btn.bottom<=col.bottom+1 && dock.top>=body.bottom-1];})()""")
     check("marks sheet: no overlapping fields / squashed boxes, decision + action button pinned and visible", fit == [True, True], fit)
     click(".lg-dec-opt.is-resubmit")
